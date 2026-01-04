@@ -14,8 +14,8 @@ Comprehensive pipeline audit for `webapp/parser/`.
 
 ## Overview
 
-- **Total Modules Audited:** 48
-- **Total Connections:** 64
+- **Total Modules Audited:** 50
+- **Total Connections:** 67
 - **Clusters:** Entry, Pipeline, Routing, State Handlers, Format Handlers,
 Shared Handlers, Services, Utils, Context Integration, Health
 - **Audit Scope:** All `webapp/parser/` files with full context, imports,
@@ -38,11 +38,8 @@ graph TD
   end
   subgraph Format_Handlers["Format Handlers"]
     pdf_handler["pdf_handler"]
-    csv_handler["csv_handler"]
     html_handler["html_handler"]
     json_handler["json_handler"]
-    txt_handler["txt_handler"]
-    xlsx_handler["xlsx_handler"]
   end
   subgraph Services["Services"]
     election_data_services["election_data_services"]
@@ -71,14 +68,16 @@ graph TD
     constants["constants"]
   end
   subgraph Health["Health"]
-    log_cache_cleaner_bot["log_cache_cleaner_bot"]
     manual_correction_bot["manual_correction_bot"]
+    dataset_promotion["dataset_promotion"]
+    integrity_check_runner["integrity_check_runner"]
+    log_cache_cleaner_bot["log_cache_cleaner_bot"]
     retrain_table_structure_models["retrain_table_structure_models"]
     scan_misaligned_ner["scan_misaligned_ner"]
   end
+  manual_correction_bot -->|36| librarian
   table_builder -->|36| dynamic_table_extractor
   detect -->|18| browser_utils
-  manual_correction_bot -->|13| log_cache_cleaner_bot
   pivot -->|12| contest_selector
   pivot -->|11| json_export_loader
   dynamic_table_extractor -->|10| context_coordinator
@@ -108,12 +107,12 @@ relevance.
 
 ### Top Module Links
 
+- `manual_correction_bot` → `librarian` (36 refs, Health → Context
+Integration) — review `librarian` whenever `manual_correction_bot` changes.
 - `table_builder` → `dynamic_table_extractor` (36 refs, Utils → Utils) —
 review `dynamic_table_extractor` whenever `table_builder` changes.
 - `detect` → `browser_utils` (18 refs, Utils → Utils) — review `browser_utils`
 whenever `detect` changes.
-- `manual_correction_bot` → `log_cache_cleaner_bot` (13 refs, Health → Health)
-— review `log_cache_cleaner_bot` whenever `manual_correction_bot` changes.
 - `pivot` → `contest_selector` (12 refs, Utils → Utils) — review
 `contest_selector` whenever `pivot` changes.
 - `pivot` → `json_export_loader` (11 refs, Utils → Utils) — review
@@ -132,17 +131,17 @@ changes.
 
 ### Cluster Flow Summary
 
-- Utils → Utils: 120 edges (intra-cluster flow to monitor.)
-- Utils → Context Integration: 39 edges (cross-cluster flow to monitor.)
-- Health → Health: 13 edges (intra-cluster flow to monitor.)
+- Utils → Utils: 122 edges (intra-cluster flow to monitor.)
+- Health → Context Integration: 39 edges (cross-cluster flow to monitor.)
+- Utils → Context Integration: 38 edges (cross-cluster flow to monitor.)
+- Health → Entry: 7 edges (cross-cluster flow to monitor.)
 - Services → Utils: 6 edges (cross-cluster flow to monitor.)
 - Entry → Context Integration: 5 edges (cross-cluster flow to monitor.)
-- Health → Entry: 5 edges (cross-cluster flow to monitor.)
 - Context Integration → Utils: 4 edges (cross-cluster flow to monitor.)
-- Format Handlers → Format Handlers: 4 edges (intra-cluster flow to monitor.)
-- Health → Context Integration: 4 edges (cross-cluster flow to monitor.)
 - State Handlers → Context Integration: 3 edges (cross-cluster flow to
 monitor.)
+- Utils → Health: 3 edges (cross-cluster flow to monitor.)
+- Entry → Format Handlers: 2 edges (cross-cluster flow to monitor.)
 
 ## File Connection Map
 
@@ -157,21 +156,21 @@ Click to expand each module for full audit details.
 #### 🔧 Key Functions & Classes (Context_Integration_Context_Library_constants)
 
 - `build_state_to_division_type_map` (function, line 691)
-- `_sanitize_party_token` (function, line 2399)
-- `normalize_party_code` (function, line 2418)
-- `canonical_ballot_group` (function, line 2445)
-- `split_and_normalize_ballot_groups` (function, line 2472)
-- `normalize_result_group_label` (function, line 2491)
-- `normalize_party_label` (function, line 2509)
-- `is_pseudo_result_party` (function, line 2539)
-- `_iter_strings` (function, line 2710)
-- `_compile_union` (function, line 2721)
-- `_norm_state_key` (function, line 2764)
-- `_norm_county_key` (function, line 2775)
-- `_collect_layered_patterns` (function, line 2784)
-- `get_camelot_title_regex` (function, line 2795)
-- `get_camelot_row_regex` (function, line 2805)
-- `build_camelot_row_filter` (function, line 2818)
+- `_sanitize_party_token` (function, line 2463)
+- `normalize_party_code` (function, line 2482)
+- `canonical_ballot_group` (function, line 2509)
+- `split_and_normalize_ballot_groups` (function, line 2536)
+- `normalize_result_group_label` (function, line 2555)
+- `normalize_party_label` (function, line 2573)
+- `is_pseudo_result_party` (function, line 2603)
+- `_iter_strings` (function, line 2774)
+- `_compile_union` (function, line 2785)
+- `_norm_state_key` (function, line 2828)
+- `_norm_county_key` (function, line 2839)
+- `_collect_layered_patterns` (function, line 2848)
+- `get_camelot_title_regex` (function, line 2859)
+- `get_camelot_row_regex` (function, line 2869)
+- `build_camelot_row_filter` (function, line 2882)
 
 #### 📦 Key Imports (Context_Integration_Context_Library_constants)
 
@@ -189,13 +188,13 @@ Click to expand each module for full audit details.
 
 #### ⚠️ TODO/FIXME/WARN (Context_Integration_Context_Library_constants)
 
-- L1831 **NOTE**: .*$",                     # Note
-- L2020 **WARNING**: ",
-- L2111 **WARNING**: ", "info*box", "navigation", "pagination", "tab",
+- L1895 **NOTE**: .*$",                     # Note
+- L2084 **WARNING**: ",
+- L2175 **WARNING**: ", "info*box", "navigation", "pagination", "tab",
 "modal", "tooltip", "ignore", "unknown"
-- L2144 **NOTE**: ", "comment",
-- L2220 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
-- L2236 **NOTE**: ", "Comment", "Feedback", "Suggestion",
+- L2208 **NOTE**: ", "comment",
+- L2284 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
+- L2300 **NOTE**: ", "Comment", "Feedback", "Suggestion",
 
 ### Context\_Integration/Integrity\_check.py {#webapp-parser-context-integration-integrity-check-py}
 
@@ -252,7 +251,7 @@ Click to expand each module for full audit details.
 - `get_semantic_score` (function, line 97)
 - `merge_and_rank_candidates` (function, line 145)
 - `dynamic_state_county_detection` (function, line 235)
-- `ContextCoordinator` (class, line 749)
+- `ContextCoordinator` (class, line 824)
 
 #### 📦 Key Imports (Context_Integration_context_coordinator)
 
@@ -263,6 +262,7 @@ Click to expand each module for full audit details.
 - `re`
 - `subprocess`
 - `threading`
+- `collections`
 - `collections`
 - `datetime`
 - `datetime`
@@ -275,39 +275,38 @@ Click to expand each module for full audit details.
 - `numpy`
 - `orjson`
 - `rapidfuzz`
-- `rapidfuzz`
 
 #### ⚠️ TODO/FIXME/WARN (Context_Integration_context_coordinator)
 
-- L788 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
-- L876 **WARNING**: ({
-- L877 **WARNING**: ",
-- L995 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
+- L863 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
+- L951 **WARNING**: ({
+- L952 **WARNING**: ",
+- L1350 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
 {issues\['integrity*issues'\]}")
-- L1234 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
+- L1589 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
 contest: {contest}")
-- L1403 **WARNING**: (f"\[get*feedback*pattern*kb\] Skipping corrupt line:
+- L1766 **WARNING**: (f"\[get*feedback*pattern*kb\] Skipping corrupt line:
 {e}")
-- L1515 **WARNING**: ("\[group*dom*nodes*by*label\] No organized DOM parts.
+- L1878 **WARNING**: ("\[group*dom*nodes*by*label\] No organized DOM parts.
 (Further warnings suppressed)")
-- L1517 **WARNING**: (f"\[group*dom*nodes*by*label\] No organized DOM parts.
+- L1880 **WARNING**: (f"\[group*dom*nodes*by*label\] No organized DOM parts.
 (Occurred {ContextCoordinator.*dom*parts*warning*count} times)")
-- L1522 **WARNING**: ("\[group*dom*nodes*by*label\] No DOM nodes found.")
-- L1540 **WARNING**: ("\[submit*user*feedback\] ContextOrganizer has no
+- L1885 **WARNING**: ("\[group*dom*nodes*by*label\] No DOM nodes found.")
+- L1903 **WARNING**: ("\[submit*user*feedback\] ContextOrganizer has no
 submit*user*feedback method.")
-- L1568 **WARNING**: (f"\[correct*and*update*contest\] Contest {contest*id}
+- L1931 **WARNING**: (f"\[correct*and*update*contest\] Contest {contest*id}
 missing type/election*types after sync.")
-- L1592 **WARNING**: ("\[print*contest*summary\] No organized contests to
+- L1955 **WARNING**: ("\[print*contest*summary\] No organized contests to
 summarize.")
-- L1605 **WARNING**: ("\[plot*contest*distribution\] No organized contests to
+- L1968 **WARNING**: ("\[plot*contest*distribution\] No organized contests to
 plot.")
-- L1656 **WARNING**: ("No organized DOM parts.")
-- L1659 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
-- L1670 **WARNING**: ("\[get*contest*groups\] No contest groups found.")
-- L1679 **WARNING**: ("\[get*panel*groups\] No panel groups found.")
-- L1688 **WARNING**: ("\[get*button*groups\] No button groups found.")
-- L1697 **WARNING**: ("\[get*table*groups\] No table groups found.")
-- L1706 **WARNING**: ("\[get*relationships\] No organized context.")
+- L2019 **WARNING**: ("No organized DOM parts.")
+- L2022 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
+- L2033 **WARNING**: ("\[get*contest*groups\] No contest groups found.")
+- L2042 **WARNING**: ("\[get*panel*groups\] No panel groups found.")
+- L2051 **WARNING**: ("\[get*button*groups\] No button groups found.")
+- L2060 **WARNING**: ("\[get*table*groups\] No table groups found.")
+- L2069 **WARNING**: ("\[get*relationships\] No organized context.")
 
 ### Context\_Integration/context\_organizer.py {#webapp-parser-context-integration-context-organizer-py}
 
@@ -358,47 +357,47 @@ due to missing required fields.")
 downstream output.")
 - L816 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests
 list of length {len(contests)}")
-- L1500 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
-- L1505 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
+- L1602 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
+- L1608 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
 contest detected.\n \[dim\]Context:\[/dim\] {contest}")
-- L1507 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L1610 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
 missing location info.\n \[dim\]Context:\[/dim\] {contest}")
-- L1509 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L1612 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
 missing year.\n \[dim\]Context:\[/dim\] {contest}")
-- L1972 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
+- L2082 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
 with feedback: {e}")
-- L2049 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
+- L2159 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
 contest: {contest}")
 
 ### Context\_Integration/librarian.py {#webapp-parser-context-integration-librarian-py}
 
 #### 🔧 Key Functions & Classes (Context_Integration_librarian)
 
-- `get_safe_log_path` (function, line 66)
-- `atomic_write_json` (function, line 82)
-- `extend_panel_tags` (function, line 138)
-- `extend_heading_tags` (function, line 142)
-- `extend_html_tags` (function, line 146)
-- `extend_custom_attr_patterns` (function, line 150)
-- `extend_location_keywords` (function, line 158)
-- `extend_candidate_keywords` (function, line 162)
-- `extend_ballot_types` (function, line 166)
-- `safe_join` (function, line 170)
-- `clean_for_json` (function, line 177)
-- `robust_orjson_loads` (function, line 193)
-- `load_context_library` (function, line 201)
-- `update_context_library` (function, line 288)
-- `backup_context_library` (function, line 303)
-- `save_context_library` (function, line 352)
-- `merge_and_save_context_library` (function, line 399)
-- `update_context_library_field` (function, line 407)
-- `update_domain_selector_cache` (function, line 418)
-- `get_domain_selectors` (function, line 439)
-- `log_selector_attempt` (function, line 444)
-- `_get_log_path` (function, line 468)
-- `_deduplicate_jsonl_log` (function, line 473)
-- `log_unknown_tag` (function, line 502)
-- `log_unknown_attr` (function, line 524)
+- `safe_path` (function, line 75)
+- `get_safe_log_path` (function, line 104)
+- `atomic_write_json` (function, line 126)
+- `extend_panel_tags` (function, line 189)
+- `extend_heading_tags` (function, line 193)
+- `extend_html_tags` (function, line 197)
+- `extend_custom_attr_patterns` (function, line 201)
+- `extend_location_keywords` (function, line 209)
+- `extend_candidate_keywords` (function, line 213)
+- `extend_ballot_types` (function, line 217)
+- `safe_join` (function, line 221)
+- `clean_for_json` (function, line 237)
+- `robust_orjson_loads` (function, line 253)
+- `load_context_library` (function, line 261)
+- `update_context_library` (function, line 353)
+- `backup_context_library` (function, line 369)
+- `save_context_library` (function, line 427)
+- `merge_and_save_context_library` (function, line 481)
+- `update_context_library_field` (function, line 490)
+- `update_domain_selector_cache` (function, line 502)
+- `get_domain_selectors` (function, line 523)
+- `log_selector_attempt` (function, line 528)
+- `_get_log_path` (function, line 552)
+- `_deduplicate_jsonl_log` (function, line 568)
+- `log_unknown_tag` (function, line 603)
 
 #### 📦 Key Imports (Context_Integration_librarian)
 
@@ -439,17 +438,38 @@ contest: {contest}")
 
 # extending context library structures, and handling ML/LLM feedback.
 
+#
+
+# SECURITY: All file operations are validated using safe\_path() to prevent path traversal attacks.
+
 # -----------------------------------------------------------------------------------
 
 ```
 
 #### ⚠️ TODO/FIXME/WARN (Context_Integration_librarian)
 
-- L652 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
-- L658 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
+- L764 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
+- L774 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
 manual*correction...")
-- L661 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
+- L777 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
 rescanning...")
+
+### Context\_Integration/location\_inference.py {#webapp-parser-context-integration-location-inference-py}
+
+#### 🔧 Key Functions & Classes (Context_Integration_location_inference)
+
+- `infer_county_from_lines` (function, line 11)
+
+#### 📦 Key Imports (Context_Integration_location_inference)
+
+- `__future__`
+- `re`
+- `collections`
+- `typing`
+- `typing`
+- `utils.shared_logic`
+- `utils.shared_logic`
+- `Context_Library.constants`
 
 ### config.py {#webapp-parser-config-py}
 
@@ -472,10 +492,6 @@ rescanning...")
 - `azure.identity`
 - `sqlalchemy`
 - `utils.logger_singleton`
-
-#### ⚠️ TODO/FIXME/WARN (config)
-
-- L328 **WARNING**: ("\[DB\]\[AAD\] Falling back to password auth.")
 
 ### data\_manager.py {#webapp-parser-data-manager-py}
 
@@ -503,12 +519,6 @@ rescanning...")
 - `utils.logger_singleton`
 - `utils.logger_singleton`
 - `utils.logger_singleton`
-
-#### ⚠️ TODO/FIXME/WARN (data_manager)
-
-- L83 **WARNING**: (f"\[REMOVED\] {popped}")
-- L90 **WARNING**: (f"\[REMOVED\] {index*or*value}")
-- L129 **WARNING**: (f"\[DELETED\] {files\[idx\]}")
 
 ### handlers/batch\_handler.py {#webapp-parser-handlers-batch-handler-py}
 
@@ -551,9 +561,8 @@ rescanning...")
 
 #### 🔧 Key Functions & Classes (handlers_formats_csv_handler)
 
-- `_build_contest_regex` (function, line 37)
-- `parse_csv_election_results` (function, line 56)
-- `parse` (function, line 285)
+- `parse_csv_election_results` (function, line 42)
+- `parse` (function, line 316)
 
 #### 📦 Key Imports (handlers_formats_csv_handler)
 
@@ -568,15 +577,15 @@ rescanning...")
 - `typing`
 - `typing`
 - `Context_Integration.Context_Library.constants`
-- `Context_Integration.Context_Library.constants`
+- `config`
+- `utils.contest_detection`
+- `utils.contest_detection`
+- `utils.contest_detection`
 - `utils.contest_selector`
 - `utils.location_helpers`
 - `utils.location_helpers`
 - `Context_Integration.librarian`
 - `utils.logger_singleton`
-- `utils.output_utils`
-- `utils.pivot`
-- `utils.shared_logic`
 
 ### handlers/formats/html\_handler.py {#webapp-parser-handlers-formats-html-handler-py}
 
@@ -623,20 +632,20 @@ Closest matches: {matches}")
 
 #### 🔧 Key Functions & Classes (handlers_formats_json_handler)
 
-- `_build_contest_regex` (function, line 53)
-- `_canonical_contest_key` (function, line 86)
-- `_split_primary_title_for_grouping` (function, line 93)
-- `_format_county_preview` (function, line 125)
-- `_format_scope_label` (function, line 152)
-- `_collect_contest_groups` (function, line 172)
-- `find_key_by_keywords` (function, line 294)
-- `_is_dict_list` (function, line 312)
-- `_state_key_for_county` (function, line 317)
-- `_extract_first_str` (function, line 328)
-- `_derive_location_metadata` (function, line 336)
-- `_fastpath_county_results` (function, line 364)
-- `parse_json_election_results` (function, line 955)
-- `parse` (function, line 1299)
+- `_build_contest_regex` (function, line 54)
+- `_canonical_contest_key` (function, line 87)
+- `_split_primary_title_for_grouping` (function, line 94)
+- `_format_county_preview` (function, line 126)
+- `_format_scope_label` (function, line 153)
+- `_collect_contest_groups` (function, line 173)
+- `find_key_by_keywords` (function, line 295)
+- `_is_dict_list` (function, line 313)
+- `_state_key_for_county` (function, line 318)
+- `_extract_first_str` (function, line 329)
+- `_derive_location_metadata` (function, line 337)
+- `_fastpath_county_results` (function, line 365)
+- `parse_json_election_results` (function, line 976)
+- `parse` (function, line 1343)
 
 #### 📦 Key Imports (handlers_formats_json_handler)
 
@@ -663,40 +672,40 @@ Closest matches: {matches}")
 
 #### ⚠️ TODO/FIXME/WARN (handlers_formats_json_handler)
 
-- L376 **WARNING**: ({
-- L377 **WARNING**: ",
-- L489 **WARNING**: ({
-- L490 **WARNING**: ",
+- L382 **WARNING**: ({
+- L383 **WARNING**: ",
+- L507 **WARNING**: ({
+- L508 **WARNING**: ",
 
 ### handlers/formats/pdf\_handler.py {#webapp-parser-handlers-formats-pdf-handler-py}
 
 #### 🔧 Key Functions & Classes (handlers_formats_pdf_handler)
 
-- `_sanitize_cache_get` (function, line 142)
-- `_sanitize_cache_set` (function, line 153)
-- `_normalize_angle` (function, line 164)
-- `_quantize_angle` (function, line 172)
-- `_collect_page_orientation` (function, line 182)
-- `_get_page_orientation_map` (function, line 222)
-- `_log_orientation_application` (function, line 273)
-- `_camelot_signal_sets` (function, line 286)
-- `_split_ws_blocks` (function, line 329)
-- `_is_bad_header_line` (function, line 333)
-- `_prepare_output_context` (function, line 337)
-- `_table_looks_bad` (function, line 350)
-- `_find_header_line` (function, line 354)
-- `_extract_table_by_whitespace` (function, line 358)
-- `_ensure_fitz` (function, line 369)
-- `_coerce_version_tuple` (function, line 385)
-- `_check_pymupdf_version` (function, line 411)
-- `_score_camelot_table` (function, line 452)
-- `_normalize_camelot_headers` (function, line 517)
-- `_camelot_table_to_rows` (function, line 532)
-- `_merge_camelot_tables_if_compatible` (function, line 571)
-- `_extract_camelot_tables` (function, line 602)
-- `_hybrid_fill_camelot` (function, line 645)
-- `_norm_txt` (function, line 712)
-- `_token_set` (function, line 716)
+- `_env_truthy` (function, line 161)
+- `PDFParseCancelled` (class, line 183)
+- `_sanitize_cache_get` (function, line 188)
+- `_sanitize_cache_set` (function, line 199)
+- `_normalize_angle` (function, line 210)
+- `_quantize_angle` (function, line 218)
+- `_collect_page_orientation` (function, line 228)
+- `_get_page_orientation_map` (function, line 308)
+- `_log_orientation_application` (function, line 372)
+- `_apply_page_orientation` (function, line 385)
+- `_expand_focus_windows` (function, line 416)
+- `_normalize_contest_key` (function, line 442)
+- `_contest_title_tokens` (function, line 449)
+- `_ensure_not_cancelled` (function, line 455)
+- `_cancelled_result` (function, line 516)
+- `_estimate_ocr_time_budgets` (function, line 541)
+- `_refine_focus_windows_for_contest` (function, line 552)
+- `_focus_windows_from_line_records` (function, line 595)
+- `_merge_focus_windows` (function, line 653)
+- `_autopick_contest_from_probe` (function, line 680)
+- `_compute_sample_page_indices` (function, line 729)
+- `_contest_probe_scan` (function, line 761)
+- `_yield_full_pass_batches` (function, line 861)
+- `_camelot_signal_sets` (function, line 933)
+- `_split_ws_blocks` (function, line 976)
 
 #### 📦 Key Imports (handlers_formats_pdf_handler)
 
@@ -710,6 +719,7 @@ Closest matches: {matches}")
 - `shutil`
 - `importlib`
 - `hashlib`
+- `typing`
 - `collections`
 - `collections`
 - `collections`
@@ -718,43 +728,42 @@ Closest matches: {matches}")
 - `PIL`
 - `PIL`
 - `PIL`
-- `config`
-- `config`
+- `Context_Integration.location_inference`
 
 #### ⚠️ TODO/FIXME/WARN (handlers_formats_pdf_handler)
 
-- L421 **WARNING**: ({
-- L422 **WARNING**: ",
-- L425 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
+- L922 **WARNING**: ({
+- L923 **WARNING**: ",
+- L925 **WARN**: \] Skipping page {page*index} during OCR batch render:
+{exc}",
+- L1078 **WARNING**: ({
+- L1079 **WARNING**: ",
+- L1082 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
 parser instability."
-- L1787 **WARNING**: ({
-- L1788 **WARNING**: ",
-- L1790 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
+- L2635 **WARNING**: ({
+- L2636 **WARNING**: ",
+- L2638 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
 using PyMuPDF fallback.",
-- L1808 **WARNING**: ({
-- L1809 **WARNING**: ",
-- L1812 **WARN**: \] pdf2image conversion failed; "
-- L2184 **WARNING**: ({
-- L2185 **WARNING**: ",
-- L2187 **WARN**: \] Multi-mode text extraction failed: {e}",
-- L3283 **WARNING**: ({
-- L3284 **WARNING**: ",
-- L3286 **WARN**: \] fitz text extraction failed: {e}",
-- L3315 **WARNING**: ({
-- L3316 **WARNING**: ",
-- L3318 **WARN**: \] ENABLE*OCR*FORCE is set but Tesseract is unavailable;
-skipping OCR fallback.",
-- L3366 **WARNING**: ({
-- L3367 **WARNING**: ",
+- L2658 **WARNING**: ({
+- L2659 **WARNING**: ",
+- L2662 **WARN**: \] pdf2image conversion failed; "
+- L3012 **WARNING**: ({
+- L3013 **WARNING**: ",
+- L3015 **WARN**: \] Skipping full-document OCR pass due to expired sample
+budget.",
+- L3063 **WARNING**: ({
+- L3064 **WARNING**: ",
+- L3066 **WARN**: \] Aborting full-document OCR pass due to timeout budget.",
+- L3093 **WARNING**: ({
+- L3094 **WARNING**: ",
 
 ### handlers/formats/txt\_handler.py {#webapp-parser-handlers-formats-txt-handler-py}
 
 #### 🔧 Key Functions & Classes (handlers_formats_txt_handler)
 
-- `_build_contest_regex` (function, line 34)
-- `_read_delimited_file` (function, line 54)
-- `parse_txt_election_results` (function, line 85)
-- `parse` (function, line 291)
+- `_read_delimited_file` (function, line 42)
+- `parse_txt_election_results` (function, line 73)
+- `parse` (function, line 323)
 
 #### 📦 Key Imports (handlers_formats_txt_handler)
 
@@ -769,24 +778,23 @@ skipping OCR fallback.",
 - `typing`
 - `typing`
 - `Context_Integration.Context_Library.constants`
-- `Context_Integration.Context_Library.constants`
+- `utils.contest_detection`
+- `utils.contest_detection`
+- `utils.contest_detection`
 - `utils.contest_selector`
 - `utils.location_helpers`
 - `utils.location_helpers`
 - `utils.logger_singleton`
 - `utils.output_utils`
 - `utils.pivot`
-- `utils.shared_logic`
-- `utils.shared_logic`
 
 ### handlers/formats/xlsx\_handler.py {#webapp-parser-handlers-formats-xlsx-handler-py}
 
 #### 🔧 Key Functions & Classes (handlers_formats_xlsx_handler)
 
-- `_build_contest_regex` (function, line 38)
-- `_dataframe_to_records` (function, line 57)
-- `parse_xlsx_election_results` (function, line 74)
-- `parse` (function, line 311)
+- `_dataframe_to_records` (function, line 46)
+- `parse_xlsx_election_results` (function, line 63)
+- `parse` (function, line 344)
 
 #### 📦 Key Imports (handlers_formats_xlsx_handler)
 
@@ -800,15 +808,15 @@ skipping OCR fallback.",
 - `typing`
 - `typing`
 - `Context_Integration.Context_Library.constants`
-- `Context_Integration.Context_Library.constants`
+- `utils.contest_detection`
+- `utils.contest_detection`
+- `utils.contest_detection`
 - `utils.contest_selector`
 - `utils.location_helpers`
 - `utils.location_helpers`
 - `utils.logger_singleton`
 - `utils.output_utils`
 - `utils.pivot`
-- `utils.shared_logic`
-- `utils.shared_logic`
 - `utils.shared_logic`
 
 ### handlers/states/arizona/\_\_init\_\_.py {#webapp-parser-handlers-states-arizona-init-py}
@@ -1059,14 +1067,52 @@ select one:\[/yellow\]")
 - `utils.models`
 - `utils.models`
 
+### health/dataset\_promotion.py {#webapp-parser-health-dataset-promotion-py}
+
+#### 🔧 Key Functions & Classes (health_dataset_promotion)
+
+- `discover_dataset_dirs` (function, line 67)
+- `resolve_dataset_path` (function, line 79)
+- `_load_metadata` (function, line 94)
+- `_load_rows` (function, line 101)
+- `_has_value` (function, line 110)
+- `_match_field` (function, line 118)
+- `_coerce_text` (function, line 137)
+- `_coerce_votes` (function, line 144)
+- `_resolve_election_date` (function, line 168)
+- `build_warehouse_records` (function, line 193)
+- `promote_dataset` (function, line 242)
+- `_build_arg_parser` (function, line 305)
+- `main` (function, line 329)
+
+#### 📦 Key Imports (health_dataset_promotion)
+
+- `__future__`
+- `argparse`
+- `csv`
+- `datetime`
+- `datetime`
+- `pathlib`
+- `typing`
+- `typing`
+- `typing`
+- `orjson`
+- `webapp.parser.Context_Integration.librarian`
+- `webapp.parser.config`
+- `webapp.parser.utils.db_utils`
+- `webapp.parser.utils.db_utils`
+- `webapp.parser.utils.db_utils`
+- `webapp.parser.utils.logger_singleton`
+- `webapp.parser.utils.models`
+
 ### health/health\_router.py {#webapp-parser-health-health-router-py}
 
 #### 🔧 Key Functions & Classes (health_health_router)
 
-- `register_orchestration_plugin` (function, line 57)
-- `run_orchestration_plugins` (function, line 60)
-- `preclean_json_logs` (function, line 69)
-- `BotPipeline` (class, line 124)
+- `register_orchestration_plugin` (function, line 58)
+- `run_orchestration_plugins` (function, line 61)
+- `preclean_json_logs` (function, line 70)
+- `BotPipeline` (class, line 125)
 
 #### 📦 Key Imports (health_health_router)
 
@@ -1093,20 +1139,45 @@ select one:\[/yellow\]")
 
 #### ⚠️ TODO/FIXME/WARN (health_health_router)
 
-- L252 **WARNING**: (f"\[health*router\] manual*correction failed (attempt
+- L253 **WARNING**: (f"\[health*router\] manual*correction failed (attempt
 {attempt}): {result.stderr}")
-- L336 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L337 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
 manual*correction...")
-- L338 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L339 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
 rescanning...")
-- L340 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L341 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
 may remain.")
-- L375 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
-- L380 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
+- L376 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
+- L393 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
 loop will be handled by scan*misaligned*ner.")
-- L382 **WARNING**: ("\[PIPELINE\] scan*misaligned*ner failed or file missing.
+- L395 **WARNING**: ("\[PIPELINE\] scan*misaligned*ner failed or file missing.
 Proceeding with caution.")
-- L414 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
+- L427 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
+
+### health/integrity\_check\_runner.py {#webapp-parser-health-integrity-check-runner-py}
+
+#### 🔧 Key Functions & Classes (health_integrity_check_runner)
+
+- `load_contests` (function, line 13)
+- `run_integrity_summary` (function, line 23)
+- `_build_arg_parser` (function, line 45)
+- `main` (function, line 68)
+
+#### 📦 Key Imports (health_integrity_check_runner)
+
+- `__future__`
+- `argparse`
+- `pathlib`
+- `typing`
+- `webapp.parser.Context_Integration.Integrity_check`
+- `webapp.parser.Context_Integration.librarian`
+- `webapp.parser.config`
+- `webapp.parser.utils.logger_singleton`
+
+#### ⚠️ TODO/FIXME/WARN (health_integrity_check_runner)
+
+- L18 **WARNING**: ("\[INTEGRITY\] Context library at %s is missing contest
+data", context*path)
 
 ### health/log\_cache\_cleaner\_bot.py {#webapp-parser-health-log-cache-cleaner-bot-py}
 
@@ -1163,31 +1234,31 @@ these from your training data:")
 
 #### 🔧 Key Functions & Classes (health_manual_correction_bot)
 
-- `load_cache` (function, line 68)
-- `close_cache` (function, line 81)
-- `write_audit_log` (function, line 85)
-- `process_logs_with_cache` (function, line 98)
-- `process_and_sync` (function, line 110)
-- `discover_field_types_from_logs` (function, line 154)
-- `atomic_write_json` (function, line 187)
-- `safe_path` (function, line 243)
-- `llm_suggest_action` (function, line 258)
-- `ml_score_entry` (function, line 310)
-- `ml_suggest_field` (function, line 333)
-- `load_jsonl` (function, line 352)
-- `check_and_fix_json_files` (function, line 367)
-- `find_log_files` (function, line 499)
-- `load_jsonl_incremental` (function, line 549)
-- `save_jsonl` (function, line 567)
-- `deduplicate_entries` (function, line 576)
-- `entry_key` (function, line 590)
-- `aggregate_successful_field_entries` (function, line 601)
-- `feedback_loop` (function, line 642)
-- `trim_log_file` (function, line 730)
-- `update_context_with_new_entries` (function, line 737)
-- `extract_year` (function, line 754)
-- `extract_state` (function, line 768)
-- `extract_county` (function, line 787)
+- `safe_path` (function, line 76)
+- `load_cache` (function, line 105)
+- `close_cache` (function, line 120)
+- `write_audit_log` (function, line 124)
+- `process_logs_with_cache` (function, line 139)
+- `process_and_sync` (function, line 151)
+- `discover_field_types_from_logs` (function, line 195)
+- `atomic_write_json` (function, line 228)
+- `llm_suggest_action` (function, line 297)
+- `ml_score_entry` (function, line 349)
+- `ml_suggest_field` (function, line 372)
+- `load_jsonl` (function, line 391)
+- `check_and_fix_json_files` (function, line 407)
+- `find_log_files` (function, line 569)
+- `load_jsonl_incremental` (function, line 636)
+- `save_jsonl` (function, line 654)
+- `deduplicate_entries` (function, line 667)
+- `entry_key` (function, line 681)
+- `aggregate_successful_field_entries` (function, line 692)
+- `feedback_loop` (function, line 733)
+- `trim_log_file` (function, line 821)
+- `update_context_with_new_entries` (function, line 828)
+- `validate_context_schema` (function, line 845)
+- `extract_year` (function, line 870)
+- `extract_state` (function, line 884)
 
 #### 📦 Key Imports (health_manual_correction_bot)
 
@@ -1214,31 +1285,50 @@ these from your training data:")
 
 #### ⚠️ TODO/FIXME/WARN (health_manual_correction_bot)
 
-- L322 **WARNING**: (f"Coordinator ML scoring failed: {e}")
-- L343 **WARNING**: (f"Coordinator field suggestion failed: {e}")
-- L355 **WARNING**: (f"Log file not found: {path}")
-- L364 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
-- L396 **WARNING**: (f"\[SKIP\] File not found: {file}")
-- L400 **WARNING**: (f"\[SKIP\] File too large: {file}")
-- L422 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
+- L361 **WARNING**: (f"Coordinator ML scoring failed: {e}")
+- L382 **WARNING**: (f"Coordinator field suggestion failed: {e}")
+- L395 **WARNING**: (f"Log file not found: {path}")
+- L404 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
+- L434 **WARNING**: (f"\[SECURITY\] Skipping invalid directory: {directory} -
+{e}")
+- L448 **WARNING**: (f"\[SECURITY\] Skipping file outside allowed directories:
+{file} - {e}")
+- L454 **WARNING**: (f"\[SKIP\] File not found: {file}")
+- L458 **WARNING**: (f"\[SKIP\] File too large: {file}")
+- L483 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
 ({e})")
-- L434 **WARNING**: (f"\[CORRUPT\] {len(corrupt*items)} lines saved to
+- L497 **WARNING**: (f"\[CORRUPT\] {len(corrupt*items)} lines saved to
 {corrupt*path}")
-- L439 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
+- L502 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
 file: {file}")
-- L453 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
-- L465 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt*path}")
-- L471 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
+- L516 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L530 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt*path}")
+- L536 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
 JSON in {file}")
-- L476 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
-- L485 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {quarantine*dir /
-file.name}")
-- L489 **WARNING**: (f"\[DELETED\] {file}")
-- L492 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
-- L537 **WARNING**: (f"\[FIND-LOGS\] Skipped {d}: {e}")
-- L562 **WARNING**: (f"\[CORRUPT\] {path} line {line*num}: {e}")
-- L717 **WARNING**: (f"Invalid JSON, skipping edit: {e}")
-- L750 **TODO**: Add JSON schema validation here if desired
+- L541 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L555 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {dest*path}")
+- L559 **WARNING**: (f"\[DELETED\] {file}")
+- L562 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
+- L597 **WARNING**: (f"\[SECURITY\] Skipping invalid directory: {d} - {e}")
+- L615 **WARNING**: (f"\[SECURITY\] Skipping file outside allowed directories:
+{f} - {e}")
+
+### health/navigation\_feedback\_ingest.py {#webapp-parser-health-navigation-feedback-ingest-py}
+
+#### 🔧 Key Functions & Classes (health_navigation_feedback_ingest)
+
+- `ingest_navigation_feedback` (function, line 24)
+- `_read_offset` (function, line 66)
+- `_write_offset` (function, line 75)
+- `_format_entry` (function, line 82)
+
+#### 📦 Key Imports (health_navigation_feedback_ingest)
+
+- `__future__`
+- `pathlib`
+- `typing`
+- `typing`
+- `orjson`
 
 ### health/retrain\_table\_structure\_models.py {#webapp-parser-health-retrain-table-structure-models-py}
 
@@ -1399,22 +1489,24 @@ may remain.")
 
 #### 🔧 Key Functions & Classes (html_election_parser)
 
-- `load_urls` (function, line 59)
-- `mark_url_processed` (function, line 109)
-- `prompt_url_selection` (function, line 140)
-- `process_format_override` (function, line 308)
-- `ai_analyze_results` (function, line 492)
-- `stream_results` (function, line 565)
-- `_read_text_file_with_fallback` (function, line 612)
-- `_extract_text_blocks` (function, line 628)
-- `generate_generic_html_result` (function, line 816)
-- `orchestrate_url` (function, line 1034)
-- `_orchestrate_url_worker` (function, line 1335)
-- `main` (function, line 1352)
+- `_count_dom_table_rows` (function, line 68)
+- `load_urls` (function, line 86)
+- `mark_url_processed` (function, line 136)
+- `prompt_url_selection` (function, line 167)
+- `process_format_override` (function, line 335)
+- `ai_analyze_results` (function, line 531)
+- `stream_results` (function, line 604)
+- `_read_text_file_with_fallback` (function, line 651)
+- `_extract_text_blocks` (function, line 667)
+- `generate_generic_html_result` (function, line 855)
+- `orchestrate_url` (function, line 1073)
+- `_orchestrate_url_worker` (function, line 1475)
+- `main` (function, line 1492)
 
 #### 📦 Key Imports (html_election_parser)
 
 - `__future__`
+- `json`
 - `os`
 - `re`
 - `sys`
@@ -1433,30 +1525,125 @@ may remain.")
 - `config`
 - `config`
 - `config`
-- `config`
 
 #### ⚠️ TODO/FIXME/WARN (html_election_parser)
 
-- L56 **WARNING**: ("Deleting .processed*urls cache for fresh start...")
-- L393 **WARNING**: ({
-- L394 **WARNING**: ",
-- L408 **WARNING**: ({
-- L409 **WARNING**: ",
-- L469 **WARNING**: ({
-- L470 **WARNING**: ",
-- L543 **WARNING**: (payload*2)
-- L870 **WARNING**: ({
-- L871 **WARNING**: ",
-- L917 **WARNING**: ({
-- L918 **WARNING**: ",
-- L971 **WARNING**: ({
-- L972 **WARNING**: ",
-- L1076 **WARNING**: ",
-- L1081 **WARNING**: (payload)
-- L1106 **WARN**: if nothing found
-- L1166 **WARNING**: ",
-- L1171 **WARNING**: (payload)
-- L1249 **WARNING**: ({
+- L61 **WARNING**: ("Deleting .processed*urls cache for fresh start...")
+- L430 **WARNING**: ({
+- L431 **WARNING**: ",
+- L445 **WARNING**: ({
+- L446 **WARNING**: ",
+- L508 **WARNING**: ({
+- L509 **WARNING**: ",
+- L582 **WARNING**: (payload*2)
+- L909 **WARNING**: ({
+- L910 **WARNING**: ",
+- L956 **WARNING**: ({
+- L957 **WARNING**: ",
+- L1010 **WARNING**: ({
+- L1011 **WARNING**: ",
+- L1117 **WARNING**: ",
+- L1122 **WARNING**: (payload)
+- L1156 **WARNING**: ({
+- L1157 **WARNING**: ",
+- L1237 **WARNING**: ({
+- L1238 **WARNING**: ",
+
+### navigator/\_\_init\_\_.py {#webapp-parser-navigator-init-py}
+
+> Dynamic navigation recipes for Smart Elections Parser.
+
+#### 📦 Key Imports (navigator___init__)
+
+- `navigation_recipes`
+- `navigation_recipes`
+- `navigation_runner`
+
+### navigator/keyword\_bias.py {#webapp-parser-navigator-keyword-bias-py}
+
+#### 🔧 Key Functions & Classes (navigator_keyword_bias)
+
+- `_iter_lines` (function, line 16)
+- `load_keyword_bias` (function, line 35)
+
+#### 📦 Key Imports (navigator_keyword_bias)
+
+- `__future__`
+- `threading`
+- `pathlib`
+- `typing`
+- `typing`
+- `typing`
+- `orjson`
+
+### navigator/navigation\_recipes.py {#webapp-parser-navigator-navigation-recipes-py}
+
+#### 🔧 Key Functions & Classes (navigator_navigation_recipes)
+
+- `NavigationRecipeStore` (class, line 12)
+
+#### 📦 Key Imports (navigator_navigation_recipes)
+
+- `__future__`
+- `threading`
+- `pathlib`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+- `orjson`
+
+### navigator/navigation\_runner.py {#webapp-parser-navigator-navigation-runner-py}
+
+#### 🔧 Key Functions & Classes (navigator_navigation_runner)
+
+- `NavigationResult` (class, line 19)
+- `NavigationInstructionRunner` (class, line 27)
+
+#### 📦 Key Imports (navigator_navigation_runner)
+
+- `__future__`
+- `concurrent.futures`
+- `concurrent.futures`
+- `dataclasses`
+- `threading`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+- `utils.logger_singleton`
+- `utils.browser_utils`
+- `utils.browser_utils`
+- `utils.html_scanner`
+- `keyword_bias`
+- `navigation_recipes`
+- `navigation_recipes`
+
+#### ⚠️ TODO/FIXME/WARN (navigator_navigation_runner)
+
+- L203 **WARNING**: ({
+- L204 **WARNING**: ",
+
+### navigator/training\_data.py {#webapp-parser-navigator-training-data-py}
+
+#### 🔧 Key Functions & Classes (navigator_training_data)
+
+- `iter_navigation_feedback` (function, line 14)
+- `build_training_dataset` (function, line 32)
+- `export_training_dataset` (function, line 56)
+- `main` (function, line 69)
+
+#### 📦 Key Imports (navigator_training_data)
+
+- `__future__`
+- `argparse`
+- `pathlib`
+- `typing`
+- `typing`
+- `typing`
+- `orjson`
+- `config`
 
 ### services/context\_service.py {#webapp-parser-services-context-service-py}
 
@@ -1618,37 +1805,38 @@ fuzzy matching.")
 
 #### 🔧 Key Functions & Classes (utils_browser_utils)
 
-- `Closable` (class, line 101)
-- `get_random_user_agent` (function, line 106)
-- `safe_url` (function, line 113)
-- `safe_inner_text` (function, line 122)
-- `safe_locator` (function, line 141)
-- `safe_evaluate` (function, line 152)
-- `safe_wait_for_timeout` (function, line 186)
-- `safe_content` (function, line 198)
-- `safe_nth` (function, line 221)
-- `safe_is_visible` (function, line 228)
-- `safe_is_enabled` (function, line 239)
-- `safe_click` (function, line 250)
-- `safe_get_attribute` (function, line 262)
-- `safe_attributes` (function, line 274)
-- `safe_query_selector_all` (function, line 344)
-- `safe_context_library` (function, line 355)
-- `safe_count` (function, line 367)
-- `safe_context_result` (function, line 402)
-- `safe_launch` (function, line 428)
-- `async_safe_launch` (async_function, line 448)
-- `safe_new_context` (function, line 467)
-- `async_safe_new_context` (async_function, line 478)
-- `safe_new_page` (function, line 489)
-- `async_safe_new_page` (async_function, line 500)
-- `safe_goto` (function, line 511)
+- `Closable` (class, line 114)
+- `get_random_user_agent` (function, line 119)
+- `safe_url` (function, line 126)
+- `safe_inner_text` (function, line 135)
+- `safe_locator` (function, line 154)
+- `safe_evaluate` (function, line 165)
+- `safe_wait_for_timeout` (function, line 199)
+- `safe_content` (function, line 211)
+- `safe_nth` (function, line 234)
+- `safe_is_visible` (function, line 241)
+- `safe_is_enabled` (function, line 252)
+- `safe_click` (function, line 263)
+- `safe_get_attribute` (function, line 275)
+- `safe_attributes` (function, line 287)
+- `safe_query_selector_all` (function, line 357)
+- `safe_context_library` (function, line 368)
+- `safe_count` (function, line 380)
+- `safe_context_result` (function, line 415)
+- `safe_launch` (function, line 441)
+- `async_safe_launch` (async_function, line 461)
+- `safe_new_context` (function, line 480)
+- `async_safe_new_context` (async_function, line 491)
+- `safe_new_page` (function, line 502)
+- `async_safe_new_page` (async_function, line 513)
+- `safe_goto` (function, line 524)
 
 #### 📦 Key Imports (utils_browser_utils)
 
 - `__future__`
 - `asyncio`
 - `inspect`
+- `json`
 - `os`
 - `random`
 - `re`
@@ -1665,37 +1853,36 @@ fuzzy matching.")
 - `playwright.async_api`
 - `playwright.async_api`
 - `playwright.async_api`
-- `playwright.async_api`
 
 #### ⚠️ TODO/FIXME/WARN (utils_browser_utils)
 
-- L89 **WARNING**: (f"\[browser*utils\] Failed to safely parse context*library
-value for key '{key}'")
-- L91 **WARNING**: (f"\[browser*utils\] Skipping unsafe context*library value
+- L102 **WARNING**: (f"\[browser*utils\] Failed to safely parse
+context*library value for key '{key}'")
+- L104 **WARNING**: (f"\[browser*utils\] Skipping unsafe context*library value
 for key '{key}'")
-- L295 **WARNING**: (f"\[safe*attributes\] Playwright JS extraction failed:
+- L308 **WARNING**: (f"\[safe*attributes\] Playwright JS extraction failed:
 {e}")
-- L309 **WARNING**: (f"\[safe*attributes\] Playwright fallback extraction
+- L322 **WARNING**: (f"\[safe*attributes\] Playwright fallback extraction
 failed: {e}")
-- L395 **WARNING**: (f"\[safe*count\] Object is not countable: {type(obj)}")
-- L441 **WARNING**: (f"\[safe*launch\] browser*type is not a SyncBrowserType:
+- L408 **WARNING**: (f"\[safe*count\] Object is not countable: {type(obj)}")
+- L454 **WARNING**: (f"\[safe*launch\] browser*type is not a SyncBrowserType:
 {type(browser*type)}")
-- L461 **WARNING**: (f"\[async*safe*launch\] browser*type is not an
+- L474 **WARNING**: (f"\[async*safe*launch\] browser*type is not an
 AsyncBrowserType: {type(browser*type)}")
-- L540 **WARNING**: ({
-- L541 **WARNING**: ",
-- L569 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L553 **WARNING**: ({
+- L554 **WARNING**: ",
+- L582 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
 '{indicator}'")
-- L578 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual
+- L591 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual
 intervention not implemented. (Session: {session*id})")
-- L602 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L615 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
 '{indicator}'")
-- L611 **WARNING**: ({
-- L612 **WARNING**: ",
-- L623 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual
+- L624 **WARNING**: ({
+- L625 **WARNING**: ",
+- L636 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual
 intervention not implemented. (Session: {session*id})")
-- L712 **WARNING**: ("\[SCROLL\] User aborted scrolling.")
-- L733 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may
+- L794 **WARNING**: ("\[SCROLL\] User aborted scrolling.")
+- L830 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may
 not be fully loaded.")
 
 ### utils/camelot\_utils.py {#webapp-parser-utils-camelot-utils-py}
@@ -1757,6 +1944,25 @@ not be fully loaded.")
 - L118 **WARNING**: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
 - L154 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
 
+### utils/contest\_detection.py {#webapp-parser-utils-contest-detection-py}
+
+#### 🔧 Key Functions & Classes (utils_contest_detection)
+
+- `_build_contest_regex` (function, line 19)
+- `_should_drop_contest_title` (function, line 81)
+- `detect_contest_titles_from_text` (function, line 99)
+- `gather_lines_for_contest_detection` (function, line 186)
+
+#### 📦 Key Imports (utils_contest_detection)
+
+- `__future__`
+- `os`
+- `re`
+- `collections`
+- `typing`
+- `typing`
+- `Context_Integration.Context_Library.constants`
+
 ### utils/contest\_normalization.py {#webapp-parser-utils-contest-normalization-py}
 
 > Utilities for normalizing contest titles (referenda, propositions, etc.).
@@ -1778,37 +1984,38 @@ not be fully loaded.")
 
 #### 🔧 Key Functions & Classes (utils_contest_selector)
 
-- `ContestRecord` (class, line 64)
-- `_bundle_key` (function, line 78)
-- `_collect_bundle_members` (function, line 91)
-- `_should_bundle` (function, line 171)
-- `_inject_bundle_records` (function, line 207)
-- `_merge_contest_metadata` (function, line 262)
-- `_extract_first_int` (function, line 361)
-- `_contest_sort_key` (function, line 373)
-- `_extract_display_details` (function, line 400)
-- `_extract_year_tokens` (function, line 438)
-- `_strip_years` (function, line 441)
-- `_base_canonical_key` (function, line 444)
-- `_expand_contests_from_context` (function, line 454)
-- `_merge_expanded_contests` (function, line 511)
-- `_cluster_titles_by_base` (function, line 530)
-- `_pick_rep_title` (function, line 547)
-- `_score_title` (function, line 559)
-- `_chunk_log_options` (function, line 570)
-- `_render_paginated_contest_menu` (function, line 584)
-- `_log` (function, line 621)
-- `_norm_key` (function, line 646)
-- `_tokens` (function, line 652)
-- `_jaccard` (function, line 655)
-- `_cluster_titles` (function, line 660)
-- `_pick_rep` (function, line 676)
+- `_env_truthy` (function, line 59)
+- `ContestRecord` (class, line 74)
+- `_bundle_key` (function, line 88)
+- `_collect_bundle_members` (function, line 101)
+- `_should_bundle` (function, line 181)
+- `_inject_bundle_records` (function, line 217)
+- `_merge_contest_metadata` (function, line 272)
+- `_extract_first_int` (function, line 371)
+- `_contest_sort_key` (function, line 383)
+- `_extract_display_details` (function, line 410)
+- `_extract_year_tokens` (function, line 448)
+- `_strip_years` (function, line 451)
+- `_base_canonical_key` (function, line 454)
+- `_expand_contests_from_context` (function, line 464)
+- `_merge_expanded_contests` (function, line 521)
+- `_cluster_titles_by_base` (function, line 540)
+- `_pick_rep_title` (function, line 557)
+- `_score_title` (function, line 569)
+- `_chunk_log_options` (function, line 580)
+- `_render_paginated_contest_menu` (function, line 594)
+- `_log` (function, line 631)
+- `_norm_key` (function, line 656)
+- `_tokens` (function, line 662)
+- `_jaccard` (function, line 665)
+- `_cluster_titles` (function, line 670)
 
 #### 📦 Key Imports (utils_contest_selector)
 
 - `__future__`
 - `json`
 - `math`
+- `os`
 - `re`
 - `collections`
 - `dataclasses`
@@ -1825,19 +2032,18 @@ not be fully loaded.")
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
-- `Context_Integration.Context_Library.constants`
 
 #### ⚠️ TODO/FIXME/WARN (utils_contest_selector)
 
-- L635 **WARNING**: ":
-- L636 **WARNING**: (entry)
-- L1029 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
+- L645 **WARNING**: ":
+- L646 **WARNING**: (entry)
+- L1039 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
 contests", session*id=session*id,
-- L1565 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
+- L1626 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
 "Empty search term", "session*id": session*id})
-- L1570 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
+- L1631 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
 matches for '{term}'", "session*id": session*id})
-- L1642 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
+- L1703 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
 match; try again.", "session*id": session*id})
 
 ### utils/coordinator\_protocol.py {#webapp-parser-utils-coordinator-protocol-py}
@@ -1872,36 +2078,37 @@ match; try again.", "session*id": session*id})
 
 #### 🔧 Key Functions & Classes (utils_db_utils)
 
-- `robust_orjson_loads` (function, line 35)
-- `get_session` (function, line 46)
-- `get_engine` (function, line 58)
-- `update_contest_in_db` (function, line 65)
-- `fetch_contests_by_filter` (function, line 90)
-- `create_all_tables` (function, line 124)
-- `create_batch_metadata` (function, line 128)
-- `update_batch_metadata` (function, line 135)
-- `get_batch_metadata` (function, line 144)
-- `create_staging_election_result` (function, line 149)
-- `get_staging_results_by_batch` (function, line 156)
-- `create_warehouse_election_result` (function, line 161)
-- `get_warehouse_results_by_batch` (function, line 168)
-- `create_table_structure` (function, line 172)
-- `update_table_structure` (function, line 185)
-- `get_table_structure_by_id` (function, line 194)
-- `fetch_table_structures` (function, line 198)
-- `search_table_structures` (function, line 212)
-- `update_table_structure_fields` (function, line 228)
-- `select_table_structures_by_title` (function, line 243)
-- `save_table_structure_to_db` (function, line 251)
-- `get_table_structure_from_db` (function, line 279)
-- `upsert_contest` (function, line 300)
-- `get_or_create_state` (function, line 360)
-- `get_or_create_county` (function, line 368)
+- `robust_orjson_loads` (function, line 42)
+- `get_session` (function, line 53)
+- `get_engine` (function, line 65)
+- `update_contest_in_db` (function, line 72)
+- `fetch_contests_by_filter` (function, line 97)
+- `create_all_tables` (function, line 131)
+- `create_batch_metadata` (function, line 135)
+- `update_batch_metadata` (function, line 142)
+- `get_batch_metadata` (function, line 151)
+- `create_staging_election_result` (function, line 156)
+- `get_staging_results_by_batch` (function, line 163)
+- `create_warehouse_election_result` (function, line 168)
+- `get_warehouse_results_by_batch` (function, line 175)
+- `create_table_structure` (function, line 179)
+- `update_table_structure` (function, line 192)
+- `get_table_structure_by_id` (function, line 201)
+- `fetch_table_structures` (function, line 205)
+- `search_table_structures` (function, line 219)
+- `update_table_structure_fields` (function, line 235)
+- `select_table_structures_by_title` (function, line 250)
+- `save_table_structure_to_db` (function, line 258)
+- `get_table_structure_from_db` (function, line 286)
+- `upsert_contest` (function, line 307)
+- `get_or_create_state` (function, line 367)
+- `get_or_create_county` (function, line 375)
 
 #### 📦 Key Imports (utils_db_utils)
 
 - `__future__`
 - `contextlib`
+- `os`
 - `typing`
 - `typing`
 - `typing`
@@ -1919,7 +2126,6 @@ match; try again.", "session*id": session*id})
 - `config`
 - `Context_Integration.librarian`
 - `logger_singleton`
-- `models`
 
 ### utils/detect.py {#webapp-parser-utils-detect-py}
 
@@ -1940,15 +2146,15 @@ match; try again.", "session*id": session*id})
 - `is_location_header` (function, line 115)
 - `dynamic_detect_location_header` (function, line 124)
 - `detect_candidate_column` (function, line 178)
-- `nlp_entity_annotate_table` (function, line 237)
-- `harmonize_headers_and_data` (function, line 278)
-- `find_best_header` (function, line 377)
-- `is_likely_header` (function, line 391)
-- `parse_numeric` (function, line 407)
-- `extract_table_data` (function, line 422)
-- `normalize_header` (function, line 464)
-- `dedupe_headers_with_suffix` (function, line 487)
-- `is_total_column` (function, line 500)
+- `nlp_entity_annotate_table` (function, line 239)
+- `harmonize_headers_and_data` (function, line 280)
+- `find_best_header` (function, line 379)
+- `is_likely_header` (function, line 393)
+- `parse_numeric` (function, line 409)
+- `extract_table_data` (function, line 424)
+- `normalize_header` (function, line 466)
+- `dedupe_headers_with_suffix` (function, line 491)
+- `is_total_column` (function, line 504)
 
 #### 📦 Key Imports (utils_detect)
 
@@ -2145,14 +2351,16 @@ session*id, error=str(e))
 
 #### 🔧 Key Functions & Classes (utils_embedding_cache)
 
-- `ensure_embedding_cache_table` (function, line 92)
-- `compute_embedding_for_hash` (function, line 104)
-- `save_embedding` (function, line 118)
-- `load_embedding` (function, line 141)
-- `get_embedding_from_memory` (function, line 168)
-- `save_embeddings_batch` (function, line 187)
-- `load_embeddings_batch` (function, line 241)
-- `fix_missing_embeddings` (function, line 296)
+- `_log_cache_status` (function, line 116)
+- `ensure_embedding_cache_table` (function, line 134)
+- `_db_write_allowed` (function, line 179)
+- `compute_embedding_for_hash` (function, line 195)
+- `save_embedding` (function, line 209)
+- `load_embedding` (function, line 233)
+- `get_embedding_from_memory` (function, line 261)
+- `save_embeddings_batch` (function, line 280)
+- `load_embeddings_batch` (function, line 342)
+- `fix_missing_embeddings` (function, line 397)
 
 #### 📦 Key Imports (utils_embedding_cache)
 
@@ -2173,13 +2381,9 @@ session*id, error=str(e))
 - `config`
 - `db_utils`
 - `db_utils`
+- `db_utils`
 - `logger_singleton`
 - `logger_singleton`
-- `models`
-
-#### ⚠️ TODO/FIXME/WARN (utils_embedding_cache)
-
-- L178 **WARNING**: (msg)
 
 ### utils/extraction\_strategies.py {#webapp-parser-utils-extraction-strategies-py}
 
@@ -2283,12 +2487,12 @@ session*id, error=str(e))
 - L405 **WARN**: \] Unsupported format requested: {format*str}",
 - L409 **WARNING**: ({
 - L410 **WARNING**: ",
-- L654 **WARNING**: ({
-- L655 **WARNING**: ",
-- L874 **WARNING**: ({
-- L875 **WARNING**: ",
-- L950 **WARNING**: ({
-- L951 **WARNING**: ",
+- L667 **WARNING**: ({
+- L668 **WARNING**: ",
+- L887 **WARNING**: ({
+- L888 **WARNING**: ",
+- L965 **WARNING**: ({
+- L966 **WARNING**: ",
 
 ### utils/header\_utils.py {#webapp-parser-utils-header-utils-py}
 
@@ -2442,6 +2646,7 @@ session*id, error=str(e))
 - `is_strict_location_header` (function, line 127)
 - `collect_location_headers` (function, line 149)
 - `format_location_fragment` (function, line 189)
+- `attach_precinct_column` (function, line 238)
 
 #### 📦 Key Imports (utils_location_helpers)
 
@@ -2605,31 +2810,31 @@ Running without embeddings. Error: {e}")
 
 #### 🔧 Key Functions & Classes (utils_models)
 
-- `MetaDataProtocol` (class, line 35)
-- `DeclarativeBaseProtocol` (class, line 39)
-- `ElectionTypeEnum` (class, line 44)
-- `OfficeLevelEnum` (class, line 50)
-- `StatusEnum` (class, line 56)
-- `State` (class, line 63)
-- `County` (class, line 75)
-- `District` (class, line 88)
-- `Office` (class, line 103)
-- `Party` (class, line 114)
-- `Candidate` (class, line 124)
-- `Contest` (class, line 142)
-- `Result` (class, line 170)
-- `Panel` (class, line 188)
-- `Button` (class, line 203)
-- `CandidatePanel` (class, line 216)
-- `LocationPanel` (class, line 233)
-- `Heading` (class, line 250)
-- `BallotType` (class, line 266)
-- `ResultsTimestamp` (class, line 283)
-- `PartyLabel` (class, line 298)
-- `VoteMethod` (class, line 313)
-- `Entity` (class, line 330)
-- `MiscEntity` (class, line 340)
-- `TableStructure` (class, line 352)
+- `MetaDataProtocol` (class, line 36)
+- `DeclarativeBaseProtocol` (class, line 40)
+- `ElectionTypeEnum` (class, line 45)
+- `OfficeLevelEnum` (class, line 51)
+- `StatusEnum` (class, line 57)
+- `State` (class, line 64)
+- `County` (class, line 76)
+- `District` (class, line 89)
+- `Office` (class, line 104)
+- `Party` (class, line 115)
+- `Candidate` (class, line 125)
+- `Contest` (class, line 143)
+- `Result` (class, line 171)
+- `Panel` (class, line 189)
+- `Button` (class, line 204)
+- `CandidatePanel` (class, line 217)
+- `LocationPanel` (class, line 234)
+- `Heading` (class, line 251)
+- `BallotType` (class, line 267)
+- `ResultsTimestamp` (class, line 284)
+- `PartyLabel` (class, line 299)
+- `VoteMethod` (class, line 314)
+- `Entity` (class, line 331)
+- `MiscEntity` (class, line 341)
+- `TableStructure` (class, line 353)
 
 #### 📦 Key Imports (utils_models)
 
@@ -2661,21 +2866,21 @@ Running without embeddings. Error: {e}")
 - `coerce_percent_strings` (function, line 32)
 - `get_project_root` (function, line 40)
 - `get_output_root` (function, line 44)
-- `safe_join` (function, line 48)
-- `get_output_path` (function, line 59)
-- `format_timestamp` (function, line 143)
-- `update_output_cache` (function, line 146)
-- `check_existing_output` (function, line 167)
-- `convert_sets_to_lists` (function, line 209)
-- `deep_merge_dicts` (function, line 219)
-- `_slug` (function, line 236)
-- `build_filename_triplet` (function, line 246)
-- `_ensure_dir` (function, line 260)
-- `_coerce_headers` (function, line 266)
-- `apply_results_conditional_formatting` (function, line 278)
-- `export_dataframe_with_format` (function, line 315)
-- `_compute_structure_hash` (function, line 324)
-- `finalize_election_output` (function, line 338)
+- `safe_join` (function, line 56)
+- `get_output_path` (function, line 79)
+- `format_timestamp` (function, line 181)
+- `update_output_cache` (function, line 184)
+- `check_existing_output` (function, line 205)
+- `convert_sets_to_lists` (function, line 247)
+- `deep_merge_dicts` (function, line 257)
+- `_slug` (function, line 274)
+- `build_filename_triplet` (function, line 284)
+- `_ensure_dir` (function, line 298)
+- `_coerce_headers` (function, line 304)
+- `apply_results_conditional_formatting` (function, line 316)
+- `export_dataframe_with_format` (function, line 353)
+- `_compute_structure_hash` (function, line 362)
+- `finalize_election_output` (function, line 376)
 
 #### 📦 Key Imports (utils_output_utils)
 
@@ -2702,12 +2907,12 @@ Running without embeddings. Error: {e}")
 
 #### ⚠️ TODO/FIXME/WARN (utils_output_utils)
 
-- L105 **WARNING**: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using
+- L128 **WARNING**: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using
 'Unknown'.\[/yellow\]")
-- L108 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified.
+- L131 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified.
 Using 'unknown*contests'.\[/yellow\]")
-- L531 **WARNING**: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
-- L607 **WARNING**: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
+- L569 **WARNING**: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
+- L645 **WARNING**: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
 
 ### utils/pattern\_extractor.py {#webapp-parser-utils-pattern-extractor-py}
 
@@ -2740,31 +2945,31 @@ Using 'unknown*contests'.\[/yellow\]")
 
 #### 🔧 Key Functions & Classes (utils_pdf_table_utils)
 
-- `_recon_debug_enabled` (function, line 28)
-- `_record_recon_event` (function, line 36)
-- `consume_reconstruction_debug_events` (function, line 42)
-- `detect_district_heading` (function, line 112)
-- `build_contest_regex` (function, line 179)
-- `normalize_text_token` (function, line 202)
-- `token_set` (function, line 208)
-- `header_signature` (function, line 212)
-- `looks_like_candidate_header` (function, line 218)
-- `compute_header_richness` (function, line 232)
-- `is_numeric_like` (function, line 257)
-- `normalize_numeric_token` (function, line 268)
-- `compute_numeric_fill` (function, line 277)
-- `evaluate_table_candidate_quality` (function, line 300)
-- `find_best_header_match` (function, line 384)
-- `normalize_anchor_value` (function, line 405)
-- `merge_camelot_with_text` (function, line 411)
-- `best_title_match_idx` (function, line 475)
-- `extract_contest_block` (function, line 499)
-- `parse_candidate_line` (function, line 619)
-- `extract_candidate_totals_from_lines` (function, line 721)
-- `split_ws_blocks` (function, line 756)
-- `is_bad_header_line` (function, line 770)
-- `table_looks_bad` (function, line 808)
-- `find_header_line` (function, line 824)
+- `_recon_debug_enabled` (function, line 73)
+- `_record_recon_event` (function, line 81)
+- `consume_reconstruction_debug_events` (function, line 87)
+- `detect_district_heading` (function, line 157)
+- `build_contest_regex` (function, line 224)
+- `normalize_text_token` (function, line 247)
+- `token_set` (function, line 253)
+- `header_signature` (function, line 257)
+- `looks_like_candidate_header` (function, line 263)
+- `compute_header_richness` (function, line 277)
+- `is_numeric_like` (function, line 302)
+- `normalize_numeric_token` (function, line 313)
+- `compute_numeric_fill` (function, line 322)
+- `evaluate_table_candidate_quality` (function, line 345)
+- `find_best_header_match` (function, line 429)
+- `normalize_anchor_value` (function, line 450)
+- `merge_camelot_with_text` (function, line 456)
+- `best_title_match_idx` (function, line 520)
+- `extract_contest_block` (function, line 544)
+- `parse_candidate_line` (function, line 664)
+- `extract_candidate_totals_from_lines` (function, line 752)
+- `_split_crammed_numeric_row` (function, line 790)
+- `split_ws_blocks` (function, line 832)
+- `is_bad_header_line` (function, line 850)
+- `table_looks_bad` (function, line 888)
 
 #### 📦 Key Imports (utils_pdf_table_utils)
 
@@ -2775,6 +2980,8 @@ Using 'unknown*contests'.\[/yellow\]")
 - `typing`
 - `typing`
 - `typing`
+- `Context_Integration.Context_Library.constants`
+- `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
@@ -2964,31 +3171,31 @@ candidate column extraction.")
 
 #### 🔧 Key Functions & Classes (utils_shared_logic)
 
-- `ExtractPlugin` (class, line 68)
-- `Saveable` (class, line 71)
-- `GCModule` (class, line 74)
-- `ShutilModule` (class, line 77)
-- `TimeModule` (class, line 81)
-- `HasItem` (class, line 85)
-- `HasAllMethod` (class, line 90)
-- `PredictionResult` (class, line 97)
-- `EventLike` (class, line 119)
-- `Predictable` (class, line 128)
-- `safe_filename` (function, line 154)
-- `safe_slug` (function, line 212)
-- `safe_query` (function, line 228)
-- `safe_key` (function, line 239)
-- `_filter_valid_kwargs` (function, line 250)
-- `safe_filter_by` (function, line 268)
-- `safe_first` (function, line 282)
-- `get_or_create` (function, line 295)
-- `safe_translate` (function, line 318)
-- `safe_scheme` (function, line 330)
-- `safe_netloc` (function, line 338)
-- `safe_geturl` (function, line 346)
-- `safe_extract` (function, line 354)
-- `safe_isalpha` (function, line 368)
-- `safe_pop` (function, line 378)
+- `ExtractPlugin` (class, line 69)
+- `Saveable` (class, line 72)
+- `GCModule` (class, line 75)
+- `ShutilModule` (class, line 78)
+- `TimeModule` (class, line 82)
+- `HasItem` (class, line 86)
+- `HasAllMethod` (class, line 91)
+- `PredictionResult` (class, line 98)
+- `EventLike` (class, line 120)
+- `Predictable` (class, line 129)
+- `safe_filename` (function, line 155)
+- `is_path_safe` (function, line 225)
+- `safe_resolve_path` (function, line 258)
+- `safe_join_path` (function, line 268)
+- `safe_slug` (function, line 278)
+- `safe_query` (function, line 294)
+- `safe_key` (function, line 305)
+- `_filter_valid_kwargs` (function, line 316)
+- `safe_filter_by` (function, line 334)
+- `safe_first` (function, line 348)
+- `get_or_create` (function, line 361)
+- `safe_translate` (function, line 384)
+- `safe_scheme` (function, line 396)
+- `safe_netloc` (function, line 404)
+- `safe_geturl` (function, line 412)
 
 #### 📦 Key Imports (utils_shared_logic)
 
@@ -3001,9 +3208,9 @@ candidate column extraction.")
 - `platform`
 - `re`
 - `shutil`
+- `textwrap`
 - `time`
 - `pathlib`
-- `typing`
 - `typing`
 - `typing`
 - `typing`
@@ -3015,35 +3222,35 @@ candidate column extraction.")
 
 #### ⚠️ TODO/FIXME/WARN (utils_shared_logic)
 
-- L236 **WARNING**: (f"\[safe*query\] session.query({model}) failed: {e}")
-- L259 **WARNING**: (f"\[safe*filter*by\] No mapper found for model {model}")
-- L265 **WARNING**: (f"\[safe*filter*by\] Could not inspect model {model}:
+- L302 **WARNING**: (f"\[safe*query\] session.query({model}) failed: {e}")
+- L325 **WARNING**: (f"\[safe*filter*by\] No mapper found for model {model}")
+- L331 **WARNING**: (f"\[safe*filter*by\] Could not inspect model {model}:
 {e}")
-- L279 **WARNING**: (f"\[safe*filter*by\] filter*by failed: {e}")
-- L292 **WARNING**: (f"\[safe*first\] query.first() failed: {e}")
-- L362 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
+- L345 **WARNING**: (f"\[safe*filter*by\] filter*by failed: {e}")
+- L358 **WARNING**: (f"\[safe*first\] query.first() failed: {e}")
+- L428 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
 'extract' method.")
-- L496 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
-- L710 **WARNING**: (f"\[safe*append\] Target is not a list: {type(lst)};
+- L562 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
+- L776 **WARNING**: (f"\[safe*append\] Target is not a list: {type(lst)};
 coercing to list.")
-- L732 **WARNING**: (f"\[safe*update\] Target is not a dict: {type(dct)}")
-- L736 **WARNING**: (f"\[safe*update\] Updates is not a dict:
+- L798 **WARNING**: (f"\[safe*update\] Target is not a dict: {type(dct)}")
+- L802 **WARNING**: (f"\[safe*update\] Updates is not a dict:
 {type(updates)}")
-- L756 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)};
+- L822 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)};
 coercing to list.")
-- L1096 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
+- L1162 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
 (type: {type(lst).**name**})")
-- L1359 **WARNING**: (f"State '{state*norm}' not found in county map")
-- L2163 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
-- L2169 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+- L1425 **WARNING**: (f"State '{state*norm}' not found in county map")
+- L2289 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
+- L2295 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
 aborting replace.")
-- L2184 **WARNING**: ("\[inventory\] generate*project*map completed with
+- L2310 **WARNING**: ("\[inventory\] generate*project*map completed with
 warnings; check markers and path.")
-- L2230 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
+- L2356 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
 list of (lineno, keyword, cleaned*text)."""
-- L2232 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-- L2864 **TODO**: /FIXME/WARN
-- L2867 **TODO**: /FIXME/WARN:")
+- L2358 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+- L3035 **TODO**: /FIXME/WARN
+- L3038 **TODO**: /FIXME/WARN:")
 
 ### utils/spacy\_utils.py {#webapp-parser-utils-spacy-utils-py}
 

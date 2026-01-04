@@ -172,33 +172,49 @@ def safe_filename(
     if not isinstance(name, str):
         name = str(name) if name is not None else default
 
-    # Remove leading/trailing whitespace and control chars
-    name = name.strip().replace('\x00', '')
+    # Strip whitespace and null bytes early
+    name = (name or "").strip().replace("\x00", "")
 
     # Optionally restrict to ASCII
     if not allow_unicode:
         name = name.encode("ascii", "ignore").decode("ascii")
 
-    # Replace path separators and traversal patterns
-    name = name.replace("\\", "_").replace("/", "_")
-    name = name.replace("..", "_")
+    # Remove path separators entirely to avoid accidental traversal joins
+    name = name.replace("/", "").replace("\\", "")
 
-    # Replace unsafe characters
-    name = re.sub(r'[^a-zA-Z0-9_\-. ]', '_', name)
+    # Normalize traversal patterns (".." -> "_")
+    name = re.sub(r"\.{2,}", "_", name)
 
-    # Strict mode: no spaces, no dots except extension separator
-    if strict_mode:
-        name = name.replace(" ", "_")
-        # Collapse multiple dots/underscores
-        name = re.sub(r'[_.]{2,}', '_', name)
-        # Prevent leading/trailing dots/underscores
-        name = name.strip("._")
+    # Replace unsafe characters with underscores (keep dots/underscores/hyphens/spaces temporarily)
+    name = re.sub(r"[^A-Za-z0-9._\-\s]", "_", name)
 
-    # Remove repeated underscores or dots
-    name = re.sub(r'[_\.]{2,}', '_', name)
+    # Collapse whitespace to underscores
+    name = name.replace(" ", "_")
 
-    # Remove leading/trailing dots/underscores
+    # Collapse repeated underscores and dots separately
+    name = re.sub(r"_+", "_", name)
+    name = re.sub(r"\.{2,}", ".", name)
+
+    # Trim leading/trailing punctuation
     name = name.strip("._")
+
+    # Re-split into base/ext to decide whether to keep the dot
+    base, ext = (name.rsplit(".", 1) + [""])[:2] if "." in name else (name, "")
+
+    # If the base ends with an underscore, treat the separator as an underscore to avoid "file_.ext" edge cases
+    if ext and base and base.endswith("_"):
+        base = base.rstrip("_") or default
+        name = f"{base}_{ext}"
+    elif ext and base:
+        name = f"{base}.{ext}"
+    else:
+        name = base or ext
+
+    # Strict mode: tighten remaining punctuation but keep single dots (extensions)
+    if strict_mode:
+        name = re.sub(r"_+", "_", name)
+        name = re.sub(r"\.{2,}", ".", name)
+        name = name.strip("._")
 
     # Handle reserved device names (Windows)
     reserved = reserved_names or {
@@ -255,22 +271,77 @@ def is_path_safe(path: Union[str, Path], allowed_bases: Union[str, Path, List[Un
     return False
 
 
-def safe_resolve_path(path: Union[str, Path], base: Union[str, Path, None] = None, create: bool = False) -> Path:
-    """Resolve a path and optionally enforce it resides under a base directory."""
-    resolved = Path(path).expanduser().resolve()
-    if base is not None and not is_path_safe(resolved, [base]):
-        raise ValueError(f"Unsafe path detected: {resolved}")
+def safe_resolve_path(
+    path: Union[str, Path],
+    base: Union[str, Path, None] = None,
+    *,
+    must_exist: bool = False,
+    create: bool = False,
+) -> Path:
+    """Resolve a path while enforcing base confinement and optional existence checks."""
+    base_path = Path(base).expanduser().resolve() if base is not None else None
+    raw_path = Path(path)
+    target = raw_path if raw_path.is_absolute() else (base_path or Path.cwd()).joinpath(raw_path)
+    try:
+        resolved = target.resolve(strict=must_exist)
+    except FileNotFoundError:
+        raise ValueError(f"Path does not exist: {target}")
+    except RuntimeError:
+        # In rare cases (e.g., cyclical symlinks), fall back to non-strict resolution
+        resolved = target.resolve(strict=False)
+
+    if base_path and not is_path_safe(resolved, [base_path]):
+        raise ValueError("Path traversal detected")
+
+    if must_exist and not resolved.exists():
+        raise ValueError(f"Path does not exist: {resolved}")
+
     if create:
         resolved.mkdir(parents=True, exist_ok=True)
+
     return resolved
 
 
 def safe_join_path(base: Union[str, Path], *paths: str) -> Path:
-    """Join paths under a base directory with traversal protection."""
+    """Join paths under a base directory with sanitization and traversal protection."""
     base_path = Path(base).expanduser().resolve()
-    candidate = base_path.joinpath(*[str(p) for p in paths]).resolve()
-    if not is_path_safe(candidate, [base_path]):
-        raise ValueError(f"Path traversal detected: {candidate}")
+
+    sanitized_parts: List[str] = []
+    for raw in paths:
+        if raw is None:
+            continue
+        text = str(raw)
+        for piece in re.split(r"[\\/]+", text):
+            if not piece:
+                continue
+            cleaned = safe_filename(piece, strict_mode=True)
+            if cleaned:
+                sanitized_parts.append(cleaned)
+
+    candidate = base_path.joinpath(*sanitized_parts)
+    try:
+        resolved = candidate.resolve(strict=False)
+    except Exception:
+        resolved = candidate
+
+    if not is_path_safe(resolved, [base_path]):
+        raise ValueError("Path traversal detected")
+
+    return resolved
+
+
+def validate_directory_path(path: Union[str, Path], create_if_missing: bool = False) -> Path:
+    """Ensure a directory exists (optionally creating it) and is not a file."""
+    candidate = Path(path).expanduser().resolve(strict=False)
+
+    if candidate.exists() and not candidate.is_dir():
+        raise ValueError(f"Path is not a directory: {candidate}")
+
+    if not candidate.exists():
+        if not create_if_missing:
+            raise ValueError(f"Path does not exist: {candidate}")
+        candidate.mkdir(parents=True, exist_ok=True)
+
     return candidate
 
 T = TypeVar("T")

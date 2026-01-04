@@ -3,962 +3,4698 @@ layout: default
 title: "TODO/FIXME Index"
 ---
 
-Index scope: TODO/FIXME annotations under `webapp/`.
-
-Total annotations: 528
-
-## Priority highlights
-
-- **High Priority:** 1 items across 1 files. Focus:
-  webapp\parser\utils\shared_logic.py (1).
-- **Medium Priority:** 11 items across 2 files. Focus:
-  webapp\parser\utils\shared_logic.py (10),
-  webapp\parser\health\manual_correction_bot.py (1).
-- **Low Priority:** 516 items across 47 files. Focus:
-  webapp\parser\utils\html_scanner.py (99),
-  webapp\parser\html_election_parser.py (34),
-  webapp\parser\handlers\formats\pdf_handler.py (34).
-
-## High Priority
-
-### parser/utils/shared\_logic.py (High Priority)
-
-{: #webapp-parser-utils-shared-logic-py-high }
-
-- L3048 *FIXME*: ', 'BUG'\]
-
-## Medium Priority
-
-### parser/health/manual\_correction\_bot.py (Medium Priority)
-
-{: #webapp-parser-health-manual-correction-bot-py-medium }
-
-- L750 *TODO*: Add JSON schema validation here if desired
-
-### parser/utils/shared\_logic.py (Medium Priority)
-
-{: #webapp-parser-utils-shared-logic-py-medium }
-
-- L2291 *TODO*: /FIXME/WARN and similar keywords (case-insensitive). Returns
-  list of (lineno, keyword, cleaned*text)."""
-- L2293 *TODO*: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-- L2965 *TODO*: /FIXME/WARN
-- L2968 *TODO*: /FIXME/WARN:")
-- L3038 *TODO*: /FIXME/WARN lines from webapp/ into a compact index.
-- L3049 *TODO*: ', 'HACK', 'XXX'\]
-- L3089 *TODO*: /FIXME Index"')
-- L3092 *TODO*: /FIXME annotations under ⁣`webapp/⁣`.")
-- L3138 *TODO*: {priority}-{abs(hash(path))}"
-- L3548 *TODO*: /FIXME/WARN ({mod*name})")
-
-## Low Priority
-
-### Smart\_Elections\_Parser\_Webapp.py (Low Priority)
-
-{: #webapp-smart-elections-parser-webapp-py-low }
-
-- L210 *WARNING*: ").upper().split(","))
-- L480 *WARNING*: , ERROR, CRITICAL, TRACE
-- L519 *WARNING*: ", "ERROR", "CRITICAL", "TRACE"}
-- L555 *WARNING*: " in mlow:
-- L954 *WARNING*:         # For websocket handshake only: add Cache-Control so
-  webhint stops warning
-- L1229 *WARNING*: ({"type": "sec", "message": "Favicon path escape blocked",
-  "requested": ico*path})
-- L1331 *WARNING*: ({
-- L1332 *WARNING*: ",
-- L1641 *WARNING*: ",
-- L1724 *WARNING*: (
-- L1726 *WARNING*: ",
-- L1736 *WARNING*: (
-- L1738 *WARNING*: ",
-- L1768 *WARNING*: (
-- L1770 *WARNING*: ",
-- L2055 *WARNING*: ({
-- L2056 *WARNING*: ",
-- L2120 *WARNING*: ({
-- L2121 *WARNING*: ",
-- L2171 *WARNING*: ({
-- L2172 *WARNING*: ",
-- L2194 *WARNING*: ({
-- L2195 *WARNING*: ",
-- L2203 *WARNING*: ({
-- L2204 *WARNING*: ",
-- L2211 *WARNING*: ({
-- L2212 *WARNING*: ",
-
-### parser/Context\_Integration/Context\_Library/constants.py (Low Priority)
-
-{: #webapp-parser-context-integration-context-library-15787 }
-
-- L1831 *NOTE*: .*$",                     # Note
-- L2020 *WARNING*: ",
-- L2111 *WARNING*: ", "info*box", "navigation", "pagination", "tab", "modal",
-  "tooltip", "ignore", "unknown"
-- L2144 *NOTE*: ", "comment",
-- L2220 *NOTE*: ", "Comment", "Feedback", "Suggestion", "Recommendation",
-- L2236 *NOTE*: ", "Comment", "Feedback", "Suggestion",
-
-### parser/Context\_Integration/context\_coordinator.py (Low Priority)
-
-{: #webapp-parser-context-integration-context-coordinator-py-low }
-
-- L788 *WARNING*: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
-- L876 *WARNING*: ({
-- L877 *WARNING*: ",
-- L995 *WARNING*: (f"\[yellow\]Integrity issues:\[/yellow\]
-  {issues\['integrity*issues'\]}")
-- L1234 *WARNING*: (f"\[ContextCoordinator\] No table structure found for
-  contest: {contest}")
-- L1403 *WARNING*: (f"\[get*feedback*pattern*kb\] Skipping corrupt line: {e}")
-- L1515 *WARNING*: ("\[group*dom*nodes*by*label\] No organized DOM parts.
-  (Further warnings suppressed)")
-- L1517 *WARNING*: (f"\[group*dom*nodes*by*label\] No organized DOM parts.
-  (Occurred {ContextCoordinator.*dom*parts*warning*count} times)")
-- L1522 *WARNING*: ("\[group*dom*nodes*by*label\] No DOM nodes found.")
-- L1540 *WARNING*: ("\[submit*user*feedback\] ContextOrganizer has no
-  submit*user*feedback method.")
-- L1568 *WARNING*: (f"\[correct*and*update*contest\] Contest {contest*id}
-  missing type/election*types after sync.")
-- L1592 *WARNING*: ("\[print*contest*summary\] No organized contests to
-  summarize.")
-- L1605 *WARNING*: ("\[plot*contest*distribution\] No organized contests to
-  plot.")
-- L1656 *WARNING*: ("No organized DOM parts.")
-- L1659 *WARNING*: ("No organized DOM parts. (Further warnings suppressed)")
-- L1670 *WARNING*: ("\[get*contest*groups\] No contest groups found.")
-- L1679 *WARNING*: ("\[get*panel*groups\] No panel groups found.")
-- L1688 *WARNING*: ("\[get*button*groups\] No button groups found.")
-- L1697 *WARNING*: ("\[get*table*groups\] No table groups found.")
-- L1706 *WARNING*: ("\[get*relationships\] No organized context.")
-- L1814 *WARNING*: (f"\[fuzzy*score\] One or both inputs are empty: a='{a*str}',
-  b='{b*str}'")
-- L1820 *WARNING*: (f"\[fuzzy*score\] One or both inputs are too short:
-  a='{a*str}', b='{b*str}'")
-- L2266 *WARNING*: (f"\[extract*field\] Unknown field*type: {field*type}")
-- L2524 *WARNING*: (f"\[get*full*contest\] Contest {contest*id} missing
-  type/election*types after sync.")
-- L2609 *WARNING*: (f"\[list*tables\] Table '{tbl}' missing metadata or
-  columns.")
-- L2641 *WARNING*: (f"\[get*table*metadata\] Table '{table*name}' missing
-  columns.")
-- L2659 *WARNING*: (f"\[check*missing*tables\] Missing tables: {missing}")
-- L2720 *WARNING*: (f"\[save*table*structure\] Failed to save structure for
-  contest: {contest}")
-- L2897 *WARNING*: (f"\[get*best*button*advanced\] Contest argument was not a
-  dict. Converted to: {contest}")
-- L2901 *WARNING*: (f"\[get*best*button*advanced\] Keywords argument was not a
-  list. Converted to: {keywords}")
-- L2905 *WARNING*: (f"\[get*best*button*advanced\] Context argument was not a
-  dict. Converted to: {context}")
-- L2912 *WARNING*: ("\[get*best*button*advanced\]*semantic*model is not set or
-  is not an object. Using None.")
-- L3057 *WARNING*: (f"\[yellow\]\[Coordinator\] Button '{cand.get('label')}'
-  rejected, retrying...\[/yellow\]")
-
-### parser/Context\_Integration/context\_organizer.py (Low Priority)
-
-{: #webapp-parser-context-integration-context-organizer-py-low }
-
-- L282 *WARNING*: (
-- L407 *WARNING*: (f"\[CONTEST\] Skipping contest with suspiciously large or
-  missing title: {str(title)\[:100\]}...")
-- L495 *WARNING*: (f"\[CONTEST\] Filtered out {len(filtered*out)} contests due
-  to missing required fields.")
-- L497 *WARNING*: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
-- L500 *WARNING*: ("\[CONTEST\] No contests with required fields for downstream
-  output.")
-- L816 *WARNING*: (f"\[ML\] Anomaly index {idx} out of range for contests list
-  of length {len(contests)}")
-- L1500 *WARNING*: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
-- L1505 *WARNING*: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
-  contest detected.\n  \[dim\]Context:\[/dim\] {contest}")
-- L1507 *WARNING*: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
-  missing location info.\n  \[dim\]Context:\[/dim\] {contest}")
-- L1509 *WARNING*: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
-  missing year.\n  \[dim\]Context:\[/dim\] {contest}")
-- L1972 *WARNING*: (f"\[ContextOrganizer\] Could not update context library with
-  feedback: {e}")
-- L2049 *WARNING*: (f"\[CONTEXT ORGANIZER\] No table structure found for
-  contest: {contest}")
-
-### parser/Context\_Integration/librarian.py (Low Priority)
-
-{: #webapp-parser-context-integration-librarian-py-low }
-
-- L652 *WARNING*: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
-- L658 *WARNING*: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
-  manual*correction...")
-- L661 *WARNING*: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
-  rescanning...")
-
-### parser/config.py (Low Priority)
-
-{: #webapp-parser-config-py-low }
-
-- L328 *WARNING*: ("\[DB\]\[AAD\] Falling back to password auth.")
-
-### parser/data\_manager.py (Low Priority)
-
-{: #webapp-parser-data-manager-py-low }
-
-- L83 *WARNING*: (f"\[REMOVED\] {popped}")
-- L90 *WARNING*: (f"\[REMOVED\] {index*or*value}")
-- L129 *WARNING*: (f"\[DELETED\] {files\[idx\]}")
-
-### parser/handlers/batch\_handler.py (Low Priority)
-
-{: #webapp-parser-handlers-batch-handler-py-low }
-
-- L134 *WARNING*: ({
-- L135 *WARNING*: ",
-- L426 *WARNING*: ({
-- L427 *WARNING*: ",
-
-### parser/handlers/formats/html\_handler.py (Low Priority)
-
-{: #webapp-parser-handlers-formats-html-handler-py-low }
-
-- L216 *WARNING*: (f"\[HTML Handler\] County '{county}' not found. Closest
-  matches: {matches}")
-- L220 *WARNING*: (f"\[HTML Handler\] Detected county '{county}' is not in known
-  counties for state '{suggested*state or state}'.")
-- L241 *WARNING*: (f"\[HTML Handler\] State '{user*state}' not found. Closest
-  matches: {matches}")
-- L285 *WARNING*: (f"\[HTML Handler\] County '{user*county}' not found. Closest
-  matches: {matches}")
-
-### parser/handlers/formats/json\_handler.py (Low Priority)
-
-{: #webapp-parser-handlers-formats-json-handler-py-low }
-
-- L376 *WARNING*: ({
-- L377 *WARNING*: ",
-- L489 *WARNING*: ({
-- L490 *WARNING*: ",
-
-### parser/handlers/formats/pdf\_handler.py (Low Priority)
-
-{: #webapp-parser-handlers-formats-pdf-handler-py-low }
-
-- L421 *WARNING*: ({
-- L422 *WARNING*: ",
-- L425 *WARN*: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid parser
-  instability."
-- L1787 *WARNING*: ({
-- L1788 *WARNING*: ",
-- L1790 *WARN*: \] Poppler binaries not detected; skipping pdf2image and using
-  PyMuPDF fallback.",
-- L1808 *WARNING*: ({
-- L1809 *WARNING*: ",
-- L1812 *WARN*: \] pdf2image conversion failed; "
-- L2184 *WARNING*: ({
-- L2185 *WARNING*: ",
-- L2187 *WARN*: \] Multi-mode text extraction failed: {e}",
-- L3283 *WARNING*: ({
-- L3284 *WARNING*: ",
-- L3286 *WARN*: \] fitz text extraction failed: {e}",
-- L3315 *WARNING*: ({
-- L3316 *WARNING*: ",
-- L3318 *WARN*: \] ENABLE*OCR*FORCE is set but Tesseract is unavailable;
-  skipping OCR fallback.",
-- L3366 *WARNING*: ({
-- L3367 *WARNING*: ",
-- L3369 *WARN*: \] Low-signal text detected but OCR is unavailable or
-  disabled.",
-- L3586 *WARNING*: ({
-- L3587 *WARNING*: ",
-- L3589 *WARN*: \] No contest selected. Using filename fallback.",
-- L4034 *WARNING*: ({
-- L4035 *WARNING*: ",
-- L4037 *WARN*: \] Selected contest '{contest}' not found in column
-  '{contest*column}'. Skipping row filter.",
-- L4136 *WARNING*: ({
-- L4137 *WARNING*: ",
-- L4139 *WARN*: \] No structured rows matched the inferred column count of
-  {len(headers)}. Total lines scanned: {unmatched*count}",
-- L4178 *WARNING*: ({
-- L4179 *WARNING*: ",
-- L4367 *WARNING*: ({
-- L4368 *WARNING*: ",
-
-### parser/handlers/states/arizona/arizona.py (Low Priority)
-
-{: #webapp-parser-handlers-states-arizona-arizona-py-low }
-
-- L25 *WARNING*: ("\[WARN\] context*library.json not found. Using fallback
-  config for Arizona handler.")
-- L51 *WARNING*: (f"\[WARN\] Could not expand card {i+1}: {e}")
-- L64 *WARNING*: (f"\[WARN\] Vote Type toggle failed: {e}")
-- L77 *WARNING*: (f"\[WARN\] County toggle failed: {e}")
-- L164 *WARNING*: ("\[FALLBACK\] No tables were parsed. Either no results are
-  published yet or the structure has changed.")
-- L165 *WARNING*: ("\[FALLBACK\] Please verify that the site has posted election
-  data.")
-
-### .../states/example state/example\_county/example\_county.py (Low Priority)
-
-{: #webapp-parser-handlers-states-example-state-exampl-25889 }
-
-- L123 *WARNING*: ("\[yellow\]\[WARNING\] No ballot items found by div
-  selectors. Trying table-based extraction...\[/yellow\]")
-
-### parser/handlers/states/example state/example\_state.py (Low Priority)
-
-{: #webapp-parser-handlers-states-example-state-exampl-97485 }
-
-- L51 *WARNING*: (f"\[Example Handler\] No specific parser implemented for
-  county: '{county}'. Continuing with state-level logic.")
-- L152 *WARNING*: ("\[yellow\]\[WARNING\] No ballot items found by div
-  selectors. Trying table-based extraction...\[/yellow\]")
-
-### parser/handlers/states/new\_york/county/rockland.py (Low Priority)
-
-{: #webapp-parser-handlers-states-new-york-county-rock-64394 }
-
-- L72 *WARNING*: ("\[WARNING\] dom*parts missing after organize*and*enrich.")
-- L95 *WARNING*: ("\[red\]No contest selected. Skipping.\[/red\]")
-- L139 *WARNING*: (f"\[yellow\]\[WARNING\] Button '{btn1.get('label', '')}' is
-  not clickable (visible={safe*is*visible(element, logger)},
-  enabled={safe*is*enabled(element, logger)})\[/yellow\]")
-- L176 *WARNING*: (f"\[yellow\]\[WARNING\] Button '{btn2.get('label', '')}' is
-  not clickable (visible={safe*is*visible(element, logger)},
-  enabled={safe*is*enabled(element, logger)})\[/yellow\]")
-
-### parser/handlers/states/new\_york/new\_york.py (Low Priority)
-
-{: #webapp-parser-handlers-states-new-york-new-york-py-low }
-
-- L27 *WARNING*: ("\[NY Handler\] No county specified in html*context.")
-- L43 *WARNING*: (f"\[NY Handler\] No specific parser implemented for county:
-  '{county}'. Please add it under {module*path}.py")
-
-### parser/handlers/states/pennsylvania/pennsylvania.py (Low Priority)
-
-{: #webapp-parser-handlers-states-pennsylvania-pennsyl-51468 }
-
-- L44 *WARNING*: (f"\[NAV\] Step failed: {step} — {e}")
-- L55 *WARNING*: (f"\[bold yellow\]Detected election:\[/bold yellow\]
-  {header*text}")
-- L76 *WARNING*: ("\[PA\] Invalid index input for election selection.")
-- L78 *WARNING*: ("\[PA\] Elections dropdown not found.")
-- L80 *WARNING*: (f"\[PA\] Failed to expand Elections menu or load selection:
-  {e}")
-- L96 *WARNING*: ("\[PA\] County Breakdown link not found.")
-- L98 *WARNING*: (f"\[PA\] Failed to click County Breakdown link: {e}")
-- L113 *WARNING*: ("\[yellow\]Multiple CSV files found in input. Please select
-  one:\[/yellow\]")
-
-### parser/health/health\_router.py (Low Priority)
-
-{: #webapp-parser-health-health-router-py-low }
-
-- L252 *WARNING*: (f"\[health*router\] manual*correction failed (attempt
-  {attempt}): {result.stderr}")
-- L336 *WARNING*: ("\[SELF-HEAL\] Misalignments found. Launching
-  manual*correction...")
-- L338 *WARNING*: (f"\[SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
-- L340 *WARNING*: ("\[SELF-HEAL\] Max retries reached. Some misalignments may
-  remain.")
-- L375 *WARNING*: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
-- L380 *WARNING*: ("\[PIPELINE\] Misaligned NER examples found. Self-heal loop
-  will be handled by scan*misaligned*ner.")
-- L382 *WARNING*: ("\[PIPELINE\] scan*misaligned*ner failed or file missing.
-  Proceeding with caution.")
-- L414 *WARNING*: ("\[PIPELINE\] Model retraining failed.")
-
-### parser/health/log\_cache\_cleaner\_bot.py (Low Priority)
-
-{: #webapp-parser-health-log-cache-cleaner-bot-py-low }
-
-- L151 *WARNING*: (f"Skipping non-dict entry in spacy*ner*train*data.jsonl:
-  {entry}")
-- L460 *WARNING*: ("\[DB\]\[WARNING\] No user tables found in schema 'public'.")
-- L503 *WARNING*: ("\[CLEAN\]\[WARNING\] The following files are still too large
-  after cleaning:")
-- L507 *WARNING*: ("\[MISALIGNED\] Consider cleaning or pattern-excluding these
-  from your training data:")
-
-### parser/health/manual\_correction\_bot.py (Low Priority)
-
-{: #webapp-parser-health-manual-correction-bot-py-low }
-
-- L322 *WARNING*: (f"Coordinator ML scoring failed: {e}")
-- L343 *WARNING*: (f"Coordinator field suggestion failed: {e}")
-- L355 *WARNING*: (f"Log file not found: {path}")
-- L364 *WARNING*: (f"\[CORRUPT\] {path} line {i}: {e}")
-- L396 *WARNING*: (f"\[SKIP\] File not found: {file}")
-- L400 *WARNING*: (f"\[SKIP\] File too large: {file}")
-- L422 *WARNING*: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
-  ({e})")
-- L434 *WARNING*: (f"\[CORRUPT\] {len(corrupt*items)} lines saved to
-  {corrupt*path}")
-- L439 *WARNING*: (f"\[FIXED\] All lines invalid, recreated empty .jsonl file:
-  {file}")
-- L453 *WARNING*: (f"\[CORRUPT\] {file}: {e}")
-- L465 *WARNING*: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt*path}")
-- L471 *WARNING*: (f"\[FIXED\] All content invalid, recreated minimal valid JSON
-  in {file}")
-- L476 *WARNING*: (f"\[CORRUPT\] {file}: {e}")
-- L485 *WARNING*: (f"\[QUARANTINED\] {file} -&gt; {quarantine*dir / file.name}")
-- L489 *WARNING*: (f"\[DELETED\] {file}")
-- L492 *WARNING*: (f"\[SKIP-DELETE\] File already missing: {file}")
-- L537 *WARNING*: (f"\[FIND-LOGS\] Skipped {d}: {e}")
-- L562 *WARNING*: (f"\[CORRUPT\] {path} line {line*num}: {e}")
-- L717 *WARNING*: (f"Invalid JSON, skipping edit: {e}")
-- L989 *WARNING*: (
-- L1079 *WARN*: if schema version mismatches.
-- L1098 *WARNING*: (f"Schema version mismatch: found
-  {context*lib.get('schema*version')}, expected {SCHEMA*VERSION}. Consider
-  migrating.")
-- L1141 *WARNING*: (f"\[AUTO\] Could not delete log file {log*file}: {e}")
-- L1257 *WARNING*: (f"\[SKIP\] Could not load {log*file}: {e}")
-- L1273 *WARNING*: ("No log files matched any of the specified fields. Will
-  attempt to process all log files for all fields.")
-- L1356 *WARNING*: (f"Could not delete log file {log*file}: {e}")
-- L1376 *WARNING*: ("\[WARNING\] No entries were processed. Check your log file
-  naming, field configuration, or use --dry-run for debugging.")
-
-### parser/health/retrain\_table\_structure\_models.py (Low Priority)
-
-{: #webapp-parser-health-retrain-table-structure-models-py-low }
-
-- L178 *WARNING*: (f"\[CLEAN\] File not found: {jsonl*path}")
-- L186 *WARNING*: (f"\[CLEAN\] Could not parse line: {e}")
-- L201 *WARNING*: (f"\[CLEAN\] Alignment check failed for text: {text\[:50\]}...
-  ({e})")
-- L274 *WARNING*: (f"Failed to load {path}: {e}")
-- L403 *WARNING*: (f"Skipping misaligned entity in: {text}")
-- L408 *WARNING*: (f"Error validating entity alignment: {e}")
-- L434 *WARNING*: (f"\[spaCy\] Could not check GPU availability: {e}")
-- L450 *WARNING*: (f"\[spaCy\] Could not load lexeme normalization table. You
-  may ignore this for English. Error: {e}")
-- L536 *WARNING*: (f"\[NER\] Skipped {misaligned*count} misaligned examples.
-  Saved to {misaligned*path}")
-- L550 *WARNING*: ("No NER training examples found. Skipping spaCy NER
-  retraining.")
-- L619 *WARNING*: ("\[SUGGESTION\] Consider lowering min*delta or increasing
-  patience if you want longer training.")
-- L621 *WARNING*: ("\[SUGGESTION\] Model improved until the last epoch. Consider
-  increasing epochs for further improvement.")
-- L622 *WARNING*: (f"\[SUGGESTION\] Next run: patience={patience},
-  min*delta={min*delta:.2f}, epochs={epochs}")
-- L708 *WARNING*: ("No training examples found. Aborting retraining.")
-- L727 *WARNING*: (f"\[WARN\] Could not delete old model directory
-  {oldest*path}: {e}")
-- L739 *WARNING*: (f"\[WARN\] Failed to load existing model: {e}")
-- L742 *WARNING*: ("Falling back to base model (all-MiniLM-L6-v2).")
-- L782 *WARNING*: (f"\[WARN\] Could not update canonical model directory: {e}")
-- L810 *WARNING*: (f"MISALIGNED: {text} {annots\['entities'\]}")
-- L840 *WARNING*: ("\[DB\] Base.metadata.tables is empty. No models registered?
-  Did you import all model classes?")
-
-### parser/health/scan\_misaligned\_ner.py (Low Priority)
-
-{: #webapp-parser-health-scan-misaligned-ner-py-low }
-
-- L62 *WARNING*: (f"\[CORRUPT\] Could not parse line: {e}")
-- L83 *WARNING*: (f"\n\[MISALIGNED\] Top {top*n} most frequent misaligned NER
-  texts:")
-- L85 *WARNING*: (f"  {repr(text)}: {count} times")
-- L86 *WARNING*: ("\[MISALIGNED\] Consider cleaning or pattern-excluding these
-  from your training data.")
-- L87 *WARNING*: ("Run the manual*correction to review and clean these examples
-  before retraining.")
-- L88 *WARNING*: ("If you see spaCy entity alignment warnings, consider cleaning
-  your training data or using the provided validation function.")
-- L98 *WARNING*: (f"\[WARN\] Could not remove old misaligned file: {e}")
-- L112 *WARNING*: ("\[SELF-HEAL\] Misalignments found. Launching
-  manual*correction for spacy*ner*misaligned...")
-- L119 *WARNING*: (f"\[SELF-HEAL\] manual*correction exited with code
-  {result.returncode}")
-- L120 *WARNING*: (f"\[SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
-- L122 *WARNING*: ("\[SELF-HEAL\] Max retries reached. Some misalignments may
-  remain.")
-
-### parser/html\_election\_parser.py (Low Priority)
-
-{: #webapp-parser-html-election-parser-py-low }
-
-- L56 *WARNING*: ("Deleting .processed*urls cache for fresh start...")
-- L393 *WARNING*: ({
-- L394 *WARNING*: ",
-- L408 *WARNING*: ({
-- L409 *WARNING*: ",
-- L469 *WARNING*: ({
-- L470 *WARNING*: ",
-- L543 *WARNING*: (payload*2)
-- L870 *WARNING*: ({
-- L871 *WARNING*: ",
-- L917 *WARNING*: ({
-- L918 *WARNING*: ",
-- L971 *WARNING*: ({
-- L972 *WARNING*: ",
-- L1076 *WARNING*: ",
-- L1081 *WARNING*: (payload)
-- L1106 *WARN*: if nothing found
-- L1166 *WARNING*: ",
-- L1171 *WARNING*: (payload)
-- L1249 *WARNING*: ({
-- L1250 *WARNING*: ",
-- L1267 *WARNING*: ",
-- L1272 *WARNING*: (payload)
-- L1283 *WARNING*: ",
-- L1288 *WARNING*: (payload)
-- L1290 *WARN*: \] No output file path returned from parser and no output files
-  found."
-- L1292 *WARNING*: ",
-- L1297 *WARNING*: (payload)
-- L1302 *WARNING*: ",
-- L1307 *WARNING*: (payload)
-- L1425 *WARNING*: ({
-- L1426 *WARNING*: ",
-- L1486 *WARNING*: ({
-- L1487 *WARNING*: ",
-
-### parser/state\_router.py (Low Priority)
-
-{: #webapp-parser-state-router-py-low }
-
-- L49 *WARNING*: ("\[Router\] handlers/states directory not found.")
-- L66 *WARNING*: (f"\[Router\] counties directory not found for state:
-  {state*key}")
-- L137 *WARNING*: (f"\[Fallback\]\[Session:{session*id}\] No handler states
-  available for manual selection.")
-- L154 *WARNING*: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
-- L157 *WARNING*: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
-- L160 *WARNING*: (f"\[Fallback\]\[Session:{session*id}\] State '{state}' not
-  found. Please try again.")
-- L179 *WARNING*: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
-- L182 *WARNING*: (f"\[Fallback\]\[Session:{session*id}\] County '{county}' not
-  found for state '{state}'. Please try again.")
-- L189 *WARNING*: (f"\[Fallback\]\[Session:{session*id}\] Too many failed
-  attempts. Exiting fallback.")
-- L205 *WARNING*: (f"\[Router\] Requested state '{state*name}' not found on
-  disk. Skipping restrict filter.")
-- L512 *WARNING*: (f"No counties found for state '{state}'. Try --fuzzy for
-  fuzzy matching.")
-- L523 *WARNING*: (f"Failed to load context from file: {e}")
-- L533 *WARNING*: ("No suitable handler found.")
-- L540 *WARNING*: ("No handler selected. Exiting.")
-- L547 *WARNING*: ("Still could not import a suitable handler.")
-
-### parser/utils/browser\_utils.py (Low Priority)
-
-{: #webapp-parser-utils-browser-utils-py-low }
-
-- L89 *WARNING*: (f"\[browser*utils\] Failed to safely parse context*library
-  value for key '{key}'")
-- L91 *WARNING*: (f"\[browser*utils\] Skipping unsafe context*library value for
-  key '{key}'")
-- L295 *WARNING*: (f"\[safe*attributes\] Playwright JS extraction failed: {e}")
-- L309 *WARNING*: (f"\[safe*attributes\] Playwright fallback extraction failed:
-  {e}")
-- L395 *WARNING*: (f"\[safe*count\] Object is not countable: {type(obj)}")
-- L441 *WARNING*: (f"\[safe*launch\] browser*type is not a SyncBrowserType:
-  {type(browser*type)}")
-- L461 *WARNING*: (f"\[async*safe*launch\] browser*type is not an
-  AsyncBrowserType: {type(browser*type)}")
-- L540 *WARNING*: ({
-- L541 *WARNING*: ",
-- L569 *WARNING*: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
-  '{indicator}'")
-- L578 *WARNING*: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual
-  intervention not implemented. (Session: {session*id})")
-- L602 *WARNING*: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
-  '{indicator}'")
-- L611 *WARNING*: ({
-- L612 *WARNING*: ",
-- L623 *WARNING*: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual
-  intervention not implemented. (Session: {session*id})")
-- L712 *WARNING*: ("\[SCROLL\] User aborted scrolling.")
-- L733 *WARNING*: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may not
-  be fully loaded.")
-
-### parser/utils/captcha\_tools.py (Low Priority)
-
-{: #webapp-parser-utils-captcha-tools-py-low }
-
-- L118 *WARNING*: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
-- L154 *WARNING*: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
-
-### parser/utils/contest\_selector.py (Low Priority)
-
-{: #webapp-parser-utils-contest-selector-py-low }
-
-- L635 *WARNING*: ":
-- L636 *WARNING*: (entry)
-- L1029 *WARNING*: ", "selector", f"Feedback loop {loop+1}: verifying contests",
-  session*id=session*id,
-- L1565 *WARNING*: ({"level": "WARNING", "type": "selector", "message": "Empty
-  search term", "session*id": session*id})
-- L1570 *WARNING*: ({"level": "WARNING", "type": "selector", "message": f"No
-  matches for '{term}'", "session*id": session*id})
-- L1642 *WARNING*: ({"level": "WARNING", "type": "selector", "message": "No
-  match; try again.", "session*id": session*id})
-
-### parser/utils/dom\_extractor.py (Low Priority)
-
-{: #webapp-parser-utils-dom-extractor-py-low }
-
-- L153 *WARNING*: (f"\[DOM*EXTRACTOR\] failure: {e}")
-
-### parser/utils/dynamic\_table\_extractor.py (Low Priority)
-
-{: #webapp-parser-utils-dynamic-table-extractor-py-low }
-
-- L124 *WARNING*: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
-  provided table*html.", session*id)
-- L129 *WARNING*: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in
-  table*html.", session*id)
-- L171 *WARNING*: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step
-  failed", session*id, error=str(e))
-- L187 *WARNING*: ", "extractor", "\[EXTRACTOR\] No suitable table candidates
-  found.", session*id)
-- L217 *WARNING*: ", "extractor", "\[EXTRACTOR\] Error while scanning
-  &lt;table&gt; elements", session*id, error=str(e))
-- L229 *WARNING*: ", "extractor", "\[EXTRACTOR\] DOM extraction failed",
-  session*id, error=str(e))
-- L272 *WARNING*: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed",
-  session*id, error=str(e))
-- L776 *WARNING*: ", "extractor", "No learned DOM patterns found.")
-- L800 *WARNING*: ", "extractor", "Entry deleted.")
-- L805 *WARNING*: ", "extractor", "Unknown action.")
-- L807 *WARNING*: ", "extractor", "Invalid entry number.")
-
-### parser/utils/embedding\_cache.py (Low Priority)
-
-{: #webapp-parser-utils-embedding-cache-py-low }
-
-- L178 *WARNING*: (msg)
-
-### parser/utils/extraction\_strategies.py (Low Priority)
-
-{: #webapp-parser-utils-extraction-strategies-py-low }
-
-- L68 *WARNING*: (f"\[STRATEGY\] {name} failed: {e}")
-
-### parser/utils/format\_router.py (Low Priority)
-
-{: #webapp-parser-utils-format-router-py-low }
-
-- L374 *WARNING*: ({
-- L375 *WARNING*: ",
-- L377 *WARN*: \] No supported file formats found on the page.",
-- L402 *WARNING*: ({
-- L403 *WARNING*: ",
-- L405 *WARN*: \] Unsupported format requested: {format*str}",
-- L409 *WARNING*: ({
-- L410 *WARNING*: ",
-- L654 *WARNING*: ({
-- L655 *WARNING*: ",
-- L874 *WARNING*: ({
-- L875 *WARNING*: ",
-- L950 *WARNING*: ({
-- L951 *WARNING*: ",
-
-### parser/utils/html\_scanner.py (Low Priority)
-
-{: #webapp-parser-utils-html-scanner-py-low }
-
-- L163 *WARNING*: ",
-- L167 *WARNING*: (payload)
-- L189 *WARNING*: ",
-- L193 *WARNING*: (payload)
-- L288 *WARNING*: ",
-- L292 *WARNING*: (payload)
-- L315 *WARNING*: ",
-- L319 *WARNING*: (payload)
-- L353 *WARNING*: ",
-- L357 *WARNING*: (payload)
-- L380 *WARNING*: ",
-- L384 *WARNING*: (payload)
-- L579 *WARNING*: ",
-- L583 *WARNING*: (payload)
-- L784 *WARNING*: (f"\[ML SIMILARITY\] No embedding computed for segment:
-  {safe*get(segment, 'segment*hash', None)}")
-- L807 *WARNING*: (f"\[ML SIMILARITY\] No embedding computed for segment:
-  {safe*get(segment, 'segment*hash', None)}")
-- L1034 *WARNING*: ",
-- L1038 *WARNING*: (payload)
-- L1045 *WARNING*: ",
-- L1049 *WARNING*: (payload)
-- L1376 *WARNING*: ",
-- L1380 *WARNING*: (payload)
-- L1438 *WARNING*: ",
-- L1442 *WARNING*: (payload)
-- L1691 *WARNING*: ({"level": "WARNING", "type": "dom*segments", "message":
-  msg*warn})
-- L1747 *WARNING*: ({"level": "WARNING", "type": "page*hash", "message": msg})
-- L1754 *WARNING*: ({"level": "WARNING", "type": "page*hash", "message": msg})
-- L1766 *WARNING*: ({"level": "WARNING", "type": "page*hash", "message": msg})
-- L1789 *WARNING*: ({"level": "WARNING", "type": "cache", "message": msg})
-- L1824 *WARNING*: ({"level": "WARNING", "type": "cache", "message": msg})
-- L2003 *WARNING*: ({"level": "WARNING", "type": "segment*review", "message":
-  msg})
-- L2012 *WARNING*: ({
-- L2013 *WARNING*: ",
-- L2129 *WARNING*: ",
-- L2133 *WARNING*: (payload)
-- L2145 *WARNING*: ",
-- L2149 *WARNING*: (payload)
-- L2158 *WARNING*: ",
-- L2162 *WARNING*: (payload)
-- L2177 *WARNING*: ",
-- L2181 *WARNING*: (payload)
-- L2193 *WARNING*: ",
-- L2197 *WARNING*: (payload)
-- L2206 *WARNING*: ",
-- L2210 *WARNING*: (payload)
-- L2219 *WARNING*: ",
-- L2223 *WARNING*: (payload)
-- L2233 *WARNING*: ",
-- L2237 *WARNING*: (payload)
-- L2248 *WARNING*: ",
-- L2252 *WARNING*: (payload)
-- L2262 *WARNING*: ",
-- L2266 *WARNING*: (payload)
-- L2278 *WARNING*: ",
-- L2282 *WARNING*: (payload)
-- L2293 *WARNING*: ",
-- L2297 *WARNING*: (payload)
-- L2307 *WARNING*: ",
-- L2311 *WARNING*: (payload)
-- L2321 *WARNING*: ",
-- L2325 *WARNING*: (payload)
-- L2335 *WARNING*: ",
-- L2339 *WARNING*: (payload)
-- L2349 *WARNING*: ",
-- L2353 *WARNING*: (payload)
-- L2369 *WARNING*: ",
-- L2373 *WARNING*: (payload)
-- L2384 *WARNING*: ",
-- L2388 *WARNING*: (payload)
-- L2399 *WARNING*: ",
-- L2403 *WARNING*: (payload)
-- L2414 *WARNING*: ",
-- L2418 *WARNING*: (payload)
-- L2429 *WARNING*: ",
-- L2433 *WARNING*: (payload)
-- L2441 *WARNING*: ",
-- L2445 *WARNING*: (payload)
-- L2454 *WARNING*: ",
-- L2458 *WARNING*: (payload)
-- L2472 *WARNING*: ",
-- L2476 *WARNING*: (payload)
-- L2486 *WARNING*: ",
-- L2490 *WARNING*: (payload)
-- L2501 *WARNING*: ",
-- L2505 *WARNING*: (payload)
-- L2515 *WARNING*: ",
-- L2519 *WARNING*: (payload)
-- L2529 *WARNING*: ",
-- L2533 *WARNING*: (payload)
-- L2543 *WARNING*: ",
-- L2547 *WARNING*: (payload)
-- L2790 *WARNING*: ({"level": "WARNING", "type": "context", "message": msg})
-- L2806 *WARNING*: ({"level": "WARNING", "type": "context", "message": msg})
-- L2815 *WARNING*: ({"level": "WARNING", "type": "context", "message": msg})
-- L2827 *WARNING*: ({"level": "WARNING", "type": "context", "message": msg})
-- L2837 *WARNING*: ({"level": "WARNING", "type": "context", "message": msg})
-- L2847 *WARNING*: ({"level": "WARNING", "type": "context", "message": msg})
-- L2869 *WARNING*: ({"level": "WARNING", "type": "scan*html", "message": msg})
-- L3297 *WARNING*: ({"level": "WARNING", "type": "dom*debug", "message":
-  msg*warn})
-
-### parser/utils/model\_registry.py (Low Priority)
-
-{: #webapp-parser-utils-model-registry-py-low }
-
-- L389 *WARNING*: (f"Failed loading local override for SentenceTransformer:
-  {e}")
-- L409 *WARNING*: ("TRANSFORMERS*OFFLINE/HUGGINGFACE*HUB*OFFLINE set; skipping
-  HF download. Embeddings disabled.")
-- L426 *WARNING*: for noisy environments
-- L429 *WARNING*: (f"Failed to load base SentenceTransformer (network/DNS).
-  Running without embeddings. Error: {e}")
-
-### parser/utils/output\_utils.py (Low Priority)
-
-{: #webapp-parser-utils-output-utils-py-low }
-
-- L105 *WARNING*: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using
-  'Unknown'.\[/yellow\]")
-- L108 *WARNING*: ("\[yellow\]\[OUTPUT\] contests could not be verified. Using
-  'unknown*contests'.\[/yellow\]")
-- L531 *WARNING*: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
-- L607 *WARNING*: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
-
-### parser/utils/pattern\_extractor.py (Low Priority)
-
-{: #webapp-parser-utils-pattern-extractor-py-low }
-
-- L26 *WARNING*: (f"\[PATTERN\] load fail {e}")
-- L95 *WARNING*: (f"\[PATTERN\] pattern error {pat.get('name')}: {e}")
-
-### parser/utils/pivot.py (Low Priority)
-
-{: #webapp-parser-utils-pivot-py-low }
-
-- L1353 *WARNING*: ("\[PIVOT\] No candidates detected – verify headers and
-  candidate column extraction.")
-
-### parser/utils/shared\_logger.py (Low Priority)
-
-{: #webapp-parser-utils-shared-logger-py-low }
-
-- L159 *WARNING*:         elif record.levelno &gt;= logging.WARNING:
-- L160 *WARNING*: (msg)
-- L236 *WARNING*: ": logging.WARNING,
-- L307 *WARNING*: ": "yellow",
-- L369 *WARNING*: (self, msg, context=None, exc*info=None):
-- L371 *WARNING*: ", msg, context, color="yellow")
-- L385 *WARNING*: ": "yellow",
-- L598 *WARNING*: (f"Log directory does not exist: {log*dir}")
-- L615 *WARNING*: (f"Corrupt line in {path}: {e}")
-
-### parser/utils/shared\_logic.py (Low Priority)
-
-{: #webapp-parser-utils-shared-logic-py-low }
-
-- L237 *WARNING*: (f"\[safe*query\] session.query({model}) failed: {e}")
-- L260 *WARNING*: (f"\[safe*filter*by\] No mapper found for model {model}")
-- L266 *WARNING*: (f"\[safe*filter*by\] Could not inspect model {model}: {e}")
-- L280 *WARNING*: (f"\[safe*filter*by\] filter*by failed: {e}")
-- L293 *WARNING*: (f"\[safe*first\] query.first() failed: {e}")
-- L363 *WARNING*: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
-  'extract' method.")
-- L497 *WARNING*: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
-- L711 *WARNING*: (f"\[safe*append\] Target is not a list: {type(lst)}; coercing
-  to list.")
-- L733 *WARNING*: (f"\[safe*update\] Target is not a dict: {type(dct)}")
-- L737 *WARNING*: (f"\[safe*update\] Updates is not a dict: {type(updates)}")
-- L757 *WARNING*: (f"\[safe*extend\] Target is not a list: {type(lst)}; coercing
-  to list.")
-- L1097 *WARNING*: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
-  (type: {type(lst).**name**})")
-- L1360 *WARNING*: (f"State '{state*norm}' not found in county map")
-- L2224 *WARNING*: (f"\[inventory\] architecture.md not found at {md*file}")
-- L2230 *WARNING*: ("\[inventory\] Markers not found in architecture.md;
-  aborting replace.")
-- L2245 *WARNING*: ("\[inventory\] generate*project*map completed with warnings;
-  check markers and path.")
-- L3050 *WARN*: ', 'WARNING', 'NOTE'\]
-- L3177 *WARNING*: (f"\[noise\] No suggestions file found at {path}")
-
-### parser/utils/strategy\_concurrency.py (Low Priority)
-
-{: #webapp-parser-utils-strategy-concurrency-py-low }
-
-- L37 *WARNING*: (f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
-- L65 *WARNING*: (f"\[CONCURRENCY\] Strategy {name} error: {e}")
-- L73 *WARNING*: (f"\[CONCURRENCY\] {*safe*run*strategy.**name**} {name} failed:
-  {e}")
-- L102 *WARNING*: (f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed: {e}")
-- L120 *WARNING*: (f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
-
-### parser/utils/table\_builder.py (Low Priority)
-
-{: #webapp-parser-utils-table-builder-py-low }
-
-- L816 *WARNING*: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
-  failed for panel table", session*id, error=str(e))
-- L828 *WARNING*: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
-  failed (no panels path)", session*id, error=str(e))
-- L836 *WARNING*: ", "builder", "\[TABLE*BUILDER\] all*panel*tables was not a
-  list; coercing to empty list", session*id,
-  got*type=str(type(all*panel*tables)))
-- L845 *WARNING*: ", "builder", "\[TABLE*BUILDER\] Dropping invalid table
-  entry", session*id, entry*type=str(type(item)))
-- L862 *WARNING*: ", "builder", "\[TABLE*BUILDER\] sanitize failed", session*id,
-  error=str(e))
-- L867 *WARNING*: ", "builder", "\[TABLE*BUILDER\] harmonize failed",
-  session*id, error=str(e))
-- L873 *WARNING*: ", "builder", "\[TABLE*BUILDER\]
-  collapse*ballot*synonym*columns failed", session*id, error=str(e))
-- L925 *WARNING*: ",
-- L950 *WARNING*: ", "builder", "\[TABLE*BUILDER\] entity annotate failed",
-  session*id, error=str(e))
-- L955 *WARNING*: ", "builder", "\[TABLE*BUILDER\] stringify entity*info
-  failed", session*id, error=str(e))
-- L975 *WARNING*: ", "builder", "\[TABLE*BUILDER\] pivot*to*wide failed",
-  session*id, error=str(e))
-- L995 *WARNING*: ", "builder", "\[TABLE*BUILDER\] ensure division totals
-  failed", session*id, error=str(e))
-- L1288 *WARNING*: ", "builder", f"\[TABLE*BUILDER\] Column marked incorrect:
-  {col*name}", session*id, contest=contest)
-- L1361 *WARNING*: ", "builder", "\[TABLE*BUILDER\] Failed to persist table
-  structure logs", session*id, error=str(e))
-- L1376 *WARNING*: ", "builder", "\[TABLE*BUILDER\] Failed to persist
-  coordinator DB log", session*id, error=str(e))
-
-### parser/utils/table\_core.py (Low Priority)
-
-{: #webapp-parser-utils-table-core-py-low }
-
-- L231 *WARNING*: (f"\[TABLE BUILDER\] Concurrent strategies execution failed:
-  {e}")
-- L288 *WARNING*: (f"\[TABLE BUILDER\] RawJSON pivot failed: {e}")
-- L296 *WARNING*: (f"\[TABLE BUILDER\] pivot*to*wide signature mismatch
-  (skipped): {e}")
-- L298 *WARNING*: (f"\[TABLE BUILDER\] pivot*to*wide failed (skipped): {e}")
-- L349 *WARNING*: (f"\[TABLE BUILDER\] finalize output failed: {e}")
-- L414 *WARNING*: (f"\[TABLE BUILDER\]\[ASYNC\] Concurrent strategies execution
-  failed: {e}")
-- L477 *WARNING*: (f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed: {e}")
-
-### parser/utils/user\_prompt.py (Low Priority)
-
-{: #webapp-parser-utils-user-prompt-py-low }
-
-- L312 *WARNING*: ("\[UserPrompt\] Webapp mode active but no socketio*emit*func
-  set!")
-- L349 *WARNING*: ("\[CLI Prompt\] EOFError encountered.")
-- L370 *WARNING*: ("\[Webapp Prompt\] socketio*emit*func not set.")
-- L428 *WARNING*: ": 30,
-- L507 *WARNING*: ("\n\[Prompt\] Timed out.")
-- L558 *WARNING*: ("\n\[Prompt\] No input available (EOF). Exiting prompt.")
-- L592 *WARNING*: ("Invalid input. Please try again.")
-- L594 *WARNING*: ("\[Prompt\] Too many invalid attempts.")
-- L659 *WARNING*: ("\[Prompt Queue\] Invalid queued yes/no response; falling
-  back to interactive prompt.")
-- L674 *WARNING*: ("\n\[Prompt\] Timed out.")
-- L881 *WARNING*: ("\[yellow\]\[FEEDBACK\] Skipped manual
-  correction.\[/yellow\]")
-- L913 *WARNING*: ("\[yellow\]Button confirmation cancelled by
-  user.\[/yellow\]")
-
-### parser/web\_pipeline.py (Low Priority)
-
-{: #webapp-parser-web-pipeline-py-low }
-
-- L49 *WARNING*: ({
-- L50 *WARNING*: ",
-- L66 *WARNING*: ({
-- L67 *WARNING*: ",
-- L83 *WARNING*: ({
-- L84 *WARNING*: ",
-
-### tests/conftest.py (Low Priority)
-
-{: #webapp-tests-conftest-py-low }
-
-- L17 *WARNING*: escalates to
-- L21 *WARNING*: category so it never escalates.
-- L23 *WARNING*: was ignored.
-
-### tests/test\_schema\_validation\_warnings.py (Low Priority)
-
-{: #webapp-tests-test-schema-validation-warnings-py-low }
-
-- L17 *WARNING*:     # Build a table that lacks candidate/ballot/total columns,
-  forcing a 'normalized schema weak' warning
-- L39 *WARNING*: " and msg.get("status")=="weak"
-- L44 *WARNING*: " and inner.get("status")=="weak"
-- L49 *WARNING*: in captured logs; got: {captured}"
-
-### tests/test\_webapp\_app.py (Low Priority)
-
-{: #webapp-tests-test-webapp-app-py-low }
-
-- L17 *WARNING*: ,ERROR")
+Index scope: TODO/FIXME/HACK/XXX/WARNING/NOTE annotations under `webapp, scripts, docs`.
+Generated: 2026-01-04 05:47:25Z
+Total annotations: 4497
+High: 7, Medium: 366, Low: 4124
+
+## Files
+
+### docs/architecture.md
+
+- L290 *WARNING*: - Keep the shim in place until upstream libraries drop the deprecated import. When versions are bumped, remove the alias and rerun the table-builder pytest suit...
+
+### docs/assets/js/custom.js
+
+- L22 *NOTE*: // Note: Mermaid code blocks are converted to divs by mermaid-init.js, so we don't need to filter them
+
+### docs/assets/js/mermaid-init.js
+
+- L85 *WARN*: console.warn('Mermaid library failed to load after maximum retries');
+
+### docs/handlers.md
+
+- L172 *WARNING*: 3. When extraction yields only boilerplate (for example “November 2016”), log a high-severity warning and abort instead of generating an empty CSV.
+
+### docs/pipeline_map.md
+
+- L189 *TODO*: #### ⚠️ TODO/FIXME/WARN (Context_Integration_Context_Library_constants)
+- L191 *NOTE*: - L1895 **NOTE**: .*$",                     # Note
+- L192 *WARNING*: - L2084 **WARNING**: ",
+- L193 *WARNING*: - L2175 **WARNING**: ", "info*box", "navigation", "pagination", "tab",
+- L195 *NOTE*: - L2208 **NOTE**: ", "comment",
+- L196 *NOTE*: - L2284 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
+- L197 *NOTE*: - L2300 **NOTE**: ", "Comment", "Feedback", "Suggestion",
+- L279 *TODO*: #### ⚠️ TODO/FIXME/WARN (Context_Integration_context_coordinator)
+- L281 *WARNING*: - L863 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
+- L282 *WARNING*: - L951 **WARNING**: ({
+- L283 *WARNING*: - L952 **WARNING**: ",
+- L284 *WARNING*: - L1350 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
+- L286 *WARNING*: - L1589 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
+- L288 *WARNING*: - L1766 **WARNING**: (f"\[get*feedback*pattern*kb\] Skipping corrupt line:
+- L290 *WARNING*: - L1878 **WARNING**: ("\[group*dom*nodes*by*label\] No organized DOM parts.
+- L292 *WARNING*: - L1880 **WARNING**: (f"\[group*dom*nodes*by*label\] No organized DOM parts.
+- L293 *WARNING*: (Occurred {ContextCoordinator.*dom*parts*warning*count} times)")
+- L294 *WARNING*: - L1885 **WARNING**: ("\[group*dom*nodes*by*label\] No DOM nodes found.")
+- L295 *WARNING*: - L1903 **WARNING**: ("\[submit*user*feedback\] ContextOrganizer has no
+- L297 *WARNING*: - L1931 **WARNING**: (f"\[correct*and*update*contest\] Contest {contest*id}
+- L299 *WARNING*: - L1955 **WARNING**: ("\[print*contest*summary\] No organized contests to
+- L301 *WARNING*: - L1968 **WARNING**: ("\[plot*contest*distribution\] No organized contests to
+- L303 *WARNING*: - L2019 **WARNING**: ("No organized DOM parts.")
+- L304 *WARNING*: - L2022 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
+- L305 *WARNING*: - L2033 **WARNING**: ("\[get*contest*groups\] No contest groups found.")
+- L306 *WARNING*: - L2042 **WARNING**: ("\[get*panel*groups\] No panel groups found.")
+- L307 *WARNING*: - L2051 **WARNING**: ("\[get*button*groups\] No button groups found.")
+- L308 *WARNING*: - L2060 **WARNING**: ("\[get*table*groups\] No table groups found.")
+- L309 *WARNING*: - L2069 **WARNING**: ("\[get*relationships\] No organized context.")
+- L348 *TODO*: #### ⚠️ TODO/FIXME/WARN (Context_Integration_context_organizer)
+- L350 *WARNING*: - L282 **WARNING**: (
+- L351 *WARNING*: - L407 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or
+- L353 *WARNING*: - L495 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered*out)} contests
+- L355 *WARNING*: - L497 **WARNING**: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
+- L356 *WARNING*: - L500 **WARNING**: ("\[CONTEST\] No contests with required fields for
+- L358 *WARNING*: - L816 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests
+- L360 *WARNING*: - L1602 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
+- L361 *WARNING*: - L1608 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
+- L363 *WARNING*: - L1610 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L365 *WARNING*: - L1612 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L367 *WARNING*: - L2082 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
+- L369 *WARNING*: - L2159 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
+- L449 *TODO*: #### ⚠️ TODO/FIXME/WARN (Context_Integration_librarian)
+- L451 *WARNING*: - L764 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
+- L452 *WARNING*: - L774 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
+- L454 *WARNING*: - L777 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
+- L553 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_batch_handler)
+- L555 *WARNING*: - L134 **WARNING**: ({
+- L556 *WARNING*: - L135 **WARNING**: ",
+- L557 *WARNING*: - L426 **WARNING**: ({
+- L558 *WARNING*: - L427 **WARNING**: ",
+- L620 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_formats_html_handler)
+- L622 *WARNING*: - L216 **WARNING**: (f"\[HTML Handler\] County '{county}' not found. Closest
+- L624 *WARNING*: - L220 **WARNING**: (f"\[HTML Handler\] Detected county '{county}' is not in
+- L626 *WARNING*: - L241 **WARNING**: (f"\[HTML Handler\] State '{user*state}' not found.
+- L628 *WARNING*: - L285 **WARNING**: (f"\[HTML Handler\] County '{user*county}' not found.
+- L673 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_formats_json_handler)
+- L675 *WARNING*: - L382 **WARNING**: ({
+- L676 *WARNING*: - L383 **WARNING**: ",
+- L677 *WARNING*: - L507 **WARNING**: ({
+- L678 *WARNING*: - L508 **WARNING**: ",
+- L733 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_formats_pdf_handler)
+- L735 *WARNING*: - L922 **WARNING**: ({
+- L736 *WARNING*: - L923 **WARNING**: ",
+- L737 *WARN*: - L925 **WARN**: \] Skipping page {page*index} during OCR batch render:
+- L739 *WARNING*: - L1078 **WARNING**: ({
+- L740 *WARNING*: - L1079 **WARNING**: ",
+- L741 *WARN*: - L1082 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
+- L743 *WARNING*: - L2635 **WARNING**: ({
+- L744 *WARNING*: - L2636 **WARNING**: ",
+- L745 *WARN*: - L2638 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
+- L747 *WARNING*: - L2658 **WARNING**: ({
+- L748 *WARNING*: - L2659 **WARNING**: ",
+- L749 *WARN*: - L2662 **WARN**: \] pdf2image conversion failed; "
+- L750 *WARNING*: - L3012 **WARNING**: ({
+- L751 *WARNING*: - L3013 **WARNING**: ",
+- L752 *WARN*: - L3015 **WARN**: \] Skipping full-document OCR pass due to expired sample
+- L754 *WARNING*: - L3063 **WARNING**: ({
+- L755 *WARNING*: - L3064 **WARNING**: ",
+- L756 *WARN*: - L3066 **WARN**: \] Aborting full-document OCR pass due to timeout budget.",
+- L757 *WARNING*: - L3093 **WARNING**: ({
+- L758 *WARNING*: - L3094 **WARNING**: ",
+- L859 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_arizona_arizona)
+- L861 *WARNING*: - L25 **WARNING**: ("\[WARN\] context*library.json not found. Using fallback
+- L863 *WARNING*: - L51 **WARNING**: (f"\[WARN\] Could not expand card {i+1}: {e}")
+- L864 *WARNING*: - L64 **WARNING**: (f"\[WARN\] Vote Type toggle failed: {e}")
+- L865 *WARNING*: - L77 **WARNING**: (f"\[WARN\] County toggle failed: {e}")
+- L866 *WARNING*: - L164 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results
+- L868 *WARNING*: - L165 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted
+- L889 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_example state_example_county_example_county)
+- L891 *WARNING*: - L123 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+- L917 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_example state_example_state)
+- L919 *WARNING*: - L51 **WARNING**: (f"\[Example Handler\] No specific parser implemented for
+- L921 *WARNING*: - L152 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+- L948 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_new_york_county_rockland)
+- L950 *WARNING*: - L72 **WARNING**: ("\[WARNING\] dom*parts missing after
+- L952 *WARNING*: - L95 **WARNING**: ("\[red\]No contest selected. Skipping.\[/red\]")
+- L953 *WARNING*: - L139 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn1.get('label', '')}'
+- L956 *WARNING*: - L176 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn2.get('label', '')}'
+- L979 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_new_york_new_york)
+- L981 *WARNING*: - L27 **WARNING**: ("\[NY Handler\] No county specified in html*context.")
+- L982 *WARNING*: - L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
+- L1016 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_pennsylvania_pennsylvania)
+- L1018 *WARNING*: - L44 **WARNING**: (f"\[NAV\] Step failed: {step} — {e}")
+- L1019 *WARNING*: - L55 **WARNING**: (f"\[bold yellow\]Detected election:\[/bold yellow\]
+- L1021 *WARNING*: - L76 **WARNING**: ("\[PA\] Invalid index input for election selection.")
+- L1022 *WARNING*: - L78 **WARNING**: ("\[PA\] Elections dropdown not found.")
+- L1023 *WARNING*: - L80 **WARNING**: (f"\[PA\] Failed to expand Elections menu or load
+- L1025 *WARNING*: - L96 **WARNING**: ("\[PA\] County Breakdown link not found.")
+- L1026 *WARNING*: - L98 **WARNING**: (f"\[PA\] Failed to click County Breakdown link: {e}")
+- L1027 *WARNING*: - L113 **WARNING**: ("\[yellow\]Multiple CSV files found in input. Please
+- L1140 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_health_router)
+- L1142 *WARNING*: - L253 **WARNING**: (f"\[health*router\] manual*correction failed (attempt
+- L1144 *WARNING*: - L337 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L1146 *WARNING*: - L339 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L1148 *WARNING*: - L341 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L1150 *WARNING*: - L376 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
+- L1151 *WARNING*: - L393 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
+- L1153 *WARNING*: - L395 **WARNING**: ("\[PIPELINE\] scan*misaligned*ner failed or file missing.
+- L1155 *WARNING*: - L427 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
+- L1177 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_integrity_check_runner)
+- L1179 *WARNING*: - L18 **WARNING**: ("\[INTEGRITY\] Context library at %s is missing contest
+- L1220 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_log_cache_cleaner_bot)
+- L1222 *WARNING*: - L151 **WARNING**: (f"Skipping non-dict entry in spacy*ner*train*data.jsonl:
+- L1224 *WARNING*: - L460 **WARNING**: ("\[DB\]\[WARNING\] No user tables found in schema
+- L1226 *WARNING*: - L503 **WARNING**: ("\[CLEAN\]\[WARNING\] The following files are still too
+- L1228 *WARNING*: - L507 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+- L1286 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_manual_correction_bot)
+- L1288 *WARNING*: - L361 **WARNING**: (f"Coordinator ML scoring failed: {e}")
+- L1289 *WARNING*: - L382 **WARNING**: (f"Coordinator field suggestion failed: {e}")
+- L1290 *WARNING*: - L395 **WARNING**: (f"Log file not found: {path}")
+- L1291 *WARNING*: - L404 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
+- L1292 *WARNING*: - L434 **WARNING**: (f"\[SECURITY\] Skipping invalid directory: {directory} -
+- L1294 *WARNING*: - L448 **WARNING**: (f"\[SECURITY\] Skipping file outside allowed directories:
+- L1296 *WARNING*: - L454 **WARNING**: (f"\[SKIP\] File not found: {file}")
+- L1297 *WARNING*: - L458 **WARNING**: (f"\[SKIP\] File too large: {file}")
+- L1298 *WARNING*: - L483 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
+- L1300 *WARNING*: - L497 **WARNING**: (f"\[CORRUPT\] {len(corrupt*items)} lines saved to
+- L1302 *WARNING*: - L502 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
+- L1304 *WARNING*: - L516 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L1305 *WARNING*: - L530 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt*path}")
+- L1306 *WARNING*: - L536 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
+- L1308 *WARNING*: - L541 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L1309 *WARNING*: - L555 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {dest*path}")
+- L1310 *WARNING*: - L559 **WARNING**: (f"\[DELETED\] {file}")
+- L1311 *WARNING*: - L562 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
+- L1312 *WARNING*: - L597 **WARNING**: (f"\[SECURITY\] Skipping invalid directory: {d} - {e}")
+- L1313 *WARNING*: - L615 **WARNING**: (f"\[SECURITY\] Skipping file outside allowed directories:
+- L1386 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_retrain_table_structure_models)
+- L1388 *WARNING*: - L178 **WARNING**: (f"\[CLEAN\] File not found: {jsonl*path}")
+- L1389 *WARNING*: - L186 **WARNING**: (f"\[CLEAN\] Could not parse line: {e}")
+- L1390 *WARNING*: - L201 **WARNING**: (f"\[CLEAN\] Alignment check failed for text:
+- L1392 *WARNING*: - L274 **WARNING**: (f"Failed to load {path}: {e}")
+- L1393 *WARNING*: - L403 **WARNING**: (f"Skipping misaligned entity in: {text}")
+- L1394 *WARNING*: - L408 **WARNING**: (f"Error validating entity alignment: {e}")
+- L1395 *WARNING*: - L434 **WARNING**: (f"\[spaCy\] Could not check GPU availability: {e}")
+- L1396 *WARNING*: - L450 **WARNING**: (f"\[spaCy\] Could not load lexeme normalization table.
+- L1398 *WARNING*: - L536 **WARNING**: (f"\[NER\] Skipped {misaligned*count} misaligned examples.
+- L1400 *WARNING*: - L550 **WARNING**: ("No NER training examples found. Skipping spaCy NER
+- L1402 *WARNING*: - L619 **WARNING**: ("\[SUGGESTION\] Consider lowering min*delta or increasing
+- L1404 *WARNING*: - L621 **WARNING**: ("\[SUGGESTION\] Model improved until the last epoch.
+- L1406 *WARNING*: - L622 **WARNING**: (f"\[SUGGESTION\] Next run: patience={patience},
+- L1408 *WARNING*: - L708 **WARNING**: ("No training examples found. Aborting retraining.")
+- L1409 *WARNING*: - L727 **WARNING**: (f"\[WARN\] Could not delete old model directory
+- L1411 *WARNING*: - L739 **WARNING**: (f"\[WARN\] Failed to load existing model: {e}")
+- L1412 *WARNING*: - L742 **WARNING**: ("Falling back to base model (all-MiniLM-L6-v2).")
+- L1413 *WARNING*: - L782 **WARNING**: (f"\[WARN\] Could not update canonical model directory:
+- L1415 *WARNING*: - L810 **WARNING**: (f"MISALIGNED: {text} {annots\['entities'\]}")
+- L1416 *WARNING*: - L840 **WARNING**: ("\[DB\] Base.metadata.tables is empty. No models
+- L1442 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_scan_misaligned_ner)
+- L1444 *WARNING*: - L62 **WARNING**: (f"\[CORRUPT\] Could not parse line: {e}")
+- L1445 *WARNING*: - L83 **WARNING**: (f"\n\[MISALIGNED\] Top {top*n} most frequent misaligned
+- L1447 *WARNING*: - L85 **WARNING**: (f"  {repr(text)}: {count} times")
+- L1448 *WARNING*: - L86 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+- L1450 *WARNING*: - L87 **WARNING**: ("Run the manual*correction to review and clean these
+- L1452 *WARNING*: - L88 **WARNING**: ("If you see spaCy entity alignment warnings, consider
+- L1454 *WARNING*: - L98 **WARNING**: (f"\[WARN\] Could not remove old misaligned file: {e}")
+- L1455 *WARNING*: - L112 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L1457 *WARNING*: - L119 **WARNING**: (f"\[SELF-HEAL\] manual*correction exited with code
+- L1459 *WARNING*: - L120 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L1461 *WARNING*: - L122 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L1529 *TODO*: #### ⚠️ TODO/FIXME/WARN (html_election_parser)
+- L1531 *WARNING*: - L61 **WARNING**: ("Deleting .processed*urls cache for fresh start...")
+- L1532 *WARNING*: - L430 **WARNING**: ({
+- L1533 *WARNING*: - L431 **WARNING**: ",
+- L1534 *WARNING*: - L445 **WARNING**: ({
+- L1535 *WARNING*: - L446 **WARNING**: ",
+- L1536 *WARNING*: - L508 **WARNING**: ({
+- L1537 *WARNING*: - L509 **WARNING**: ",
+- L1538 *WARNING*: - L582 **WARNING**: (payload*2)
+- L1539 *WARNING*: - L909 **WARNING**: ({
+- L1540 *WARNING*: - L910 **WARNING**: ",
+- L1541 *WARNING*: - L956 **WARNING**: ({
+- L1542 *WARNING*: - L957 **WARNING**: ",
+- L1543 *WARNING*: - L1010 **WARNING**: ({
+- L1544 *WARNING*: - L1011 **WARNING**: ",
+- L1545 *WARNING*: - L1117 **WARNING**: ",
+- L1546 *WARNING*: - L1122 **WARNING**: (payload)
+- L1547 *WARNING*: - L1156 **WARNING**: ({
+- L1548 *WARNING*: - L1157 **WARNING**: ",
+- L1549 *WARNING*: - L1237 **WARNING**: ({
+- L1550 *WARNING*: - L1238 **WARNING**: ",
+- L1623 *TODO*: #### ⚠️ TODO/FIXME/WARN (navigator_navigation_runner)
+- L1625 *WARNING*: - L203 **WARNING**: ({
+- L1626 *WARNING*: - L204 **WARNING**: ",
+- L1779 *TODO*: #### ⚠️ TODO/FIXME/WARN (state_router)
+- L1781 *WARNING*: - L49 **WARNING**: ("\[Router\] handlers/states directory not found.")
+- L1782 *WARNING*: - L66 **WARNING**: (f"\[Router\] counties directory not found for state:
+- L1784 *WARNING*: - L137 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] No handler states
+- L1786 *WARNING*: - L154 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L1787 *WARNING*: - L157 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L1788 *WARNING*: - L160 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] State '{state}'
+- L1790 *WARNING*: - L179 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L1791 *WARNING*: - L182 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] County '{county}'
+- L1793 *WARNING*: - L189 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Too many failed
+- L1795 *WARNING*: - L205 **WARNING**: (f"\[Router\] Requested state '{state*name}' not found on
+- L1797 *WARNING*: - L512 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for
+- L1799 *WARNING*: - L523 **WARNING**: (f"Failed to load context from file: {e}")
+- L1800 *WARNING*: - L533 **WARNING**: ("No suitable handler found.")
+- L1801 *WARNING*: - L540 **WARNING**: ("No handler selected. Exiting.")
+- L1802 *WARNING*: - L547 **WARNING**: ("Still could not import a suitable handler.")
+- L1857 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_browser_utils)
+- L1859 *WARNING*: - L102 **WARNING**: (f"\[browser*utils\] Failed to safely parse
+- L1861 *WARNING*: - L104 **WARNING**: (f"\[browser*utils\] Skipping unsafe context*library value
+- L1863 *WARNING*: - L308 **WARNING**: (f"\[safe*attributes\] Playwright JS extraction failed:
+- L1865 *WARNING*: - L322 **WARNING**: (f"\[safe*attributes\] Playwright fallback extraction
+- L1867 *WARNING*: - L408 **WARNING**: (f"\[safe*count\] Object is not countable: {type(obj)}")
+- L1868 *WARNING*: - L454 **WARNING**: (f"\[safe*launch\] browser*type is not a SyncBrowserType:
+- L1870 *WARNING*: - L474 **WARNING**: (f"\[async*safe*launch\] browser*type is not an
+- L1872 *WARNING*: - L553 **WARNING**: ({
+- L1873 *WARNING*: - L554 **WARNING**: ",
+- L1874 *WARNING*: - L582 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L1876 *WARNING*: - L591 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual
+- L1878 *WARNING*: - L615 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L1880 *WARNING*: - L624 **WARNING**: ({
+- L1881 *WARNING*: - L625 **WARNING**: ",
+- L1882 *WARNING*: - L636 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual
+- L1884 *WARNING*: - L794 **WARNING**: ("\[SCROLL\] User aborted scrolling.")
+- L1885 *WARNING*: - L830 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may
+- L1942 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_captcha_tools)
+- L1944 *WARNING*: - L118 **WARNING**: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
+- L1945 *WARNING*: - L154 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
+- L2036 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_contest_selector)
+- L2038 *WARNING*: - L645 **WARNING**: ":
+- L2039 *WARNING*: - L646 **WARNING**: (entry)
+- L2040 *WARNING*: - L1039 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
+- L2042 *WARNING*: - L1626 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
+- L2044 *WARNING*: - L1631 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
+- L2046 *WARNING*: - L1703 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
+- L2241 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_dom_extractor)
+- L2243 *WARNING*: - L153 **WARNING**: (f"\[DOM*EXTRACTOR\] failure: {e}")
+- L2329 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_dynamic_table_extractor)
+- L2331 *WARNING*: - L124 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
+- L2333 *WARNING*: - L129 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in
+- L2335 *WARNING*: - L171 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step
+- L2337 *WARNING*: - L187 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table
+- L2339 *WARNING*: - L217 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning
+- L2341 *WARNING*: - L229 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed",
+- L2343 *WARNING*: - L272 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed",
+- L2345 *WARNING*: - L776 **WARNING**: ", "extractor", "No learned DOM patterns found.")
+- L2346 *WARNING*: - L800 **WARNING**: ", "extractor", "Entry deleted.")
+- L2347 *WARNING*: - L805 **WARNING**: ", "extractor", "Unknown action.")
+- L2348 *WARNING*: - L807 **WARNING**: ", "extractor", "Invalid entry number.")
+- L2429 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_extraction_strategies)
+- L2431 *WARNING*: - L68 **WARNING**: (f"\[STRATEGY\] {name} failed: {e}")
+- L2480 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_format_router)
+- L2482 *WARNING*: - L374 **WARNING**: ({
+- L2483 *WARNING*: - L375 **WARNING**: ",
+- L2484 *WARN*: - L377 **WARN**: \] No supported file formats found on the page.",
+- L2485 *WARNING*: - L402 **WARNING**: ({
+- L2486 *WARNING*: - L403 **WARNING**: ",
+- L2487 *WARN*: - L405 **WARN**: \] Unsupported format requested: {format*str}",
+- L2488 *WARNING*: - L409 **WARNING**: ({
+- L2489 *WARNING*: - L410 **WARNING**: ",
+- L2490 *WARNING*: - L667 **WARNING**: ({
+- L2491 *WARNING*: - L668 **WARNING**: ",
+- L2492 *WARNING*: - L887 **WARNING**: ({
+- L2493 *WARNING*: - L888 **WARNING**: ",
+- L2494 *WARNING*: - L965 **WARNING**: ({
+- L2495 *WARNING*: - L966 **WARNING**: ",
+- L2576 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_html_scanner)
+- L2578 *WARNING*: - L163 **WARNING**: ",
+- L2579 *WARNING*: - L167 **WARNING**: (payload)
+- L2580 *WARNING*: - L189 **WARNING**: ",
+- L2581 *WARNING*: - L193 **WARNING**: (payload)
+- L2582 *WARNING*: - L288 **WARNING**: ",
+- L2583 *WARNING*: - L292 **WARNING**: (payload)
+- L2584 *WARNING*: - L315 **WARNING**: ",
+- L2585 *WARNING*: - L319 **WARNING**: (payload)
+- L2586 *WARNING*: - L353 **WARNING**: ",
+- L2587 *WARNING*: - L357 **WARNING**: (payload)
+- L2588 *WARNING*: - L380 **WARNING**: ",
+- L2589 *WARNING*: - L384 **WARNING**: (payload)
+- L2590 *WARNING*: - L579 **WARNING**: ",
+- L2591 *WARNING*: - L583 **WARNING**: (payload)
+- L2592 *WARNING*: - L784 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L2594 *WARNING*: - L807 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L2596 *WARNING*: - L1034 **WARNING**: ",
+- L2597 *WARNING*: - L1038 **WARNING**: (payload)
+- L2598 *WARNING*: - L1045 **WARNING**: ",
+- L2599 *WARNING*: - L1049 **WARNING**: (payload)
+- L2799 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_model_registry)
+- L2801 *WARNING*: - L389 **WARNING**: (f"Failed loading local override for SentenceTransformer:
+- L2803 *WARNING*: - L409 **WARNING**: ("TRANSFORMERS*OFFLINE/HUGGINGFACE*HUB*OFFLINE set;
+- L2805 *WARNING*: - L426 **WARNING**: for noisy environments
+- L2806 *WARNING*: - L429 **WARNING**: (f"Failed to load base SentenceTransformer (network/DNS).
+- L2908 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_output_utils)
+- L2910 *WARNING*: - L128 **WARNING**: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using
+- L2912 *WARNING*: - L131 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified.
+- L2914 *WARNING*: - L569 **WARNING**: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
+- L2915 *WARNING*: - L645 **WARNING**: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
+- L2939 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_pattern_extractor)
+- L2941 *WARNING*: - L26 **WARNING**: (f"\[PATTERN\] load fail {e}")
+- L2942 *WARNING*: - L95 **WARNING**: (f"\[PATTERN\] pattern error {pat.get('name')}: {e}")
+- L3046 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_pivot)
+- L3048 *WARNING*: - L1353 **WARNING**: ("\[PIVOT\] No candidates detected – verify headers and
+- L3158 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_shared_logger)
+- L3160 *WARNING*: - L159 **WARNING**:         elif record.levelno &gt;= logging.WARNING:
+- L3161 *WARNING*: - L160 **WARNING**: (msg)
+- L3162 *WARNING*: - L236 **WARNING**: ": logging.WARNING,
+- L3163 *WARNING*: - L307 **WARNING**: ": "yellow",
+- L3164 *WARNING*: - L369 **WARNING**: (self, msg, context=None, exc*info=None):
+- L3165 *WARNING*: - L371 **WARNING**: ", msg, context, color="yellow")
+- L3166 *WARNING*: - L385 **WARNING**: ": "yellow",
+- L3167 *WARNING*: - L598 **WARNING**: (f"Log directory does not exist: {log*dir}")
+- L3168 *WARNING*: - L615 **WARNING**: (f"Corrupt line in {path}: {e}")
+- L3223 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_shared_logic)
+- L3225 *WARNING*: - L302 **WARNING**: (f"\[safe*query\] session.query({model}) failed: {e}")
+- L3226 *WARNING*: - L325 **WARNING**: (f"\[safe*filter*by\] No mapper found for model {model}")
+- L3227 *WARNING*: - L331 **WARNING**: (f"\[safe*filter*by\] Could not inspect model {model}:
+- L3229 *WARNING*: - L345 **WARNING**: (f"\[safe*filter*by\] filter*by failed: {e}")
+- L3230 *WARNING*: - L358 **WARNING**: (f"\[safe*first\] query.first() failed: {e}")
+- L3231 *WARNING*: - L428 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
+- L3233 *WARNING*: - L562 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
+- L3234 *WARNING*: - L776 **WARNING**: (f"\[safe*append\] Target is not a list: {type(lst)};
+- L3236 *WARNING*: - L798 **WARNING**: (f"\[safe*update\] Target is not a dict: {type(dct)}")
+- L3237 *WARNING*: - L802 **WARNING**: (f"\[safe*update\] Updates is not a dict:
+- L3239 *WARNING*: - L822 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)};
+- L3241 *WARNING*: - L1162 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
+- L3243 *WARNING*: - L1425 **WARNING**: (f"State '{state*norm}' not found in county map")
+- L3244 *WARNING*: - L2289 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
+- L3245 *WARNING*: - L2295 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+- L3247 *WARNING*: - L2310 **WARNING**: ("\[inventory\] generate*project*map completed with
+- L3249 *TODO*: - L2356 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
+- L3251 *TODO*: - L2358 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+- L3252 *TODO*: - L3035 **TODO**: /FIXME/WARN
+- L3253 *TODO*: - L3038 **TODO**: /FIXME/WARN:")
+- L3329 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_strategy_concurrency)
+- L3331 *WARNING*: - L37 **WARNING**: (f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
+- L3332 *WARNING*: - L65 **WARNING**: (f"\[CONCURRENCY\] Strategy {name} error: {e}")
+- L3333 *WARNING*: - L73 **WARNING**: (f"\[CONCURRENCY\] {*safe*run*strategy.**name**} {name}
+- L3335 *WARNING*: - L102 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed:
+- L3337 *WARNING*: - L120 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
+- L3411 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_table_builder)
+- L3413 *WARNING*: - L816 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+- L3415 *WARNING*: - L828 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+- L3417 *WARNING*: - L836 **WARNING**: ", "builder", "\[TABLE*BUILDER\] all*panel*tables was not
+- L3420 *WARNING*: - L845 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Dropping invalid table
+- L3422 *WARNING*: - L862 **WARNING**: ", "builder", "\[TABLE*BUILDER\] sanitize failed",
+- L3424 *WARNING*: - L867 **WARNING**: ", "builder", "\[TABLE*BUILDER\] harmonize failed",
+- L3426 *WARNING*: - L873 **WARNING**: ", "builder", "\[TABLE*BUILDER\]
+- L3428 *WARNING*: - L925 **WARNING**: ",
+- L3429 *WARNING*: - L950 **WARNING**: ", "builder", "\[TABLE*BUILDER\] entity annotate failed",
+- L3431 *WARNING*: - L955 **WARNING**: ", "builder", "\[TABLE*BUILDER\] stringify entity*info
+- L3433 *WARNING*: - L975 **WARNING**: ", "builder", "\[TABLE*BUILDER\] pivot*to*wide failed",
+- L3435 *WARNING*: - L995 **WARNING**: ", "builder", "\[TABLE*BUILDER\] ensure division totals
+- L3437 *WARNING*: - L1288 **WARNING**: ", "builder", f"\[TABLE*BUILDER\] Column marked
+- L3439 *WARNING*: - L1361 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist table
+- L3441 *WARNING*: - L1376 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist
+- L3484 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_table_core)
+- L3486 *WARNING*: - L231 **WARNING**: (f"\[TABLE BUILDER\] Concurrent strategies execution
+- L3488 *WARNING*: - L288 **WARNING**: (f"\[TABLE BUILDER\] RawJSON pivot failed: {e}")
+- L3489 *WARNING*: - L296 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide signature mismatch
+- L3491 *WARNING*: - L298 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide failed (skipped): {e}")
+- L3492 *WARNING*: - L349 **WARNING**: (f"\[TABLE BUILDER\] finalize output failed: {e}")
+- L3493 *WARNING*: - L414 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] Concurrent strategies
+- L3495 *WARNING*: - L477 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed:
+- L3531 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_user_prompt)
+- L3533 *WARNING*: - L312 **WARNING**: ("\[UserPrompt\] Webapp mode active but no
+- L3535 *WARNING*: - L349 **WARNING**: ("\[CLI Prompt\] EOFError encountered.")
+- L3536 *WARNING*: - L370 **WARNING**: ("\[Webapp Prompt\] socketio*emit*func not set.")
+- L3537 *WARNING*: - L428 **WARNING**: ": 30,
+- L3538 *WARNING*: - L507 **WARNING**: ("\n\[Prompt\] Timed out.")
+- L3539 *WARNING*: - L558 **WARNING**: ("\n\[Prompt\] No input available (EOF). Exiting prompt.")
+- L3540 *WARNING*: - L592 **WARNING**: ("Invalid input. Please try again.")
+- L3541 *WARNING*: - L594 **WARNING**: ("\[Prompt\] Too many invalid attempts.")
+- L3542 *WARNING*: - L659 **WARNING**: ("\[Prompt Queue\] Invalid queued yes/no response; falling
+- L3544 *WARNING*: - L674 **WARNING**: ("\n\[Prompt\] Timed out.")
+- L3545 *WARNING*: - L881 **WARNING**: ("\[yellow\]\[FEEDBACK\] Skipped manual
+- L3547 *WARNING*: - L913 **WARNING**: ("\[yellow\]Button confirmation cancelled by
+- L3602 *TODO*: #### ⚠️ TODO/FIXME/WARN (web_pipeline)
+- L3604 *WARNING*: - L49 **WARNING**: ({
+- L3605 *WARNING*: - L50 **WARNING**: ",
+- L3606 *WARNING*: - L66 **WARNING**: ({
+- L3607 *WARNING*: - L67 **WARNING**: ",
+- L3608 *WARNING*: - L83 **WARNING**: ({
+- L3609 *WARNING*: - L84 **WARNING**: ",
+
+### docs/project_audit.md
+
+- L441 *TODO*: - TODO/FIXME/WARN:
+- L442 *WARNING*: - L210 **WARNING**: ").upper().split(","))
+- L443 *WARNING*: - L480 **WARNING**: , ERROR, CRITICAL, TRACE
+- L444 *WARNING*: - L519 **WARNING**: ", "ERROR", "CRITICAL", "TRACE"}
+- L445 *WARNING*: - L555 **WARNING**: " in mlow:
+- L446 *WARNING*: - L954 **WARNING**:         # For websocket handshake only: add Cache-Control
+- L447 *WARNING*: so webhint stops warning
+- L448 *WARNING*: - L1229 **WARNING**: ({"type": "sec", "message": "Favicon path escape
+- L450 *WARNING*: - L1331 **WARNING**: ({
+- L451 *WARNING*: - L1332 **WARNING**: ",
+- L452 *WARNING*: - L1641 **WARNING**: ",
+- L453 *WARNING*: - L1724 **WARNING**: (
+- L454 *WARNING*: - L1726 **WARNING**: ",
+- L455 *WARNING*: - L1736 **WARNING**: (
+- L456 *WARNING*: - L1738 **WARNING**: ",
+- L457 *WARNING*: - L1768 **WARNING**: (
+- L458 *WARNING*: - L1770 **WARNING**: ",
+- L459 *WARNING*: - L2055 **WARNING**: ({
+- L460 *WARNING*: - L2056 **WARNING**: ",
+- L461 *WARNING*: - L2120 **WARNING**: ({
+- L462 *WARNING*: - L2121 **WARNING**: ",
+- L463 *WARNING*: - L2171 **WARNING**: ({
+- L464 *WARNING*: - L2172 **WARNING**: ",
+- L465 *WARNING*: - L2194 **WARNING**: ({
+- L466 *WARNING*: - L2195 **WARNING**: ",
+- L467 *WARNING*: - L2203 **WARNING**: ({
+- L468 *WARNING*: - L2204 **WARNING**: ",
+- L469 *WARNING*: - L2211 **WARNING**: ({
+- L470 *WARNING*: - L2212 **WARNING**: ",
+- L606 *TODO*: - TODO/FIXME/WARN:
+- L607 *NOTE*: - L1831 **NOTE**: .*$",                     # Note
+- L608 *WARNING*: - L2020 **WARNING**: ",
+- L609 *WARNING*: - L2111 **WARNING**: ", "info*box", "navigation", "pagination", "tab",
+- L611 *NOTE*: - L2144 **NOTE**: ", "comment",
+- L612 *NOTE*: - L2220 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
+- L613 *NOTE*: - L2236 **NOTE**: ", "Comment", "Feedback", "Suggestion",
+- L899 *TODO*: - TODO/FIXME/WARN:
+- L900 *WARNING*: - L788 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
+- L901 *WARNING*: - L876 **WARNING**: ({
+- L902 *WARNING*: - L877 **WARNING**: ",
+- L903 *WARNING*: - L995 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
+- L905 *WARNING*: - L1234 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
+- L907 *WARNING*: - L1403 **WARNING**: (f"\[get*feedback*pattern*kb\] Skipping corrupt line:
+- L909 *WARNING*: - L1515 **WARNING**: ("\[group*dom*nodes*by*label\] No organized DOM parts.
+- L911 *WARNING*: - L1517 **WARNING**: (f"\[group*dom*nodes*by*label\] No organized DOM parts.
+- L912 *WARNING*: (Occurred {ContextCoordinator.*dom*parts*warning*count} times)")
+- L913 *WARNING*: - L1522 **WARNING**: ("\[group*dom*nodes*by*label\] No DOM nodes found.")
+- L914 *WARNING*: - L1540 **WARNING**: ("\[submit*user*feedback\] ContextOrganizer has no
+- L916 *WARNING*: - L1568 **WARNING**: (f"\[correct*and*update*contest\] Contest {contest*id}
+- L918 *WARNING*: - L1592 **WARNING**: ("\[print*contest*summary\] No organized contests to
+- L920 *WARNING*: - L1605 **WARNING**: ("\[plot*contest*distribution\] No organized contests to
+- L922 *WARNING*: - L1656 **WARNING**: ("No organized DOM parts.")
+- L923 *WARNING*: - L1659 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
+- L924 *WARNING*: - L1670 **WARNING**: ("\[get*contest*groups\] No contest groups found.")
+- L925 *WARNING*: - L1679 **WARNING**: ("\[get*panel*groups\] No panel groups found.")
+- L926 *WARNING*: - L1688 **WARNING**: ("\[get*button*groups\] No button groups found.")
+- L927 *WARNING*: - L1697 **WARNING**: ("\[get*table*groups\] No table groups found.")
+- L928 *WARNING*: - L1706 **WARNING**: ("\[get*relationships\] No organized context.")
+- L929 *WARNING*: - L1814 **WARNING**: (f"\[fuzzy*score\] One or both inputs are empty:
+- L931 *WARNING*: - L1820 **WARNING**: (f"\[fuzzy*score\] One or both inputs are too short:
+- L933 *WARNING*: - L2266 **WARNING**: (f"\[extract*field\] Unknown field*type: {field*type}")
+- L934 *WARNING*: - L2524 **WARNING**: (f"\[get*full*contest\] Contest {contest*id} missing
+- L936 *WARNING*: - L2609 **WARNING**: (f"\[list*tables\] Table '{tbl}' missing metadata or
+- L938 *WARNING*: - L2641 **WARNING**: (f"\[get*table*metadata\] Table '{table*name}' missing
+- L940 *WARNING*: - L2659 **WARNING**: (f"\[check*missing*tables\] Missing tables: {missing}")
+- L941 *WARNING*: - L2720 **WARNING**: (f"\[save*table*structure\] Failed to save structure for
+- L943 *WARNING*: - L2897 **WARNING**: (f"\[get*best*button*advanced\] Contest argument was not
+- L945 *WARNING*: - L2901 **WARNING**: (f"\[get*best*button*advanced\] Keywords argument was not
+- L947 *WARNING*: - L2905 **WARNING**: (f"\[get*best*button*advanced\] Context argument was not
+- L949 *WARNING*: - L2912 **WARNING**: ("\[get*best*button*advanced\]*semantic*model is not set
+- L951 *WARNING*: - L3057 **WARNING**: (f"\[yellow\]\[Coordinator\] Button '{cand.get('label')}'
+- L1120 *TODO*: - TODO/FIXME/WARN:
+- L1121 *WARNING*: - L282 **WARNING**: (
+- L1122 *WARNING*: - L407 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or
+- L1124 *WARNING*: - L495 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered*out)} contests
+- L1126 *WARNING*: - L497 **WARNING**: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
+- L1127 *WARNING*: - L500 **WARNING**: ("\[CONTEST\] No contests with required fields for
+- L1129 *WARNING*: - L816 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests
+- L1131 *WARNING*: - L1500 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
+- L1132 *WARNING*: - L1505 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
+- L1134 *WARNING*: - L1507 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L1136 *WARNING*: - L1509 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L1138 *WARNING*: - L1972 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
+- L1140 *WARNING*: - L2049 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
+- L1188 *WARNING*: - utils.logger\_singleton.logger.warning (line 282)
+- L1321 *TODO*: - TODO/FIXME/WARN:
+- L1322 *WARNING*: - L652 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
+- L1323 *WARNING*: - L658 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
+- L1325 *WARNING*: - L661 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
+- L1451 *TODO*: - TODO/FIXME/WARN:
+- L1452 *WARNING*: - L328 **WARNING**: ("\[DB\]\[AAD\] Falling back to password auth.")
+- L1489 *WARNING*: - utils.logger\_singleton.logger.warning (line 328)
+- L1521 *TODO*: - TODO/FIXME/WARN:
+- L1522 *WARNING*: - L83 **WARNING**: (f"\[REMOVED\] {popped}")
+- L1523 *WARNING*: - L90 **WARNING**: (f"\[REMOVED\] {index*or*value}")
+- L1524 *WARNING*: - L129 **WARNING**: (f"\[DELETED\] {files\[idx\]}")
+- L1552 *WARNING*: - utils.logger\_singleton.logger.warning (line 83)
+- L1554 *WARNING*: - utils.logger\_singleton.logger.warning (line 90)
+- L1567 *WARNING*: - utils.logger\_singleton.logger.warning (line 129)
+- L1627 *TODO*: - TODO/FIXME/WARN:
+- L1628 *WARNING*: - L134 **WARNING**: ({
+- L1629 *WARNING*: - L135 **WARNING**: ",
+- L1630 *WARNING*: - L426 **WARNING**: ({
+- L1631 *WARNING*: - L427 **WARNING**: ",
+- L1646 *WARNING*: - utils.logger\_singleton.logger.warning (line 134)
+- L1815 *TODO*: - TODO/FIXME/WARN:
+- L1816 *WARNING*: - L216 **WARNING**: (f"\[HTML Handler\] County '{county}' not found. Closest
+- L1818 *WARNING*: - L220 **WARNING**: (f"\[HTML Handler\] Detected county '{county}' is not in
+- L1820 *WARNING*: - L241 **WARNING**: (f"\[HTML Handler\] State '{user*state}' not found.
+- L1822 *WARNING*: - L285 **WARNING**: (f"\[HTML Handler\] County '{user*county}' not found.
+- L1957 *TODO*: - TODO/FIXME/WARN:
+- L1958 *WARNING*: - L376 **WARNING**: ({
+- L1959 *WARNING*: - L377 **WARNING**: ",
+- L1960 *WARNING*: - L489 **WARNING**: ({
+- L1961 *WARNING*: - L490 **WARNING**: ",
+- L2248 *TODO*: - TODO/FIXME/WARN:
+- L2249 *WARNING*: - L421 **WARNING**: ({
+- L2250 *WARNING*: - L422 **WARNING**: ",
+- L2251 *WARN*: - L425 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
+- L2253 *WARNING*: - L1787 **WARNING**: ({
+- L2254 *WARNING*: - L1788 **WARNING**: ",
+- L2255 *WARN*: - L1790 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
+- L2257 *WARNING*: - L1808 **WARNING**: ({
+- L2258 *WARNING*: - L1809 **WARNING**: ",
+- L2259 *WARN*: - L1812 **WARN**: \] pdf2image conversion failed; "
+- L2260 *WARNING*: - L2184 **WARNING**: ({
+- L2261 *WARNING*: - L2185 **WARNING**: ",
+- L2262 *WARN*: - L2187 **WARN**: \] Multi-mode text extraction failed: {e}",
+- L2263 *WARNING*: - L3283 **WARNING**: ({
+- L2264 *WARNING*: - L3284 **WARNING**: ",
+- L2265 *WARN*: - L3286 **WARN**: \] fitz text extraction failed: {e}",
+- L2266 *WARNING*: - L3315 **WARNING**: ({
+- L2267 *WARNING*: - L3316 **WARNING**: ",
+- L2268 *WARN*: - L3318 **WARN**: \] ENABLE*OCR*FORCE is set but Tesseract is unavailable;
+- L2270 *WARNING*: - L3366 **WARNING**: ({
+- L2271 *WARNING*: - L3367 **WARNING**: ",
+- L2272 *WARN*: - L3369 **WARN**: \] Low-signal text detected but OCR is unavailable or
+- L2274 *WARNING*: - L3586 **WARNING**: ({
+- L2275 *WARNING*: - L3587 **WARNING**: ",
+- L2276 *WARN*: - L3589 **WARN**: \] No contest selected. Using filename fallback.",
+- L2277 *WARNING*: - L4034 **WARNING**: ({
+- L2278 *WARNING*: - L4035 **WARNING**: ",
+- L2279 *WARN*: - L4037 **WARN**: \] Selected contest '{contest}' not found in column
+- L2281 *WARNING*: - L4136 **WARNING**: ({
+- L2282 *WARNING*: - L4137 **WARNING**: ",
+- L2283 *WARN*: - L4139 **WARN**: \] No structured rows matched the inferred column count of
+- L2285 *WARNING*: - L4178 **WARNING**: ({
+- L2286 *WARNING*: - L4179 **WARNING**: ",
+- L2287 *WARNING*: - L4367 **WARNING**: ({
+- L2288 *WARNING*: - L4368 **WARNING**: ",
+- L2336 *WARNING*: - utils.logger\_singleton.logger.warning (line 421)
+- L2610 *TODO*: - TODO/FIXME/WARN:
+- L2611 *WARNING*: - L25 **WARNING**: ("\[WARN\] context*library.json not found. Using fallback
+- L2613 *WARNING*: - L51 **WARNING**: (f"\[WARN\] Could not expand card {i+1}: {e}")
+- L2614 *WARNING*: - L64 **WARNING**: (f"\[WARN\] Vote Type toggle failed: {e}")
+- L2615 *WARNING*: - L77 **WARNING**: (f"\[WARN\] County toggle failed: {e}")
+- L2616 *WARNING*: - L164 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results
+- L2618 *WARNING*: - L165 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted
+- L2625 *WARNING*: - utils.logger\_singleton.logger.warning (line 25)
+- L2639 *WARNING*: - utils.logger\_singleton.logger.warning (line 51)
+- L2645 *WARNING*: - utils.logger\_singleton.logger.warning (line 64)
+- L2651 *WARNING*: - utils.logger\_singleton.logger.warning (line 77)
+- L2689 *TODO*: - TODO/FIXME/WARN:
+- L2690 *WARNING*: - L123 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+- L2722 *WARNING*: - utils.logger\_singleton.logger.warning (line 123)
+- L2753 *TODO*: - TODO/FIXME/WARN:
+- L2754 *WARNING*: - L51 **WARNING**: (f"\[Example Handler\] No specific parser implemented for
+- L2756 *WARNING*: - L152 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+- L2765 *WARNING*: - utils.logger\_singleton.logger.warning (line 51)
+- L2796 *WARNING*: - utils.logger\_singleton.logger.warning (line 152)
+- L2833 *TODO*: - TODO/FIXME/WARN:
+- L2834 *WARNING*: - L72 **WARNING**: ("\[WARNING\] dom*parts missing after
+- L2836 *WARNING*: - L95 **WARNING**: ("\[red\]No contest selected. Skipping.\[/red\]")
+- L2837 *WARNING*: - L139 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn1.get('label', '')}'
+- L2840 *WARNING*: - L176 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn2.get('label', '')}'
+- L2856 *WARNING*: - utils.logger\_singleton.logger.warning (line 72)
+- L2863 *WARNING*: - utils.logger\_singleton.logger.warning (line 95)
+- L2880 *WARNING*: - utils.logger\_singleton.logger.warning (line 139)
+- L2913 *TODO*: - TODO/FIXME/WARN:
+- L2914 *WARNING*: - L27 **WARNING**: ("\[NY Handler\] No county specified in html*context.")
+- L2915 *WARNING*: - L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
+- L2921 *WARNING*: - utils.logger\_singleton.logger.warning (line 27)
+- L2925 *WARNING*: - utils.logger\_singleton.logger.warning (line 43)
+- L2957 *TODO*: - TODO/FIXME/WARN:
+- L2958 *WARNING*: - L44 **WARNING**: (f"\[NAV\] Step failed: {step} — {e}")
+- L2959 *WARNING*: - L55 **WARNING**: (f"\[bold yellow\]Detected election:\[/bold yellow\]
+- L2961 *WARNING*: - L76 **WARNING**: ("\[PA\] Invalid index input for election selection.")
+- L2962 *WARNING*: - L78 **WARNING**: ("\[PA\] Elections dropdown not found.")
+- L2963 *WARNING*: - L80 **WARNING**: (f"\[PA\] Failed to expand Elections menu or load
+- L2965 *WARNING*: - L96 **WARNING**: ("\[PA\] County Breakdown link not found.")
+- L2966 *WARNING*: - L98 **WARNING**: (f"\[PA\] Failed to click County Breakdown link: {e}")
+- L2967 *WARNING*: - L113 **WARNING**: ("\[yellow\]Multiple CSV files found in input. Please
+- L2983 *WARNING*: - utils.logger\_singleton.logger.warning (line 44)
+- L2987 *WARNING*: - utils.logger\_singleton.logger.warning (line 55)
+- L3002 *WARNING*: - utils.logger\_singleton.logger.warning (line 76)
+- L3003 *WARNING*: - utils.logger\_singleton.logger.warning (line 78)
+- L3004 *WARNING*: - utils.logger\_singleton.logger.warning (line 80)
+- L3012 *WARNING*: - utils.logger\_singleton.logger.warning (line 96)
+- L3013 *WARNING*: - utils.logger\_singleton.logger.warning (line 98)
+- L3018 *WARNING*: - utils.logger\_singleton.logger.warning (line 113)
+- L3196 *TODO*: - TODO/FIXME/WARN:
+- L3197 *WARNING*: - L252 **WARNING**: (f"\[health*router\] manual*correction failed (attempt
+- L3199 *WARNING*: - L336 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L3201 *WARNING*: - L338 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L3203 *WARNING*: - L340 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L3205 *WARNING*: - L375 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
+- L3206 *WARNING*: - L380 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
+- L3208 *WARNING*: - L382 **WARNING**: ("\[PIPELINE\] scan*misaligned*ner failed or file missing.
+- L3210 *WARNING*: - L414 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
+- L3304 *TODO*: - TODO/FIXME/WARN:
+- L3305 *WARNING*: - L151 **WARNING**: (f"Skipping non-dict entry in spacy*ner*train*data.jsonl:
+- L3307 *WARNING*: - L460 **WARNING**: ("\[DB\]\[WARNING\] No user tables found in schema
+- L3309 *WARNING*: - L503 **WARNING**: ("\[CLEAN\]\[WARNING\] The following files are still too
+- L3311 *WARNING*: - L507 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+- L3333 *WARNING*: - utils.logger\_singleton.logger.warning (line 151)
+- L3482 *TODO*: - TODO/FIXME/WARN:
+- L3483 *WARNING*: - L322 **WARNING**: (f"Coordinator ML scoring failed: {e}")
+- L3484 *WARNING*: - L343 **WARNING**: (f"Coordinator field suggestion failed: {e}")
+- L3485 *WARNING*: - L355 **WARNING**: (f"Log file not found: {path}")
+- L3486 *WARNING*: - L364 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
+- L3487 *WARNING*: - L396 **WARNING**: (f"\[SKIP\] File not found: {file}")
+- L3488 *WARNING*: - L400 **WARNING**: (f"\[SKIP\] File too large: {file}")
+- L3489 *WARNING*: - L422 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
+- L3491 *WARNING*: - L434 **WARNING**: (f"\[CORRUPT\] {len(corrupt*items)} lines saved to
+- L3493 *WARNING*: - L439 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
+- L3495 *WARNING*: - L453 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L3496 *WARNING*: - L465 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt*path}")
+- L3497 *WARNING*: - L471 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
+- L3499 *WARNING*: - L476 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L3500 *WARNING*: - L485 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {quarantine*dir /
+- L3502 *WARNING*: - L489 **WARNING**: (f"\[DELETED\] {file}")
+- L3503 *WARNING*: - L492 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
+- L3504 *WARNING*: - L537 **WARNING**: (f"\[FIND-LOGS\] Skipped {d}: {e}")
+- L3505 *WARNING*: - L562 **WARNING**: (f"\[CORRUPT\] {path} line {line*num}: {e}")
+- L3506 *WARNING*: - L717 **WARNING**: (f"Invalid JSON, skipping edit: {e}")
+- L3507 *TODO*: - L750 **TODO**: Add JSON schema validation here if desired
+- L3508 *WARNING*: - L989 **WARNING**: (
+- L3509 *WARN*: - L1079 **WARN**: if schema version mismatches.
+- L3510 *WARNING*: - L1098 **WARNING**: (f"Schema version mismatch: found
+- L3513 *WARNING*: - L1141 **WARNING**: (f"\[AUTO\] Could not delete log file {log*file}: {e}")
+- L3514 *WARNING*: - L1257 **WARNING**: (f"\[SKIP\] Could not load {log*file}: {e}")
+- L3515 *WARNING*: - L1273 **WARNING**: ("No log files matched any of the specified fields. Will
+- L3517 *WARNING*: - L1356 **WARNING**: (f"Could not delete log file {log*file}: {e}")
+- L3518 *WARNING*: - L1376 **WARNING**: ("\[WARNING\] No entries were processed. Check your log
+- L3734 *TODO*: - TODO/FIXME/WARN:
+- L3735 *WARNING*: - L178 **WARNING**: (f"\[CLEAN\] File not found: {jsonl*path}")
+- L3736 *WARNING*: - L186 **WARNING**: (f"\[CLEAN\] Could not parse line: {e}")
+- L3737 *WARNING*: - L201 **WARNING**: (f"\[CLEAN\] Alignment check failed for text:
+- L3739 *WARNING*: - L274 **WARNING**: (f"Failed to load {path}: {e}")
+- L3740 *WARNING*: - L403 **WARNING**: (f"Skipping misaligned entity in: {text}")
+- L3741 *WARNING*: - L408 **WARNING**: (f"Error validating entity alignment: {e}")
+- L3742 *WARNING*: - L434 **WARNING**: (f"\[spaCy\] Could not check GPU availability: {e}")
+- L3743 *WARNING*: - L450 **WARNING**: (f"\[spaCy\] Could not load lexeme normalization table.
+- L3745 *WARNING*: - L536 **WARNING**: (f"\[NER\] Skipped {misaligned*count} misaligned examples.
+- L3747 *WARNING*: - L550 **WARNING**: ("No NER training examples found. Skipping spaCy NER
+- L3749 *WARNING*: - L619 **WARNING**: ("\[SUGGESTION\] Consider lowering min*delta or increasing
+- L3751 *WARNING*: - L621 **WARNING**: ("\[SUGGESTION\] Model improved until the last epoch.
+- L3753 *WARNING*: - L622 **WARNING**: (f"\[SUGGESTION\] Next run: patience={patience},
+- L3755 *WARNING*: - L708 **WARNING**: ("No training examples found. Aborting retraining.")
+- L3756 *WARNING*: - L727 **WARNING**: (f"\[WARN\] Could not delete old model directory
+- L3758 *WARNING*: - L739 **WARNING**: (f"\[WARN\] Failed to load existing model: {e}")
+- L3759 *WARNING*: - L742 **WARNING**: ("Falling back to base model (all-MiniLM-L6-v2).")
+- L3760 *WARNING*: - L782 **WARNING**: (f"\[WARN\] Could not update canonical model directory:
+- L3762 *WARNING*: - L810 **WARNING**: (f"MISALIGNED: {text} {annots\['entities'\]}")
+- L3763 *WARNING*: - L840 **WARNING**: ("\[DB\] Base.metadata.tables is empty. No models
+- L3801 *WARNING*: - utils.logger\_singleton.logger.warning (line 178)
+- L3803 *WARNING*: - utils.logger\_singleton.logger.warning (line 186)
+- L3810 *WARNING*: - utils.logger\_singleton.logger.warning (line 201)
+- L3877 *TODO*: - TODO/FIXME/WARN:
+- L3878 *WARNING*: - L62 **WARNING**: (f"\[CORRUPT\] Could not parse line: {e}")
+- L3879 *WARNING*: - L83 **WARNING**: (f"\n\[MISALIGNED\] Top {top*n} most frequent misaligned
+- L3881 *WARNING*: - L85 **WARNING**: (f"  {repr(text)}: {count} times")
+- L3882 *WARNING*: - L86 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+- L3884 *WARNING*: - L87 **WARNING**: ("Run the manual*correction to review and clean these
+- L3886 *WARNING*: - L88 **WARNING**: ("If you see spaCy entity alignment warnings, consider
+- L3888 *WARNING*: - L98 **WARNING**: (f"\[WARN\] Could not remove old misaligned file: {e}")
+- L3889 *WARNING*: - L112 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L3891 *WARNING*: - L119 **WARNING**: (f"\[SELF-HEAL\] manual*correction exited with code
+- L3893 *WARNING*: - L120 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L3895 *WARNING*: - L122 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L3913 *WARNING*: - utils.logger\_singleton.logger.warning (line 62)
+- L3920 *WARNING*: - utils.logger\_singleton.logger.warning (line 83)
+- L3922 *WARNING*: - utils.logger\_singleton.logger.warning (line 85)
+- L3923 *WARNING*: - utils.logger\_singleton.logger.warning (line 86)
+- L3924 *WARNING*: - utils.logger\_singleton.logger.warning (line 87)
+- L3925 *WARNING*: - utils.logger\_singleton.logger.warning (line 88)
+- L3929 *WARNING*: - utils.logger\_singleton.logger.warning (line 98)
+- L3932 *WARNING*: - utils.logger\_singleton.logger.warning (line 112)
+- L3934 *WARNING*: - utils.logger\_singleton.logger.warning (line 119)
+- L3935 *WARNING*: - utils.logger\_singleton.logger.warning (line 120)
+- L3937 *WARNING*: - utils.logger\_singleton.logger.warning (line 122)
+- L4087 *TODO*: - TODO/FIXME/WARN:
+- L4088 *WARNING*: - L56 **WARNING**: ("Deleting .processed*urls cache for fresh start...")
+- L4089 *WARNING*: - L393 **WARNING**: ({
+- L4090 *WARNING*: - L394 **WARNING**: ",
+- L4091 *WARNING*: - L408 **WARNING**: ({
+- L4092 *WARNING*: - L409 **WARNING**: ",
+- L4093 *WARNING*: - L469 **WARNING**: ({
+- L4094 *WARNING*: - L470 **WARNING**: ",
+- L4095 *WARNING*: - L543 **WARNING**: (payload*2)
+- L4096 *WARNING*: - L870 **WARNING**: ({
+- L4097 *WARNING*: - L871 **WARNING**: ",
+- L4098 *WARNING*: - L917 **WARNING**: ({
+- L4099 *WARNING*: - L918 **WARNING**: ",
+- L4100 *WARNING*: - L971 **WARNING**: ({
+- L4101 *WARNING*: - L972 **WARNING**: ",
+- L4102 *WARNING*: - L1076 **WARNING**: ",
+- L4103 *WARNING*: - L1081 **WARNING**: (payload)
+- L4104 *WARN*: - L1106 **WARN**: if nothing found
+- L4105 *WARNING*: - L1166 **WARNING**: ",
+- L4106 *WARNING*: - L1171 **WARNING**: (payload)
+- L4107 *WARNING*: - L1249 **WARNING**: ({
+- L4108 *WARNING*: - L1250 **WARNING**: ",
+- L4109 *WARNING*: - L1267 **WARNING**: ",
+- L4110 *WARNING*: - L1272 **WARNING**: (payload)
+- L4111 *WARNING*: - L1283 **WARNING**: ",
+- L4112 *WARNING*: - L1288 **WARNING**: (payload)
+- L4113 *WARN*: - L1290 **WARN**: \] No output file path returned from parser and no output
+- L4115 *WARNING*: - L1292 **WARNING**: ",
+- L4116 *WARNING*: - L1297 **WARNING**: (payload)
+- L4117 *WARNING*: - L1302 **WARNING**: ",
+- L4118 *WARNING*: - L1307 **WARNING**: (payload)
+- L4119 *WARNING*: - L1425 **WARNING**: ({
+- L4120 *WARNING*: - L1426 **WARNING**: ",
+- L4121 *WARNING*: - L1486 **WARNING**: ({
+- L4122 *WARNING*: - L1487 **WARNING**: ",
+- L4125 *WARNING*: - utils.logger\_singleton.logger.warning (line 56)
+- L4518 *TODO*: - TODO/FIXME/WARN:
+- L4519 *WARNING*: - L49 **WARNING**: ("\[Router\] handlers/states directory not found.")
+- L4520 *WARNING*: - L66 **WARNING**: (f"\[Router\] counties directory not found for state:
+- L4522 *WARNING*: - L137 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] No handler states
+- L4524 *WARNING*: - L154 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L4525 *WARNING*: - L157 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L4526 *WARNING*: - L160 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] State '{state}'
+- L4528 *WARNING*: - L179 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L4529 *WARNING*: - L182 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] County '{county}'
+- L4531 *WARNING*: - L189 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Too many failed
+- L4533 *WARNING*: - L205 **WARNING**: (f"\[Router\] Requested state '{state*name}' not found on
+- L4535 *WARNING*: - L512 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for
+- L4537 *WARNING*: - L523 **WARNING**: (f"Failed to load context from file: {e}")
+- L4538 *WARNING*: - L533 **WARNING**: ("No suitable handler found.")
+- L4539 *WARNING*: - L540 **WARNING**: ("No handler selected. Exiting.")
+- L4540 *WARNING*: - L547 **WARNING**: ("Still could not import a suitable handler.")
+- L4542 *WARNING*: - utils.logger\_singleton.logger.warning (line 49)
+- L4546 *WARNING*: - utils.logger\_singleton.logger.warning (line 66)
+- L4568 *WARNING*: - utils.logger\_singleton.logger.warning (line 137)
+- L4571 *WARNING*: - utils.logger\_singleton.logger.warning (line 154)
+- L4572 *WARNING*: - utils.logger\_singleton.logger.warning (line 157)
+- L4573 *WARNING*: - utils.logger\_singleton.logger.warning (line 160)
+- L4576 *WARNING*: - utils.logger\_singleton.logger.warning (line 179)
+- L4577 *WARNING*: - utils.logger\_singleton.logger.warning (line 182)
+- L4579 *WARNING*: - utils.logger\_singleton.logger.warning (line 189)
+- L4582 *WARNING*: - utils.logger\_singleton.logger.warning (line 205)
+- L4705 *TODO*: - TODO/FIXME/WARN:
+- L4706 *WARNING*: - L89 **WARNING**: (f"\[browser*utils\] Failed to safely parse context*library
+- L4708 *WARNING*: - L91 **WARNING**: (f"\[browser*utils\] Skipping unsafe context*library value
+- L4710 *WARNING*: - L295 **WARNING**: (f"\[safe*attributes\] Playwright JS extraction failed:
+- L4712 *WARNING*: - L309 **WARNING**: (f"\[safe*attributes\] Playwright fallback extraction
+- L4714 *WARNING*: - L395 **WARNING**: (f"\[safe*count\] Object is not countable: {type(obj)}")
+- L4715 *WARNING*: - L441 **WARNING**: (f"\[safe*launch\] browser*type is not a SyncBrowserType:
+- L4717 *WARNING*: - L461 **WARNING**: (f"\[async*safe*launch\] browser*type is not an
+- L4719 *WARNING*: - L540 **WARNING**: ({
+- L4720 *WARNING*: - L541 **WARNING**: ",
+- L4721 *WARNING*: - L569 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L4723 *WARNING*: - L578 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual
+- L4725 *WARNING*: - L602 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L4727 *WARNING*: - L611 **WARNING**: ({
+- L4728 *WARNING*: - L612 **WARNING**: ",
+- L4729 *WARNING*: - L623 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual
+- L4731 *WARNING*: - L712 **WARNING**: ("\[SCROLL\] User aborted scrolling.")
+- L4732 *WARNING*: - L733 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may
+- L4741 *WARNING*: - logger\_singleton.logger.warning (line 89)
+- L4742 *WARNING*: - logger\_singleton.logger.warning (line 91)
+- L4780 *WARNING*: - logger\_singleton.logger.warning (line 295)
+- L4782 *WARNING*: - logger\_singleton.logger.warning (line 309)
+- L4918 *TODO*: - TODO/FIXME/WARN:
+- L4919 *WARNING*: - L118 **WARNING**: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
+- L4920 *WARNING*: - L154 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
+- L4938 *WARNING*: - logger\_singleton.logger.warning (line 118)
+- L4949 *WARNING*: - logger\_singleton.logger.warning (line 154)
+- L5078 *TODO*: - TODO/FIXME/WARN:
+- L5079 *WARNING*: - L635 **WARNING**: ":
+- L5080 *WARNING*: - L636 **WARNING**: (entry)
+- L5081 *WARNING*: - L1029 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
+- L5083 *WARNING*: - L1565 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
+- L5085 *WARNING*: - L1570 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
+- L5087 *WARNING*: - L1642 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
+- L5627 *TODO*: - TODO/FIXME/WARN:
+- L5628 *WARNING*: - L153 **WARNING**: (f"\[DOM*EXTRACTOR\] failure: {e}")
+- L5661 *WARNING*: - logger\_singleton.logger.warning (line 153)
+- L5864 *TODO*: - TODO/FIXME/WARN:
+- L5865 *WARNING*: - L124 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
+- L5867 *WARNING*: - L129 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in
+- L5869 *WARNING*: - L171 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step
+- L5871 *WARNING*: - L187 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table
+- L5873 *WARNING*: - L217 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning
+- L5875 *WARNING*: - L229 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed",
+- L5877 *WARNING*: - L272 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed",
+- L5879 *WARNING*: - L776 **WARNING**: ", "extractor", "No learned DOM patterns found.")
+- L5880 *WARNING*: - L800 **WARNING**: ", "extractor", "Entry deleted.")
+- L5881 *WARNING*: - L805 **WARNING**: ", "extractor", "Unknown action.")
+- L5882 *WARNING*: - L807 **WARNING**: ", "extractor", "Invalid entry number.")
+- L6022 *TODO*: - TODO/FIXME/WARN:
+- L6023 *WARNING*: - L178 **WARNING**: (msg)
+- L6065 *WARNING*: - logger\_singleton.logger.warning (line 178)
+- L6132 *TODO*: - TODO/FIXME/WARN:
+- L6133 *WARNING*: - L68 **WARNING**: (f"\[STRATEGY\] {name} failed: {e}")
+- L6145 *WARNING*: - logger\_singleton.logger.warning (line 68)
+- L6261 *TODO*: - TODO/FIXME/WARN:
+- L6262 *WARNING*: - L374 **WARNING**: ({
+- L6263 *WARNING*: - L375 **WARNING**: ",
+- L6264 *WARN*: - L377 **WARN**: \] No supported file formats found on the page.",
+- L6265 *WARNING*: - L402 **WARNING**: ({
+- L6266 *WARNING*: - L403 **WARNING**: ",
+- L6267 *WARN*: - L405 **WARN**: \] Unsupported format requested: {format*str}",
+- L6268 *WARNING*: - L409 **WARNING**: ({
+- L6269 *WARNING*: - L410 **WARNING**: ",
+- L6270 *WARNING*: - L654 **WARNING**: ({
+- L6271 *WARNING*: - L655 **WARNING**: ",
+- L6272 *WARNING*: - L874 **WARNING**: ({
+- L6273 *WARNING*: - L875 **WARNING**: ",
+- L6274 *WARNING*: - L950 **WARNING**: ({
+- L6275 *WARNING*: - L951 **WARNING**: ",
+- L6613 *TODO*: - TODO/FIXME/WARN:
+- L6614 *WARNING*: - L163 **WARNING**: ",
+- L6615 *WARNING*: - L167 **WARNING**: (payload)
+- L6616 *WARNING*: - L189 **WARNING**: ",
+- L6617 *WARNING*: - L193 **WARNING**: (payload)
+- L6618 *WARNING*: - L288 **WARNING**: ",
+- L6619 *WARNING*: - L292 **WARNING**: (payload)
+- L6620 *WARNING*: - L315 **WARNING**: ",
+- L6621 *WARNING*: - L319 **WARNING**: (payload)
+- L6622 *WARNING*: - L353 **WARNING**: ",
+- L6623 *WARNING*: - L357 **WARNING**: (payload)
+- L6624 *WARNING*: - L380 **WARNING**: ",
+- L6625 *WARNING*: - L384 **WARNING**: (payload)
+- L6626 *WARNING*: - L579 **WARNING**: ",
+- L6627 *WARNING*: - L583 **WARNING**: (payload)
+- L6628 *WARNING*: - L784 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L6630 *WARNING*: - L807 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L6632 *WARNING*: - L1034 **WARNING**: ",
+- L6633 *WARNING*: - L1038 **WARNING**: (payload)
+- L6634 *WARNING*: - L1045 **WARNING**: ",
+- L6635 *WARNING*: - L1049 **WARNING**: (payload)
+- L6636 *WARNING*: - L1376 **WARNING**: ",
+- L6637 *WARNING*: - L1380 **WARNING**: (payload)
+- L6638 *WARNING*: - L1438 **WARNING**: ",
+- L6639 *WARNING*: - L1442 **WARNING**: (payload)
+- L6640 *WARNING*: - L1691 **WARNING**: ({"level": "WARNING", "type": "dom*segments", "message":
+- L6641 *WARN*: msg*warn})
+- L6642 *WARNING*: - L1747 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message":
+- L6644 *WARNING*: - L1754 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message":
+- L6646 *WARNING*: - L1766 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message":
+- L6648 *WARNING*: - L1789 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
+- L6649 *WARNING*: - L1824 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
+- L6650 *WARNING*: - L2003 **WARNING**: ({"level": "WARNING", "type": "segment*review",
+- L6652 *WARNING*: - L2012 **WARNING**: ({
+- L6653 *WARNING*: - L2013 **WARNING**: ",
+- L6654 *WARNING*: - L2129 **WARNING**: ",
+- L6655 *WARNING*: - L2133 **WARNING**: (payload)
+- L6656 *WARNING*: - L2145 **WARNING**: ",
+- L6657 *WARNING*: - L2149 **WARNING**: (payload)
+- L6658 *WARNING*: - L2158 **WARNING**: ",
+- L6659 *WARNING*: - L2162 **WARNING**: (payload)
+- L6660 *WARNING*: - L2177 **WARNING**: ",
+- L6661 *WARNING*: - L2181 **WARNING**: (payload)
+- L6662 *WARNING*: - L2193 **WARNING**: ",
+- L6663 *WARNING*: - L2197 **WARNING**: (payload)
+- L6664 *WARNING*: - L2206 **WARNING**: ",
+- L6665 *WARNING*: - L2210 **WARNING**: (payload)
+- L6666 *WARNING*: - L2219 **WARNING**: ",
+- L6667 *WARNING*: - L2223 **WARNING**: (payload)
+- L6668 *WARNING*: - L2233 **WARNING**: ",
+- L6669 *WARNING*: - L2237 **WARNING**: (payload)
+- L6670 *WARNING*: - L2248 **WARNING**: ",
+- L6680 *WARNING*: - logger\_singleton.logger.warning (line 167)
+- L6685 *WARNING*: - logger\_singleton.logger.warning (line 193)
+- L6701 *WARNING*: - logger\_singleton.logger.warning (line 292)
+- L6707 *WARNING*: - logger\_singleton.logger.warning (line 319)
+- L6718 *WARNING*: - logger\_singleton.logger.warning (line 357)
+- L7188 *TODO*: - TODO/FIXME/WARN:
+- L7189 *WARNING*: - L389 **WARNING**: (f"Failed loading local override for SentenceTransformer:
+- L7191 *WARNING*: - L409 **WARNING**: ("TRANSFORMERS*OFFLINE/HUGGINGFACE*HUB*OFFLINE set;
+- L7193 *WARNING*: - L426 **WARNING**: for noisy environments
+- L7194 *WARNING*: - L429 **WARNING**: (f"Failed to load base SentenceTransformer (network/DNS).
+- L7435 *TODO*: - TODO/FIXME/WARN:
+- L7436 *WARNING*: - L105 **WARNING**: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using
+- L7438 *WARNING*: - L108 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified.
+- L7440 *WARNING*: - L531 **WARNING**: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
+- L7441 *WARNING*: - L607 **WARNING**: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
+- L7466 *WARNING*: - logger\_singleton.logger.warning (line 105)
+- L7467 *WARNING*: - logger\_singleton.logger.warning (line 108)
+- L7534 *TODO*: - TODO/FIXME/WARN:
+- L7535 *WARNING*: - L26 **WARNING**: (f"\[PATTERN\] load fail {e}")
+- L7536 *WARNING*: - L95 **WARNING**: (f"\[PATTERN\] pattern error {pat.get('name')}: {e}")
+- L7539 *WARNING*: - logger\_singleton.logger.warning (line 26)
+- L7553 *WARNING*: - logger\_singleton.logger.warning (line 95)
+- L7821 *TODO*: - TODO/FIXME/WARN:
+- L7822 *WARNING*: - L1353 **WARNING**: ("\[PIVOT\] No candidates detected – verify headers and
+- L8158 *TODO*: - TODO/FIXME/WARN:
+- L8159 *WARNING*: - L159 **WARNING**:         elif record.levelno &gt;= logging.WARNING:
+- L8160 *WARNING*: - L160 **WARNING**: (msg)
+- L8161 *WARNING*: - L236 **WARNING**: ": logging.WARNING,
+- L8162 *WARNING*: - L307 **WARNING**: ": "yellow",
+- L8163 *WARNING*: - L369 **WARNING**: (self, msg, context=None, exc*info=None):
+- L8164 *WARNING*: - L371 **WARNING**: ", msg, context, color="yellow")
+- L8165 *WARNING*: - L385 **WARNING**: ": "yellow",
+- L8166 *WARNING*: - L598 **WARNING**: (f"Log directory does not exist: {log*dir}")
+- L8167 *WARNING*: - L615 **WARNING**: (f"Corrupt line in {path}: {e}")
+- L8404 *TODO*: - TODO/FIXME/WARN:
+- L8405 *WARNING*: - L237 **WARNING**: (f"\[safe*query\] session.query({model}) failed: {e}")
+- L8406 *WARNING*: - L260 **WARNING**: (f"\[safe*filter*by\] No mapper found for model {model}")
+- L8407 *WARNING*: - L266 **WARNING**: (f"\[safe*filter*by\] Could not inspect model {model}:
+- L8409 *WARNING*: - L280 **WARNING**: (f"\[safe*filter*by\] filter*by failed: {e}")
+- L8410 *WARNING*: - L293 **WARNING**: (f"\[safe*first\] query.first() failed: {e}")
+- L8411 *WARNING*: - L363 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
+- L8413 *WARNING*: - L497 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
+- L8414 *WARNING*: - L711 **WARNING**: (f"\[safe*append\] Target is not a list: {type(lst)};
+- L8416 *WARNING*: - L733 **WARNING**: (f"\[safe*update\] Target is not a dict: {type(dct)}")
+- L8417 *WARNING*: - L737 **WARNING**: (f"\[safe*update\] Updates is not a dict:
+- L8419 *WARNING*: - L757 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)};
+- L8421 *WARNING*: - L1097 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
+- L8423 *WARNING*: - L1360 **WARNING**: (f"State '{state*norm}' not found in county map")
+- L8424 *WARNING*: - L2224 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
+- L8425 *WARNING*: - L2230 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+- L8427 *WARNING*: - L2245 **WARNING**: ("\[inventory\] generate*project*map completed with
+- L8429 *TODO*: - L2291 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
+- L8431 *TODO*: - L2293 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+- L8432 *TODO*: - L2965 **TODO**: /FIXME/WARN
+- L8433 *TODO*: - L2968 **TODO**: /FIXME/WARN:")
+- L8434 *TODO*: - L3038 **TODO**: /FIXME/WARN lines from webapp/ into a compact index.
+- L8435 *FIXME*: - L3048 **FIXME**: ', 'BUG'\]
+- L8436 *TODO*: - L3049 **TODO**: ', 'HACK', 'XXX'\]
+- L8437 *WARN*: - L3050 **WARN**: ', 'WARNING', 'NOTE'\]
+- L8438 *TODO*: - L3089 **TODO**: /FIXME Index"')
+- L8439 *TODO*: - L3092 **TODO**: /FIXME annotations under ⁣`webapp/⁣`.")
+- L8440 *TODO*: - L3134 **TODO**: {priority}-{abs(hash(path))}"
+- L8441 *WARNING*: - L3173 **WARNING**: (f"\[noise\] No suggestions file found at {path}")
+- L8442 *TODO*: - L3544 **TODO**: /FIXME/WARN ({mod*name})")
+- L8461 *WARNING*: - utils.logger\_singleton.logger.warning (line 237)
+- L8462 *WARNING*: - utils.logger\_singleton.logger.warning (line 260)
+- L8464 *WARNING*: - utils.logger\_singleton.logger.warning (line 266)
+- L8466 *WARNING*: - utils.logger\_singleton.logger.warning (line 280)
+- L8468 *WARNING*: - utils.logger\_singleton.logger.warning (line 293)
+- L8473 *WARNING*: - utils.logger\_singleton.logger.warning (line 363)
+- L8489 *WARNING*: - utils.logger\_singleton.logger.warning (line 497)
+- L8704 *TODO*: - TODO/FIXME/WARN:
+- L8705 *WARNING*: - L37 **WARNING**: (f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
+- L8706 *WARNING*: - L65 **WARNING**: (f"\[CONCURRENCY\] Strategy {name} error: {e}")
+- L8707 *WARNING*: - L73 **WARNING**: (f"\[CONCURRENCY\] {*safe*run*strategy.**name**} {name}
+- L8709 *WARNING*: - L102 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed:
+- L8711 *WARNING*: - L120 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
+- L8714 *WARNING*: - logger\_singleton.logger.warning (line 37)
+- L8721 *WARNING*: - logger\_singleton.logger.warning (line 65)
+- L8722 *WARNING*: - logger\_singleton.logger.warning (line 73)
+- L8727 *WARNING*: - logger\_singleton.logger.warning (line 102)
+- L8731 *WARNING*: - logger\_singleton.logger.warning (line 120)
+- L8855 *TODO*: - TODO/FIXME/WARN:
+- L8856 *WARNING*: - L816 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+- L8858 *WARNING*: - L828 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+- L8860 *WARNING*: - L836 **WARNING**: ", "builder", "\[TABLE*BUILDER\] all*panel*tables was not
+- L8863 *WARNING*: - L845 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Dropping invalid table
+- L8865 *WARNING*: - L862 **WARNING**: ", "builder", "\[TABLE*BUILDER\] sanitize failed",
+- L8867 *WARNING*: - L867 **WARNING**: ", "builder", "\[TABLE*BUILDER\] harmonize failed",
+- L8869 *WARNING*: - L873 **WARNING**: ", "builder", "\[TABLE*BUILDER\]
+- L8871 *WARNING*: - L925 **WARNING**: ",
+- L8872 *WARNING*: - L950 **WARNING**: ", "builder", "\[TABLE*BUILDER\] entity annotate failed",
+- L8874 *WARNING*: - L955 **WARNING**: ", "builder", "\[TABLE*BUILDER\] stringify entity*info
+- L8876 *WARNING*: - L975 **WARNING**: ", "builder", "\[TABLE*BUILDER\] pivot*to*wide failed",
+- L8878 *WARNING*: - L995 **WARNING**: ", "builder", "\[TABLE*BUILDER\] ensure division totals
+- L8880 *WARNING*: - L1288 **WARNING**: ", "builder", f"\[TABLE*BUILDER\] Column marked
+- L8882 *WARNING*: - L1361 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist table
+- L8884 *WARNING*: - L1376 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist
+- L9039 *TODO*: - TODO/FIXME/WARN:
+- L9040 *WARNING*: - L231 **WARNING**: (f"\[TABLE BUILDER\] Concurrent strategies execution
+- L9042 *WARNING*: - L288 **WARNING**: (f"\[TABLE BUILDER\] RawJSON pivot failed: {e}")
+- L9043 *WARNING*: - L296 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide signature mismatch
+- L9045 *WARNING*: - L298 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide failed (skipped): {e}")
+- L9046 *WARNING*: - L349 **WARNING**: (f"\[TABLE BUILDER\] finalize output failed: {e}")
+- L9047 *WARNING*: - L414 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] Concurrent strategies
+- L9049 *WARNING*: - L477 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed:
+- L9072 *WARNING*: - logger\_singleton.logger.warning (line 231)
+- L9089 *WARNING*: - logger\_singleton.logger.warning (line 288)
+- L9092 *WARNING*: - logger\_singleton.logger.warning (line 296)
+- L9093 *WARNING*: - logger\_singleton.logger.warning (line 298)
+- L9156 *TODO*: - TODO/FIXME/WARN:
+- L9157 *WARNING*: - L312 **WARNING**: ("\[UserPrompt\] Webapp mode active but no
+- L9159 *WARNING*: - L349 **WARNING**: ("\[CLI Prompt\] EOFError encountered.")
+- L9160 *WARNING*: - L370 **WARNING**: ("\[Webapp Prompt\] socketio*emit*func not set.")
+- L9161 *WARNING*: - L428 **WARNING**: ": 30,
+- L9162 *WARNING*: - L507 **WARNING**: ("\n\[Prompt\] Timed out.")
+- L9163 *WARNING*: - L558 **WARNING**: ("\n\[Prompt\] No input available (EOF). Exiting prompt.")
+- L9164 *WARNING*: - L592 **WARNING**: ("Invalid input. Please try again.")
+- L9165 *WARNING*: - L594 **WARNING**: ("\[Prompt\] Too many invalid attempts.")
+- L9166 *WARNING*: - L659 **WARNING**: ("\[Prompt Queue\] Invalid queued yes/no response; falling
+- L9168 *WARNING*: - L674 **WARNING**: ("\n\[Prompt\] Timed out.")
+- L9169 *WARNING*: - L881 **WARNING**: ("\[yellow\]\[FEEDBACK\] Skipped manual
+- L9171 *WARNING*: - L913 **WARNING**: ("\[yellow\]Button confirmation cancelled by
+- L9203 *WARNING*: - logger.warning (line 312)
+- L9207 *WARNING*: - logger.warning (line 349)
+- L9210 *WARNING*: - logger.warning (line 370)
+- L9338 *TODO*: - TODO/FIXME/WARN:
+- L9339 *WARNING*: - L49 **WARNING**: ({
+- L9340 *WARNING*: - L50 **WARNING**: ",
+- L9341 *WARNING*: - L66 **WARNING**: ({
+- L9342 *WARNING*: - L67 **WARNING**: ",
+- L9343 *WARNING*: - L83 **WARNING**: ({
+- L9344 *WARNING*: - L84 **WARNING**: ",
+- L9350 *WARNING*: - utils.logger\_singleton.logger.warning (line 49)
+- L9353 *WARNING*: - utils.logger\_singleton.logger.warning (line 66)
+- L9354 *WARNING*: - utils.logger\_singleton.logger.warning (line 83)
+- L9430 *TODO*: - TODO/FIXME/WARN:
+- L9431 *WARNING*: - L17 **WARNING**: escalates to
+- L9432 *WARNING*: - L21 **WARNING**: category so it never escalates.
+- L9433 *WARNING*: - L23 **WARNING**: was ignored.
+- L9968 *TODO*: - TODO/FIXME/WARN:
+- L9969 *WARNING*: - L17 **WARNING**:     # Build a table that lacks candidate/ballot/total
+- L9970 *WARNING*: columns, forcing a 'normalized schema weak' warning
+- L9971 *WARNING*: - L39 **WARNING**: " and msg.get("status")=="weak"
+- L9972 *WARNING*: - L44 **WARNING**: " and inner.get("status")=="weak"
+- L9973 *WARNING*: - L49 **WARNING**: in captured logs; got: {captured}"
+- L10131 *TODO*: - TODO/FIXME/WARN:
+- L10132 *WARNING*: - L17 **WARNING**: ,ERROR")
+
+### docs/roadmap.md
+
+- L95 *WARNING*: - Monitor upstream pytest / SeleniumBase releases so the temporary unraisable warning suppression can be removed once socket cleanup is fixed.
+- L117 *TODO*: ## 🧭 Working TODO List
+
+### docs/todos.md
+
+- L3 *TODO*: title: "TODO/FIXME Index"
+- L6 *TODO*: Index scope: TODO/FIXME/HACK/XXX/WARNING/NOTE annotations under `C:\Users\olivi\html_Parser_prototype\webapp, C:\Users\olivi\html_Parser_prototype\scripts, C:\U...
+- L15 *WARNING*: - L290 *WARNING*: - Keep the shim in place until upstream libraries drop the deprecated import. When versions are bumped, remove the alias and rerun the table-b...
+- L19 *NOTE*: - L22 *NOTE*: // Note: Mermaid code blocks are converted to divs by mermaid-init.js, so we don't need to filter them
+- L23 *WARN*: - L85 *WARN*: console.warn('Mermaid library failed to load after maximum retries');
+- L27 *WARNING*: - L172 *WARNING*: 3. When extraction yields only boilerplate (for example “November 2016”), log a high-severity warning and abort instead of generating an empty...
+- L31 *TODO*: - L190 *TODO*: #### ⚠️ TODO/FIXME/WARN (Context_Integration_Context_Library_constants)
+- L32 *NOTE*: - L192 *NOTE*: - L1831 **NOTE**: .*$",                     # Note
+- L33 *WARNING*: - L193 *WARNING*: - L2020 **WARNING**: ",
+- L34 *WARNING*: - L194 *WARNING*: - L2111 **WARNING**: ", "info*box", "navigation", "pagination", "tab",
+- L35 *NOTE*: - L196 *NOTE*: - L2144 **NOTE**: ", "comment",
+- L36 *NOTE*: - L197 *NOTE*: - L2220 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
+- L37 *NOTE*: - L198 *NOTE*: - L2236 **NOTE**: ", "Comment", "Feedback", "Suggestion",
+- L38 *TODO*: - L280 *TODO*: #### ⚠️ TODO/FIXME/WARN (Context_Integration_context_coordinator)
+- L39 *WARNING*: - L282 *WARNING*: - L788 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
+- L40 *WARNING*: - L283 *WARNING*: - L876 **WARNING**: ({
+- L41 *WARNING*: - L284 *WARNING*: - L877 **WARNING**: ",
+- L42 *WARNING*: - L285 *WARNING*: - L995 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
+- L43 *WARNING*: - L287 *WARNING*: - L1234 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
+- L44 *WARNING*: - L289 *WARNING*: - L1403 **WARNING**: (f"\[get*feedback*pattern*kb\] Skipping corrupt line:
+- L45 *WARNING*: - L291 *WARNING*: - L1515 **WARNING**: ("\[group*dom*nodes*by*label\] No organized DOM parts.
+- L46 *WARNING*: - L293 *WARNING*: - L1517 **WARNING**: (f"\[group*dom*nodes*by*label\] No organized DOM parts.
+- L47 *WARNING*: - L294 *WARNING*: (Occurred {ContextCoordinator.*dom*parts*warning*count} times)")
+- L48 *WARNING*: - L295 *WARNING*: - L1522 **WARNING**: ("\[group*dom*nodes*by*label\] No DOM nodes found.")
+- L49 *WARNING*: - L296 *WARNING*: - L1540 **WARNING**: ("\[submit*user*feedback\] ContextOrganizer has no
+- L50 *WARNING*: - L298 *WARNING*: - L1568 **WARNING**: (f"\[correct*and*update*contest\] Contest {contest*id}
+- L51 *WARNING*: - L300 *WARNING*: - L1592 **WARNING**: ("\[print*contest*summary\] No organized contests to
+- L52 *WARNING*: - L302 *WARNING*: - L1605 **WARNING**: ("\[plot*contest*distribution\] No organized contests to
+- L53 *WARNING*: - L304 *WARNING*: - L1656 **WARNING**: ("No organized DOM parts.")
+- L54 *WARNING*: - L305 *WARNING*: - L1659 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
+- L55 *WARNING*: - L306 *WARNING*: - L1670 **WARNING**: ("\[get*contest*groups\] No contest groups found.")
+- L56 *WARNING*: - L307 *WARNING*: - L1679 **WARNING**: ("\[get*panel*groups\] No panel groups found.")
+- L57 *WARNING*: - L308 *WARNING*: - L1688 **WARNING**: ("\[get*button*groups\] No button groups found.")
+- L58 *WARNING*: - L309 *WARNING*: - L1697 **WARNING**: ("\[get*table*groups\] No table groups found.")
+- L59 *WARNING*: - L310 *WARNING*: - L1706 **WARNING**: ("\[get*relationships\] No organized context.")
+- L60 *TODO*: - L349 *TODO*: #### ⚠️ TODO/FIXME/WARN (Context_Integration_context_organizer)
+- L61 *WARNING*: - L351 *WARNING*: - L282 **WARNING**: (
+- L62 *WARNING*: - L352 *WARNING*: - L407 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or
+- L63 *WARNING*: - L354 *WARNING*: - L495 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered*out)} contests
+- L64 *WARNING*: - L356 *WARNING*: - L497 **WARNING**: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
+- L65 *WARNING*: - L357 *WARNING*: - L500 **WARNING**: ("\[CONTEST\] No contests with required fields for
+- L66 *WARNING*: - L359 *WARNING*: - L816 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests
+- L67 *WARNING*: - L361 *WARNING*: - L1500 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
+- L68 *WARNING*: - L362 *WARNING*: - L1505 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
+- L69 *WARNING*: - L364 *WARNING*: - L1507 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L70 *WARNING*: - L366 *WARNING*: - L1509 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L71 *WARNING*: - L368 *WARNING*: - L1972 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
+- L72 *WARNING*: - L370 *WARNING*: - L2049 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
+- L73 *TODO*: - L446 *TODO*: #### ⚠️ TODO/FIXME/WARN (Context_Integration_librarian)
+- L74 *WARNING*: - L448 *WARNING*: - L652 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
+- L75 *WARNING*: - L449 *WARNING*: - L658 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
+- L76 *WARNING*: - L451 *WARNING*: - L661 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
+- L77 *TODO*: - L476 *TODO*: #### ⚠️ TODO/FIXME/WARN (config)
+- L78 *WARNING*: - L478 *WARNING*: - L328 **WARNING**: ("\[DB\]\[AAD\] Falling back to password auth.")
+- L79 *TODO*: - L507 *TODO*: #### ⚠️ TODO/FIXME/WARN (data_manager)
+- L80 *WARNING*: - L509 *WARNING*: - L83 **WARNING**: (f"\[REMOVED\] {popped}")
+- L81 *WARNING*: - L510 *WARNING*: - L90 **WARNING**: (f"\[REMOVED\] {index*or*value}")
+- L82 *WARNING*: - L511 *WARNING*: - L129 **WARNING**: (f"\[DELETED\] {files\[idx\]}")
+- L83 *TODO*: - L543 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_batch_handler)
+- L84 *WARNING*: - L545 *WARNING*: - L134 **WARNING**: ({
+- L85 *WARNING*: - L546 *WARNING*: - L135 **WARNING**: ",
+- L86 *WARNING*: - L547 *WARNING*: - L426 **WARNING**: ({
+- L87 *WARNING*: - L548 *WARNING*: - L427 **WARNING**: ",
+- L88 *TODO*: - L611 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_formats_html_handler)
+- L89 *WARNING*: - L613 *WARNING*: - L216 **WARNING**: (f"\[HTML Handler\] County '{county}' not found. Closest
+- L90 *WARNING*: - L615 *WARNING*: - L220 **WARNING**: (f"\[HTML Handler\] Detected county '{county}' is not in
+- L91 *WARNING*: - L617 *WARNING*: - L241 **WARNING**: (f"\[HTML Handler\] State '{user*state}' not found.
+- L92 *WARNING*: - L619 *WARNING*: - L285 **WARNING**: (f"\[HTML Handler\] County '{user*county}' not found.
+- L93 *TODO*: - L664 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_formats_json_handler)
+- L94 *WARNING*: - L666 *WARNING*: - L376 **WARNING**: ({
+- L95 *WARNING*: - L667 *WARNING*: - L377 **WARNING**: ",
+- L96 *WARNING*: - L668 *WARNING*: - L489 **WARNING**: ({
+- L97 *WARNING*: - L669 *WARNING*: - L490 **WARNING**: ",
+- L98 *TODO*: - L724 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_formats_pdf_handler)
+- L99 *WARNING*: - L726 *WARNING*: - L421 **WARNING**: ({
+- L100 *WARNING*: - L727 *WARNING*: - L422 **WARNING**: ",
+- L101 *WARN*: - L728 *WARN*: - L425 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
+- L102 *WARNING*: - L730 *WARNING*: - L1787 **WARNING**: ({
+- L103 *WARNING*: - L731 *WARNING*: - L1788 **WARNING**: ",
+- L104 *WARN*: - L732 *WARN*: - L1790 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
+- L105 *WARNING*: - L734 *WARNING*: - L1808 **WARNING**: ({
+- L106 *WARNING*: - L735 *WARNING*: - L1809 **WARNING**: ",
+- L107 *WARN*: - L736 *WARN*: - L1812 **WARN**: \] pdf2image conversion failed; "
+- L108 *WARNING*: - L737 *WARNING*: - L2184 **WARNING**: ({
+- L109 *WARNING*: - L738 *WARNING*: - L2185 **WARNING**: ",
+- L110 *WARN*: - L739 *WARN*: - L2187 **WARN**: \] Multi-mode text extraction failed: {e}",
+- L111 *WARNING*: - L740 *WARNING*: - L3283 **WARNING**: ({
+- L112 *WARNING*: - L741 *WARNING*: - L3284 **WARNING**: ",
+- L113 *WARN*: - L742 *WARN*: - L3286 **WARN**: \] fitz text extraction failed: {e}",
+- L114 *WARNING*: - L743 *WARNING*: - L3315 **WARNING**: ({
+- L115 *WARNING*: - L744 *WARNING*: - L3316 **WARNING**: ",
+- L116 *WARN*: - L745 *WARN*: - L3318 **WARN**: \] ENABLE*OCR*FORCE is set but Tesseract is unavailable;
+- L117 *WARNING*: - L747 *WARNING*: - L3366 **WARNING**: ({
+- L118 *WARNING*: - L748 *WARNING*: - L3367 **WARNING**: ",
+- L119 *TODO*: - L851 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_arizona_arizona)
+- L120 *WARNING*: - L853 *WARNING*: - L25 **WARNING**: ("\[WARN\] context*library.json not found. Using fallback
+- L121 *WARNING*: - L855 *WARNING*: - L51 **WARNING**: (f"\[WARN\] Could not expand card {i+1}: {e}")
+- L122 *WARNING*: - L856 *WARNING*: - L64 **WARNING**: (f"\[WARN\] Vote Type toggle failed: {e}")
+- L123 *WARNING*: - L857 *WARNING*: - L77 **WARNING**: (f"\[WARN\] County toggle failed: {e}")
+- L124 *WARNING*: - L858 *WARNING*: - L164 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results
+- L125 *WARNING*: - L860 *WARNING*: - L165 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted
+- L126 *TODO*: - L881 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_example state_example_county_example_county)
+- L127 *WARNING*: - L883 *WARNING*: - L123 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+- L128 *TODO*: - L909 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_example state_example_state)
+- L129 *WARNING*: - L911 *WARNING*: - L51 **WARNING**: (f"\[Example Handler\] No specific parser implemented for
+- L130 *WARNING*: - L913 *WARNING*: - L152 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+- L131 *TODO*: - L940 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_new_york_county_rockland)
+- L132 *WARNING*: - L942 *WARNING*: - L72 **WARNING**: ("\[WARNING\] dom*parts missing after
+- L133 *WARNING*: - L944 *WARNING*: - L95 **WARNING**: ("\[red\]No contest selected. Skipping.\[/red\]")
+- L134 *WARNING*: - L945 *WARNING*: - L139 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn1.get('label', '')}'
+- L135 *WARNING*: - L948 *WARNING*: - L176 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn2.get('label', '')}'
+- L136 *TODO*: - L971 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_new_york_new_york)
+- L137 *WARNING*: - L973 *WARNING*: - L27 **WARNING**: ("\[NY Handler\] No county specified in html*context.")
+- L138 *WARNING*: - L974 *WARNING*: - L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
+- L139 *TODO*: - L1008 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_pennsylvania_pennsylvania)
+- L140 *WARNING*: - L1010 *WARNING*: - L44 **WARNING**: (f"\[NAV\] Step failed: {step} — {e}")
+- L141 *WARNING*: - L1011 *WARNING*: - L55 **WARNING**: (f"\[bold yellow\]Detected election:\[/bold yellow\]
+- L142 *WARNING*: - L1013 *WARNING*: - L76 **WARNING**: ("\[PA\] Invalid index input for election selection.")
+- L143 *WARNING*: - L1014 *WARNING*: - L78 **WARNING**: ("\[PA\] Elections dropdown not found.")
+- L144 *WARNING*: - L1015 *WARNING*: - L80 **WARNING**: (f"\[PA\] Failed to expand Elections menu or load
+- L145 *WARNING*: - L1017 *WARNING*: - L96 **WARNING**: ("\[PA\] County Breakdown link not found.")
+- L146 *WARNING*: - L1018 *WARNING*: - L98 **WARNING**: (f"\[PA\] Failed to click County Breakdown link: {e}")
+- L147 *WARNING*: - L1019 *WARNING*: - L113 **WARNING**: ("\[yellow\]Multiple CSV files found in input. Please
+- L148 *TODO*: - L1094 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_health_router)
+- L149 *WARNING*: - L1096 *WARNING*: - L252 **WARNING**: (f"\[health*router\] manual*correction failed (attempt
+- L150 *WARNING*: - L1098 *WARNING*: - L336 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L151 *WARNING*: - L1100 *WARNING*: - L338 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L152 *WARNING*: - L1102 *WARNING*: - L340 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L153 *WARNING*: - L1104 *WARNING*: - L375 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
+- L154 *WARNING*: - L1105 *WARNING*: - L380 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
+- L155 *WARNING*: - L1107 *WARNING*: - L382 **WARNING**: ("\[PIPELINE\] scan*misaligned*ner failed or file missing.
+- L156 *WARNING*: - L1109 *WARNING*: - L414 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
+- L157 *TODO*: - L1149 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_log_cache_cleaner_bot)
+- L158 *WARNING*: - L1151 *WARNING*: - L151 **WARNING**: (f"Skipping non-dict entry in spacy*ner*train*data.jsonl:
+- L159 *WARNING*: - L1153 *WARNING*: - L460 **WARNING**: ("\[DB\]\[WARNING\] No user tables found in schema
+- L160 *WARNING*: - L1155 *WARNING*: - L503 **WARNING**: ("\[CLEAN\]\[WARNING\] The following files are still too
+- L161 *WARNING*: - L1157 *WARNING*: - L507 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+- L162 *TODO*: - L1215 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_manual_correction_bot)
+- L163 *WARNING*: - L1217 *WARNING*: - L322 **WARNING**: (f"Coordinator ML scoring failed: {e}")
+- L164 *WARNING*: - L1218 *WARNING*: - L343 **WARNING**: (f"Coordinator field suggestion failed: {e}")
+- L165 *WARNING*: - L1219 *WARNING*: - L355 **WARNING**: (f"Log file not found: {path}")
+- L166 *WARNING*: - L1220 *WARNING*: - L364 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
+- L167 *WARNING*: - L1221 *WARNING*: - L396 **WARNING**: (f"\[SKIP\] File not found: {file}")
+- L168 *WARNING*: - L1222 *WARNING*: - L400 **WARNING**: (f"\[SKIP\] File too large: {file}")
+- L169 *WARNING*: - L1223 *WARNING*: - L422 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
+- L170 *WARNING*: - L1225 *WARNING*: - L434 **WARNING**: (f"\[CORRUPT\] {len(corrupt*items)} lines saved to
+- L171 *WARNING*: - L1227 *WARNING*: - L439 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
+- L172 *WARNING*: - L1229 *WARNING*: - L453 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L173 *WARNING*: - L1230 *WARNING*: - L465 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt*path}")
+- L174 *WARNING*: - L1231 *WARNING*: - L471 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
+- L175 *WARNING*: - L1233 *WARNING*: - L476 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L176 *WARNING*: - L1234 *WARNING*: - L485 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {quarantine*dir /
+- L177 *WARNING*: - L1236 *WARNING*: - L489 **WARNING**: (f"\[DELETED\] {file}")
+- L178 *WARNING*: - L1237 *WARNING*: - L492 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
+- L179 *WARNING*: - L1238 *WARNING*: - L537 **WARNING**: (f"\[FIND-LOGS\] Skipped {d}: {e}")
+- L180 *WARNING*: - L1239 *WARNING*: - L562 **WARNING**: (f"\[CORRUPT\] {path} line {line*num}: {e}")
+- L181 *WARNING*: - L1240 *WARNING*: - L717 **WARNING**: (f"Invalid JSON, skipping edit: {e}")
+- L182 *TODO*: - L1241 *TODO*: - L750 **TODO**: Add JSON schema validation here if desired
+- L183 *TODO*: - L1296 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_retrain_table_structure_models)
+- L184 *WARNING*: - L1298 *WARNING*: - L178 **WARNING**: (f"\[CLEAN\] File not found: {jsonl*path}")
+- L185 *WARNING*: - L1299 *WARNING*: - L186 **WARNING**: (f"\[CLEAN\] Could not parse line: {e}")
+- L186 *WARNING*: - L1300 *WARNING*: - L201 **WARNING**: (f"\[CLEAN\] Alignment check failed for text:
+- L187 *WARNING*: - L1302 *WARNING*: - L274 **WARNING**: (f"Failed to load {path}: {e}")
+- L188 *WARNING*: - L1303 *WARNING*: - L403 **WARNING**: (f"Skipping misaligned entity in: {text}")
+- L189 *WARNING*: - L1304 *WARNING*: - L408 **WARNING**: (f"Error validating entity alignment: {e}")
+- L190 *WARNING*: - L1305 *WARNING*: - L434 **WARNING**: (f"\[spaCy\] Could not check GPU availability: {e}")
+- L191 *WARNING*: - L1306 *WARNING*: - L450 **WARNING**: (f"\[spaCy\] Could not load lexeme normalization table.
+- L192 *WARNING*: - L1308 *WARNING*: - L536 **WARNING**: (f"\[NER\] Skipped {misaligned*count} misaligned examples.
+- L193 *WARNING*: - L1310 *WARNING*: - L550 **WARNING**: ("No NER training examples found. Skipping spaCy NER
+- L194 *WARNING*: - L1312 *WARNING*: - L619 **WARNING**: ("\[SUGGESTION\] Consider lowering min*delta or increasing
+- L195 *WARNING*: - L1314 *WARNING*: - L621 **WARNING**: ("\[SUGGESTION\] Model improved until the last epoch.
+- L196 *WARNING*: - L1316 *WARNING*: - L622 **WARNING**: (f"\[SUGGESTION\] Next run: patience={patience},
+- L197 *WARNING*: - L1318 *WARNING*: - L708 **WARNING**: ("No training examples found. Aborting retraining.")
+- L198 *WARNING*: - L1319 *WARNING*: - L727 **WARNING**: (f"\[WARN\] Could not delete old model directory
+- L199 *WARNING*: - L1321 *WARNING*: - L739 **WARNING**: (f"\[WARN\] Failed to load existing model: {e}")
+- L200 *WARNING*: - L1322 *WARNING*: - L742 **WARNING**: ("Falling back to base model (all-MiniLM-L6-v2).")
+- L201 *WARNING*: - L1323 *WARNING*: - L782 **WARNING**: (f"\[WARN\] Could not update canonical model directory:
+- L202 *WARNING*: - L1325 *WARNING*: - L810 **WARNING**: (f"MISALIGNED: {text} {annots\['entities'\]}")
+- L203 *WARNING*: - L1326 *WARNING*: - L840 **WARNING**: ("\[DB\] Base.metadata.tables is empty. No models
+- L204 *TODO*: - L1352 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_scan_misaligned_ner)
+- L205 *WARNING*: - L1354 *WARNING*: - L62 **WARNING**: (f"\[CORRUPT\] Could not parse line: {e}")
+- L206 *WARNING*: - L1355 *WARNING*: - L83 **WARNING**: (f"\n\[MISALIGNED\] Top {top*n} most frequent misaligned
+- L207 *WARNING*: - L1357 *WARNING*: - L85 **WARNING**: (f"  {repr(text)}: {count} times")
+- L208 *WARNING*: - L1358 *WARNING*: - L86 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+- L209 *WARNING*: - L1360 *WARNING*: - L87 **WARNING**: ("Run the manual*correction to review and clean these
+- L210 *WARNING*: - L1362 *WARNING*: - L88 **WARNING**: ("If you see spaCy entity alignment warnings, consider
+- L211 *WARNING*: - L1364 *WARNING*: - L98 **WARNING**: (f"\[WARN\] Could not remove old misaligned file: {e}")
+- L212 *WARNING*: - L1365 *WARNING*: - L112 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L213 *WARNING*: - L1367 *WARNING*: - L119 **WARNING**: (f"\[SELF-HEAL\] manual*correction exited with code
+- L214 *WARNING*: - L1369 *WARNING*: - L120 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L215 *WARNING*: - L1371 *WARNING*: - L122 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L216 *TODO*: - L1438 *TODO*: #### ⚠️ TODO/FIXME/WARN (html_election_parser)
+- L217 *WARNING*: - L1440 *WARNING*: - L56 **WARNING**: ("Deleting .processed*urls cache for fresh start...")
+- L218 *WARNING*: - L1441 *WARNING*: - L393 **WARNING**: ({
+- L219 *WARNING*: - L1442 *WARNING*: - L394 **WARNING**: ",
+- L220 *WARNING*: - L1443 *WARNING*: - L408 **WARNING**: ({
+- L221 *WARNING*: - L1444 *WARNING*: - L409 **WARNING**: ",
+- L222 *WARNING*: - L1445 *WARNING*: - L469 **WARNING**: ({
+- L223 *WARNING*: - L1446 *WARNING*: - L470 **WARNING**: ",
+- L224 *WARNING*: - L1447 *WARNING*: - L543 **WARNING**: (payload*2)
+- L225 *WARNING*: - L1448 *WARNING*: - L870 **WARNING**: ({
+- L226 *WARNING*: - L1449 *WARNING*: - L871 **WARNING**: ",
+- L227 *WARNING*: - L1450 *WARNING*: - L917 **WARNING**: ({
+- L228 *WARNING*: - L1451 *WARNING*: - L918 **WARNING**: ",
+- L229 *WARNING*: - L1452 *WARNING*: - L971 **WARNING**: ({
+- L230 *WARNING*: - L1453 *WARNING*: - L972 **WARNING**: ",
+- L231 *WARNING*: - L1454 *WARNING*: - L1076 **WARNING**: ",
+- L232 *WARNING*: - L1455 *WARNING*: - L1081 **WARNING**: (payload)
+- L233 *WARN*: - L1456 *WARN*: - L1106 **WARN**: if nothing found
+- L234 *WARNING*: - L1457 *WARNING*: - L1166 **WARNING**: ",
+- L235 *WARNING*: - L1458 *WARNING*: - L1171 **WARNING**: (payload)
+- L236 *WARNING*: - L1459 *WARNING*: - L1249 **WARNING**: ({
+- L237 *TODO*: - L1592 *TODO*: #### ⚠️ TODO/FIXME/WARN (state_router)
+- L238 *WARNING*: - L1594 *WARNING*: - L49 **WARNING**: ("\[Router\] handlers/states directory not found.")
+- L239 *WARNING*: - L1595 *WARNING*: - L66 **WARNING**: (f"\[Router\] counties directory not found for state:
+- L240 *WARNING*: - L1597 *WARNING*: - L137 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] No handler states
+- L241 *WARNING*: - L1599 *WARNING*: - L154 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L242 *WARNING*: - L1600 *WARNING*: - L157 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L243 *WARNING*: - L1601 *WARNING*: - L160 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] State '{state}'
+- L244 *WARNING*: - L1603 *WARNING*: - L179 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L245 *WARNING*: - L1604 *WARNING*: - L182 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] County '{county}'
+- L246 *WARNING*: - L1606 *WARNING*: - L189 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Too many failed
+- L247 *WARNING*: - L1608 *WARNING*: - L205 **WARNING**: (f"\[Router\] Requested state '{state*name}' not found on
+- L248 *WARNING*: - L1610 *WARNING*: - L512 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for
+- L249 *WARNING*: - L1612 *WARNING*: - L523 **WARNING**: (f"Failed to load context from file: {e}")
+- L250 *WARNING*: - L1613 *WARNING*: - L533 **WARNING**: ("No suitable handler found.")
+- L251 *WARNING*: - L1614 *WARNING*: - L540 **WARNING**: ("No handler selected. Exiting.")
+- L252 *WARNING*: - L1615 *WARNING*: - L547 **WARNING**: ("Still could not import a suitable handler.")
+- L253 *TODO*: - L1670 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_browser_utils)
+- L254 *WARNING*: - L1672 *WARNING*: - L89 **WARNING**: (f"\[browser*utils\] Failed to safely parse context*library
+- L255 *WARNING*: - L1674 *WARNING*: - L91 **WARNING**: (f"\[browser*utils\] Skipping unsafe context*library value
+- L256 *WARNING*: - L1676 *WARNING*: - L295 **WARNING**: (f"\[safe*attributes\] Playwright JS extraction failed:
+- L257 *WARNING*: - L1678 *WARNING*: - L309 **WARNING**: (f"\[safe*attributes\] Playwright fallback extraction
+- L258 *WARNING*: - L1680 *WARNING*: - L395 **WARNING**: (f"\[safe*count\] Object is not countable: {type(obj)}")
+- L259 *WARNING*: - L1681 *WARNING*: - L441 **WARNING**: (f"\[safe*launch\] browser*type is not a SyncBrowserType:
+- L260 *WARNING*: - L1683 *WARNING*: - L461 **WARNING**: (f"\[async*safe*launch\] browser*type is not an
+- L261 *WARNING*: - L1685 *WARNING*: - L540 **WARNING**: ({
+- L262 *WARNING*: - L1686 *WARNING*: - L541 **WARNING**: ",
+- L263 *WARNING*: - L1687 *WARNING*: - L569 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L264 *WARNING*: - L1689 *WARNING*: - L578 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual
+- L265 *WARNING*: - L1691 *WARNING*: - L602 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L266 *WARNING*: - L1693 *WARNING*: - L611 **WARNING**: ({
+- L267 *WARNING*: - L1694 *WARNING*: - L612 **WARNING**: ",
+- L268 *WARNING*: - L1695 *WARNING*: - L623 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual
+- L269 *WARNING*: - L1697 *WARNING*: - L712 **WARNING**: ("\[SCROLL\] User aborted scrolling.")
+- L270 *WARNING*: - L1698 *WARNING*: - L733 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may
+- L271 *TODO*: - L1755 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_captcha_tools)
+- L272 *WARNING*: - L1757 *WARNING*: - L118 **WARNING**: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
+- L273 *WARNING*: - L1758 *WARNING*: - L154 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
+- L274 *TODO*: - L1830 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_contest_selector)
+- L275 *WARNING*: - L1832 *WARNING*: - L635 **WARNING**: ":
+- L276 *WARNING*: - L1833 *WARNING*: - L636 **WARNING**: (entry)
+- L277 *WARNING*: - L1834 *WARNING*: - L1029 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
+- L278 *WARNING*: - L1836 *WARNING*: - L1565 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
+- L279 *WARNING*: - L1838 *WARNING*: - L1570 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
+- L280 *WARNING*: - L1840 *WARNING*: - L1642 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
+- L281 *TODO*: - L2035 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_dom_extractor)
+- L282 *WARNING*: - L2037 *WARNING*: - L153 **WARNING**: (f"\[DOM*EXTRACTOR\] failure: {e}")
+- L283 *TODO*: - L2123 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_dynamic_table_extractor)
+- L284 *WARNING*: - L2125 *WARNING*: - L124 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
+- L285 *WARNING*: - L2127 *WARNING*: - L129 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in
+- L286 *WARNING*: - L2129 *WARNING*: - L171 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step
+- L287 *WARNING*: - L2131 *WARNING*: - L187 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table
+- L288 *WARNING*: - L2133 *WARNING*: - L217 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning
+- L289 *WARNING*: - L2135 *WARNING*: - L229 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed",
+- L290 *WARNING*: - L2137 *WARNING*: - L272 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed",
+- L291 *WARNING*: - L2139 *WARNING*: - L776 **WARNING**: ", "extractor", "No learned DOM patterns found.")
+- L292 *WARNING*: - L2140 *WARNING*: - L800 **WARNING**: ", "extractor", "Entry deleted.")
+- L293 *WARNING*: - L2141 *WARNING*: - L805 **WARNING**: ", "extractor", "Unknown action.")
+- L294 *WARNING*: - L2142 *WARNING*: - L807 **WARNING**: ", "extractor", "Invalid entry number.")
+- L295 *TODO*: - L2180 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_embedding_cache)
+- L296 *WARNING*: - L2182 *WARNING*: - L178 **WARNING**: (msg)
+- L297 *TODO*: - L2225 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_extraction_strategies)
+- L298 *WARNING*: - L2227 *WARNING*: - L68 **WARNING**: (f"\[STRATEGY\] {name} failed: {e}")
+- L299 *TODO*: - L2276 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_format_router)
+- L300 *WARNING*: - L2278 *WARNING*: - L374 **WARNING**: ({
+- L301 *WARNING*: - L2279 *WARNING*: - L375 **WARNING**: ",
+- L302 *WARN*: - L2280 *WARN*: - L377 **WARN**: \] No supported file formats found on the page.",
+- L303 *WARNING*: - L2281 *WARNING*: - L402 **WARNING**: ({
+- L304 *WARNING*: - L2282 *WARNING*: - L403 **WARNING**: ",
+- L305 *WARN*: - L2283 *WARN*: - L405 **WARN**: \] Unsupported format requested: {format*str}",
+- L306 *WARNING*: - L2284 *WARNING*: - L409 **WARNING**: ({
+- L307 *WARNING*: - L2285 *WARNING*: - L410 **WARNING**: ",
+- L308 *WARNING*: - L2286 *WARNING*: - L654 **WARNING**: ({
+- L309 *WARNING*: - L2287 *WARNING*: - L655 **WARNING**: ",
+- L310 *WARNING*: - L2288 *WARNING*: - L874 **WARNING**: ({
+- L311 *WARNING*: - L2289 *WARNING*: - L875 **WARNING**: ",
+- L312 *WARNING*: - L2290 *WARNING*: - L950 **WARNING**: ({
+- L313 *WARNING*: - L2291 *WARNING*: - L951 **WARNING**: ",
+- L314 *TODO*: - L2372 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_html_scanner)
+- L315 *WARNING*: - L2374 *WARNING*: - L163 **WARNING**: ",
+- L316 *WARNING*: - L2375 *WARNING*: - L167 **WARNING**: (payload)
+- L317 *WARNING*: - L2376 *WARNING*: - L189 **WARNING**: ",
+- L318 *WARNING*: - L2377 *WARNING*: - L193 **WARNING**: (payload)
+- L319 *WARNING*: - L2378 *WARNING*: - L288 **WARNING**: ",
+- L320 *WARNING*: - L2379 *WARNING*: - L292 **WARNING**: (payload)
+- L321 *WARNING*: - L2380 *WARNING*: - L315 **WARNING**: ",
+- L322 *WARNING*: - L2381 *WARNING*: - L319 **WARNING**: (payload)
+- L323 *WARNING*: - L2382 *WARNING*: - L353 **WARNING**: ",
+- L324 *WARNING*: - L2383 *WARNING*: - L357 **WARNING**: (payload)
+- L325 *WARNING*: - L2384 *WARNING*: - L380 **WARNING**: ",
+- L326 *WARNING*: - L2385 *WARNING*: - L384 **WARNING**: (payload)
+- L327 *WARNING*: - L2386 *WARNING*: - L579 **WARNING**: ",
+- L328 *WARNING*: - L2387 *WARNING*: - L583 **WARNING**: (payload)
+- L329 *WARNING*: - L2388 *WARNING*: - L784 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L330 *WARNING*: - L2390 *WARNING*: - L807 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L331 *WARNING*: - L2392 *WARNING*: - L1034 **WARNING**: ",
+- L332 *WARNING*: - L2393 *WARNING*: - L1038 **WARNING**: (payload)
+- L333 *WARNING*: - L2394 *WARNING*: - L1045 **WARNING**: ",
+- L334 *WARNING*: - L2395 *WARNING*: - L1049 **WARNING**: (payload)
+- L335 *TODO*: - L2594 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_model_registry)
+- L336 *WARNING*: - L2596 *WARNING*: - L389 **WARNING**: (f"Failed loading local override for SentenceTransformer:
+- L337 *WARNING*: - L2598 *WARNING*: - L409 **WARNING**: ("TRANSFORMERS*OFFLINE/HUGGINGFACE*HUB*OFFLINE set;
+- L338 *WARNING*: - L2600 *WARNING*: - L426 **WARNING**: for noisy environments
+- L339 *WARNING*: - L2601 *WARNING*: - L429 **WARNING**: (f"Failed to load base SentenceTransformer (network/DNS).
+- L340 *TODO*: - L2703 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_output_utils)
+- L341 *WARNING*: - L2705 *WARNING*: - L105 **WARNING**: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using
+- L342 *WARNING*: - L2707 *WARNING*: - L108 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified.
+- L343 *WARNING*: - L2709 *WARNING*: - L531 **WARNING**: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
+- L344 *WARNING*: - L2710 *WARNING*: - L607 **WARNING**: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
+- L345 *TODO*: - L2734 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_pattern_extractor)
+- L346 *WARNING*: - L2736 *WARNING*: - L26 **WARNING**: (f"\[PATTERN\] load fail {e}")
+- L347 *WARNING*: - L2737 *WARNING*: - L95 **WARNING**: (f"\[PATTERN\] pattern error {pat.get('name')}: {e}")
+- L348 *TODO*: - L2839 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_pivot)
+- L349 *WARNING*: - L2841 *WARNING*: - L1353 **WARNING**: ("\[PIVOT\] No candidates detected – verify headers and
+- L350 *TODO*: - L2951 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_shared_logger)
+- L351 *WARNING*: - L2953 *WARNING*: - L159 **WARNING**:         elif record.levelno &gt;= logging.WARNING:
+- L352 *WARNING*: - L2954 *WARNING*: - L160 **WARNING**: (msg)
+- L353 *WARNING*: - L2955 *WARNING*: - L236 **WARNING**: ": logging.WARNING,
+- L354 *WARNING*: - L2956 *WARNING*: - L307 **WARNING**: ": "yellow",
+- L355 *WARNING*: - L2957 *WARNING*: - L369 **WARNING**: (self, msg, context=None, exc*info=None):
+- L356 *WARNING*: - L2958 *WARNING*: - L371 **WARNING**: ", msg, context, color="yellow")
+- L357 *WARNING*: - L2959 *WARNING*: - L385 **WARNING**: ": "yellow",
+- L358 *WARNING*: - L2960 *WARNING*: - L598 **WARNING**: (f"Log directory does not exist: {log*dir}")
+- L359 *WARNING*: - L2961 *WARNING*: - L615 **WARNING**: (f"Corrupt line in {path}: {e}")
+- L360 *TODO*: - L3016 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_shared_logic)
+- L361 *WARNING*: - L3018 *WARNING*: - L236 **WARNING**: (f"\[safe*query\] session.query({model}) failed: {e}")
+- L362 *WARNING*: - L3019 *WARNING*: - L259 **WARNING**: (f"\[safe*filter*by\] No mapper found for model {model}")
+- L363 *WARNING*: - L3020 *WARNING*: - L265 **WARNING**: (f"\[safe*filter*by\] Could not inspect model {model}:
+- L364 *WARNING*: - L3022 *WARNING*: - L279 **WARNING**: (f"\[safe*filter*by\] filter*by failed: {e}")
+- L365 *WARNING*: - L3023 *WARNING*: - L292 **WARNING**: (f"\[safe*first\] query.first() failed: {e}")
+- L366 *WARNING*: - L3024 *WARNING*: - L362 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
+- L367 *WARNING*: - L3026 *WARNING*: - L496 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
+- L368 *WARNING*: - L3027 *WARNING*: - L710 **WARNING**: (f"\[safe*append\] Target is not a list: {type(lst)};
+- L369 *WARNING*: - L3029 *WARNING*: - L732 **WARNING**: (f"\[safe*update\] Target is not a dict: {type(dct)}")
+- L370 *WARNING*: - L3030 *WARNING*: - L736 **WARNING**: (f"\[safe*update\] Updates is not a dict:
+- L371 *WARNING*: - L3032 *WARNING*: - L756 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)};
+- L372 *WARNING*: - L3034 *WARNING*: - L1096 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
+- L373 *WARNING*: - L3036 *WARNING*: - L1359 **WARNING**: (f"State '{state*norm}' not found in county map")
+- L374 *WARNING*: - L3037 *WARNING*: - L2163 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
+- L375 *WARNING*: - L3038 *WARNING*: - L2169 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+- L376 *WARNING*: - L3040 *WARNING*: - L2184 **WARNING**: ("\[inventory\] generate*project*map completed with
+- L377 *TODO*: - L3042 *TODO*: - L2230 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
+- L378 *TODO*: - L3044 *TODO*: - L2232 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+- L379 *TODO*: - L3045 *TODO*: - L2864 **TODO**: /FIXME/WARN
+- L380 *TODO*: - L3046 *TODO*: - L2867 **TODO**: /FIXME/WARN:")
+- L381 *TODO*: - L3122 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_strategy_concurrency)
+- L382 *WARNING*: - L3124 *WARNING*: - L37 **WARNING**: (f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
+- L383 *WARNING*: - L3125 *WARNING*: - L65 **WARNING**: (f"\[CONCURRENCY\] Strategy {name} error: {e}")
+- L384 *WARNING*: - L3126 *WARNING*: - L73 **WARNING**: (f"\[CONCURRENCY\] {*safe*run*strategy.**name**} {name}
+- L385 *WARNING*: - L3128 *WARNING*: - L102 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed:
+- L386 *WARNING*: - L3130 *WARNING*: - L120 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
+- L387 *TODO*: - L3204 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_table_builder)
+- L388 *WARNING*: - L3206 *WARNING*: - L816 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+- L389 *WARNING*: - L3208 *WARNING*: - L828 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+- L390 *WARNING*: - L3210 *WARNING*: - L836 **WARNING**: ", "builder", "\[TABLE*BUILDER\] all*panel*tables was not
+- L391 *WARNING*: - L3213 *WARNING*: - L845 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Dropping invalid table
+- L392 *WARNING*: - L3215 *WARNING*: - L862 **WARNING**: ", "builder", "\[TABLE*BUILDER\] sanitize failed",
+- L393 *WARNING*: - L3217 *WARNING*: - L867 **WARNING**: ", "builder", "\[TABLE*BUILDER\] harmonize failed",
+- L394 *WARNING*: - L3219 *WARNING*: - L873 **WARNING**: ", "builder", "\[TABLE*BUILDER\]
+- L395 *WARNING*: - L3221 *WARNING*: - L925 **WARNING**: ",
+- L396 *WARNING*: - L3222 *WARNING*: - L950 **WARNING**: ", "builder", "\[TABLE*BUILDER\] entity annotate failed",
+- L397 *WARNING*: - L3224 *WARNING*: - L955 **WARNING**: ", "builder", "\[TABLE*BUILDER\] stringify entity*info
+- L398 *WARNING*: - L3226 *WARNING*: - L975 **WARNING**: ", "builder", "\[TABLE*BUILDER\] pivot*to*wide failed",
+- L399 *WARNING*: - L3228 *WARNING*: - L995 **WARNING**: ", "builder", "\[TABLE*BUILDER\] ensure division totals
+- L400 *WARNING*: - L3230 *WARNING*: - L1288 **WARNING**: ", "builder", f"\[TABLE*BUILDER\] Column marked
+- L401 *WARNING*: - L3232 *WARNING*: - L1361 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist table
+- L402 *WARNING*: - L3234 *WARNING*: - L1376 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist
+- L403 *TODO*: - L3277 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_table_core)
+- L404 *WARNING*: - L3279 *WARNING*: - L231 **WARNING**: (f"\[TABLE BUILDER\] Concurrent strategies execution
+- L405 *WARNING*: - L3281 *WARNING*: - L288 **WARNING**: (f"\[TABLE BUILDER\] RawJSON pivot failed: {e}")
+- L406 *WARNING*: - L3282 *WARNING*: - L296 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide signature mismatch
+- L407 *WARNING*: - L3284 *WARNING*: - L298 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide failed (skipped): {e}")
+- L408 *WARNING*: - L3285 *WARNING*: - L349 **WARNING**: (f"\[TABLE BUILDER\] finalize output failed: {e}")
+- L409 *WARNING*: - L3286 *WARNING*: - L414 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] Concurrent strategies
+- L410 *WARNING*: - L3288 *WARNING*: - L477 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed:
+- L411 *TODO*: - L3324 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_user_prompt)
+- L412 *WARNING*: - L3326 *WARNING*: - L312 **WARNING**: ("\[UserPrompt\] Webapp mode active but no
+- L413 *WARNING*: - L3328 *WARNING*: - L349 **WARNING**: ("\[CLI Prompt\] EOFError encountered.")
+- L414 *WARNING*: - L3329 *WARNING*: - L370 **WARNING**: ("\[Webapp Prompt\] socketio*emit*func not set.")
+- L415 *WARNING*: - L3330 *WARNING*: - L428 **WARNING**: ": 30,
+- L416 *WARNING*: - L3331 *WARNING*: - L507 **WARNING**: ("\n\[Prompt\] Timed out.")
+- L417 *WARNING*: - L3332 *WARNING*: - L558 **WARNING**: ("\n\[Prompt\] No input available (EOF). Exiting prompt.")
+- L418 *WARNING*: - L3333 *WARNING*: - L592 **WARNING**: ("Invalid input. Please try again.")
+- L419 *WARNING*: - L3334 *WARNING*: - L594 **WARNING**: ("\[Prompt\] Too many invalid attempts.")
+- L420 *WARNING*: - L3335 *WARNING*: - L659 **WARNING**: ("\[Prompt Queue\] Invalid queued yes/no response; falling
+- L421 *WARNING*: - L3337 *WARNING*: - L674 **WARNING**: ("\n\[Prompt\] Timed out.")
+- L422 *WARNING*: - L3338 *WARNING*: - L881 **WARNING**: ("\[yellow\]\[FEEDBACK\] Skipped manual
+- L423 *WARNING*: - L3340 *WARNING*: - L913 **WARNING**: ("\[yellow\]Button confirmation cancelled by
+- L424 *TODO*: - L3395 *TODO*: #### ⚠️ TODO/FIXME/WARN (web_pipeline)
+- L425 *WARNING*: - L3397 *WARNING*: - L49 **WARNING**: ({
+- L426 *WARNING*: - L3398 *WARNING*: - L50 **WARNING**: ",
+- L427 *WARNING*: - L3399 *WARNING*: - L66 **WARNING**: ({
+- L428 *WARNING*: - L3400 *WARNING*: - L67 **WARNING**: ",
+- L429 *WARNING*: - L3401 *WARNING*: - L83 **WARNING**: ({
+- L430 *WARNING*: - L3402 *WARNING*: - L84 **WARNING**: ",
+- L434 *TODO*: - L441 *TODO*: - TODO/FIXME/WARN:
+- L435 *WARNING*: - L442 *WARNING*: - L210 **WARNING**: ").upper().split(","))
+- L436 *WARNING*: - L443 *WARNING*: - L480 **WARNING**: , ERROR, CRITICAL, TRACE
+- L437 *WARNING*: - L444 *WARNING*: - L519 **WARNING**: ", "ERROR", "CRITICAL", "TRACE"}
+- L438 *WARNING*: - L445 *WARNING*: - L555 **WARNING**: " in mlow:
+- L439 *WARNING*: - L446 *WARNING*: - L954 **WARNING**:         # For websocket handshake only: add Cache-Control
+- L440 *WARNING*: - L447 *WARNING*: so webhint stops warning
+- L441 *WARNING*: - L448 *WARNING*: - L1229 **WARNING**: ({"type": "sec", "message": "Favicon path escape
+- L442 *WARNING*: - L450 *WARNING*: - L1331 **WARNING**: ({
+- L443 *WARNING*: - L451 *WARNING*: - L1332 **WARNING**: ",
+- L444 *WARNING*: - L452 *WARNING*: - L1641 **WARNING**: ",
+- L445 *WARNING*: - L453 *WARNING*: - L1724 **WARNING**: (
+- L446 *WARNING*: - L454 *WARNING*: - L1726 **WARNING**: ",
+- L447 *WARNING*: - L455 *WARNING*: - L1736 **WARNING**: (
+- L448 *WARNING*: - L456 *WARNING*: - L1738 **WARNING**: ",
+- L449 *WARNING*: - L457 *WARNING*: - L1768 **WARNING**: (
+- L450 *WARNING*: - L458 *WARNING*: - L1770 **WARNING**: ",
+- L451 *WARNING*: - L459 *WARNING*: - L2055 **WARNING**: ({
+- L452 *WARNING*: - L460 *WARNING*: - L2056 **WARNING**: ",
+- L453 *WARNING*: - L461 *WARNING*: - L2120 **WARNING**: ({
+- L454 *WARNING*: - L462 *WARNING*: - L2121 **WARNING**: ",
+- L455 *WARNING*: - L463 *WARNING*: - L2171 **WARNING**: ({
+- L456 *WARNING*: - L464 *WARNING*: - L2172 **WARNING**: ",
+- L457 *WARNING*: - L465 *WARNING*: - L2194 **WARNING**: ({
+- L458 *WARNING*: - L466 *WARNING*: - L2195 **WARNING**: ",
+- L459 *WARNING*: - L467 *WARNING*: - L2203 **WARNING**: ({
+- L460 *WARNING*: - L468 *WARNING*: - L2204 **WARNING**: ",
+- L461 *WARNING*: - L469 *WARNING*: - L2211 **WARNING**: ({
+- L462 *WARNING*: - L470 *WARNING*: - L2212 **WARNING**: ",
+- L463 *TODO*: - L606 *TODO*: - TODO/FIXME/WARN:
+- L464 *NOTE*: - L607 *NOTE*: - L1831 **NOTE**: .*$",                     # Note
+- L465 *WARNING*: - L608 *WARNING*: - L2020 **WARNING**: ",
+- L466 *WARNING*: - L609 *WARNING*: - L2111 **WARNING**: ", "info*box", "navigation", "pagination", "tab",
+- L467 *NOTE*: - L611 *NOTE*: - L2144 **NOTE**: ", "comment",
+- L468 *NOTE*: - L612 *NOTE*: - L2220 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
+- L469 *NOTE*: - L613 *NOTE*: - L2236 **NOTE**: ", "Comment", "Feedback", "Suggestion",
+- L470 *TODO*: - L899 *TODO*: - TODO/FIXME/WARN:
+- L471 *WARNING*: - L900 *WARNING*: - L788 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
+- L472 *WARNING*: - L901 *WARNING*: - L876 **WARNING**: ({
+- L473 *WARNING*: - L902 *WARNING*: - L877 **WARNING**: ",
+- L474 *WARNING*: - L903 *WARNING*: - L995 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
+- L475 *WARNING*: - L905 *WARNING*: - L1234 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
+- L476 *WARNING*: - L907 *WARNING*: - L1403 **WARNING**: (f"\[get*feedback*pattern*kb\] Skipping corrupt line:
+- L477 *WARNING*: - L909 *WARNING*: - L1515 **WARNING**: ("\[group*dom*nodes*by*label\] No organized DOM parts.
+- L478 *WARNING*: - L911 *WARNING*: - L1517 **WARNING**: (f"\[group*dom*nodes*by*label\] No organized DOM parts.
+- L479 *WARNING*: - L912 *WARNING*: (Occurred {ContextCoordinator.*dom*parts*warning*count} times)")
+- L480 *WARNING*: - L913 *WARNING*: - L1522 **WARNING**: ("\[group*dom*nodes*by*label\] No DOM nodes found.")
+- L481 *WARNING*: - L914 *WARNING*: - L1540 **WARNING**: ("\[submit*user*feedback\] ContextOrganizer has no
+- L482 *WARNING*: - L916 *WARNING*: - L1568 **WARNING**: (f"\[correct*and*update*contest\] Contest {contest*id}
+- L483 *WARNING*: - L918 *WARNING*: - L1592 **WARNING**: ("\[print*contest*summary\] No organized contests to
+- L484 *WARNING*: - L920 *WARNING*: - L1605 **WARNING**: ("\[plot*contest*distribution\] No organized contests to
+- L485 *WARNING*: - L922 *WARNING*: - L1656 **WARNING**: ("No organized DOM parts.")
+- L486 *WARNING*: - L923 *WARNING*: - L1659 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
+- L487 *WARNING*: - L924 *WARNING*: - L1670 **WARNING**: ("\[get*contest*groups\] No contest groups found.")
+- L488 *WARNING*: - L925 *WARNING*: - L1679 **WARNING**: ("\[get*panel*groups\] No panel groups found.")
+- L489 *WARNING*: - L926 *WARNING*: - L1688 **WARNING**: ("\[get*button*groups\] No button groups found.")
+- L490 *WARNING*: - L927 *WARNING*: - L1697 **WARNING**: ("\[get*table*groups\] No table groups found.")
+- L491 *WARNING*: - L928 *WARNING*: - L1706 **WARNING**: ("\[get*relationships\] No organized context.")
+- L492 *WARNING*: - L929 *WARNING*: - L1814 **WARNING**: (f"\[fuzzy*score\] One or both inputs are empty:
+- L493 *WARNING*: - L931 *WARNING*: - L1820 **WARNING**: (f"\[fuzzy*score\] One or both inputs are too short:
+- L494 *WARNING*: - L933 *WARNING*: - L2266 **WARNING**: (f"\[extract*field\] Unknown field*type: {field*type}")
+- L495 *WARNING*: - L934 *WARNING*: - L2524 **WARNING**: (f"\[get*full*contest\] Contest {contest*id} missing
+- L496 *WARNING*: - L936 *WARNING*: - L2609 **WARNING**: (f"\[list*tables\] Table '{tbl}' missing metadata or
+- L497 *WARNING*: - L938 *WARNING*: - L2641 **WARNING**: (f"\[get*table*metadata\] Table '{table*name}' missing
+- L498 *WARNING*: - L940 *WARNING*: - L2659 **WARNING**: (f"\[check*missing*tables\] Missing tables: {missing}")
+- L499 *WARNING*: - L941 *WARNING*: - L2720 **WARNING**: (f"\[save*table*structure\] Failed to save structure for
+- L500 *WARNING*: - L943 *WARNING*: - L2897 **WARNING**: (f"\[get*best*button*advanced\] Contest argument was not
+- L501 *WARNING*: - L945 *WARNING*: - L2901 **WARNING**: (f"\[get*best*button*advanced\] Keywords argument was not
+- L502 *WARNING*: - L947 *WARNING*: - L2905 **WARNING**: (f"\[get*best*button*advanced\] Context argument was not
+- L503 *WARNING*: - L949 *WARNING*: - L2912 **WARNING**: ("\[get*best*button*advanced\]*semantic*model is not set
+- L504 *WARNING*: - L951 *WARNING*: - L3057 **WARNING**: (f"\[yellow\]\[Coordinator\] Button '{cand.get('label')}'
+- L505 *TODO*: - L1120 *TODO*: - TODO/FIXME/WARN:
+- L506 *WARNING*: - L1121 *WARNING*: - L282 **WARNING**: (
+- L507 *WARNING*: - L1122 *WARNING*: - L407 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or
+- L508 *WARNING*: - L1124 *WARNING*: - L495 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered*out)} contests
+- L509 *WARNING*: - L1126 *WARNING*: - L497 **WARNING**: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
+- L510 *WARNING*: - L1127 *WARNING*: - L500 **WARNING**: ("\[CONTEST\] No contests with required fields for
+- L511 *WARNING*: - L1129 *WARNING*: - L816 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests
+- L512 *WARNING*: - L1131 *WARNING*: - L1500 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
+- L513 *WARNING*: - L1132 *WARNING*: - L1505 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
+- L514 *WARNING*: - L1134 *WARNING*: - L1507 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L515 *WARNING*: - L1136 *WARNING*: - L1509 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L516 *WARNING*: - L1138 *WARNING*: - L1972 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
+- L517 *WARNING*: - L1140 *WARNING*: - L2049 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
+- L518 *WARNING*: - L1188 *WARNING*: - utils.logger\_singleton.logger.warning (line 282)
+- L519 *TODO*: - L1321 *TODO*: - TODO/FIXME/WARN:
+- L520 *WARNING*: - L1322 *WARNING*: - L652 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
+- L521 *WARNING*: - L1323 *WARNING*: - L658 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
+- L522 *WARNING*: - L1325 *WARNING*: - L661 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
+- L523 *TODO*: - L1451 *TODO*: - TODO/FIXME/WARN:
+- L524 *WARNING*: - L1452 *WARNING*: - L328 **WARNING**: ("\[DB\]\[AAD\] Falling back to password auth.")
+- L525 *WARNING*: - L1489 *WARNING*: - utils.logger\_singleton.logger.warning (line 328)
+- L526 *TODO*: - L1521 *TODO*: - TODO/FIXME/WARN:
+- L527 *WARNING*: - L1522 *WARNING*: - L83 **WARNING**: (f"\[REMOVED\] {popped}")
+- L528 *WARNING*: - L1523 *WARNING*: - L90 **WARNING**: (f"\[REMOVED\] {index*or*value}")
+- L529 *WARNING*: - L1524 *WARNING*: - L129 **WARNING**: (f"\[DELETED\] {files\[idx\]}")
+- L530 *WARNING*: - L1552 *WARNING*: - utils.logger\_singleton.logger.warning (line 83)
+- L531 *WARNING*: - L1554 *WARNING*: - utils.logger\_singleton.logger.warning (line 90)
+- L532 *WARNING*: - L1567 *WARNING*: - utils.logger\_singleton.logger.warning (line 129)
+- L533 *TODO*: - L1627 *TODO*: - TODO/FIXME/WARN:
+- L534 *WARNING*: - L1628 *WARNING*: - L134 **WARNING**: ({
+- L535 *WARNING*: - L1629 *WARNING*: - L135 **WARNING**: ",
+- L536 *WARNING*: - L1630 *WARNING*: - L426 **WARNING**: ({
+- L537 *WARNING*: - L1631 *WARNING*: - L427 **WARNING**: ",
+- L538 *WARNING*: - L1646 *WARNING*: - utils.logger\_singleton.logger.warning (line 134)
+- L539 *TODO*: - L1815 *TODO*: - TODO/FIXME/WARN:
+- L540 *WARNING*: - L1816 *WARNING*: - L216 **WARNING**: (f"\[HTML Handler\] County '{county}' not found. Closest
+- L541 *WARNING*: - L1818 *WARNING*: - L220 **WARNING**: (f"\[HTML Handler\] Detected county '{county}' is not in
+- L542 *WARNING*: - L1820 *WARNING*: - L241 **WARNING**: (f"\[HTML Handler\] State '{user*state}' not found.
+- L543 *WARNING*: - L1822 *WARNING*: - L285 **WARNING**: (f"\[HTML Handler\] County '{user*county}' not found.
+- L544 *TODO*: - L1957 *TODO*: - TODO/FIXME/WARN:
+- L545 *WARNING*: - L1958 *WARNING*: - L376 **WARNING**: ({
+- L546 *WARNING*: - L1959 *WARNING*: - L377 **WARNING**: ",
+- L547 *WARNING*: - L1960 *WARNING*: - L489 **WARNING**: ({
+- L548 *WARNING*: - L1961 *WARNING*: - L490 **WARNING**: ",
+- L549 *TODO*: - L2248 *TODO*: - TODO/FIXME/WARN:
+- L550 *WARNING*: - L2249 *WARNING*: - L421 **WARNING**: ({
+- L551 *WARNING*: - L2250 *WARNING*: - L422 **WARNING**: ",
+- L552 *WARN*: - L2251 *WARN*: - L425 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
+- L553 *WARNING*: - L2253 *WARNING*: - L1787 **WARNING**: ({
+- L554 *WARNING*: - L2254 *WARNING*: - L1788 **WARNING**: ",
+- L555 *WARN*: - L2255 *WARN*: - L1790 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
+- L556 *WARNING*: - L2257 *WARNING*: - L1808 **WARNING**: ({
+- L557 *WARNING*: - L2258 *WARNING*: - L1809 **WARNING**: ",
+- L558 *WARN*: - L2259 *WARN*: - L1812 **WARN**: \] pdf2image conversion failed; "
+- L559 *WARNING*: - L2260 *WARNING*: - L2184 **WARNING**: ({
+- L560 *WARNING*: - L2261 *WARNING*: - L2185 **WARNING**: ",
+- L561 *WARN*: - L2262 *WARN*: - L2187 **WARN**: \] Multi-mode text extraction failed: {e}",
+- L562 *WARNING*: - L2263 *WARNING*: - L3283 **WARNING**: ({
+- L563 *WARNING*: - L2264 *WARNING*: - L3284 **WARNING**: ",
+- L564 *WARN*: - L2265 *WARN*: - L3286 **WARN**: \] fitz text extraction failed: {e}",
+- L565 *WARNING*: - L2266 *WARNING*: - L3315 **WARNING**: ({
+- L566 *WARNING*: - L2267 *WARNING*: - L3316 **WARNING**: ",
+- L567 *WARN*: - L2268 *WARN*: - L3318 **WARN**: \] ENABLE*OCR*FORCE is set but Tesseract is unavailable;
+- L568 *WARNING*: - L2270 *WARNING*: - L3366 **WARNING**: ({
+- L569 *WARNING*: - L2271 *WARNING*: - L3367 **WARNING**: ",
+- L570 *WARN*: - L2272 *WARN*: - L3369 **WARN**: \] Low-signal text detected but OCR is unavailable or
+- L571 *WARNING*: - L2274 *WARNING*: - L3586 **WARNING**: ({
+- L572 *WARNING*: - L2275 *WARNING*: - L3587 **WARNING**: ",
+- L573 *WARN*: - L2276 *WARN*: - L3589 **WARN**: \] No contest selected. Using filename fallback.",
+- L574 *WARNING*: - L2277 *WARNING*: - L4034 **WARNING**: ({
+- L575 *WARNING*: - L2278 *WARNING*: - L4035 **WARNING**: ",
+- L576 *WARN*: - L2279 *WARN*: - L4037 **WARN**: \] Selected contest '{contest}' not found in column
+- L577 *WARNING*: - L2281 *WARNING*: - L4136 **WARNING**: ({
+- L578 *WARNING*: - L2282 *WARNING*: - L4137 **WARNING**: ",
+- L579 *WARN*: - L2283 *WARN*: - L4139 **WARN**: \] No structured rows matched the inferred column count of
+- L580 *WARNING*: - L2285 *WARNING*: - L4178 **WARNING**: ({
+- L581 *WARNING*: - L2286 *WARNING*: - L4179 **WARNING**: ",
+- L582 *WARNING*: - L2287 *WARNING*: - L4367 **WARNING**: ({
+- L583 *WARNING*: - L2288 *WARNING*: - L4368 **WARNING**: ",
+- L584 *WARNING*: - L2336 *WARNING*: - utils.logger\_singleton.logger.warning (line 421)
+- L585 *TODO*: - L2610 *TODO*: - TODO/FIXME/WARN:
+- L586 *WARNING*: - L2611 *WARNING*: - L25 **WARNING**: ("\[WARN\] context*library.json not found. Using fallback
+- L587 *WARNING*: - L2613 *WARNING*: - L51 **WARNING**: (f"\[WARN\] Could not expand card {i+1}: {e}")
+- L588 *WARNING*: - L2614 *WARNING*: - L64 **WARNING**: (f"\[WARN\] Vote Type toggle failed: {e}")
+- L589 *WARNING*: - L2615 *WARNING*: - L77 **WARNING**: (f"\[WARN\] County toggle failed: {e}")
+- L590 *WARNING*: - L2616 *WARNING*: - L164 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results
+- L591 *WARNING*: - L2618 *WARNING*: - L165 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted
+- L592 *WARNING*: - L2625 *WARNING*: - utils.logger\_singleton.logger.warning (line 25)
+- L593 *WARNING*: - L2639 *WARNING*: - utils.logger\_singleton.logger.warning (line 51)
+- L594 *WARNING*: - L2645 *WARNING*: - utils.logger\_singleton.logger.warning (line 64)
+- L595 *WARNING*: - L2651 *WARNING*: - utils.logger\_singleton.logger.warning (line 77)
+- L596 *TODO*: - L2689 *TODO*: - TODO/FIXME/WARN:
+- L597 *WARNING*: - L2690 *WARNING*: - L123 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+- L598 *WARNING*: - L2722 *WARNING*: - utils.logger\_singleton.logger.warning (line 123)
+- L599 *TODO*: - L2753 *TODO*: - TODO/FIXME/WARN:
+- L600 *WARNING*: - L2754 *WARNING*: - L51 **WARNING**: (f"\[Example Handler\] No specific parser implemented for
+- L601 *WARNING*: - L2756 *WARNING*: - L152 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+- L602 *WARNING*: - L2765 *WARNING*: - utils.logger\_singleton.logger.warning (line 51)
+- L603 *WARNING*: - L2796 *WARNING*: - utils.logger\_singleton.logger.warning (line 152)
+- L604 *TODO*: - L2833 *TODO*: - TODO/FIXME/WARN:
+- L605 *WARNING*: - L2834 *WARNING*: - L72 **WARNING**: ("\[WARNING\] dom*parts missing after
+- L606 *WARNING*: - L2836 *WARNING*: - L95 **WARNING**: ("\[red\]No contest selected. Skipping.\[/red\]")
+- L607 *WARNING*: - L2837 *WARNING*: - L139 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn1.get('label', '')}'
+- L608 *WARNING*: - L2840 *WARNING*: - L176 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn2.get('label', '')}'
+- L609 *WARNING*: - L2856 *WARNING*: - utils.logger\_singleton.logger.warning (line 72)
+- L610 *WARNING*: - L2863 *WARNING*: - utils.logger\_singleton.logger.warning (line 95)
+- L611 *WARNING*: - L2880 *WARNING*: - utils.logger\_singleton.logger.warning (line 139)
+- L612 *TODO*: - L2913 *TODO*: - TODO/FIXME/WARN:
+- L613 *WARNING*: - L2914 *WARNING*: - L27 **WARNING**: ("\[NY Handler\] No county specified in html*context.")
+- L614 *WARNING*: - L2915 *WARNING*: - L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
+- L615 *WARNING*: - L2921 *WARNING*: - utils.logger\_singleton.logger.warning (line 27)
+- L616 *WARNING*: - L2925 *WARNING*: - utils.logger\_singleton.logger.warning (line 43)
+- L617 *TODO*: - L2957 *TODO*: - TODO/FIXME/WARN:
+- L618 *WARNING*: - L2958 *WARNING*: - L44 **WARNING**: (f"\[NAV\] Step failed: {step} — {e}")
+- L619 *WARNING*: - L2959 *WARNING*: - L55 **WARNING**: (f"\[bold yellow\]Detected election:\[/bold yellow\]
+- L620 *WARNING*: - L2961 *WARNING*: - L76 **WARNING**: ("\[PA\] Invalid index input for election selection.")
+- L621 *WARNING*: - L2962 *WARNING*: - L78 **WARNING**: ("\[PA\] Elections dropdown not found.")
+- L622 *WARNING*: - L2963 *WARNING*: - L80 **WARNING**: (f"\[PA\] Failed to expand Elections menu or load
+- L623 *WARNING*: - L2965 *WARNING*: - L96 **WARNING**: ("\[PA\] County Breakdown link not found.")
+- L624 *WARNING*: - L2966 *WARNING*: - L98 **WARNING**: (f"\[PA\] Failed to click County Breakdown link: {e}")
+- L625 *WARNING*: - L2967 *WARNING*: - L113 **WARNING**: ("\[yellow\]Multiple CSV files found in input. Please
+- L626 *WARNING*: - L2983 *WARNING*: - utils.logger\_singleton.logger.warning (line 44)
+- L627 *WARNING*: - L2987 *WARNING*: - utils.logger\_singleton.logger.warning (line 55)
+- L628 *WARNING*: - L3002 *WARNING*: - utils.logger\_singleton.logger.warning (line 76)
+- L629 *WARNING*: - L3003 *WARNING*: - utils.logger\_singleton.logger.warning (line 78)
+- L630 *WARNING*: - L3004 *WARNING*: - utils.logger\_singleton.logger.warning (line 80)
+- L631 *WARNING*: - L3012 *WARNING*: - utils.logger\_singleton.logger.warning (line 96)
+- L632 *WARNING*: - L3013 *WARNING*: - utils.logger\_singleton.logger.warning (line 98)
+- L633 *WARNING*: - L3018 *WARNING*: - utils.logger\_singleton.logger.warning (line 113)
+- L634 *TODO*: - L3196 *TODO*: - TODO/FIXME/WARN:
+- L635 *WARNING*: - L3197 *WARNING*: - L252 **WARNING**: (f"\[health*router\] manual*correction failed (attempt
+- L636 *WARNING*: - L3199 *WARNING*: - L336 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L637 *WARNING*: - L3201 *WARNING*: - L338 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L638 *WARNING*: - L3203 *WARNING*: - L340 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L639 *WARNING*: - L3205 *WARNING*: - L375 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
+- L640 *WARNING*: - L3206 *WARNING*: - L380 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
+- L641 *WARNING*: - L3208 *WARNING*: - L382 **WARNING**: ("\[PIPELINE\] scan*misaligned*ner failed or file missing.
+- L642 *WARNING*: - L3210 *WARNING*: - L414 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
+- L643 *TODO*: - L3304 *TODO*: - TODO/FIXME/WARN:
+- L644 *WARNING*: - L3305 *WARNING*: - L151 **WARNING**: (f"Skipping non-dict entry in spacy*ner*train*data.jsonl:
+- L645 *WARNING*: - L3307 *WARNING*: - L460 **WARNING**: ("\[DB\]\[WARNING\] No user tables found in schema
+- L646 *WARNING*: - L3309 *WARNING*: - L503 **WARNING**: ("\[CLEAN\]\[WARNING\] The following files are still too
+- L647 *WARNING*: - L3311 *WARNING*: - L507 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+- L648 *WARNING*: - L3333 *WARNING*: - utils.logger\_singleton.logger.warning (line 151)
+- L649 *TODO*: - L3482 *TODO*: - TODO/FIXME/WARN:
+- L650 *WARNING*: - L3483 *WARNING*: - L322 **WARNING**: (f"Coordinator ML scoring failed: {e}")
+- L651 *WARNING*: - L3484 *WARNING*: - L343 **WARNING**: (f"Coordinator field suggestion failed: {e}")
+- L652 *WARNING*: - L3485 *WARNING*: - L355 **WARNING**: (f"Log file not found: {path}")
+- L653 *WARNING*: - L3486 *WARNING*: - L364 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
+- L654 *WARNING*: - L3487 *WARNING*: - L396 **WARNING**: (f"\[SKIP\] File not found: {file}")
+- L655 *WARNING*: - L3488 *WARNING*: - L400 **WARNING**: (f"\[SKIP\] File too large: {file}")
+- L656 *WARNING*: - L3489 *WARNING*: - L422 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
+- L657 *WARNING*: - L3491 *WARNING*: - L434 **WARNING**: (f"\[CORRUPT\] {len(corrupt*items)} lines saved to
+- L658 *WARNING*: - L3493 *WARNING*: - L439 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
+- L659 *WARNING*: - L3495 *WARNING*: - L453 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L660 *WARNING*: - L3496 *WARNING*: - L465 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt*path}")
+- L661 *WARNING*: - L3497 *WARNING*: - L471 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
+- L662 *WARNING*: - L3499 *WARNING*: - L476 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L663 *WARNING*: - L3500 *WARNING*: - L485 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {quarantine*dir /
+- L664 *WARNING*: - L3502 *WARNING*: - L489 **WARNING**: (f"\[DELETED\] {file}")
+- L665 *WARNING*: - L3503 *WARNING*: - L492 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
+- L666 *WARNING*: - L3504 *WARNING*: - L537 **WARNING**: (f"\[FIND-LOGS\] Skipped {d}: {e}")
+- L667 *WARNING*: - L3505 *WARNING*: - L562 **WARNING**: (f"\[CORRUPT\] {path} line {line*num}: {e}")
+- L668 *WARNING*: - L3506 *WARNING*: - L717 **WARNING**: (f"Invalid JSON, skipping edit: {e}")
+- L669 *TODO*: - L3507 *TODO*: - L750 **TODO**: Add JSON schema validation here if desired
+- L670 *WARNING*: - L3508 *WARNING*: - L989 **WARNING**: (
+- L671 *WARN*: - L3509 *WARN*: - L1079 **WARN**: if schema version mismatches.
+- L672 *WARNING*: - L3510 *WARNING*: - L1098 **WARNING**: (f"Schema version mismatch: found
+- L673 *WARNING*: - L3513 *WARNING*: - L1141 **WARNING**: (f"\[AUTO\] Could not delete log file {log*file}: {e}")
+- L674 *WARNING*: - L3514 *WARNING*: - L1257 **WARNING**: (f"\[SKIP\] Could not load {log*file}: {e}")
+- L675 *WARNING*: - L3515 *WARNING*: - L1273 **WARNING**: ("No log files matched any of the specified fields. Will
+- L676 *WARNING*: - L3517 *WARNING*: - L1356 **WARNING**: (f"Could not delete log file {log*file}: {e}")
+- L677 *WARNING*: - L3518 *WARNING*: - L1376 **WARNING**: ("\[WARNING\] No entries were processed. Check your log
+- L678 *TODO*: - L3734 *TODO*: - TODO/FIXME/WARN:
+- L679 *WARNING*: - L3735 *WARNING*: - L178 **WARNING**: (f"\[CLEAN\] File not found: {jsonl*path}")
+- L680 *WARNING*: - L3736 *WARNING*: - L186 **WARNING**: (f"\[CLEAN\] Could not parse line: {e}")
+- L681 *WARNING*: - L3737 *WARNING*: - L201 **WARNING**: (f"\[CLEAN\] Alignment check failed for text:
+- L682 *WARNING*: - L3739 *WARNING*: - L274 **WARNING**: (f"Failed to load {path}: {e}")
+- L683 *WARNING*: - L3740 *WARNING*: - L403 **WARNING**: (f"Skipping misaligned entity in: {text}")
+- L684 *WARNING*: - L3741 *WARNING*: - L408 **WARNING**: (f"Error validating entity alignment: {e}")
+- L685 *WARNING*: - L3742 *WARNING*: - L434 **WARNING**: (f"\[spaCy\] Could not check GPU availability: {e}")
+- L686 *WARNING*: - L3743 *WARNING*: - L450 **WARNING**: (f"\[spaCy\] Could not load lexeme normalization table.
+- L687 *WARNING*: - L3745 *WARNING*: - L536 **WARNING**: (f"\[NER\] Skipped {misaligned*count} misaligned examples.
+- L688 *WARNING*: - L3747 *WARNING*: - L550 **WARNING**: ("No NER training examples found. Skipping spaCy NER
+- L689 *WARNING*: - L3749 *WARNING*: - L619 **WARNING**: ("\[SUGGESTION\] Consider lowering min*delta or increasing
+- L690 *WARNING*: - L3751 *WARNING*: - L621 **WARNING**: ("\[SUGGESTION\] Model improved until the last epoch.
+- L691 *WARNING*: - L3753 *WARNING*: - L622 **WARNING**: (f"\[SUGGESTION\] Next run: patience={patience},
+- L692 *WARNING*: - L3755 *WARNING*: - L708 **WARNING**: ("No training examples found. Aborting retraining.")
+- L693 *WARNING*: - L3756 *WARNING*: - L727 **WARNING**: (f"\[WARN\] Could not delete old model directory
+- L694 *WARNING*: - L3758 *WARNING*: - L739 **WARNING**: (f"\[WARN\] Failed to load existing model: {e}")
+- L695 *WARNING*: - L3759 *WARNING*: - L742 **WARNING**: ("Falling back to base model (all-MiniLM-L6-v2).")
+- L696 *WARNING*: - L3760 *WARNING*: - L782 **WARNING**: (f"\[WARN\] Could not update canonical model directory:
+- L697 *WARNING*: - L3762 *WARNING*: - L810 **WARNING**: (f"MISALIGNED: {text} {annots\['entities'\]}")
+- L698 *WARNING*: - L3763 *WARNING*: - L840 **WARNING**: ("\[DB\] Base.metadata.tables is empty. No models
+- L699 *WARNING*: - L3801 *WARNING*: - utils.logger\_singleton.logger.warning (line 178)
+- L700 *WARNING*: - L3803 *WARNING*: - utils.logger\_singleton.logger.warning (line 186)
+- L701 *WARNING*: - L3810 *WARNING*: - utils.logger\_singleton.logger.warning (line 201)
+- L702 *TODO*: - L3877 *TODO*: - TODO/FIXME/WARN:
+- L703 *WARNING*: - L3878 *WARNING*: - L62 **WARNING**: (f"\[CORRUPT\] Could not parse line: {e}")
+- L704 *WARNING*: - L3879 *WARNING*: - L83 **WARNING**: (f"\n\[MISALIGNED\] Top {top*n} most frequent misaligned
+- L705 *WARNING*: - L3881 *WARNING*: - L85 **WARNING**: (f"  {repr(text)}: {count} times")
+- L706 *WARNING*: - L3882 *WARNING*: - L86 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+- L707 *WARNING*: - L3884 *WARNING*: - L87 **WARNING**: ("Run the manual*correction to review and clean these
+- L708 *WARNING*: - L3886 *WARNING*: - L88 **WARNING**: ("If you see spaCy entity alignment warnings, consider
+- L709 *WARNING*: - L3888 *WARNING*: - L98 **WARNING**: (f"\[WARN\] Could not remove old misaligned file: {e}")
+- L710 *WARNING*: - L3889 *WARNING*: - L112 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L711 *WARNING*: - L3891 *WARNING*: - L119 **WARNING**: (f"\[SELF-HEAL\] manual*correction exited with code
+- L712 *WARNING*: - L3893 *WARNING*: - L120 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L713 *WARNING*: - L3895 *WARNING*: - L122 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L714 *WARNING*: - L3913 *WARNING*: - utils.logger\_singleton.logger.warning (line 62)
+- L715 *WARNING*: - L3920 *WARNING*: - utils.logger\_singleton.logger.warning (line 83)
+- L716 *WARNING*: - L3922 *WARNING*: - utils.logger\_singleton.logger.warning (line 85)
+- L717 *WARNING*: - L3923 *WARNING*: - utils.logger\_singleton.logger.warning (line 86)
+- L718 *WARNING*: - L3924 *WARNING*: - utils.logger\_singleton.logger.warning (line 87)
+- L719 *WARNING*: - L3925 *WARNING*: - utils.logger\_singleton.logger.warning (line 88)
+- L720 *WARNING*: - L3929 *WARNING*: - utils.logger\_singleton.logger.warning (line 98)
+- L721 *WARNING*: - L3932 *WARNING*: - utils.logger\_singleton.logger.warning (line 112)
+- L722 *WARNING*: - L3934 *WARNING*: - utils.logger\_singleton.logger.warning (line 119)
+- L723 *WARNING*: - L3935 *WARNING*: - utils.logger\_singleton.logger.warning (line 120)
+- L724 *WARNING*: - L3937 *WARNING*: - utils.logger\_singleton.logger.warning (line 122)
+- L725 *TODO*: - L4087 *TODO*: - TODO/FIXME/WARN:
+- L726 *WARNING*: - L4088 *WARNING*: - L56 **WARNING**: ("Deleting .processed*urls cache for fresh start...")
+- L727 *WARNING*: - L4089 *WARNING*: - L393 **WARNING**: ({
+- L728 *WARNING*: - L4090 *WARNING*: - L394 **WARNING**: ",
+- L729 *WARNING*: - L4091 *WARNING*: - L408 **WARNING**: ({
+- L730 *WARNING*: - L4092 *WARNING*: - L409 **WARNING**: ",
+- L731 *WARNING*: - L4093 *WARNING*: - L469 **WARNING**: ({
+- L732 *WARNING*: - L4094 *WARNING*: - L470 **WARNING**: ",
+- L733 *WARNING*: - L4095 *WARNING*: - L543 **WARNING**: (payload*2)
+- L734 *WARNING*: - L4096 *WARNING*: - L870 **WARNING**: ({
+- L735 *WARNING*: - L4097 *WARNING*: - L871 **WARNING**: ",
+- L736 *WARNING*: - L4098 *WARNING*: - L917 **WARNING**: ({
+- L737 *WARNING*: - L4099 *WARNING*: - L918 **WARNING**: ",
+- L738 *WARNING*: - L4100 *WARNING*: - L971 **WARNING**: ({
+- L739 *WARNING*: - L4101 *WARNING*: - L972 **WARNING**: ",
+- L740 *WARNING*: - L4102 *WARNING*: - L1076 **WARNING**: ",
+- L741 *WARNING*: - L4103 *WARNING*: - L1081 **WARNING**: (payload)
+- L742 *WARN*: - L4104 *WARN*: - L1106 **WARN**: if nothing found
+- L743 *WARNING*: - L4105 *WARNING*: - L1166 **WARNING**: ",
+- L744 *WARNING*: - L4106 *WARNING*: - L1171 **WARNING**: (payload)
+- L745 *WARNING*: - L4107 *WARNING*: - L1249 **WARNING**: ({
+- L746 *WARNING*: - L4108 *WARNING*: - L1250 **WARNING**: ",
+- L747 *WARNING*: - L4109 *WARNING*: - L1267 **WARNING**: ",
+- L748 *WARNING*: - L4110 *WARNING*: - L1272 **WARNING**: (payload)
+- L749 *WARNING*: - L4111 *WARNING*: - L1283 **WARNING**: ",
+- L750 *WARNING*: - L4112 *WARNING*: - L1288 **WARNING**: (payload)
+- L751 *WARN*: - L4113 *WARN*: - L1290 **WARN**: \] No output file path returned from parser and no output
+- L752 *WARNING*: - L4115 *WARNING*: - L1292 **WARNING**: ",
+- L753 *WARNING*: - L4116 *WARNING*: - L1297 **WARNING**: (payload)
+- L754 *WARNING*: - L4117 *WARNING*: - L1302 **WARNING**: ",
+- L755 *WARNING*: - L4118 *WARNING*: - L1307 **WARNING**: (payload)
+- L756 *WARNING*: - L4119 *WARNING*: - L1425 **WARNING**: ({
+- L757 *WARNING*: - L4120 *WARNING*: - L1426 **WARNING**: ",
+- L758 *WARNING*: - L4121 *WARNING*: - L1486 **WARNING**: ({
+- L759 *WARNING*: - L4122 *WARNING*: - L1487 **WARNING**: ",
+- L760 *WARNING*: - L4125 *WARNING*: - utils.logger\_singleton.logger.warning (line 56)
+- L761 *TODO*: - L4518 *TODO*: - TODO/FIXME/WARN:
+- L762 *WARNING*: - L4519 *WARNING*: - L49 **WARNING**: ("\[Router\] handlers/states directory not found.")
+- L763 *WARNING*: - L4520 *WARNING*: - L66 **WARNING**: (f"\[Router\] counties directory not found for state:
+- L764 *WARNING*: - L4522 *WARNING*: - L137 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] No handler states
+- L765 *WARNING*: - L4524 *WARNING*: - L154 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L766 *WARNING*: - L4525 *WARNING*: - L157 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L767 *WARNING*: - L4526 *WARNING*: - L160 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] State '{state}'
+- L768 *WARNING*: - L4528 *WARNING*: - L179 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L769 *WARNING*: - L4529 *WARNING*: - L182 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] County '{county}'
+- L770 *WARNING*: - L4531 *WARNING*: - L189 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Too many failed
+- L771 *WARNING*: - L4533 *WARNING*: - L205 **WARNING**: (f"\[Router\] Requested state '{state*name}' not found on
+- L772 *WARNING*: - L4535 *WARNING*: - L512 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for
+- L773 *WARNING*: - L4537 *WARNING*: - L523 **WARNING**: (f"Failed to load context from file: {e}")
+- L774 *WARNING*: - L4538 *WARNING*: - L533 **WARNING**: ("No suitable handler found.")
+- L775 *WARNING*: - L4539 *WARNING*: - L540 **WARNING**: ("No handler selected. Exiting.")
+- L776 *WARNING*: - L4540 *WARNING*: - L547 **WARNING**: ("Still could not import a suitable handler.")
+- L777 *WARNING*: - L4542 *WARNING*: - utils.logger\_singleton.logger.warning (line 49)
+- L778 *WARNING*: - L4546 *WARNING*: - utils.logger\_singleton.logger.warning (line 66)
+- L779 *WARNING*: - L4568 *WARNING*: - utils.logger\_singleton.logger.warning (line 137)
+- L780 *WARNING*: - L4571 *WARNING*: - utils.logger\_singleton.logger.warning (line 154)
+- L781 *WARNING*: - L4572 *WARNING*: - utils.logger\_singleton.logger.warning (line 157)
+- L782 *WARNING*: - L4573 *WARNING*: - utils.logger\_singleton.logger.warning (line 160)
+- L783 *WARNING*: - L4576 *WARNING*: - utils.logger\_singleton.logger.warning (line 179)
+- L784 *WARNING*: - L4577 *WARNING*: - utils.logger\_singleton.logger.warning (line 182)
+- L785 *WARNING*: - L4579 *WARNING*: - utils.logger\_singleton.logger.warning (line 189)
+- L786 *WARNING*: - L4582 *WARNING*: - utils.logger\_singleton.logger.warning (line 205)
+- L787 *TODO*: - L4705 *TODO*: - TODO/FIXME/WARN:
+- L788 *WARNING*: - L4706 *WARNING*: - L89 **WARNING**: (f"\[browser*utils\] Failed to safely parse context*library
+- L789 *WARNING*: - L4708 *WARNING*: - L91 **WARNING**: (f"\[browser*utils\] Skipping unsafe context*library value
+- L790 *WARNING*: - L4710 *WARNING*: - L295 **WARNING**: (f"\[safe*attributes\] Playwright JS extraction failed:
+- L791 *WARNING*: - L4712 *WARNING*: - L309 **WARNING**: (f"\[safe*attributes\] Playwright fallback extraction
+- L792 *WARNING*: - L4714 *WARNING*: - L395 **WARNING**: (f"\[safe*count\] Object is not countable: {type(obj)}")
+- L793 *WARNING*: - L4715 *WARNING*: - L441 **WARNING**: (f"\[safe*launch\] browser*type is not a SyncBrowserType:
+- L794 *WARNING*: - L4717 *WARNING*: - L461 **WARNING**: (f"\[async*safe*launch\] browser*type is not an
+- L795 *WARNING*: - L4719 *WARNING*: - L540 **WARNING**: ({
+- L796 *WARNING*: - L4720 *WARNING*: - L541 **WARNING**: ",
+- L797 *WARNING*: - L4721 *WARNING*: - L569 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L798 *WARNING*: - L4723 *WARNING*: - L578 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual
+- L799 *WARNING*: - L4725 *WARNING*: - L602 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L800 *WARNING*: - L4727 *WARNING*: - L611 **WARNING**: ({
+- L801 *WARNING*: - L4728 *WARNING*: - L612 **WARNING**: ",
+- L802 *WARNING*: - L4729 *WARNING*: - L623 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual
+- L803 *WARNING*: - L4731 *WARNING*: - L712 **WARNING**: ("\[SCROLL\] User aborted scrolling.")
+- L804 *WARNING*: - L4732 *WARNING*: - L733 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may
+- L805 *WARNING*: - L4741 *WARNING*: - logger\_singleton.logger.warning (line 89)
+- L806 *WARNING*: - L4742 *WARNING*: - logger\_singleton.logger.warning (line 91)
+- L807 *WARNING*: - L4780 *WARNING*: - logger\_singleton.logger.warning (line 295)
+- L808 *WARNING*: - L4782 *WARNING*: - logger\_singleton.logger.warning (line 309)
+- L809 *TODO*: - L4918 *TODO*: - TODO/FIXME/WARN:
+- L810 *WARNING*: - L4919 *WARNING*: - L118 **WARNING**: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
+- L811 *WARNING*: - L4920 *WARNING*: - L154 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
+- L812 *WARNING*: - L4938 *WARNING*: - logger\_singleton.logger.warning (line 118)
+- L813 *WARNING*: - L4949 *WARNING*: - logger\_singleton.logger.warning (line 154)
+- L814 *TODO*: - L5078 *TODO*: - TODO/FIXME/WARN:
+- L815 *WARNING*: - L5079 *WARNING*: - L635 **WARNING**: ":
+- L816 *WARNING*: - L5080 *WARNING*: - L636 **WARNING**: (entry)
+- L817 *WARNING*: - L5081 *WARNING*: - L1029 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
+- L818 *WARNING*: - L5083 *WARNING*: - L1565 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
+- L819 *WARNING*: - L5085 *WARNING*: - L1570 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
+- L820 *WARNING*: - L5087 *WARNING*: - L1642 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
+- L821 *TODO*: - L5627 *TODO*: - TODO/FIXME/WARN:
+- L822 *WARNING*: - L5628 *WARNING*: - L153 **WARNING**: (f"\[DOM*EXTRACTOR\] failure: {e}")
+- L823 *WARNING*: - L5661 *WARNING*: - logger\_singleton.logger.warning (line 153)
+- L824 *TODO*: - L5864 *TODO*: - TODO/FIXME/WARN:
+- L825 *WARNING*: - L5865 *WARNING*: - L124 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
+- L826 *WARNING*: - L5867 *WARNING*: - L129 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in
+- L827 *WARNING*: - L5869 *WARNING*: - L171 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step
+- L828 *WARNING*: - L5871 *WARNING*: - L187 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table
+- L829 *WARNING*: - L5873 *WARNING*: - L217 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning
+- L830 *WARNING*: - L5875 *WARNING*: - L229 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed",
+- L831 *WARNING*: - L5877 *WARNING*: - L272 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed",
+- L832 *WARNING*: - L5879 *WARNING*: - L776 **WARNING**: ", "extractor", "No learned DOM patterns found.")
+- L833 *WARNING*: - L5880 *WARNING*: - L800 **WARNING**: ", "extractor", "Entry deleted.")
+- L834 *WARNING*: - L5881 *WARNING*: - L805 **WARNING**: ", "extractor", "Unknown action.")
+- L835 *WARNING*: - L5882 *WARNING*: - L807 **WARNING**: ", "extractor", "Invalid entry number.")
+- L836 *TODO*: - L6022 *TODO*: - TODO/FIXME/WARN:
+- L837 *WARNING*: - L6023 *WARNING*: - L178 **WARNING**: (msg)
+- L838 *WARNING*: - L6065 *WARNING*: - logger\_singleton.logger.warning (line 178)
+- L839 *TODO*: - L6132 *TODO*: - TODO/FIXME/WARN:
+- L840 *WARNING*: - L6133 *WARNING*: - L68 **WARNING**: (f"\[STRATEGY\] {name} failed: {e}")
+- L841 *WARNING*: - L6145 *WARNING*: - logger\_singleton.logger.warning (line 68)
+- L842 *TODO*: - L6261 *TODO*: - TODO/FIXME/WARN:
+- L843 *WARNING*: - L6262 *WARNING*: - L374 **WARNING**: ({
+- L844 *WARNING*: - L6263 *WARNING*: - L375 **WARNING**: ",
+- L845 *WARN*: - L6264 *WARN*: - L377 **WARN**: \] No supported file formats found on the page.",
+- L846 *WARNING*: - L6265 *WARNING*: - L402 **WARNING**: ({
+- L847 *WARNING*: - L6266 *WARNING*: - L403 **WARNING**: ",
+- L848 *WARN*: - L6267 *WARN*: - L405 **WARN**: \] Unsupported format requested: {format*str}",
+- L849 *WARNING*: - L6268 *WARNING*: - L409 **WARNING**: ({
+- L850 *WARNING*: - L6269 *WARNING*: - L410 **WARNING**: ",
+- L851 *WARNING*: - L6270 *WARNING*: - L654 **WARNING**: ({
+- L852 *WARNING*: - L6271 *WARNING*: - L655 **WARNING**: ",
+- L853 *WARNING*: - L6272 *WARNING*: - L874 **WARNING**: ({
+- L854 *WARNING*: - L6273 *WARNING*: - L875 **WARNING**: ",
+- L855 *WARNING*: - L6274 *WARNING*: - L950 **WARNING**: ({
+- L856 *WARNING*: - L6275 *WARNING*: - L951 **WARNING**: ",
+- L857 *TODO*: - L6613 *TODO*: - TODO/FIXME/WARN:
+- L858 *WARNING*: - L6614 *WARNING*: - L163 **WARNING**: ",
+- L859 *WARNING*: - L6615 *WARNING*: - L167 **WARNING**: (payload)
+- L860 *WARNING*: - L6616 *WARNING*: - L189 **WARNING**: ",
+- L861 *WARNING*: - L6617 *WARNING*: - L193 **WARNING**: (payload)
+- L862 *WARNING*: - L6618 *WARNING*: - L288 **WARNING**: ",
+- L863 *WARNING*: - L6619 *WARNING*: - L292 **WARNING**: (payload)
+- L864 *WARNING*: - L6620 *WARNING*: - L315 **WARNING**: ",
+- L865 *WARNING*: - L6621 *WARNING*: - L319 **WARNING**: (payload)
+- L866 *WARNING*: - L6622 *WARNING*: - L353 **WARNING**: ",
+- L867 *WARNING*: - L6623 *WARNING*: - L357 **WARNING**: (payload)
+- L868 *WARNING*: - L6624 *WARNING*: - L380 **WARNING**: ",
+- L869 *WARNING*: - L6625 *WARNING*: - L384 **WARNING**: (payload)
+- L870 *WARNING*: - L6626 *WARNING*: - L579 **WARNING**: ",
+- L871 *WARNING*: - L6627 *WARNING*: - L583 **WARNING**: (payload)
+- L872 *WARNING*: - L6628 *WARNING*: - L784 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L873 *WARNING*: - L6630 *WARNING*: - L807 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L874 *WARNING*: - L6632 *WARNING*: - L1034 **WARNING**: ",
+- L875 *WARNING*: - L6633 *WARNING*: - L1038 **WARNING**: (payload)
+- L876 *WARNING*: - L6634 *WARNING*: - L1045 **WARNING**: ",
+- L877 *WARNING*: - L6635 *WARNING*: - L1049 **WARNING**: (payload)
+- L878 *WARNING*: - L6636 *WARNING*: - L1376 **WARNING**: ",
+- L879 *WARNING*: - L6637 *WARNING*: - L1380 **WARNING**: (payload)
+- L880 *WARNING*: - L6638 *WARNING*: - L1438 **WARNING**: ",
+- L881 *WARNING*: - L6639 *WARNING*: - L1442 **WARNING**: (payload)
+- L882 *WARNING*: - L6640 *WARNING*: - L1691 **WARNING**: ({"level": "WARNING", "type": "dom*segments", "message":
+- L883 *WARN*: - L6641 *WARN*: msg*warn})
+- L884 *WARNING*: - L6642 *WARNING*: - L1747 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message":
+- L885 *WARNING*: - L6644 *WARNING*: - L1754 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message":
+- L886 *WARNING*: - L6646 *WARNING*: - L1766 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message":
+- L887 *WARNING*: - L6648 *WARNING*: - L1789 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
+- L888 *WARNING*: - L6649 *WARNING*: - L1824 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
+- L889 *WARNING*: - L6650 *WARNING*: - L2003 **WARNING**: ({"level": "WARNING", "type": "segment*review",
+- L890 *WARNING*: - L6652 *WARNING*: - L2012 **WARNING**: ({
+- L891 *WARNING*: - L6653 *WARNING*: - L2013 **WARNING**: ",
+- L892 *WARNING*: - L6654 *WARNING*: - L2129 **WARNING**: ",
+- L893 *WARNING*: - L6655 *WARNING*: - L2133 **WARNING**: (payload)
+- L894 *WARNING*: - L6656 *WARNING*: - L2145 **WARNING**: ",
+- L895 *WARNING*: - L6657 *WARNING*: - L2149 **WARNING**: (payload)
+- L896 *WARNING*: - L6658 *WARNING*: - L2158 **WARNING**: ",
+- L897 *WARNING*: - L6659 *WARNING*: - L2162 **WARNING**: (payload)
+- L898 *WARNING*: - L6660 *WARNING*: - L2177 **WARNING**: ",
+- L899 *WARNING*: - L6661 *WARNING*: - L2181 **WARNING**: (payload)
+- L900 *WARNING*: - L6662 *WARNING*: - L2193 **WARNING**: ",
+- L901 *WARNING*: - L6663 *WARNING*: - L2197 **WARNING**: (payload)
+- L902 *WARNING*: - L6664 *WARNING*: - L2206 **WARNING**: ",
+- L903 *WARNING*: - L6665 *WARNING*: - L2210 **WARNING**: (payload)
+- L904 *WARNING*: - L6666 *WARNING*: - L2219 **WARNING**: ",
+- L905 *WARNING*: - L6667 *WARNING*: - L2223 **WARNING**: (payload)
+- L906 *WARNING*: - L6668 *WARNING*: - L2233 **WARNING**: ",
+- L907 *WARNING*: - L6669 *WARNING*: - L2237 **WARNING**: (payload)
+- L908 *WARNING*: - L6670 *WARNING*: - L2248 **WARNING**: ",
+- L909 *WARNING*: - L6680 *WARNING*: - logger\_singleton.logger.warning (line 167)
+- L910 *WARNING*: - L6685 *WARNING*: - logger\_singleton.logger.warning (line 193)
+- L911 *WARNING*: - L6701 *WARNING*: - logger\_singleton.logger.warning (line 292)
+- L912 *WARNING*: - L6707 *WARNING*: - logger\_singleton.logger.warning (line 319)
+- L913 *WARNING*: - L6718 *WARNING*: - logger\_singleton.logger.warning (line 357)
+- L914 *TODO*: - L7188 *TODO*: - TODO/FIXME/WARN:
+- L915 *WARNING*: - L7189 *WARNING*: - L389 **WARNING**: (f"Failed loading local override for SentenceTransformer:
+- L916 *WARNING*: - L7191 *WARNING*: - L409 **WARNING**: ("TRANSFORMERS*OFFLINE/HUGGINGFACE*HUB*OFFLINE set;
+- L917 *WARNING*: - L7193 *WARNING*: - L426 **WARNING**: for noisy environments
+- L918 *WARNING*: - L7194 *WARNING*: - L429 **WARNING**: (f"Failed to load base SentenceTransformer (network/DNS).
+- L919 *TODO*: - L7435 *TODO*: - TODO/FIXME/WARN:
+- L920 *WARNING*: - L7436 *WARNING*: - L105 **WARNING**: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using
+- L921 *WARNING*: - L7438 *WARNING*: - L108 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified.
+- L922 *WARNING*: - L7440 *WARNING*: - L531 **WARNING**: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
+- L923 *WARNING*: - L7441 *WARNING*: - L607 **WARNING**: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
+- L924 *WARNING*: - L7466 *WARNING*: - logger\_singleton.logger.warning (line 105)
+- L925 *WARNING*: - L7467 *WARNING*: - logger\_singleton.logger.warning (line 108)
+- L926 *TODO*: - L7534 *TODO*: - TODO/FIXME/WARN:
+- L927 *WARNING*: - L7535 *WARNING*: - L26 **WARNING**: (f"\[PATTERN\] load fail {e}")
+- L928 *WARNING*: - L7536 *WARNING*: - L95 **WARNING**: (f"\[PATTERN\] pattern error {pat.get('name')}: {e}")
+- L929 *WARNING*: - L7539 *WARNING*: - logger\_singleton.logger.warning (line 26)
+- L930 *WARNING*: - L7553 *WARNING*: - logger\_singleton.logger.warning (line 95)
+- L931 *TODO*: - L7821 *TODO*: - TODO/FIXME/WARN:
+- L932 *WARNING*: - L7822 *WARNING*: - L1353 **WARNING**: ("\[PIVOT\] No candidates detected – verify headers and
+- L933 *TODO*: - L8158 *TODO*: - TODO/FIXME/WARN:
+- L934 *WARNING*: - L8159 *WARNING*: - L159 **WARNING**:         elif record.levelno &gt;= logging.WARNING:
+- L935 *WARNING*: - L8160 *WARNING*: - L160 **WARNING**: (msg)
+- L936 *WARNING*: - L8161 *WARNING*: - L236 **WARNING**: ": logging.WARNING,
+- L937 *WARNING*: - L8162 *WARNING*: - L307 **WARNING**: ": "yellow",
+- L938 *WARNING*: - L8163 *WARNING*: - L369 **WARNING**: (self, msg, context=None, exc*info=None):
+- L939 *WARNING*: - L8164 *WARNING*: - L371 **WARNING**: ", msg, context, color="yellow")
+- L940 *WARNING*: - L8165 *WARNING*: - L385 **WARNING**: ": "yellow",
+- L941 *WARNING*: - L8166 *WARNING*: - L598 **WARNING**: (f"Log directory does not exist: {log*dir}")
+- L942 *WARNING*: - L8167 *WARNING*: - L615 **WARNING**: (f"Corrupt line in {path}: {e}")
+- L943 *TODO*: - L8404 *TODO*: - TODO/FIXME/WARN:
+- L944 *WARNING*: - L8405 *WARNING*: - L237 **WARNING**: (f"\[safe*query\] session.query({model}) failed: {e}")
+- L945 *WARNING*: - L8406 *WARNING*: - L260 **WARNING**: (f"\[safe*filter*by\] No mapper found for model {model}")
+- L946 *WARNING*: - L8407 *WARNING*: - L266 **WARNING**: (f"\[safe*filter*by\] Could not inspect model {model}:
+- L947 *WARNING*: - L8409 *WARNING*: - L280 **WARNING**: (f"\[safe*filter*by\] filter*by failed: {e}")
+- L948 *WARNING*: - L8410 *WARNING*: - L293 **WARNING**: (f"\[safe*first\] query.first() failed: {e}")
+- L949 *WARNING*: - L8411 *WARNING*: - L363 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
+- L950 *WARNING*: - L8413 *WARNING*: - L497 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
+- L951 *WARNING*: - L8414 *WARNING*: - L711 **WARNING**: (f"\[safe*append\] Target is not a list: {type(lst)};
+- L952 *WARNING*: - L8416 *WARNING*: - L733 **WARNING**: (f"\[safe*update\] Target is not a dict: {type(dct)}")
+- L953 *WARNING*: - L8417 *WARNING*: - L737 **WARNING**: (f"\[safe*update\] Updates is not a dict:
+- L954 *WARNING*: - L8419 *WARNING*: - L757 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)};
+- L955 *WARNING*: - L8421 *WARNING*: - L1097 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
+- L956 *WARNING*: - L8423 *WARNING*: - L1360 **WARNING**: (f"State '{state*norm}' not found in county map")
+- L957 *WARNING*: - L8424 *WARNING*: - L2224 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
+- L958 *WARNING*: - L8425 *WARNING*: - L2230 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+- L959 *WARNING*: - L8427 *WARNING*: - L2245 **WARNING**: ("\[inventory\] generate*project*map completed with
+- L960 *TODO*: - L8429 *TODO*: - L2291 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
+- L961 *TODO*: - L8431 *TODO*: - L2293 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+- L962 *TODO*: - L8432 *TODO*: - L2965 **TODO**: /FIXME/WARN
+- L963 *TODO*: - L8433 *TODO*: - L2968 **TODO**: /FIXME/WARN:")
+- L964 *TODO*: - L8434 *TODO*: - L3038 **TODO**: /FIXME/WARN lines from webapp/ into a compact index.
+- L965 *FIXME*: - L8435 *FIXME*: - L3048 **FIXME**: ', 'BUG'\]
+- L966 *TODO*: - L8436 *TODO*: - L3049 **TODO**: ', 'HACK', 'XXX'\]
+- L967 *WARN*: - L8437 *WARN*: - L3050 **WARN**: ', 'WARNING', 'NOTE'\]
+- L968 *TODO*: - L8438 *TODO*: - L3089 **TODO**: /FIXME Index"')
+- L969 *TODO*: - L8439 *TODO*: - L3092 **TODO**: /FIXME annotations under ⁣`webapp/⁣`.")
+- L970 *TODO*: - L8440 *TODO*: - L3134 **TODO**: {priority}-{abs(hash(path))}"
+- L971 *WARNING*: - L8441 *WARNING*: - L3173 **WARNING**: (f"\[noise\] No suggestions file found at {path}")
+- L972 *TODO*: - L8442 *TODO*: - L3544 **TODO**: /FIXME/WARN ({mod*name})")
+- L973 *WARNING*: - L8461 *WARNING*: - utils.logger\_singleton.logger.warning (line 237)
+- L974 *WARNING*: - L8462 *WARNING*: - utils.logger\_singleton.logger.warning (line 260)
+- L975 *WARNING*: - L8464 *WARNING*: - utils.logger\_singleton.logger.warning (line 266)
+- L976 *WARNING*: - L8466 *WARNING*: - utils.logger\_singleton.logger.warning (line 280)
+- L977 *WARNING*: - L8468 *WARNING*: - utils.logger\_singleton.logger.warning (line 293)
+- L978 *WARNING*: - L8473 *WARNING*: - utils.logger\_singleton.logger.warning (line 363)
+- L979 *WARNING*: - L8489 *WARNING*: - utils.logger\_singleton.logger.warning (line 497)
+- L980 *TODO*: - L8704 *TODO*: - TODO/FIXME/WARN:
+- L981 *WARNING*: - L8705 *WARNING*: - L37 **WARNING**: (f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
+- L982 *WARNING*: - L8706 *WARNING*: - L65 **WARNING**: (f"\[CONCURRENCY\] Strategy {name} error: {e}")
+- L983 *WARNING*: - L8707 *WARNING*: - L73 **WARNING**: (f"\[CONCURRENCY\] {*safe*run*strategy.**name**} {name}
+- L984 *WARNING*: - L8709 *WARNING*: - L102 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed:
+- L985 *WARNING*: - L8711 *WARNING*: - L120 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
+- L986 *WARNING*: - L8714 *WARNING*: - logger\_singleton.logger.warning (line 37)
+- L987 *WARNING*: - L8721 *WARNING*: - logger\_singleton.logger.warning (line 65)
+- L988 *WARNING*: - L8722 *WARNING*: - logger\_singleton.logger.warning (line 73)
+- L989 *WARNING*: - L8727 *WARNING*: - logger\_singleton.logger.warning (line 102)
+- L990 *WARNING*: - L8731 *WARNING*: - logger\_singleton.logger.warning (line 120)
+- L991 *TODO*: - L8855 *TODO*: - TODO/FIXME/WARN:
+- L992 *WARNING*: - L8856 *WARNING*: - L816 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+- L993 *WARNING*: - L8858 *WARNING*: - L828 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+- L994 *WARNING*: - L8860 *WARNING*: - L836 **WARNING**: ", "builder", "\[TABLE*BUILDER\] all*panel*tables was not
+- L995 *WARNING*: - L8863 *WARNING*: - L845 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Dropping invalid table
+- L996 *WARNING*: - L8865 *WARNING*: - L862 **WARNING**: ", "builder", "\[TABLE*BUILDER\] sanitize failed",
+- L997 *WARNING*: - L8867 *WARNING*: - L867 **WARNING**: ", "builder", "\[TABLE*BUILDER\] harmonize failed",
+- L998 *WARNING*: - L8869 *WARNING*: - L873 **WARNING**: ", "builder", "\[TABLE*BUILDER\]
+- L999 *WARNING*: - L8871 *WARNING*: - L925 **WARNING**: ",
+- L1000 *WARNING*: - L8872 *WARNING*: - L950 **WARNING**: ", "builder", "\[TABLE*BUILDER\] entity annotate failed",
+- L1001 *WARNING*: - L8874 *WARNING*: - L955 **WARNING**: ", "builder", "\[TABLE*BUILDER\] stringify entity*info
+- L1002 *WARNING*: - L8876 *WARNING*: - L975 **WARNING**: ", "builder", "\[TABLE*BUILDER\] pivot*to*wide failed",
+- L1003 *WARNING*: - L8878 *WARNING*: - L995 **WARNING**: ", "builder", "\[TABLE*BUILDER\] ensure division totals
+- L1004 *WARNING*: - L8880 *WARNING*: - L1288 **WARNING**: ", "builder", f"\[TABLE*BUILDER\] Column marked
+- L1005 *WARNING*: - L8882 *WARNING*: - L1361 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist table
+- L1006 *WARNING*: - L8884 *WARNING*: - L1376 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist
+- L1007 *TODO*: - L9039 *TODO*: - TODO/FIXME/WARN:
+- L1008 *WARNING*: - L9040 *WARNING*: - L231 **WARNING**: (f"\[TABLE BUILDER\] Concurrent strategies execution
+- L1009 *WARNING*: - L9042 *WARNING*: - L288 **WARNING**: (f"\[TABLE BUILDER\] RawJSON pivot failed: {e}")
+- L1010 *WARNING*: - L9043 *WARNING*: - L296 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide signature mismatch
+- L1011 *WARNING*: - L9045 *WARNING*: - L298 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide failed (skipped): {e}")
+- L1012 *WARNING*: - L9046 *WARNING*: - L349 **WARNING**: (f"\[TABLE BUILDER\] finalize output failed: {e}")
+- L1013 *WARNING*: - L9047 *WARNING*: - L414 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] Concurrent strategies
+- L1014 *WARNING*: - L9049 *WARNING*: - L477 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed:
+- L1015 *WARNING*: - L9072 *WARNING*: - logger\_singleton.logger.warning (line 231)
+- L1016 *WARNING*: - L9089 *WARNING*: - logger\_singleton.logger.warning (line 288)
+- L1017 *WARNING*: - L9092 *WARNING*: - logger\_singleton.logger.warning (line 296)
+- L1018 *WARNING*: - L9093 *WARNING*: - logger\_singleton.logger.warning (line 298)
+- L1019 *TODO*: - L9156 *TODO*: - TODO/FIXME/WARN:
+- L1020 *WARNING*: - L9157 *WARNING*: - L312 **WARNING**: ("\[UserPrompt\] Webapp mode active but no
+- L1021 *WARNING*: - L9159 *WARNING*: - L349 **WARNING**: ("\[CLI Prompt\] EOFError encountered.")
+- L1022 *WARNING*: - L9160 *WARNING*: - L370 **WARNING**: ("\[Webapp Prompt\] socketio*emit*func not set.")
+- L1023 *WARNING*: - L9161 *WARNING*: - L428 **WARNING**: ": 30,
+- L1024 *WARNING*: - L9162 *WARNING*: - L507 **WARNING**: ("\n\[Prompt\] Timed out.")
+- L1025 *WARNING*: - L9163 *WARNING*: - L558 **WARNING**: ("\n\[Prompt\] No input available (EOF). Exiting prompt.")
+- L1026 *WARNING*: - L9164 *WARNING*: - L592 **WARNING**: ("Invalid input. Please try again.")
+- L1027 *WARNING*: - L9165 *WARNING*: - L594 **WARNING**: ("\[Prompt\] Too many invalid attempts.")
+- L1028 *WARNING*: - L9166 *WARNING*: - L659 **WARNING**: ("\[Prompt Queue\] Invalid queued yes/no response; falling
+- L1029 *WARNING*: - L9168 *WARNING*: - L674 **WARNING**: ("\n\[Prompt\] Timed out.")
+- L1030 *WARNING*: - L9169 *WARNING*: - L881 **WARNING**: ("\[yellow\]\[FEEDBACK\] Skipped manual
+- L1031 *WARNING*: - L9171 *WARNING*: - L913 **WARNING**: ("\[yellow\]Button confirmation cancelled by
+- L1032 *WARNING*: - L9203 *WARNING*: - logger.warning (line 312)
+- L1033 *WARNING*: - L9207 *WARNING*: - logger.warning (line 349)
+- L1034 *WARNING*: - L9210 *WARNING*: - logger.warning (line 370)
+- L1035 *TODO*: - L9338 *TODO*: - TODO/FIXME/WARN:
+- L1036 *WARNING*: - L9339 *WARNING*: - L49 **WARNING**: ({
+- L1037 *WARNING*: - L9340 *WARNING*: - L50 **WARNING**: ",
+- L1038 *WARNING*: - L9341 *WARNING*: - L66 **WARNING**: ({
+- L1039 *WARNING*: - L9342 *WARNING*: - L67 **WARNING**: ",
+- L1040 *WARNING*: - L9343 *WARNING*: - L83 **WARNING**: ({
+- L1041 *WARNING*: - L9344 *WARNING*: - L84 **WARNING**: ",
+- L1042 *WARNING*: - L9350 *WARNING*: - utils.logger\_singleton.logger.warning (line 49)
+- L1043 *WARNING*: - L9353 *WARNING*: - utils.logger\_singleton.logger.warning (line 66)
+- L1044 *WARNING*: - L9354 *WARNING*: - utils.logger\_singleton.logger.warning (line 83)
+- L1045 *TODO*: - L9430 *TODO*: - TODO/FIXME/WARN:
+- L1046 *WARNING*: - L9431 *WARNING*: - L17 **WARNING**: escalates to
+- L1047 *WARNING*: - L9432 *WARNING*: - L21 **WARNING**: category so it never escalates.
+- L1048 *WARNING*: - L9433 *WARNING*: - L23 **WARNING**: was ignored.
+- L1049 *TODO*: - L9968 *TODO*: - TODO/FIXME/WARN:
+- L1050 *WARNING*: - L9969 *WARNING*: - L17 **WARNING**:     # Build a table that lacks candidate/ballot/total
+- L1051 *WARNING*: - L9970 *WARNING*: columns, forcing a 'normalized schema weak' warning
+- L1052 *WARNING*: - L9971 *WARNING*: - L39 **WARNING**: " and msg.get("status")=="weak"
+- L1053 *WARNING*: - L9972 *WARNING*: - L44 **WARNING**: " and inner.get("status")=="weak"
+- L1054 *WARNING*: - L9973 *WARNING*: - L49 **WARNING**: in captured logs; got: {captured}"
+- L1055 *TODO*: - L10131 *TODO*: - TODO/FIXME/WARN:
+- L1056 *WARNING*: - L10132 *WARNING*: - L17 **WARNING**: ,ERROR")
+- L1060 *WARNING*: - L95 *WARNING*: - Monitor upstream pytest / SeleniumBase releases so the temporary unraisable warning suppression can be removed once socket cleanup is fixed.
+- L1061 *TODO*: - L117 *TODO*: ## 🧭 Working TODO List
+- L1065 *TODO*: - L3 *TODO*: title: "TODO/FIXME Index"
+- L1066 *TODO*: - L6 *TODO*: Index scope: TODO/FIXME/HACK/XXX/WARNING/NOTE annotations under `C:\Users\olivi\html_Parser_prototype\webapp, C:\Users\olivi\html_Parser_prototype\...
+- L1067 *WARNING*: - L15 *WARNING*: - L290 *WARNING*: - Keep the shim in place until upstream libraries drop the deprecated import. When versions are bumped, remove the alias and...
+- L1068 *NOTE*: - L19 *NOTE*: - L22 *NOTE*: // Note: Mermaid code blocks are converted to divs by mermaid-init.js, so we don't need to filter them
+- L1069 *WARN*: - L23 *WARN*: - L85 *WARN*: console.warn('Mermaid library failed to load after maximum retries');
+- L1070 *WARNING*: - L27 *WARNING*: - L172 *WARNING*: 3. When extraction yields only boilerplate (for example “November 2016”), log a high-severity warning and abort instead of ge...
+- L1071 *TODO*: - L31 *TODO*: - L190 *TODO*: #### ⚠️ TODO/FIXME/WARN (Context_Integration_Context_Library_constants)
+- L1072 *NOTE*: - L32 *NOTE*: - L192 *NOTE*: - L1831 **NOTE**: .*$",                     # Note
+- L1073 *WARNING*: - L33 *WARNING*: - L193 *WARNING*: - L2020 **WARNING**: ",
+- L1074 *WARNING*: - L34 *WARNING*: - L194 *WARNING*: - L2111 **WARNING**: ", "info*box", "navigation", "pagination", "tab",
+- L1075 *NOTE*: - L35 *NOTE*: - L196 *NOTE*: - L2144 **NOTE**: ", "comment",
+- L1076 *NOTE*: - L36 *NOTE*: - L197 *NOTE*: - L2220 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
+- L1077 *NOTE*: - L37 *NOTE*: - L198 *NOTE*: - L2236 **NOTE**: ", "Comment", "Feedback", "Suggestion",
+- L1078 *TODO*: - L38 *TODO*: - L280 *TODO*: #### ⚠️ TODO/FIXME/WARN (Context_Integration_context_coordinator)
+- L1079 *WARNING*: - L39 *WARNING*: - L282 *WARNING*: - L788 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
+- L1080 *WARNING*: - L40 *WARNING*: - L283 *WARNING*: - L876 **WARNING**: ({
+- L1081 *WARNING*: - L41 *WARNING*: - L284 *WARNING*: - L877 **WARNING**: ",
+- L1082 *WARNING*: - L42 *WARNING*: - L285 *WARNING*: - L995 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
+- L1083 *WARNING*: - L43 *WARNING*: - L287 *WARNING*: - L1234 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
+- L1084 *WARNING*: - L44 *WARNING*: - L289 *WARNING*: - L1403 **WARNING**: (f"\[get*feedback*pattern*kb\] Skipping corrupt line:
+- L1085 *WARNING*: - L45 *WARNING*: - L291 *WARNING*: - L1515 **WARNING**: ("\[group*dom*nodes*by*label\] No organized DOM parts.
+- L1086 *WARNING*: - L46 *WARNING*: - L293 *WARNING*: - L1517 **WARNING**: (f"\[group*dom*nodes*by*label\] No organized DOM parts.
+- L1087 *WARNING*: - L47 *WARNING*: - L294 *WARNING*: (Occurred {ContextCoordinator.*dom*parts*warning*count} times)")
+- L1088 *WARNING*: - L48 *WARNING*: - L295 *WARNING*: - L1522 **WARNING**: ("\[group*dom*nodes*by*label\] No DOM nodes found.")
+- L1089 *WARNING*: - L49 *WARNING*: - L296 *WARNING*: - L1540 **WARNING**: ("\[submit*user*feedback\] ContextOrganizer has no
+- L1090 *WARNING*: - L50 *WARNING*: - L298 *WARNING*: - L1568 **WARNING**: (f"\[correct*and*update*contest\] Contest {contest*id}
+- L1091 *WARNING*: - L51 *WARNING*: - L300 *WARNING*: - L1592 **WARNING**: ("\[print*contest*summary\] No organized contests to
+- L1092 *WARNING*: - L52 *WARNING*: - L302 *WARNING*: - L1605 **WARNING**: ("\[plot*contest*distribution\] No organized contests to
+- L1093 *WARNING*: - L53 *WARNING*: - L304 *WARNING*: - L1656 **WARNING**: ("No organized DOM parts.")
+- L1094 *WARNING*: - L54 *WARNING*: - L305 *WARNING*: - L1659 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
+- L1095 *WARNING*: - L55 *WARNING*: - L306 *WARNING*: - L1670 **WARNING**: ("\[get*contest*groups\] No contest groups found.")
+- L1096 *WARNING*: - L56 *WARNING*: - L307 *WARNING*: - L1679 **WARNING**: ("\[get*panel*groups\] No panel groups found.")
+- L1097 *WARNING*: - L57 *WARNING*: - L308 *WARNING*: - L1688 **WARNING**: ("\[get*button*groups\] No button groups found.")
+- L1098 *WARNING*: - L58 *WARNING*: - L309 *WARNING*: - L1697 **WARNING**: ("\[get*table*groups\] No table groups found.")
+- L1099 *WARNING*: - L59 *WARNING*: - L310 *WARNING*: - L1706 **WARNING**: ("\[get*relationships\] No organized context.")
+- L1100 *TODO*: - L60 *TODO*: - L349 *TODO*: #### ⚠️ TODO/FIXME/WARN (Context_Integration_context_organizer)
+- L1101 *WARNING*: - L61 *WARNING*: - L351 *WARNING*: - L282 **WARNING**: (
+- L1102 *WARNING*: - L62 *WARNING*: - L352 *WARNING*: - L407 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or
+- L1103 *WARNING*: - L63 *WARNING*: - L354 *WARNING*: - L495 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered*out)} contests
+- L1104 *WARNING*: - L64 *WARNING*: - L356 *WARNING*: - L497 **WARNING**: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
+- L1105 *WARNING*: - L65 *WARNING*: - L357 *WARNING*: - L500 **WARNING**: ("\[CONTEST\] No contests with required fields for
+- L1106 *WARNING*: - L66 *WARNING*: - L359 *WARNING*: - L816 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests
+- L1107 *WARNING*: - L67 *WARNING*: - L361 *WARNING*: - L1500 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
+- L1108 *WARNING*: - L68 *WARNING*: - L362 *WARNING*: - L1505 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
+- L1109 *WARNING*: - L69 *WARNING*: - L364 *WARNING*: - L1507 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L1110 *WARNING*: - L70 *WARNING*: - L366 *WARNING*: - L1509 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L1111 *WARNING*: - L71 *WARNING*: - L368 *WARNING*: - L1972 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
+- L1112 *WARNING*: - L72 *WARNING*: - L370 *WARNING*: - L2049 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
+- L1113 *TODO*: - L73 *TODO*: - L446 *TODO*: #### ⚠️ TODO/FIXME/WARN (Context_Integration_librarian)
+- L1114 *WARNING*: - L74 *WARNING*: - L448 *WARNING*: - L652 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
+- L1115 *WARNING*: - L75 *WARNING*: - L449 *WARNING*: - L658 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
+- L1116 *WARNING*: - L76 *WARNING*: - L451 *WARNING*: - L661 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
+- L1117 *TODO*: - L77 *TODO*: - L476 *TODO*: #### ⚠️ TODO/FIXME/WARN (config)
+- L1118 *WARNING*: - L78 *WARNING*: - L478 *WARNING*: - L328 **WARNING**: ("\[DB\]\[AAD\] Falling back to password auth.")
+- L1119 *TODO*: - L79 *TODO*: - L507 *TODO*: #### ⚠️ TODO/FIXME/WARN (data_manager)
+- L1120 *WARNING*: - L80 *WARNING*: - L509 *WARNING*: - L83 **WARNING**: (f"\[REMOVED\] {popped}")
+- L1121 *WARNING*: - L81 *WARNING*: - L510 *WARNING*: - L90 **WARNING**: (f"\[REMOVED\] {index*or*value}")
+- L1122 *WARNING*: - L82 *WARNING*: - L511 *WARNING*: - L129 **WARNING**: (f"\[DELETED\] {files\[idx\]}")
+- L1123 *TODO*: - L83 *TODO*: - L543 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_batch_handler)
+- L1124 *WARNING*: - L84 *WARNING*: - L545 *WARNING*: - L134 **WARNING**: ({
+- L1125 *WARNING*: - L85 *WARNING*: - L546 *WARNING*: - L135 **WARNING**: ",
+- L1126 *WARNING*: - L86 *WARNING*: - L547 *WARNING*: - L426 **WARNING**: ({
+- L1127 *WARNING*: - L87 *WARNING*: - L548 *WARNING*: - L427 **WARNING**: ",
+- L1128 *TODO*: - L88 *TODO*: - L611 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_formats_html_handler)
+- L1129 *WARNING*: - L89 *WARNING*: - L613 *WARNING*: - L216 **WARNING**: (f"\[HTML Handler\] County '{county}' not found. Closest
+- L1130 *WARNING*: - L90 *WARNING*: - L615 *WARNING*: - L220 **WARNING**: (f"\[HTML Handler\] Detected county '{county}' is not in
+- L1131 *WARNING*: - L91 *WARNING*: - L617 *WARNING*: - L241 **WARNING**: (f"\[HTML Handler\] State '{user*state}' not found.
+- L1132 *WARNING*: - L92 *WARNING*: - L619 *WARNING*: - L285 **WARNING**: (f"\[HTML Handler\] County '{user*county}' not found.
+- L1133 *TODO*: - L93 *TODO*: - L664 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_formats_json_handler)
+- L1134 *WARNING*: - L94 *WARNING*: - L666 *WARNING*: - L376 **WARNING**: ({
+- L1135 *WARNING*: - L95 *WARNING*: - L667 *WARNING*: - L377 **WARNING**: ",
+- L1136 *WARNING*: - L96 *WARNING*: - L668 *WARNING*: - L489 **WARNING**: ({
+- L1137 *WARNING*: - L97 *WARNING*: - L669 *WARNING*: - L490 **WARNING**: ",
+- L1138 *TODO*: - L98 *TODO*: - L724 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_formats_pdf_handler)
+- L1139 *WARNING*: - L99 *WARNING*: - L726 *WARNING*: - L421 **WARNING**: ({
+- L1140 *WARNING*: - L100 *WARNING*: - L727 *WARNING*: - L422 **WARNING**: ",
+- L1141 *WARN*: - L101 *WARN*: - L728 *WARN*: - L425 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
+- L1142 *WARNING*: - L102 *WARNING*: - L730 *WARNING*: - L1787 **WARNING**: ({
+- L1143 *WARNING*: - L103 *WARNING*: - L731 *WARNING*: - L1788 **WARNING**: ",
+- L1144 *WARN*: - L104 *WARN*: - L732 *WARN*: - L1790 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
+- L1145 *WARNING*: - L105 *WARNING*: - L734 *WARNING*: - L1808 **WARNING**: ({
+- L1146 *WARNING*: - L106 *WARNING*: - L735 *WARNING*: - L1809 **WARNING**: ",
+- L1147 *WARN*: - L107 *WARN*: - L736 *WARN*: - L1812 **WARN**: \] pdf2image conversion failed; "
+- L1148 *WARNING*: - L108 *WARNING*: - L737 *WARNING*: - L2184 **WARNING**: ({
+- L1149 *WARNING*: - L109 *WARNING*: - L738 *WARNING*: - L2185 **WARNING**: ",
+- L1150 *WARN*: - L110 *WARN*: - L739 *WARN*: - L2187 **WARN**: \] Multi-mode text extraction failed: {e}",
+- L1151 *WARNING*: - L111 *WARNING*: - L740 *WARNING*: - L3283 **WARNING**: ({
+- L1152 *WARNING*: - L112 *WARNING*: - L741 *WARNING*: - L3284 **WARNING**: ",
+- L1153 *WARN*: - L113 *WARN*: - L742 *WARN*: - L3286 **WARN**: \] fitz text extraction failed: {e}",
+- L1154 *WARNING*: - L114 *WARNING*: - L743 *WARNING*: - L3315 **WARNING**: ({
+- L1155 *WARNING*: - L115 *WARNING*: - L744 *WARNING*: - L3316 **WARNING**: ",
+- L1156 *WARN*: - L116 *WARN*: - L745 *WARN*: - L3318 **WARN**: \] ENABLE*OCR*FORCE is set but Tesseract is unavailable;
+- L1157 *WARNING*: - L117 *WARNING*: - L747 *WARNING*: - L3366 **WARNING**: ({
+- L1158 *WARNING*: - L118 *WARNING*: - L748 *WARNING*: - L3367 **WARNING**: ",
+- L1159 *TODO*: - L119 *TODO*: - L851 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_arizona_arizona)
+- L1160 *WARNING*: - L120 *WARNING*: - L853 *WARNING*: - L25 **WARNING**: ("\[WARN\] context*library.json not found. Using fallback
+- L1161 *WARNING*: - L121 *WARNING*: - L855 *WARNING*: - L51 **WARNING**: (f"\[WARN\] Could not expand card {i+1}: {e}")
+- L1162 *WARNING*: - L122 *WARNING*: - L856 *WARNING*: - L64 **WARNING**: (f"\[WARN\] Vote Type toggle failed: {e}")
+- L1163 *WARNING*: - L123 *WARNING*: - L857 *WARNING*: - L77 **WARNING**: (f"\[WARN\] County toggle failed: {e}")
+- L1164 *WARNING*: - L124 *WARNING*: - L858 *WARNING*: - L164 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results
+- L1165 *WARNING*: - L125 *WARNING*: - L860 *WARNING*: - L165 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted
+- L1166 *TODO*: - L126 *TODO*: - L881 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_example state_example_county_example_county)
+- L1167 *WARNING*: - L127 *WARNING*: - L883 *WARNING*: - L123 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+- L1168 *TODO*: - L128 *TODO*: - L909 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_example state_example_state)
+- L1169 *WARNING*: - L129 *WARNING*: - L911 *WARNING*: - L51 **WARNING**: (f"\[Example Handler\] No specific parser implemented for
+- L1170 *WARNING*: - L130 *WARNING*: - L913 *WARNING*: - L152 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+- L1171 *TODO*: - L131 *TODO*: - L940 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_new_york_county_rockland)
+- L1172 *WARNING*: - L132 *WARNING*: - L942 *WARNING*: - L72 **WARNING**: ("\[WARNING\] dom*parts missing after
+- L1173 *WARNING*: - L133 *WARNING*: - L944 *WARNING*: - L95 **WARNING**: ("\[red\]No contest selected. Skipping.\[/red\]")
+- L1174 *WARNING*: - L134 *WARNING*: - L945 *WARNING*: - L139 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn1.get('label', '')}'
+- L1175 *WARNING*: - L135 *WARNING*: - L948 *WARNING*: - L176 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn2.get('label', '')}'
+- L1176 *TODO*: - L136 *TODO*: - L971 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_new_york_new_york)
+- L1177 *WARNING*: - L137 *WARNING*: - L973 *WARNING*: - L27 **WARNING**: ("\[NY Handler\] No county specified in html*context.")
+- L1178 *WARNING*: - L138 *WARNING*: - L974 *WARNING*: - L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
+- L1179 *TODO*: - L139 *TODO*: - L1008 *TODO*: #### ⚠️ TODO/FIXME/WARN (handlers_states_pennsylvania_pennsylvania)
+- L1180 *WARNING*: - L140 *WARNING*: - L1010 *WARNING*: - L44 **WARNING**: (f"\[NAV\] Step failed: {step} — {e}")
+- L1181 *WARNING*: - L141 *WARNING*: - L1011 *WARNING*: - L55 **WARNING**: (f"\[bold yellow\]Detected election:\[/bold yellow\]
+- L1182 *WARNING*: - L142 *WARNING*: - L1013 *WARNING*: - L76 **WARNING**: ("\[PA\] Invalid index input for election selection.")
+- L1183 *WARNING*: - L143 *WARNING*: - L1014 *WARNING*: - L78 **WARNING**: ("\[PA\] Elections dropdown not found.")
+- L1184 *WARNING*: - L144 *WARNING*: - L1015 *WARNING*: - L80 **WARNING**: (f"\[PA\] Failed to expand Elections menu or load
+- L1185 *WARNING*: - L145 *WARNING*: - L1017 *WARNING*: - L96 **WARNING**: ("\[PA\] County Breakdown link not found.")
+- L1186 *WARNING*: - L146 *WARNING*: - L1018 *WARNING*: - L98 **WARNING**: (f"\[PA\] Failed to click County Breakdown link: {e}")
+- L1187 *WARNING*: - L147 *WARNING*: - L1019 *WARNING*: - L113 **WARNING**: ("\[yellow\]Multiple CSV files found in input. Please
+- L1188 *TODO*: - L148 *TODO*: - L1094 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_health_router)
+- L1189 *WARNING*: - L149 *WARNING*: - L1096 *WARNING*: - L252 **WARNING**: (f"\[health*router\] manual*correction failed (attempt
+- L1190 *WARNING*: - L150 *WARNING*: - L1098 *WARNING*: - L336 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L1191 *WARNING*: - L151 *WARNING*: - L1100 *WARNING*: - L338 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L1192 *WARNING*: - L152 *WARNING*: - L1102 *WARNING*: - L340 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L1193 *WARNING*: - L153 *WARNING*: - L1104 *WARNING*: - L375 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
+- L1194 *WARNING*: - L154 *WARNING*: - L1105 *WARNING*: - L380 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
+- L1195 *WARNING*: - L155 *WARNING*: - L1107 *WARNING*: - L382 **WARNING**: ("\[PIPELINE\] scan*misaligned*ner failed or file missing.
+- L1196 *WARNING*: - L156 *WARNING*: - L1109 *WARNING*: - L414 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
+- L1197 *TODO*: - L157 *TODO*: - L1149 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_log_cache_cleaner_bot)
+- L1198 *WARNING*: - L158 *WARNING*: - L1151 *WARNING*: - L151 **WARNING**: (f"Skipping non-dict entry in spacy*ner*train*data.jsonl:
+- L1199 *WARNING*: - L159 *WARNING*: - L1153 *WARNING*: - L460 **WARNING**: ("\[DB\]\[WARNING\] No user tables found in schema
+- L1200 *WARNING*: - L160 *WARNING*: - L1155 *WARNING*: - L503 **WARNING**: ("\[CLEAN\]\[WARNING\] The following files are still too
+- L1201 *WARNING*: - L161 *WARNING*: - L1157 *WARNING*: - L507 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+- L1202 *TODO*: - L162 *TODO*: - L1215 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_manual_correction_bot)
+- L1203 *WARNING*: - L163 *WARNING*: - L1217 *WARNING*: - L322 **WARNING**: (f"Coordinator ML scoring failed: {e}")
+- L1204 *WARNING*: - L164 *WARNING*: - L1218 *WARNING*: - L343 **WARNING**: (f"Coordinator field suggestion failed: {e}")
+- L1205 *WARNING*: - L165 *WARNING*: - L1219 *WARNING*: - L355 **WARNING**: (f"Log file not found: {path}")
+- L1206 *WARNING*: - L166 *WARNING*: - L1220 *WARNING*: - L364 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
+- L1207 *WARNING*: - L167 *WARNING*: - L1221 *WARNING*: - L396 **WARNING**: (f"\[SKIP\] File not found: {file}")
+- L1208 *WARNING*: - L168 *WARNING*: - L1222 *WARNING*: - L400 **WARNING**: (f"\[SKIP\] File too large: {file}")
+- L1209 *WARNING*: - L169 *WARNING*: - L1223 *WARNING*: - L422 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
+- L1210 *WARNING*: - L170 *WARNING*: - L1225 *WARNING*: - L434 **WARNING**: (f"\[CORRUPT\] {len(corrupt*items)} lines saved to
+- L1211 *WARNING*: - L171 *WARNING*: - L1227 *WARNING*: - L439 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
+- L1212 *WARNING*: - L172 *WARNING*: - L1229 *WARNING*: - L453 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L1213 *WARNING*: - L173 *WARNING*: - L1230 *WARNING*: - L465 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt*path}")
+- L1214 *WARNING*: - L174 *WARNING*: - L1231 *WARNING*: - L471 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
+- L1215 *WARNING*: - L175 *WARNING*: - L1233 *WARNING*: - L476 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L1216 *WARNING*: - L176 *WARNING*: - L1234 *WARNING*: - L485 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {quarantine*dir /
+- L1217 *WARNING*: - L177 *WARNING*: - L1236 *WARNING*: - L489 **WARNING**: (f"\[DELETED\] {file}")
+- L1218 *WARNING*: - L178 *WARNING*: - L1237 *WARNING*: - L492 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
+- L1219 *WARNING*: - L179 *WARNING*: - L1238 *WARNING*: - L537 **WARNING**: (f"\[FIND-LOGS\] Skipped {d}: {e}")
+- L1220 *WARNING*: - L180 *WARNING*: - L1239 *WARNING*: - L562 **WARNING**: (f"\[CORRUPT\] {path} line {line*num}: {e}")
+- L1221 *WARNING*: - L181 *WARNING*: - L1240 *WARNING*: - L717 **WARNING**: (f"Invalid JSON, skipping edit: {e}")
+- L1222 *TODO*: - L182 *TODO*: - L1241 *TODO*: - L750 **TODO**: Add JSON schema validation here if desired
+- L1223 *TODO*: - L183 *TODO*: - L1296 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_retrain_table_structure_models)
+- L1224 *WARNING*: - L184 *WARNING*: - L1298 *WARNING*: - L178 **WARNING**: (f"\[CLEAN\] File not found: {jsonl*path}")
+- L1225 *WARNING*: - L185 *WARNING*: - L1299 *WARNING*: - L186 **WARNING**: (f"\[CLEAN\] Could not parse line: {e}")
+- L1226 *WARNING*: - L186 *WARNING*: - L1300 *WARNING*: - L201 **WARNING**: (f"\[CLEAN\] Alignment check failed for text:
+- L1227 *WARNING*: - L187 *WARNING*: - L1302 *WARNING*: - L274 **WARNING**: (f"Failed to load {path}: {e}")
+- L1228 *WARNING*: - L188 *WARNING*: - L1303 *WARNING*: - L403 **WARNING**: (f"Skipping misaligned entity in: {text}")
+- L1229 *WARNING*: - L189 *WARNING*: - L1304 *WARNING*: - L408 **WARNING**: (f"Error validating entity alignment: {e}")
+- L1230 *WARNING*: - L190 *WARNING*: - L1305 *WARNING*: - L434 **WARNING**: (f"\[spaCy\] Could not check GPU availability: {e}")
+- L1231 *WARNING*: - L191 *WARNING*: - L1306 *WARNING*: - L450 **WARNING**: (f"\[spaCy\] Could not load lexeme normalization table.
+- L1232 *WARNING*: - L192 *WARNING*: - L1308 *WARNING*: - L536 **WARNING**: (f"\[NER\] Skipped {misaligned*count} misaligned examples.
+- L1233 *WARNING*: - L193 *WARNING*: - L1310 *WARNING*: - L550 **WARNING**: ("No NER training examples found. Skipping spaCy NER
+- L1234 *WARNING*: - L194 *WARNING*: - L1312 *WARNING*: - L619 **WARNING**: ("\[SUGGESTION\] Consider lowering min*delta or increasing
+- L1235 *WARNING*: - L195 *WARNING*: - L1314 *WARNING*: - L621 **WARNING**: ("\[SUGGESTION\] Model improved until the last epoch.
+- L1236 *WARNING*: - L196 *WARNING*: - L1316 *WARNING*: - L622 **WARNING**: (f"\[SUGGESTION\] Next run: patience={patience},
+- L1237 *WARNING*: - L197 *WARNING*: - L1318 *WARNING*: - L708 **WARNING**: ("No training examples found. Aborting retraining.")
+- L1238 *WARNING*: - L198 *WARNING*: - L1319 *WARNING*: - L727 **WARNING**: (f"\[WARN\] Could not delete old model directory
+- L1239 *WARNING*: - L199 *WARNING*: - L1321 *WARNING*: - L739 **WARNING**: (f"\[WARN\] Failed to load existing model: {e}")
+- L1240 *WARNING*: - L200 *WARNING*: - L1322 *WARNING*: - L742 **WARNING**: ("Falling back to base model (all-MiniLM-L6-v2).")
+- L1241 *WARNING*: - L201 *WARNING*: - L1323 *WARNING*: - L782 **WARNING**: (f"\[WARN\] Could not update canonical model directory:
+- L1242 *WARNING*: - L202 *WARNING*: - L1325 *WARNING*: - L810 **WARNING**: (f"MISALIGNED: {text} {annots\['entities'\]}")
+- L1243 *WARNING*: - L203 *WARNING*: - L1326 *WARNING*: - L840 **WARNING**: ("\[DB\] Base.metadata.tables is empty. No models
+- L1244 *TODO*: - L204 *TODO*: - L1352 *TODO*: #### ⚠️ TODO/FIXME/WARN (health_scan_misaligned_ner)
+- L1245 *WARNING*: - L205 *WARNING*: - L1354 *WARNING*: - L62 **WARNING**: (f"\[CORRUPT\] Could not parse line: {e}")
+- L1246 *WARNING*: - L206 *WARNING*: - L1355 *WARNING*: - L83 **WARNING**: (f"\n\[MISALIGNED\] Top {top*n} most frequent misaligned
+- L1247 *WARNING*: - L207 *WARNING*: - L1357 *WARNING*: - L85 **WARNING**: (f"  {repr(text)}: {count} times")
+- L1248 *WARNING*: - L208 *WARNING*: - L1358 *WARNING*: - L86 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+- L1249 *WARNING*: - L209 *WARNING*: - L1360 *WARNING*: - L87 **WARNING**: ("Run the manual*correction to review and clean these
+- L1250 *WARNING*: - L210 *WARNING*: - L1362 *WARNING*: - L88 **WARNING**: ("If you see spaCy entity alignment warnings, consider
+- L1251 *WARNING*: - L211 *WARNING*: - L1364 *WARNING*: - L98 **WARNING**: (f"\[WARN\] Could not remove old misaligned file: {e}")
+- L1252 *WARNING*: - L212 *WARNING*: - L1365 *WARNING*: - L112 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L1253 *WARNING*: - L213 *WARNING*: - L1367 *WARNING*: - L119 **WARNING**: (f"\[SELF-HEAL\] manual*correction exited with code
+- L1254 *WARNING*: - L214 *WARNING*: - L1369 *WARNING*: - L120 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L1255 *WARNING*: - L215 *WARNING*: - L1371 *WARNING*: - L122 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L1256 *TODO*: - L216 *TODO*: - L1438 *TODO*: #### ⚠️ TODO/FIXME/WARN (html_election_parser)
+- L1257 *WARNING*: - L217 *WARNING*: - L1440 *WARNING*: - L56 **WARNING**: ("Deleting .processed*urls cache for fresh start...")
+- L1258 *WARNING*: - L218 *WARNING*: - L1441 *WARNING*: - L393 **WARNING**: ({
+- L1259 *WARNING*: - L219 *WARNING*: - L1442 *WARNING*: - L394 **WARNING**: ",
+- L1260 *WARNING*: - L220 *WARNING*: - L1443 *WARNING*: - L408 **WARNING**: ({
+- L1261 *WARNING*: - L221 *WARNING*: - L1444 *WARNING*: - L409 **WARNING**: ",
+- L1262 *WARNING*: - L222 *WARNING*: - L1445 *WARNING*: - L469 **WARNING**: ({
+- L1263 *WARNING*: - L223 *WARNING*: - L1446 *WARNING*: - L470 **WARNING**: ",
+- L1264 *WARNING*: - L224 *WARNING*: - L1447 *WARNING*: - L543 **WARNING**: (payload*2)
+- L1265 *WARNING*: - L225 *WARNING*: - L1448 *WARNING*: - L870 **WARNING**: ({
+- L1266 *WARNING*: - L226 *WARNING*: - L1449 *WARNING*: - L871 **WARNING**: ",
+- L1267 *WARNING*: - L227 *WARNING*: - L1450 *WARNING*: - L917 **WARNING**: ({
+- L1268 *WARNING*: - L228 *WARNING*: - L1451 *WARNING*: - L918 **WARNING**: ",
+- L1269 *WARNING*: - L229 *WARNING*: - L1452 *WARNING*: - L971 **WARNING**: ({
+- L1270 *WARNING*: - L230 *WARNING*: - L1453 *WARNING*: - L972 **WARNING**: ",
+- L1271 *WARNING*: - L231 *WARNING*: - L1454 *WARNING*: - L1076 **WARNING**: ",
+- L1272 *WARNING*: - L232 *WARNING*: - L1455 *WARNING*: - L1081 **WARNING**: (payload)
+- L1273 *WARN*: - L233 *WARN*: - L1456 *WARN*: - L1106 **WARN**: if nothing found
+- L1274 *WARNING*: - L234 *WARNING*: - L1457 *WARNING*: - L1166 **WARNING**: ",
+- L1275 *WARNING*: - L235 *WARNING*: - L1458 *WARNING*: - L1171 **WARNING**: (payload)
+- L1276 *WARNING*: - L236 *WARNING*: - L1459 *WARNING*: - L1249 **WARNING**: ({
+- L1277 *TODO*: - L237 *TODO*: - L1592 *TODO*: #### ⚠️ TODO/FIXME/WARN (state_router)
+- L1278 *WARNING*: - L238 *WARNING*: - L1594 *WARNING*: - L49 **WARNING**: ("\[Router\] handlers/states directory not found.")
+- L1279 *WARNING*: - L239 *WARNING*: - L1595 *WARNING*: - L66 **WARNING**: (f"\[Router\] counties directory not found for state:
+- L1280 *WARNING*: - L240 *WARNING*: - L1597 *WARNING*: - L137 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] No handler states
+- L1281 *WARNING*: - L241 *WARNING*: - L1599 *WARNING*: - L154 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L1282 *WARNING*: - L242 *WARNING*: - L1600 *WARNING*: - L157 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L1283 *WARNING*: - L243 *WARNING*: - L1601 *WARNING*: - L160 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] State '{state}'
+- L1284 *WARNING*: - L244 *WARNING*: - L1603 *WARNING*: - L179 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L1285 *WARNING*: - L245 *WARNING*: - L1604 *WARNING*: - L182 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] County '{county}'
+- L1286 *WARNING*: - L246 *WARNING*: - L1606 *WARNING*: - L189 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Too many failed
+- L1287 *WARNING*: - L247 *WARNING*: - L1608 *WARNING*: - L205 **WARNING**: (f"\[Router\] Requested state '{state*name}' not found on
+- L1288 *WARNING*: - L248 *WARNING*: - L1610 *WARNING*: - L512 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for
+- L1289 *WARNING*: - L249 *WARNING*: - L1612 *WARNING*: - L523 **WARNING**: (f"Failed to load context from file: {e}")
+- L1290 *WARNING*: - L250 *WARNING*: - L1613 *WARNING*: - L533 **WARNING**: ("No suitable handler found.")
+- L1291 *WARNING*: - L251 *WARNING*: - L1614 *WARNING*: - L540 **WARNING**: ("No handler selected. Exiting.")
+- L1292 *WARNING*: - L252 *WARNING*: - L1615 *WARNING*: - L547 **WARNING**: ("Still could not import a suitable handler.")
+- L1293 *TODO*: - L253 *TODO*: - L1670 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_browser_utils)
+- L1294 *WARNING*: - L254 *WARNING*: - L1672 *WARNING*: - L89 **WARNING**: (f"\[browser*utils\] Failed to safely parse context*library
+- L1295 *WARNING*: - L255 *WARNING*: - L1674 *WARNING*: - L91 **WARNING**: (f"\[browser*utils\] Skipping unsafe context*library value
+- L1296 *WARNING*: - L256 *WARNING*: - L1676 *WARNING*: - L295 **WARNING**: (f"\[safe*attributes\] Playwright JS extraction failed:
+- L1297 *WARNING*: - L257 *WARNING*: - L1678 *WARNING*: - L309 **WARNING**: (f"\[safe*attributes\] Playwright fallback extraction
+- L1298 *WARNING*: - L258 *WARNING*: - L1680 *WARNING*: - L395 **WARNING**: (f"\[safe*count\] Object is not countable: {type(obj)}")
+- L1299 *WARNING*: - L259 *WARNING*: - L1681 *WARNING*: - L441 **WARNING**: (f"\[safe*launch\] browser*type is not a SyncBrowserType:
+- L1300 *WARNING*: - L260 *WARNING*: - L1683 *WARNING*: - L461 **WARNING**: (f"\[async*safe*launch\] browser*type is not an
+- L1301 *WARNING*: - L261 *WARNING*: - L1685 *WARNING*: - L540 **WARNING**: ({
+- L1302 *WARNING*: - L262 *WARNING*: - L1686 *WARNING*: - L541 **WARNING**: ",
+- L1303 *WARNING*: - L263 *WARNING*: - L1687 *WARNING*: - L569 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L1304 *WARNING*: - L264 *WARNING*: - L1689 *WARNING*: - L578 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual
+- L1305 *WARNING*: - L265 *WARNING*: - L1691 *WARNING*: - L602 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L1306 *WARNING*: - L266 *WARNING*: - L1693 *WARNING*: - L611 **WARNING**: ({
+- L1307 *WARNING*: - L267 *WARNING*: - L1694 *WARNING*: - L612 **WARNING**: ",
+- L1308 *WARNING*: - L268 *WARNING*: - L1695 *WARNING*: - L623 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual
+- L1309 *WARNING*: - L269 *WARNING*: - L1697 *WARNING*: - L712 **WARNING**: ("\[SCROLL\] User aborted scrolling.")
+- L1310 *WARNING*: - L270 *WARNING*: - L1698 *WARNING*: - L733 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may
+- L1311 *TODO*: - L271 *TODO*: - L1755 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_captcha_tools)
+- L1312 *WARNING*: - L272 *WARNING*: - L1757 *WARNING*: - L118 **WARNING**: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
+- L1313 *WARNING*: - L273 *WARNING*: - L1758 *WARNING*: - L154 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
+- L1314 *TODO*: - L274 *TODO*: - L1830 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_contest_selector)
+- L1315 *WARNING*: - L275 *WARNING*: - L1832 *WARNING*: - L635 **WARNING**: ":
+- L1316 *WARNING*: - L276 *WARNING*: - L1833 *WARNING*: - L636 **WARNING**: (entry)
+- L1317 *WARNING*: - L277 *WARNING*: - L1834 *WARNING*: - L1029 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
+- L1318 *WARNING*: - L278 *WARNING*: - L1836 *WARNING*: - L1565 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
+- L1319 *WARNING*: - L279 *WARNING*: - L1838 *WARNING*: - L1570 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
+- L1320 *WARNING*: - L280 *WARNING*: - L1840 *WARNING*: - L1642 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
+- L1321 *TODO*: - L281 *TODO*: - L2035 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_dom_extractor)
+- L1322 *WARNING*: - L282 *WARNING*: - L2037 *WARNING*: - L153 **WARNING**: (f"\[DOM*EXTRACTOR\] failure: {e}")
+- L1323 *TODO*: - L283 *TODO*: - L2123 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_dynamic_table_extractor)
+- L1324 *WARNING*: - L284 *WARNING*: - L2125 *WARNING*: - L124 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
+- L1325 *WARNING*: - L285 *WARNING*: - L2127 *WARNING*: - L129 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in
+- L1326 *WARNING*: - L286 *WARNING*: - L2129 *WARNING*: - L171 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step
+- L1327 *WARNING*: - L287 *WARNING*: - L2131 *WARNING*: - L187 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table
+- L1328 *WARNING*: - L288 *WARNING*: - L2133 *WARNING*: - L217 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning
+- L1329 *WARNING*: - L289 *WARNING*: - L2135 *WARNING*: - L229 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed",
+- L1330 *WARNING*: - L290 *WARNING*: - L2137 *WARNING*: - L272 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed",
+- L1331 *WARNING*: - L291 *WARNING*: - L2139 *WARNING*: - L776 **WARNING**: ", "extractor", "No learned DOM patterns found.")
+- L1332 *WARNING*: - L292 *WARNING*: - L2140 *WARNING*: - L800 **WARNING**: ", "extractor", "Entry deleted.")
+- L1333 *WARNING*: - L293 *WARNING*: - L2141 *WARNING*: - L805 **WARNING**: ", "extractor", "Unknown action.")
+- L1334 *WARNING*: - L294 *WARNING*: - L2142 *WARNING*: - L807 **WARNING**: ", "extractor", "Invalid entry number.")
+- L1335 *TODO*: - L295 *TODO*: - L2180 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_embedding_cache)
+- L1336 *WARNING*: - L296 *WARNING*: - L2182 *WARNING*: - L178 **WARNING**: (msg)
+- L1337 *TODO*: - L297 *TODO*: - L2225 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_extraction_strategies)
+- L1338 *WARNING*: - L298 *WARNING*: - L2227 *WARNING*: - L68 **WARNING**: (f"\[STRATEGY\] {name} failed: {e}")
+- L1339 *TODO*: - L299 *TODO*: - L2276 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_format_router)
+- L1340 *WARNING*: - L300 *WARNING*: - L2278 *WARNING*: - L374 **WARNING**: ({
+- L1341 *WARNING*: - L301 *WARNING*: - L2279 *WARNING*: - L375 **WARNING**: ",
+- L1342 *WARN*: - L302 *WARN*: - L2280 *WARN*: - L377 **WARN**: \] No supported file formats found on the page.",
+- L1343 *WARNING*: - L303 *WARNING*: - L2281 *WARNING*: - L402 **WARNING**: ({
+- L1344 *WARNING*: - L304 *WARNING*: - L2282 *WARNING*: - L403 **WARNING**: ",
+- L1345 *WARN*: - L305 *WARN*: - L2283 *WARN*: - L405 **WARN**: \] Unsupported format requested: {format*str}",
+- L1346 *WARNING*: - L306 *WARNING*: - L2284 *WARNING*: - L409 **WARNING**: ({
+- L1347 *WARNING*: - L307 *WARNING*: - L2285 *WARNING*: - L410 **WARNING**: ",
+- L1348 *WARNING*: - L308 *WARNING*: - L2286 *WARNING*: - L654 **WARNING**: ({
+- L1349 *WARNING*: - L309 *WARNING*: - L2287 *WARNING*: - L655 **WARNING**: ",
+- L1350 *WARNING*: - L310 *WARNING*: - L2288 *WARNING*: - L874 **WARNING**: ({
+- L1351 *WARNING*: - L311 *WARNING*: - L2289 *WARNING*: - L875 **WARNING**: ",
+- L1352 *WARNING*: - L312 *WARNING*: - L2290 *WARNING*: - L950 **WARNING**: ({
+- L1353 *WARNING*: - L313 *WARNING*: - L2291 *WARNING*: - L951 **WARNING**: ",
+- L1354 *TODO*: - L314 *TODO*: - L2372 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_html_scanner)
+- L1355 *WARNING*: - L315 *WARNING*: - L2374 *WARNING*: - L163 **WARNING**: ",
+- L1356 *WARNING*: - L316 *WARNING*: - L2375 *WARNING*: - L167 **WARNING**: (payload)
+- L1357 *WARNING*: - L317 *WARNING*: - L2376 *WARNING*: - L189 **WARNING**: ",
+- L1358 *WARNING*: - L318 *WARNING*: - L2377 *WARNING*: - L193 **WARNING**: (payload)
+- L1359 *WARNING*: - L319 *WARNING*: - L2378 *WARNING*: - L288 **WARNING**: ",
+- L1360 *WARNING*: - L320 *WARNING*: - L2379 *WARNING*: - L292 **WARNING**: (payload)
+- L1361 *WARNING*: - L321 *WARNING*: - L2380 *WARNING*: - L315 **WARNING**: ",
+- L1362 *WARNING*: - L322 *WARNING*: - L2381 *WARNING*: - L319 **WARNING**: (payload)
+- L1363 *WARNING*: - L323 *WARNING*: - L2382 *WARNING*: - L353 **WARNING**: ",
+- L1364 *WARNING*: - L324 *WARNING*: - L2383 *WARNING*: - L357 **WARNING**: (payload)
+- L1365 *WARNING*: - L325 *WARNING*: - L2384 *WARNING*: - L380 **WARNING**: ",
+- L1366 *WARNING*: - L326 *WARNING*: - L2385 *WARNING*: - L384 **WARNING**: (payload)
+- L1367 *WARNING*: - L327 *WARNING*: - L2386 *WARNING*: - L579 **WARNING**: ",
+- L1368 *WARNING*: - L328 *WARNING*: - L2387 *WARNING*: - L583 **WARNING**: (payload)
+- L1369 *WARNING*: - L329 *WARNING*: - L2388 *WARNING*: - L784 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L1370 *WARNING*: - L330 *WARNING*: - L2390 *WARNING*: - L807 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L1371 *WARNING*: - L331 *WARNING*: - L2392 *WARNING*: - L1034 **WARNING**: ",
+- L1372 *WARNING*: - L332 *WARNING*: - L2393 *WARNING*: - L1038 **WARNING**: (payload)
+- L1373 *WARNING*: - L333 *WARNING*: - L2394 *WARNING*: - L1045 **WARNING**: ",
+- L1374 *WARNING*: - L334 *WARNING*: - L2395 *WARNING*: - L1049 **WARNING**: (payload)
+- L1375 *TODO*: - L335 *TODO*: - L2594 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_model_registry)
+- L1376 *WARNING*: - L336 *WARNING*: - L2596 *WARNING*: - L389 **WARNING**: (f"Failed loading local override for SentenceTransformer:
+- L1377 *WARNING*: - L337 *WARNING*: - L2598 *WARNING*: - L409 **WARNING**: ("TRANSFORMERS*OFFLINE/HUGGINGFACE*HUB*OFFLINE set;
+- L1378 *WARNING*: - L338 *WARNING*: - L2600 *WARNING*: - L426 **WARNING**: for noisy environments
+- L1379 *WARNING*: - L339 *WARNING*: - L2601 *WARNING*: - L429 **WARNING**: (f"Failed to load base SentenceTransformer (network/DNS).
+- L1380 *TODO*: - L340 *TODO*: - L2703 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_output_utils)
+- L1381 *WARNING*: - L341 *WARNING*: - L2705 *WARNING*: - L105 **WARNING**: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using
+- L1382 *WARNING*: - L342 *WARNING*: - L2707 *WARNING*: - L108 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified.
+- L1383 *WARNING*: - L343 *WARNING*: - L2709 *WARNING*: - L531 **WARNING**: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
+- L1384 *WARNING*: - L344 *WARNING*: - L2710 *WARNING*: - L607 **WARNING**: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
+- L1385 *TODO*: - L345 *TODO*: - L2734 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_pattern_extractor)
+- L1386 *WARNING*: - L346 *WARNING*: - L2736 *WARNING*: - L26 **WARNING**: (f"\[PATTERN\] load fail {e}")
+- L1387 *WARNING*: - L347 *WARNING*: - L2737 *WARNING*: - L95 **WARNING**: (f"\[PATTERN\] pattern error {pat.get('name')}: {e}")
+- L1388 *TODO*: - L348 *TODO*: - L2839 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_pivot)
+- L1389 *WARNING*: - L349 *WARNING*: - L2841 *WARNING*: - L1353 **WARNING**: ("\[PIVOT\] No candidates detected – verify headers and
+- L1390 *TODO*: - L350 *TODO*: - L2951 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_shared_logger)
+- L1391 *WARNING*: - L351 *WARNING*: - L2953 *WARNING*: - L159 **WARNING**:         elif record.levelno &gt;= logging.WARNING:
+- L1392 *WARNING*: - L352 *WARNING*: - L2954 *WARNING*: - L160 **WARNING**: (msg)
+- L1393 *WARNING*: - L353 *WARNING*: - L2955 *WARNING*: - L236 **WARNING**: ": logging.WARNING,
+- L1394 *WARNING*: - L354 *WARNING*: - L2956 *WARNING*: - L307 **WARNING**: ": "yellow",
+- L1395 *WARNING*: - L355 *WARNING*: - L2957 *WARNING*: - L369 **WARNING**: (self, msg, context=None, exc*info=None):
+- L1396 *WARNING*: - L356 *WARNING*: - L2958 *WARNING*: - L371 **WARNING**: ", msg, context, color="yellow")
+- L1397 *WARNING*: - L357 *WARNING*: - L2959 *WARNING*: - L385 **WARNING**: ": "yellow",
+- L1398 *WARNING*: - L358 *WARNING*: - L2960 *WARNING*: - L598 **WARNING**: (f"Log directory does not exist: {log*dir}")
+- L1399 *WARNING*: - L359 *WARNING*: - L2961 *WARNING*: - L615 **WARNING**: (f"Corrupt line in {path}: {e}")
+- L1400 *TODO*: - L360 *TODO*: - L3016 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_shared_logic)
+- L1401 *WARNING*: - L361 *WARNING*: - L3018 *WARNING*: - L236 **WARNING**: (f"\[safe*query\] session.query({model}) failed: {e}")
+- L1402 *WARNING*: - L362 *WARNING*: - L3019 *WARNING*: - L259 **WARNING**: (f"\[safe*filter*by\] No mapper found for model {model}")
+- L1403 *WARNING*: - L363 *WARNING*: - L3020 *WARNING*: - L265 **WARNING**: (f"\[safe*filter*by\] Could not inspect model {model}:
+- L1404 *WARNING*: - L364 *WARNING*: - L3022 *WARNING*: - L279 **WARNING**: (f"\[safe*filter*by\] filter*by failed: {e}")
+- L1405 *WARNING*: - L365 *WARNING*: - L3023 *WARNING*: - L292 **WARNING**: (f"\[safe*first\] query.first() failed: {e}")
+- L1406 *WARNING*: - L366 *WARNING*: - L3024 *WARNING*: - L362 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
+- L1407 *WARNING*: - L367 *WARNING*: - L3026 *WARNING*: - L496 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
+- L1408 *WARNING*: - L368 *WARNING*: - L3027 *WARNING*: - L710 **WARNING**: (f"\[safe*append\] Target is not a list: {type(lst)};
+- L1409 *WARNING*: - L369 *WARNING*: - L3029 *WARNING*: - L732 **WARNING**: (f"\[safe*update\] Target is not a dict: {type(dct)}")
+- L1410 *WARNING*: - L370 *WARNING*: - L3030 *WARNING*: - L736 **WARNING**: (f"\[safe*update\] Updates is not a dict:
+- L1411 *WARNING*: - L371 *WARNING*: - L3032 *WARNING*: - L756 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)};
+- L1412 *WARNING*: - L372 *WARNING*: - L3034 *WARNING*: - L1096 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
+- L1413 *WARNING*: - L373 *WARNING*: - L3036 *WARNING*: - L1359 **WARNING**: (f"State '{state*norm}' not found in county map")
+- L1414 *WARNING*: - L374 *WARNING*: - L3037 *WARNING*: - L2163 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
+- L1415 *WARNING*: - L375 *WARNING*: - L3038 *WARNING*: - L2169 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+- L1416 *WARNING*: - L376 *WARNING*: - L3040 *WARNING*: - L2184 **WARNING**: ("\[inventory\] generate*project*map completed with
+- L1417 *TODO*: - L377 *TODO*: - L3042 *TODO*: - L2230 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
+- L1418 *TODO*: - L378 *TODO*: - L3044 *TODO*: - L2232 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+- L1419 *TODO*: - L379 *TODO*: - L3045 *TODO*: - L2864 **TODO**: /FIXME/WARN
+- L1420 *TODO*: - L380 *TODO*: - L3046 *TODO*: - L2867 **TODO**: /FIXME/WARN:")
+- L1421 *TODO*: - L381 *TODO*: - L3122 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_strategy_concurrency)
+- L1422 *WARNING*: - L382 *WARNING*: - L3124 *WARNING*: - L37 **WARNING**: (f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
+- L1423 *WARNING*: - L383 *WARNING*: - L3125 *WARNING*: - L65 **WARNING**: (f"\[CONCURRENCY\] Strategy {name} error: {e}")
+- L1424 *WARNING*: - L384 *WARNING*: - L3126 *WARNING*: - L73 **WARNING**: (f"\[CONCURRENCY\] {*safe*run*strategy.**name**} {name}
+- L1425 *WARNING*: - L385 *WARNING*: - L3128 *WARNING*: - L102 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed:
+- L1426 *WARNING*: - L386 *WARNING*: - L3130 *WARNING*: - L120 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
+- L1427 *TODO*: - L387 *TODO*: - L3204 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_table_builder)
+- L1428 *WARNING*: - L388 *WARNING*: - L3206 *WARNING*: - L816 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+- L1429 *WARNING*: - L389 *WARNING*: - L3208 *WARNING*: - L828 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+- L1430 *WARNING*: - L390 *WARNING*: - L3210 *WARNING*: - L836 **WARNING**: ", "builder", "\[TABLE*BUILDER\] all*panel*tables was not
+- L1431 *WARNING*: - L391 *WARNING*: - L3213 *WARNING*: - L845 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Dropping invalid table
+- L1432 *WARNING*: - L392 *WARNING*: - L3215 *WARNING*: - L862 **WARNING**: ", "builder", "\[TABLE*BUILDER\] sanitize failed",
+- L1433 *WARNING*: - L393 *WARNING*: - L3217 *WARNING*: - L867 **WARNING**: ", "builder", "\[TABLE*BUILDER\] harmonize failed",
+- L1434 *WARNING*: - L394 *WARNING*: - L3219 *WARNING*: - L873 **WARNING**: ", "builder", "\[TABLE*BUILDER\]
+- L1435 *WARNING*: - L395 *WARNING*: - L3221 *WARNING*: - L925 **WARNING**: ",
+- L1436 *WARNING*: - L396 *WARNING*: - L3222 *WARNING*: - L950 **WARNING**: ", "builder", "\[TABLE*BUILDER\] entity annotate failed",
+- L1437 *WARNING*: - L397 *WARNING*: - L3224 *WARNING*: - L955 **WARNING**: ", "builder", "\[TABLE*BUILDER\] stringify entity*info
+- L1438 *WARNING*: - L398 *WARNING*: - L3226 *WARNING*: - L975 **WARNING**: ", "builder", "\[TABLE*BUILDER\] pivot*to*wide failed",
+- L1439 *WARNING*: - L399 *WARNING*: - L3228 *WARNING*: - L995 **WARNING**: ", "builder", "\[TABLE*BUILDER\] ensure division totals
+- L1440 *WARNING*: - L400 *WARNING*: - L3230 *WARNING*: - L1288 **WARNING**: ", "builder", f"\[TABLE*BUILDER\] Column marked
+- L1441 *WARNING*: - L401 *WARNING*: - L3232 *WARNING*: - L1361 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist table
+- L1442 *WARNING*: - L402 *WARNING*: - L3234 *WARNING*: - L1376 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist
+- L1443 *TODO*: - L403 *TODO*: - L3277 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_table_core)
+- L1444 *WARNING*: - L404 *WARNING*: - L3279 *WARNING*: - L231 **WARNING**: (f"\[TABLE BUILDER\] Concurrent strategies execution
+- L1445 *WARNING*: - L405 *WARNING*: - L3281 *WARNING*: - L288 **WARNING**: (f"\[TABLE BUILDER\] RawJSON pivot failed: {e}")
+- L1446 *WARNING*: - L406 *WARNING*: - L3282 *WARNING*: - L296 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide signature mismatch
+- L1447 *WARNING*: - L407 *WARNING*: - L3284 *WARNING*: - L298 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide failed (skipped): {e}")
+- L1448 *WARNING*: - L408 *WARNING*: - L3285 *WARNING*: - L349 **WARNING**: (f"\[TABLE BUILDER\] finalize output failed: {e}")
+- L1449 *WARNING*: - L409 *WARNING*: - L3286 *WARNING*: - L414 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] Concurrent strategies
+- L1450 *WARNING*: - L410 *WARNING*: - L3288 *WARNING*: - L477 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed:
+- L1451 *TODO*: - L411 *TODO*: - L3324 *TODO*: #### ⚠️ TODO/FIXME/WARN (utils_user_prompt)
+- L1452 *WARNING*: - L412 *WARNING*: - L3326 *WARNING*: - L312 **WARNING**: ("\[UserPrompt\] Webapp mode active but no
+- L1453 *WARNING*: - L413 *WARNING*: - L3328 *WARNING*: - L349 **WARNING**: ("\[CLI Prompt\] EOFError encountered.")
+- L1454 *WARNING*: - L414 *WARNING*: - L3329 *WARNING*: - L370 **WARNING**: ("\[Webapp Prompt\] socketio*emit*func not set.")
+- L1455 *WARNING*: - L415 *WARNING*: - L3330 *WARNING*: - L428 **WARNING**: ": 30,
+- L1456 *WARNING*: - L416 *WARNING*: - L3331 *WARNING*: - L507 **WARNING**: ("\n\[Prompt\] Timed out.")
+- L1457 *WARNING*: - L417 *WARNING*: - L3332 *WARNING*: - L558 **WARNING**: ("\n\[Prompt\] No input available (EOF). Exiting prompt.")
+- L1458 *WARNING*: - L418 *WARNING*: - L3333 *WARNING*: - L592 **WARNING**: ("Invalid input. Please try again.")
+- L1459 *WARNING*: - L419 *WARNING*: - L3334 *WARNING*: - L594 **WARNING**: ("\[Prompt\] Too many invalid attempts.")
+- L1460 *WARNING*: - L420 *WARNING*: - L3335 *WARNING*: - L659 **WARNING**: ("\[Prompt Queue\] Invalid queued yes/no response; falling
+- L1461 *WARNING*: - L421 *WARNING*: - L3337 *WARNING*: - L674 **WARNING**: ("\n\[Prompt\] Timed out.")
+- L1462 *WARNING*: - L422 *WARNING*: - L3338 *WARNING*: - L881 **WARNING**: ("\[yellow\]\[FEEDBACK\] Skipped manual
+- L1463 *WARNING*: - L423 *WARNING*: - L3340 *WARNING*: - L913 **WARNING**: ("\[yellow\]Button confirmation cancelled by
+- L1464 *TODO*: - L424 *TODO*: - L3395 *TODO*: #### ⚠️ TODO/FIXME/WARN (web_pipeline)
+- L1465 *WARNING*: - L425 *WARNING*: - L3397 *WARNING*: - L49 **WARNING**: ({
+- L1466 *WARNING*: - L426 *WARNING*: - L3398 *WARNING*: - L50 **WARNING**: ",
+- L1467 *WARNING*: - L427 *WARNING*: - L3399 *WARNING*: - L66 **WARNING**: ({
+- L1468 *WARNING*: - L428 *WARNING*: - L3400 *WARNING*: - L67 **WARNING**: ",
+- L1469 *WARNING*: - L429 *WARNING*: - L3401 *WARNING*: - L83 **WARNING**: ({
+- L1470 *WARNING*: - L430 *WARNING*: - L3402 *WARNING*: - L84 **WARNING**: ",
+- L1471 *TODO*: - L434 *TODO*: - L441 *TODO*: - TODO/FIXME/WARN:
+- L1472 *WARNING*: - L435 *WARNING*: - L442 *WARNING*: - L210 **WARNING**: ").upper().split(","))
+- L1473 *WARNING*: - L436 *WARNING*: - L443 *WARNING*: - L480 **WARNING**: , ERROR, CRITICAL, TRACE
+- L1474 *WARNING*: - L437 *WARNING*: - L444 *WARNING*: - L519 **WARNING**: ", "ERROR", "CRITICAL", "TRACE"}
+- L1475 *WARNING*: - L438 *WARNING*: - L445 *WARNING*: - L555 **WARNING**: " in mlow:
+- L1476 *WARNING*: - L439 *WARNING*: - L446 *WARNING*: - L954 **WARNING**:         # For websocket handshake only: add Cache-Control
+- L1477 *WARNING*: - L440 *WARNING*: - L447 *WARNING*: so webhint stops warning
+- L1478 *WARNING*: - L441 *WARNING*: - L448 *WARNING*: - L1229 **WARNING**: ({"type": "sec", "message": "Favicon path escape
+- L1479 *WARNING*: - L442 *WARNING*: - L450 *WARNING*: - L1331 **WARNING**: ({
+- L1480 *WARNING*: - L443 *WARNING*: - L451 *WARNING*: - L1332 **WARNING**: ",
+- L1481 *WARNING*: - L444 *WARNING*: - L452 *WARNING*: - L1641 **WARNING**: ",
+- L1482 *WARNING*: - L445 *WARNING*: - L453 *WARNING*: - L1724 **WARNING**: (
+- L1483 *WARNING*: - L446 *WARNING*: - L454 *WARNING*: - L1726 **WARNING**: ",
+- L1484 *WARNING*: - L447 *WARNING*: - L455 *WARNING*: - L1736 **WARNING**: (
+- L1485 *WARNING*: - L448 *WARNING*: - L456 *WARNING*: - L1738 **WARNING**: ",
+- L1486 *WARNING*: - L449 *WARNING*: - L457 *WARNING*: - L1768 **WARNING**: (
+- L1487 *WARNING*: - L450 *WARNING*: - L458 *WARNING*: - L1770 **WARNING**: ",
+- L1488 *WARNING*: - L451 *WARNING*: - L459 *WARNING*: - L2055 **WARNING**: ({
+- L1489 *WARNING*: - L452 *WARNING*: - L460 *WARNING*: - L2056 **WARNING**: ",
+- L1490 *WARNING*: - L453 *WARNING*: - L461 *WARNING*: - L2120 **WARNING**: ({
+- L1491 *WARNING*: - L454 *WARNING*: - L462 *WARNING*: - L2121 **WARNING**: ",
+- L1492 *WARNING*: - L455 *WARNING*: - L463 *WARNING*: - L2171 **WARNING**: ({
+- L1493 *WARNING*: - L456 *WARNING*: - L464 *WARNING*: - L2172 **WARNING**: ",
+- L1494 *WARNING*: - L457 *WARNING*: - L465 *WARNING*: - L2194 **WARNING**: ({
+- L1495 *WARNING*: - L458 *WARNING*: - L466 *WARNING*: - L2195 **WARNING**: ",
+- L1496 *WARNING*: - L459 *WARNING*: - L467 *WARNING*: - L2203 **WARNING**: ({
+- L1497 *WARNING*: - L460 *WARNING*: - L468 *WARNING*: - L2204 **WARNING**: ",
+- L1498 *WARNING*: - L461 *WARNING*: - L469 *WARNING*: - L2211 **WARNING**: ({
+- L1499 *WARNING*: - L462 *WARNING*: - L470 *WARNING*: - L2212 **WARNING**: ",
+- L1500 *TODO*: - L463 *TODO*: - L606 *TODO*: - TODO/FIXME/WARN:
+- L1501 *NOTE*: - L464 *NOTE*: - L607 *NOTE*: - L1831 **NOTE**: .*$",                     # Note
+- L1502 *WARNING*: - L465 *WARNING*: - L608 *WARNING*: - L2020 **WARNING**: ",
+- L1503 *WARNING*: - L466 *WARNING*: - L609 *WARNING*: - L2111 **WARNING**: ", "info*box", "navigation", "pagination", "tab",
+- L1504 *NOTE*: - L467 *NOTE*: - L611 *NOTE*: - L2144 **NOTE**: ", "comment",
+- L1505 *NOTE*: - L468 *NOTE*: - L612 *NOTE*: - L2220 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
+- L1506 *NOTE*: - L469 *NOTE*: - L613 *NOTE*: - L2236 **NOTE**: ", "Comment", "Feedback", "Suggestion",
+- L1507 *TODO*: - L470 *TODO*: - L899 *TODO*: - TODO/FIXME/WARN:
+- L1508 *WARNING*: - L471 *WARNING*: - L900 *WARNING*: - L788 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
+- L1509 *WARNING*: - L472 *WARNING*: - L901 *WARNING*: - L876 **WARNING**: ({
+- L1510 *WARNING*: - L473 *WARNING*: - L902 *WARNING*: - L877 **WARNING**: ",
+- L1511 *WARNING*: - L474 *WARNING*: - L903 *WARNING*: - L995 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
+- L1512 *WARNING*: - L475 *WARNING*: - L905 *WARNING*: - L1234 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
+- L1513 *WARNING*: - L476 *WARNING*: - L907 *WARNING*: - L1403 **WARNING**: (f"\[get*feedback*pattern*kb\] Skipping corrupt line:
+- L1514 *WARNING*: - L477 *WARNING*: - L909 *WARNING*: - L1515 **WARNING**: ("\[group*dom*nodes*by*label\] No organized DOM parts.
+- L1515 *WARNING*: - L478 *WARNING*: - L911 *WARNING*: - L1517 **WARNING**: (f"\[group*dom*nodes*by*label\] No organized DOM parts.
+- L1516 *WARNING*: - L479 *WARNING*: - L912 *WARNING*: (Occurred {ContextCoordinator.*dom*parts*warning*count} times)")
+- L1517 *WARNING*: - L480 *WARNING*: - L913 *WARNING*: - L1522 **WARNING**: ("\[group*dom*nodes*by*label\] No DOM nodes found.")
+- L1518 *WARNING*: - L481 *WARNING*: - L914 *WARNING*: - L1540 **WARNING**: ("\[submit*user*feedback\] ContextOrganizer has no
+- L1519 *WARNING*: - L482 *WARNING*: - L916 *WARNING*: - L1568 **WARNING**: (f"\[correct*and*update*contest\] Contest {contest*id}
+- L1520 *WARNING*: - L483 *WARNING*: - L918 *WARNING*: - L1592 **WARNING**: ("\[print*contest*summary\] No organized contests to
+- L1521 *WARNING*: - L484 *WARNING*: - L920 *WARNING*: - L1605 **WARNING**: ("\[plot*contest*distribution\] No organized contests to
+- L1522 *WARNING*: - L485 *WARNING*: - L922 *WARNING*: - L1656 **WARNING**: ("No organized DOM parts.")
+- L1523 *WARNING*: - L486 *WARNING*: - L923 *WARNING*: - L1659 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
+- L1524 *WARNING*: - L487 *WARNING*: - L924 *WARNING*: - L1670 **WARNING**: ("\[get*contest*groups\] No contest groups found.")
+- L1525 *WARNING*: - L488 *WARNING*: - L925 *WARNING*: - L1679 **WARNING**: ("\[get*panel*groups\] No panel groups found.")
+- L1526 *WARNING*: - L489 *WARNING*: - L926 *WARNING*: - L1688 **WARNING**: ("\[get*button*groups\] No button groups found.")
+- L1527 *WARNING*: - L490 *WARNING*: - L927 *WARNING*: - L1697 **WARNING**: ("\[get*table*groups\] No table groups found.")
+- L1528 *WARNING*: - L491 *WARNING*: - L928 *WARNING*: - L1706 **WARNING**: ("\[get*relationships\] No organized context.")
+- L1529 *WARNING*: - L492 *WARNING*: - L929 *WARNING*: - L1814 **WARNING**: (f"\[fuzzy*score\] One or both inputs are empty:
+- L1530 *WARNING*: - L493 *WARNING*: - L931 *WARNING*: - L1820 **WARNING**: (f"\[fuzzy*score\] One or both inputs are too short:
+- L1531 *WARNING*: - L494 *WARNING*: - L933 *WARNING*: - L2266 **WARNING**: (f"\[extract*field\] Unknown field*type: {field*type}")
+- L1532 *WARNING*: - L495 *WARNING*: - L934 *WARNING*: - L2524 **WARNING**: (f"\[get*full*contest\] Contest {contest*id} missing
+- L1533 *WARNING*: - L496 *WARNING*: - L936 *WARNING*: - L2609 **WARNING**: (f"\[list*tables\] Table '{tbl}' missing metadata or
+- L1534 *WARNING*: - L497 *WARNING*: - L938 *WARNING*: - L2641 **WARNING**: (f"\[get*table*metadata\] Table '{table*name}' missing
+- L1535 *WARNING*: - L498 *WARNING*: - L940 *WARNING*: - L2659 **WARNING**: (f"\[check*missing*tables\] Missing tables: {missing}")
+- L1536 *WARNING*: - L499 *WARNING*: - L941 *WARNING*: - L2720 **WARNING**: (f"\[save*table*structure\] Failed to save structure for
+- L1537 *WARNING*: - L500 *WARNING*: - L943 *WARNING*: - L2897 **WARNING**: (f"\[get*best*button*advanced\] Contest argument was not
+- L1538 *WARNING*: - L501 *WARNING*: - L945 *WARNING*: - L2901 **WARNING**: (f"\[get*best*button*advanced\] Keywords argument was not
+- L1539 *WARNING*: - L502 *WARNING*: - L947 *WARNING*: - L2905 **WARNING**: (f"\[get*best*button*advanced\] Context argument was not
+- L1540 *WARNING*: - L503 *WARNING*: - L949 *WARNING*: - L2912 **WARNING**: ("\[get*best*button*advanced\]*semantic*model is not set
+- L1541 *WARNING*: - L504 *WARNING*: - L951 *WARNING*: - L3057 **WARNING**: (f"\[yellow\]\[Coordinator\] Button '{cand.get('label')}'
+- L1542 *TODO*: - L505 *TODO*: - L1120 *TODO*: - TODO/FIXME/WARN:
+- L1543 *WARNING*: - L506 *WARNING*: - L1121 *WARNING*: - L282 **WARNING**: (
+- L1544 *WARNING*: - L507 *WARNING*: - L1122 *WARNING*: - L407 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or
+- L1545 *WARNING*: - L508 *WARNING*: - L1124 *WARNING*: - L495 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered*out)} contests
+- L1546 *WARNING*: - L509 *WARNING*: - L1126 *WARNING*: - L497 **WARNING**: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
+- L1547 *WARNING*: - L510 *WARNING*: - L1127 *WARNING*: - L500 **WARNING**: ("\[CONTEST\] No contests with required fields for
+- L1548 *WARNING*: - L511 *WARNING*: - L1129 *WARNING*: - L816 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests
+- L1549 *WARNING*: - L512 *WARNING*: - L1131 *WARNING*: - L1500 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
+- L1550 *WARNING*: - L513 *WARNING*: - L1132 *WARNING*: - L1505 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
+- L1551 *WARNING*: - L514 *WARNING*: - L1134 *WARNING*: - L1507 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L1552 *WARNING*: - L515 *WARNING*: - L1136 *WARNING*: - L1509 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L1553 *WARNING*: - L516 *WARNING*: - L1138 *WARNING*: - L1972 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
+- L1554 *WARNING*: - L517 *WARNING*: - L1140 *WARNING*: - L2049 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
+- L1555 *WARNING*: - L518 *WARNING*: - L1188 *WARNING*: - utils.logger\_singleton.logger.warning (line 282)
+- L1556 *TODO*: - L519 *TODO*: - L1321 *TODO*: - TODO/FIXME/WARN:
+- L1557 *WARNING*: - L520 *WARNING*: - L1322 *WARNING*: - L652 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
+- L1558 *WARNING*: - L521 *WARNING*: - L1323 *WARNING*: - L658 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
+- L1559 *WARNING*: - L522 *WARNING*: - L1325 *WARNING*: - L661 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
+- L1560 *TODO*: - L523 *TODO*: - L1451 *TODO*: - TODO/FIXME/WARN:
+- L1561 *WARNING*: - L524 *WARNING*: - L1452 *WARNING*: - L328 **WARNING**: ("\[DB\]\[AAD\] Falling back to password auth.")
+- L1562 *WARNING*: - L525 *WARNING*: - L1489 *WARNING*: - utils.logger\_singleton.logger.warning (line 328)
+- L1563 *TODO*: - L526 *TODO*: - L1521 *TODO*: - TODO/FIXME/WARN:
+- L1564 *WARNING*: - L527 *WARNING*: - L1522 *WARNING*: - L83 **WARNING**: (f"\[REMOVED\] {popped}")
+- L1565 *WARNING*: - L528 *WARNING*: - L1523 *WARNING*: - L90 **WARNING**: (f"\[REMOVED\] {index*or*value}")
+- L1566 *WARNING*: - L529 *WARNING*: - L1524 *WARNING*: - L129 **WARNING**: (f"\[DELETED\] {files\[idx\]}")
+- L1567 *WARNING*: - L530 *WARNING*: - L1552 *WARNING*: - utils.logger\_singleton.logger.warning (line 83)
+- L1568 *WARNING*: - L531 *WARNING*: - L1554 *WARNING*: - utils.logger\_singleton.logger.warning (line 90)
+- L1569 *WARNING*: - L532 *WARNING*: - L1567 *WARNING*: - utils.logger\_singleton.logger.warning (line 129)
+- L1570 *TODO*: - L533 *TODO*: - L1627 *TODO*: - TODO/FIXME/WARN:
+- L1571 *WARNING*: - L534 *WARNING*: - L1628 *WARNING*: - L134 **WARNING**: ({
+- L1572 *WARNING*: - L535 *WARNING*: - L1629 *WARNING*: - L135 **WARNING**: ",
+- L1573 *WARNING*: - L536 *WARNING*: - L1630 *WARNING*: - L426 **WARNING**: ({
+- L1574 *WARNING*: - L537 *WARNING*: - L1631 *WARNING*: - L427 **WARNING**: ",
+- L1575 *WARNING*: - L538 *WARNING*: - L1646 *WARNING*: - utils.logger\_singleton.logger.warning (line 134)
+- L1576 *TODO*: - L539 *TODO*: - L1815 *TODO*: - TODO/FIXME/WARN:
+- L1577 *WARNING*: - L540 *WARNING*: - L1816 *WARNING*: - L216 **WARNING**: (f"\[HTML Handler\] County '{county}' not found. Closest
+- L1578 *WARNING*: - L541 *WARNING*: - L1818 *WARNING*: - L220 **WARNING**: (f"\[HTML Handler\] Detected county '{county}' is not in
+- L1579 *WARNING*: - L542 *WARNING*: - L1820 *WARNING*: - L241 **WARNING**: (f"\[HTML Handler\] State '{user*state}' not found.
+- L1580 *WARNING*: - L543 *WARNING*: - L1822 *WARNING*: - L285 **WARNING**: (f"\[HTML Handler\] County '{user*county}' not found.
+- L1581 *TODO*: - L544 *TODO*: - L1957 *TODO*: - TODO/FIXME/WARN:
+- L1582 *WARNING*: - L545 *WARNING*: - L1958 *WARNING*: - L376 **WARNING**: ({
+- L1583 *WARNING*: - L546 *WARNING*: - L1959 *WARNING*: - L377 **WARNING**: ",
+- L1584 *WARNING*: - L547 *WARNING*: - L1960 *WARNING*: - L489 **WARNING**: ({
+- L1585 *WARNING*: - L548 *WARNING*: - L1961 *WARNING*: - L490 **WARNING**: ",
+- L1586 *TODO*: - L549 *TODO*: - L2248 *TODO*: - TODO/FIXME/WARN:
+- L1587 *WARNING*: - L550 *WARNING*: - L2249 *WARNING*: - L421 **WARNING**: ({
+- L1588 *WARNING*: - L551 *WARNING*: - L2250 *WARNING*: - L422 **WARNING**: ",
+- L1589 *WARN*: - L552 *WARN*: - L2251 *WARN*: - L425 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
+- L1590 *WARNING*: - L553 *WARNING*: - L2253 *WARNING*: - L1787 **WARNING**: ({
+- L1591 *WARNING*: - L554 *WARNING*: - L2254 *WARNING*: - L1788 **WARNING**: ",
+- L1592 *WARN*: - L555 *WARN*: - L2255 *WARN*: - L1790 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
+- L1593 *WARNING*: - L556 *WARNING*: - L2257 *WARNING*: - L1808 **WARNING**: ({
+- L1594 *WARNING*: - L557 *WARNING*: - L2258 *WARNING*: - L1809 **WARNING**: ",
+- L1595 *WARN*: - L558 *WARN*: - L2259 *WARN*: - L1812 **WARN**: \] pdf2image conversion failed; "
+- L1596 *WARNING*: - L559 *WARNING*: - L2260 *WARNING*: - L2184 **WARNING**: ({
+- L1597 *WARNING*: - L560 *WARNING*: - L2261 *WARNING*: - L2185 **WARNING**: ",
+- L1598 *WARN*: - L561 *WARN*: - L2262 *WARN*: - L2187 **WARN**: \] Multi-mode text extraction failed: {e}",
+- L1599 *WARNING*: - L562 *WARNING*: - L2263 *WARNING*: - L3283 **WARNING**: ({
+- L1600 *WARNING*: - L563 *WARNING*: - L2264 *WARNING*: - L3284 **WARNING**: ",
+- L1601 *WARN*: - L564 *WARN*: - L2265 *WARN*: - L3286 **WARN**: \] fitz text extraction failed: {e}",
+- L1602 *WARNING*: - L565 *WARNING*: - L2266 *WARNING*: - L3315 **WARNING**: ({
+- L1603 *WARNING*: - L566 *WARNING*: - L2267 *WARNING*: - L3316 **WARNING**: ",
+- L1604 *WARN*: - L567 *WARN*: - L2268 *WARN*: - L3318 **WARN**: \] ENABLE*OCR*FORCE is set but Tesseract is unavailable;
+- L1605 *WARNING*: - L568 *WARNING*: - L2270 *WARNING*: - L3366 **WARNING**: ({
+- L1606 *WARNING*: - L569 *WARNING*: - L2271 *WARNING*: - L3367 **WARNING**: ",
+- L1607 *WARN*: - L570 *WARN*: - L2272 *WARN*: - L3369 **WARN**: \] Low-signal text detected but OCR is unavailable or
+- L1608 *WARNING*: - L571 *WARNING*: - L2274 *WARNING*: - L3586 **WARNING**: ({
+- L1609 *WARNING*: - L572 *WARNING*: - L2275 *WARNING*: - L3587 **WARNING**: ",
+- L1610 *WARN*: - L573 *WARN*: - L2276 *WARN*: - L3589 **WARN**: \] No contest selected. Using filename fallback.",
+- L1611 *WARNING*: - L574 *WARNING*: - L2277 *WARNING*: - L4034 **WARNING**: ({
+- L1612 *WARNING*: - L575 *WARNING*: - L2278 *WARNING*: - L4035 **WARNING**: ",
+- L1613 *WARN*: - L576 *WARN*: - L2279 *WARN*: - L4037 **WARN**: \] Selected contest '{contest}' not found in column
+- L1614 *WARNING*: - L577 *WARNING*: - L2281 *WARNING*: - L4136 **WARNING**: ({
+- L1615 *WARNING*: - L578 *WARNING*: - L2282 *WARNING*: - L4137 **WARNING**: ",
+- L1616 *WARN*: - L579 *WARN*: - L2283 *WARN*: - L4139 **WARN**: \] No structured rows matched the inferred column count of
+- L1617 *WARNING*: - L580 *WARNING*: - L2285 *WARNING*: - L4178 **WARNING**: ({
+- L1618 *WARNING*: - L581 *WARNING*: - L2286 *WARNING*: - L4179 **WARNING**: ",
+- L1619 *WARNING*: - L582 *WARNING*: - L2287 *WARNING*: - L4367 **WARNING**: ({
+- L1620 *WARNING*: - L583 *WARNING*: - L2288 *WARNING*: - L4368 **WARNING**: ",
+- L1621 *WARNING*: - L584 *WARNING*: - L2336 *WARNING*: - utils.logger\_singleton.logger.warning (line 421)
+- L1622 *TODO*: - L585 *TODO*: - L2610 *TODO*: - TODO/FIXME/WARN:
+- L1623 *WARNING*: - L586 *WARNING*: - L2611 *WARNING*: - L25 **WARNING**: ("\[WARN\] context*library.json not found. Using fallback
+- L1624 *WARNING*: - L587 *WARNING*: - L2613 *WARNING*: - L51 **WARNING**: (f"\[WARN\] Could not expand card {i+1}: {e}")
+- L1625 *WARNING*: - L588 *WARNING*: - L2614 *WARNING*: - L64 **WARNING**: (f"\[WARN\] Vote Type toggle failed: {e}")
+- L1626 *WARNING*: - L589 *WARNING*: - L2615 *WARNING*: - L77 **WARNING**: (f"\[WARN\] County toggle failed: {e}")
+- L1627 *WARNING*: - L590 *WARNING*: - L2616 *WARNING*: - L164 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results
+- L1628 *WARNING*: - L591 *WARNING*: - L2618 *WARNING*: - L165 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted
+- L1629 *WARNING*: - L592 *WARNING*: - L2625 *WARNING*: - utils.logger\_singleton.logger.warning (line 25)
+- L1630 *WARNING*: - L593 *WARNING*: - L2639 *WARNING*: - utils.logger\_singleton.logger.warning (line 51)
+- L1631 *WARNING*: - L594 *WARNING*: - L2645 *WARNING*: - utils.logger\_singleton.logger.warning (line 64)
+- L1632 *WARNING*: - L595 *WARNING*: - L2651 *WARNING*: - utils.logger\_singleton.logger.warning (line 77)
+- L1633 *TODO*: - L596 *TODO*: - L2689 *TODO*: - TODO/FIXME/WARN:
+- L1634 *WARNING*: - L597 *WARNING*: - L2690 *WARNING*: - L123 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+- L1635 *WARNING*: - L598 *WARNING*: - L2722 *WARNING*: - utils.logger\_singleton.logger.warning (line 123)
+- L1636 *TODO*: - L599 *TODO*: - L2753 *TODO*: - TODO/FIXME/WARN:
+- L1637 *WARNING*: - L600 *WARNING*: - L2754 *WARNING*: - L51 **WARNING**: (f"\[Example Handler\] No specific parser implemented for
+- L1638 *WARNING*: - L601 *WARNING*: - L2756 *WARNING*: - L152 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+- L1639 *WARNING*: - L602 *WARNING*: - L2765 *WARNING*: - utils.logger\_singleton.logger.warning (line 51)
+- L1640 *WARNING*: - L603 *WARNING*: - L2796 *WARNING*: - utils.logger\_singleton.logger.warning (line 152)
+- L1641 *TODO*: - L604 *TODO*: - L2833 *TODO*: - TODO/FIXME/WARN:
+- L1642 *WARNING*: - L605 *WARNING*: - L2834 *WARNING*: - L72 **WARNING**: ("\[WARNING\] dom*parts missing after
+- L1643 *WARNING*: - L606 *WARNING*: - L2836 *WARNING*: - L95 **WARNING**: ("\[red\]No contest selected. Skipping.\[/red\]")
+- L1644 *WARNING*: - L607 *WARNING*: - L2837 *WARNING*: - L139 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn1.get('label', '')}'
+- L1645 *WARNING*: - L608 *WARNING*: - L2840 *WARNING*: - L176 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn2.get('label', '')}'
+- L1646 *WARNING*: - L609 *WARNING*: - L2856 *WARNING*: - utils.logger\_singleton.logger.warning (line 72)
+- L1647 *WARNING*: - L610 *WARNING*: - L2863 *WARNING*: - utils.logger\_singleton.logger.warning (line 95)
+- L1648 *WARNING*: - L611 *WARNING*: - L2880 *WARNING*: - utils.logger\_singleton.logger.warning (line 139)
+- L1649 *TODO*: - L612 *TODO*: - L2913 *TODO*: - TODO/FIXME/WARN:
+- L1650 *WARNING*: - L613 *WARNING*: - L2914 *WARNING*: - L27 **WARNING**: ("\[NY Handler\] No county specified in html*context.")
+- L1651 *WARNING*: - L614 *WARNING*: - L2915 *WARNING*: - L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
+- L1652 *WARNING*: - L615 *WARNING*: - L2921 *WARNING*: - utils.logger\_singleton.logger.warning (line 27)
+- L1653 *WARNING*: - L616 *WARNING*: - L2925 *WARNING*: - utils.logger\_singleton.logger.warning (line 43)
+- L1654 *TODO*: - L617 *TODO*: - L2957 *TODO*: - TODO/FIXME/WARN:
+- L1655 *WARNING*: - L618 *WARNING*: - L2958 *WARNING*: - L44 **WARNING**: (f"\[NAV\] Step failed: {step} — {e}")
+- L1656 *WARNING*: - L619 *WARNING*: - L2959 *WARNING*: - L55 **WARNING**: (f"\[bold yellow\]Detected election:\[/bold yellow\]
+- L1657 *WARNING*: - L620 *WARNING*: - L2961 *WARNING*: - L76 **WARNING**: ("\[PA\] Invalid index input for election selection.")
+- L1658 *WARNING*: - L621 *WARNING*: - L2962 *WARNING*: - L78 **WARNING**: ("\[PA\] Elections dropdown not found.")
+- L1659 *WARNING*: - L622 *WARNING*: - L2963 *WARNING*: - L80 **WARNING**: (f"\[PA\] Failed to expand Elections menu or load
+- L1660 *WARNING*: - L623 *WARNING*: - L2965 *WARNING*: - L96 **WARNING**: ("\[PA\] County Breakdown link not found.")
+- L1661 *WARNING*: - L624 *WARNING*: - L2966 *WARNING*: - L98 **WARNING**: (f"\[PA\] Failed to click County Breakdown link: {e}")
+- L1662 *WARNING*: - L625 *WARNING*: - L2967 *WARNING*: - L113 **WARNING**: ("\[yellow\]Multiple CSV files found in input. Please
+- L1663 *WARNING*: - L626 *WARNING*: - L2983 *WARNING*: - utils.logger\_singleton.logger.warning (line 44)
+- L1664 *WARNING*: - L627 *WARNING*: - L2987 *WARNING*: - utils.logger\_singleton.logger.warning (line 55)
+- L1665 *WARNING*: - L628 *WARNING*: - L3002 *WARNING*: - utils.logger\_singleton.logger.warning (line 76)
+- L1666 *WARNING*: - L629 *WARNING*: - L3003 *WARNING*: - utils.logger\_singleton.logger.warning (line 78)
+- L1667 *WARNING*: - L630 *WARNING*: - L3004 *WARNING*: - utils.logger\_singleton.logger.warning (line 80)
+- L1668 *WARNING*: - L631 *WARNING*: - L3012 *WARNING*: - utils.logger\_singleton.logger.warning (line 96)
+- L1669 *WARNING*: - L632 *WARNING*: - L3013 *WARNING*: - utils.logger\_singleton.logger.warning (line 98)
+- L1670 *WARNING*: - L633 *WARNING*: - L3018 *WARNING*: - utils.logger\_singleton.logger.warning (line 113)
+- L1671 *TODO*: - L634 *TODO*: - L3196 *TODO*: - TODO/FIXME/WARN:
+- L1672 *WARNING*: - L635 *WARNING*: - L3197 *WARNING*: - L252 **WARNING**: (f"\[health*router\] manual*correction failed (attempt
+- L1673 *WARNING*: - L636 *WARNING*: - L3199 *WARNING*: - L336 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L1674 *WARNING*: - L637 *WARNING*: - L3201 *WARNING*: - L338 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L1675 *WARNING*: - L638 *WARNING*: - L3203 *WARNING*: - L340 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L1676 *WARNING*: - L639 *WARNING*: - L3205 *WARNING*: - L375 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
+- L1677 *WARNING*: - L640 *WARNING*: - L3206 *WARNING*: - L380 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
+- L1678 *WARNING*: - L641 *WARNING*: - L3208 *WARNING*: - L382 **WARNING**: ("\[PIPELINE\] scan*misaligned*ner failed or file missing.
+- L1679 *WARNING*: - L642 *WARNING*: - L3210 *WARNING*: - L414 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
+- L1680 *TODO*: - L643 *TODO*: - L3304 *TODO*: - TODO/FIXME/WARN:
+- L1681 *WARNING*: - L644 *WARNING*: - L3305 *WARNING*: - L151 **WARNING**: (f"Skipping non-dict entry in spacy*ner*train*data.jsonl:
+- L1682 *WARNING*: - L645 *WARNING*: - L3307 *WARNING*: - L460 **WARNING**: ("\[DB\]\[WARNING\] No user tables found in schema
+- L1683 *WARNING*: - L646 *WARNING*: - L3309 *WARNING*: - L503 **WARNING**: ("\[CLEAN\]\[WARNING\] The following files are still too
+- L1684 *WARNING*: - L647 *WARNING*: - L3311 *WARNING*: - L507 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+- L1685 *WARNING*: - L648 *WARNING*: - L3333 *WARNING*: - utils.logger\_singleton.logger.warning (line 151)
+- L1686 *TODO*: - L649 *TODO*: - L3482 *TODO*: - TODO/FIXME/WARN:
+- L1687 *WARNING*: - L650 *WARNING*: - L3483 *WARNING*: - L322 **WARNING**: (f"Coordinator ML scoring failed: {e}")
+- L1688 *WARNING*: - L651 *WARNING*: - L3484 *WARNING*: - L343 **WARNING**: (f"Coordinator field suggestion failed: {e}")
+- L1689 *WARNING*: - L652 *WARNING*: - L3485 *WARNING*: - L355 **WARNING**: (f"Log file not found: {path}")
+- L1690 *WARNING*: - L653 *WARNING*: - L3486 *WARNING*: - L364 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
+- L1691 *WARNING*: - L654 *WARNING*: - L3487 *WARNING*: - L396 **WARNING**: (f"\[SKIP\] File not found: {file}")
+- L1692 *WARNING*: - L655 *WARNING*: - L3488 *WARNING*: - L400 **WARNING**: (f"\[SKIP\] File too large: {file}")
+- L1693 *WARNING*: - L656 *WARNING*: - L3489 *WARNING*: - L422 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
+- L1694 *WARNING*: - L657 *WARNING*: - L3491 *WARNING*: - L434 **WARNING**: (f"\[CORRUPT\] {len(corrupt*items)} lines saved to
+- L1695 *WARNING*: - L658 *WARNING*: - L3493 *WARNING*: - L439 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
+- L1696 *WARNING*: - L659 *WARNING*: - L3495 *WARNING*: - L453 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L1697 *WARNING*: - L660 *WARNING*: - L3496 *WARNING*: - L465 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt*path}")
+- L1698 *WARNING*: - L661 *WARNING*: - L3497 *WARNING*: - L471 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
+- L1699 *WARNING*: - L662 *WARNING*: - L3499 *WARNING*: - L476 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L1700 *WARNING*: - L663 *WARNING*: - L3500 *WARNING*: - L485 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {quarantine*dir /
+- L1701 *WARNING*: - L664 *WARNING*: - L3502 *WARNING*: - L489 **WARNING**: (f"\[DELETED\] {file}")
+- L1702 *WARNING*: - L665 *WARNING*: - L3503 *WARNING*: - L492 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
+- L1703 *WARNING*: - L666 *WARNING*: - L3504 *WARNING*: - L537 **WARNING**: (f"\[FIND-LOGS\] Skipped {d}: {e}")
+- L1704 *WARNING*: - L667 *WARNING*: - L3505 *WARNING*: - L562 **WARNING**: (f"\[CORRUPT\] {path} line {line*num}: {e}")
+- L1705 *WARNING*: - L668 *WARNING*: - L3506 *WARNING*: - L717 **WARNING**: (f"Invalid JSON, skipping edit: {e}")
+- L1706 *TODO*: - L669 *TODO*: - L3507 *TODO*: - L750 **TODO**: Add JSON schema validation here if desired
+- L1707 *WARNING*: - L670 *WARNING*: - L3508 *WARNING*: - L989 **WARNING**: (
+- L1708 *WARN*: - L671 *WARN*: - L3509 *WARN*: - L1079 **WARN**: if schema version mismatches.
+- L1709 *WARNING*: - L672 *WARNING*: - L3510 *WARNING*: - L1098 **WARNING**: (f"Schema version mismatch: found
+- L1710 *WARNING*: - L673 *WARNING*: - L3513 *WARNING*: - L1141 **WARNING**: (f"\[AUTO\] Could not delete log file {log*file}: {e}")
+- L1711 *WARNING*: - L674 *WARNING*: - L3514 *WARNING*: - L1257 **WARNING**: (f"\[SKIP\] Could not load {log*file}: {e}")
+- L1712 *WARNING*: - L675 *WARNING*: - L3515 *WARNING*: - L1273 **WARNING**: ("No log files matched any of the specified fields. Will
+- L1713 *WARNING*: - L676 *WARNING*: - L3517 *WARNING*: - L1356 **WARNING**: (f"Could not delete log file {log*file}: {e}")
+- L1714 *WARNING*: - L677 *WARNING*: - L3518 *WARNING*: - L1376 **WARNING**: ("\[WARNING\] No entries were processed. Check your log
+- L1715 *TODO*: - L678 *TODO*: - L3734 *TODO*: - TODO/FIXME/WARN:
+- L1716 *WARNING*: - L679 *WARNING*: - L3735 *WARNING*: - L178 **WARNING**: (f"\[CLEAN\] File not found: {jsonl*path}")
+- L1717 *WARNING*: - L680 *WARNING*: - L3736 *WARNING*: - L186 **WARNING**: (f"\[CLEAN\] Could not parse line: {e}")
+- L1718 *WARNING*: - L681 *WARNING*: - L3737 *WARNING*: - L201 **WARNING**: (f"\[CLEAN\] Alignment check failed for text:
+- L1719 *WARNING*: - L682 *WARNING*: - L3739 *WARNING*: - L274 **WARNING**: (f"Failed to load {path}: {e}")
+- L1720 *WARNING*: - L683 *WARNING*: - L3740 *WARNING*: - L403 **WARNING**: (f"Skipping misaligned entity in: {text}")
+- L1721 *WARNING*: - L684 *WARNING*: - L3741 *WARNING*: - L408 **WARNING**: (f"Error validating entity alignment: {e}")
+- L1722 *WARNING*: - L685 *WARNING*: - L3742 *WARNING*: - L434 **WARNING**: (f"\[spaCy\] Could not check GPU availability: {e}")
+- L1723 *WARNING*: - L686 *WARNING*: - L3743 *WARNING*: - L450 **WARNING**: (f"\[spaCy\] Could not load lexeme normalization table.
+- L1724 *WARNING*: - L687 *WARNING*: - L3745 *WARNING*: - L536 **WARNING**: (f"\[NER\] Skipped {misaligned*count} misaligned examples.
+- L1725 *WARNING*: - L688 *WARNING*: - L3747 *WARNING*: - L550 **WARNING**: ("No NER training examples found. Skipping spaCy NER
+- L1726 *WARNING*: - L689 *WARNING*: - L3749 *WARNING*: - L619 **WARNING**: ("\[SUGGESTION\] Consider lowering min*delta or increasing
+- L1727 *WARNING*: - L690 *WARNING*: - L3751 *WARNING*: - L621 **WARNING**: ("\[SUGGESTION\] Model improved until the last epoch.
+- L1728 *WARNING*: - L691 *WARNING*: - L3753 *WARNING*: - L622 **WARNING**: (f"\[SUGGESTION\] Next run: patience={patience},
+- L1729 *WARNING*: - L692 *WARNING*: - L3755 *WARNING*: - L708 **WARNING**: ("No training examples found. Aborting retraining.")
+- L1730 *WARNING*: - L693 *WARNING*: - L3756 *WARNING*: - L727 **WARNING**: (f"\[WARN\] Could not delete old model directory
+- L1731 *WARNING*: - L694 *WARNING*: - L3758 *WARNING*: - L739 **WARNING**: (f"\[WARN\] Failed to load existing model: {e}")
+- L1732 *WARNING*: - L695 *WARNING*: - L3759 *WARNING*: - L742 **WARNING**: ("Falling back to base model (all-MiniLM-L6-v2).")
+- L1733 *WARNING*: - L696 *WARNING*: - L3760 *WARNING*: - L782 **WARNING**: (f"\[WARN\] Could not update canonical model directory:
+- L1734 *WARNING*: - L697 *WARNING*: - L3762 *WARNING*: - L810 **WARNING**: (f"MISALIGNED: {text} {annots\['entities'\]}")
+- L1735 *WARNING*: - L698 *WARNING*: - L3763 *WARNING*: - L840 **WARNING**: ("\[DB\] Base.metadata.tables is empty. No models
+- L1736 *WARNING*: - L699 *WARNING*: - L3801 *WARNING*: - utils.logger\_singleton.logger.warning (line 178)
+- L1737 *WARNING*: - L700 *WARNING*: - L3803 *WARNING*: - utils.logger\_singleton.logger.warning (line 186)
+- L1738 *WARNING*: - L701 *WARNING*: - L3810 *WARNING*: - utils.logger\_singleton.logger.warning (line 201)
+- L1739 *TODO*: - L702 *TODO*: - L3877 *TODO*: - TODO/FIXME/WARN:
+- L1740 *WARNING*: - L703 *WARNING*: - L3878 *WARNING*: - L62 **WARNING**: (f"\[CORRUPT\] Could not parse line: {e}")
+- L1741 *WARNING*: - L704 *WARNING*: - L3879 *WARNING*: - L83 **WARNING**: (f"\n\[MISALIGNED\] Top {top*n} most frequent misaligned
+- L1742 *WARNING*: - L705 *WARNING*: - L3881 *WARNING*: - L85 **WARNING**: (f"  {repr(text)}: {count} times")
+- L1743 *WARNING*: - L706 *WARNING*: - L3882 *WARNING*: - L86 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+- L1744 *WARNING*: - L707 *WARNING*: - L3884 *WARNING*: - L87 **WARNING**: ("Run the manual*correction to review and clean these
+- L1745 *WARNING*: - L708 *WARNING*: - L3886 *WARNING*: - L88 **WARNING**: ("If you see spaCy entity alignment warnings, consider
+- L1746 *WARNING*: - L709 *WARNING*: - L3888 *WARNING*: - L98 **WARNING**: (f"\[WARN\] Could not remove old misaligned file: {e}")
+- L1747 *WARNING*: - L710 *WARNING*: - L3889 *WARNING*: - L112 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L1748 *WARNING*: - L711 *WARNING*: - L3891 *WARNING*: - L119 **WARNING**: (f"\[SELF-HEAL\] manual*correction exited with code
+- L1749 *WARNING*: - L712 *WARNING*: - L3893 *WARNING*: - L120 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L1750 *WARNING*: - L713 *WARNING*: - L3895 *WARNING*: - L122 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L1751 *WARNING*: - L714 *WARNING*: - L3913 *WARNING*: - utils.logger\_singleton.logger.warning (line 62)
+- L1752 *WARNING*: - L715 *WARNING*: - L3920 *WARNING*: - utils.logger\_singleton.logger.warning (line 83)
+- L1753 *WARNING*: - L716 *WARNING*: - L3922 *WARNING*: - utils.logger\_singleton.logger.warning (line 85)
+- L1754 *WARNING*: - L717 *WARNING*: - L3923 *WARNING*: - utils.logger\_singleton.logger.warning (line 86)
+- L1755 *WARNING*: - L718 *WARNING*: - L3924 *WARNING*: - utils.logger\_singleton.logger.warning (line 87)
+- L1756 *WARNING*: - L719 *WARNING*: - L3925 *WARNING*: - utils.logger\_singleton.logger.warning (line 88)
+- L1757 *WARNING*: - L720 *WARNING*: - L3929 *WARNING*: - utils.logger\_singleton.logger.warning (line 98)
+- L1758 *WARNING*: - L721 *WARNING*: - L3932 *WARNING*: - utils.logger\_singleton.logger.warning (line 112)
+- L1759 *WARNING*: - L722 *WARNING*: - L3934 *WARNING*: - utils.logger\_singleton.logger.warning (line 119)
+- L1760 *WARNING*: - L723 *WARNING*: - L3935 *WARNING*: - utils.logger\_singleton.logger.warning (line 120)
+- L1761 *WARNING*: - L724 *WARNING*: - L3937 *WARNING*: - utils.logger\_singleton.logger.warning (line 122)
+- L1762 *TODO*: - L725 *TODO*: - L4087 *TODO*: - TODO/FIXME/WARN:
+- L1763 *WARNING*: - L726 *WARNING*: - L4088 *WARNING*: - L56 **WARNING**: ("Deleting .processed*urls cache for fresh start...")
+- L1764 *WARNING*: - L727 *WARNING*: - L4089 *WARNING*: - L393 **WARNING**: ({
+- L1765 *WARNING*: - L728 *WARNING*: - L4090 *WARNING*: - L394 **WARNING**: ",
+- L1766 *WARNING*: - L729 *WARNING*: - L4091 *WARNING*: - L408 **WARNING**: ({
+- L1767 *WARNING*: - L730 *WARNING*: - L4092 *WARNING*: - L409 **WARNING**: ",
+- L1768 *WARNING*: - L731 *WARNING*: - L4093 *WARNING*: - L469 **WARNING**: ({
+- L1769 *WARNING*: - L732 *WARNING*: - L4094 *WARNING*: - L470 **WARNING**: ",
+- L1770 *WARNING*: - L733 *WARNING*: - L4095 *WARNING*: - L543 **WARNING**: (payload*2)
+- L1771 *WARNING*: - L734 *WARNING*: - L4096 *WARNING*: - L870 **WARNING**: ({
+- L1772 *WARNING*: - L735 *WARNING*: - L4097 *WARNING*: - L871 **WARNING**: ",
+- L1773 *WARNING*: - L736 *WARNING*: - L4098 *WARNING*: - L917 **WARNING**: ({
+- L1774 *WARNING*: - L737 *WARNING*: - L4099 *WARNING*: - L918 **WARNING**: ",
+- L1775 *WARNING*: - L738 *WARNING*: - L4100 *WARNING*: - L971 **WARNING**: ({
+- L1776 *WARNING*: - L739 *WARNING*: - L4101 *WARNING*: - L972 **WARNING**: ",
+- L1777 *WARNING*: - L740 *WARNING*: - L4102 *WARNING*: - L1076 **WARNING**: ",
+- L1778 *WARNING*: - L741 *WARNING*: - L4103 *WARNING*: - L1081 **WARNING**: (payload)
+- L1779 *WARN*: - L742 *WARN*: - L4104 *WARN*: - L1106 **WARN**: if nothing found
+- L1780 *WARNING*: - L743 *WARNING*: - L4105 *WARNING*: - L1166 **WARNING**: ",
+- L1781 *WARNING*: - L744 *WARNING*: - L4106 *WARNING*: - L1171 **WARNING**: (payload)
+- L1782 *WARNING*: - L745 *WARNING*: - L4107 *WARNING*: - L1249 **WARNING**: ({
+- L1783 *WARNING*: - L746 *WARNING*: - L4108 *WARNING*: - L1250 **WARNING**: ",
+- L1784 *WARNING*: - L747 *WARNING*: - L4109 *WARNING*: - L1267 **WARNING**: ",
+- L1785 *WARNING*: - L748 *WARNING*: - L4110 *WARNING*: - L1272 **WARNING**: (payload)
+- L1786 *WARNING*: - L749 *WARNING*: - L4111 *WARNING*: - L1283 **WARNING**: ",
+- L1787 *WARNING*: - L750 *WARNING*: - L4112 *WARNING*: - L1288 **WARNING**: (payload)
+- L1788 *WARN*: - L751 *WARN*: - L4113 *WARN*: - L1290 **WARN**: \] No output file path returned from parser and no output
+- L1789 *WARNING*: - L752 *WARNING*: - L4115 *WARNING*: - L1292 **WARNING**: ",
+- L1790 *WARNING*: - L753 *WARNING*: - L4116 *WARNING*: - L1297 **WARNING**: (payload)
+- L1791 *WARNING*: - L754 *WARNING*: - L4117 *WARNING*: - L1302 **WARNING**: ",
+- L1792 *WARNING*: - L755 *WARNING*: - L4118 *WARNING*: - L1307 **WARNING**: (payload)
+- L1793 *WARNING*: - L756 *WARNING*: - L4119 *WARNING*: - L1425 **WARNING**: ({
+- L1794 *WARNING*: - L757 *WARNING*: - L4120 *WARNING*: - L1426 **WARNING**: ",
+- L1795 *WARNING*: - L758 *WARNING*: - L4121 *WARNING*: - L1486 **WARNING**: ({
+- L1796 *WARNING*: - L759 *WARNING*: - L4122 *WARNING*: - L1487 **WARNING**: ",
+- L1797 *WARNING*: - L760 *WARNING*: - L4125 *WARNING*: - utils.logger\_singleton.logger.warning (line 56)
+- L1798 *TODO*: - L761 *TODO*: - L4518 *TODO*: - TODO/FIXME/WARN:
+- L1799 *WARNING*: - L762 *WARNING*: - L4519 *WARNING*: - L49 **WARNING**: ("\[Router\] handlers/states directory not found.")
+- L1800 *WARNING*: - L763 *WARNING*: - L4520 *WARNING*: - L66 **WARNING**: (f"\[Router\] counties directory not found for state:
+- L1801 *WARNING*: - L764 *WARNING*: - L4522 *WARNING*: - L137 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] No handler states
+- L1802 *WARNING*: - L765 *WARNING*: - L4524 *WARNING*: - L154 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L1803 *WARNING*: - L766 *WARNING*: - L4525 *WARNING*: - L157 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L1804 *WARNING*: - L767 *WARNING*: - L4526 *WARNING*: - L160 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] State '{state}'
+- L1805 *WARNING*: - L768 *WARNING*: - L4528 *WARNING*: - L179 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
+- L1806 *WARNING*: - L769 *WARNING*: - L4529 *WARNING*: - L182 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] County '{county}'
+- L1807 *WARNING*: - L770 *WARNING*: - L4531 *WARNING*: - L189 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Too many failed
+- L1808 *WARNING*: - L771 *WARNING*: - L4533 *WARNING*: - L205 **WARNING**: (f"\[Router\] Requested state '{state*name}' not found on
+- L1809 *WARNING*: - L772 *WARNING*: - L4535 *WARNING*: - L512 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for
+- L1810 *WARNING*: - L773 *WARNING*: - L4537 *WARNING*: - L523 **WARNING**: (f"Failed to load context from file: {e}")
+- L1811 *WARNING*: - L774 *WARNING*: - L4538 *WARNING*: - L533 **WARNING**: ("No suitable handler found.")
+- L1812 *WARNING*: - L775 *WARNING*: - L4539 *WARNING*: - L540 **WARNING**: ("No handler selected. Exiting.")
+- L1813 *WARNING*: - L776 *WARNING*: - L4540 *WARNING*: - L547 **WARNING**: ("Still could not import a suitable handler.")
+- L1814 *WARNING*: - L777 *WARNING*: - L4542 *WARNING*: - utils.logger\_singleton.logger.warning (line 49)
+- L1815 *WARNING*: - L778 *WARNING*: - L4546 *WARNING*: - utils.logger\_singleton.logger.warning (line 66)
+- L1816 *WARNING*: - L779 *WARNING*: - L4568 *WARNING*: - utils.logger\_singleton.logger.warning (line 137)
+- L1817 *WARNING*: - L780 *WARNING*: - L4571 *WARNING*: - utils.logger\_singleton.logger.warning (line 154)
+- L1818 *WARNING*: - L781 *WARNING*: - L4572 *WARNING*: - utils.logger\_singleton.logger.warning (line 157)
+- L1819 *WARNING*: - L782 *WARNING*: - L4573 *WARNING*: - utils.logger\_singleton.logger.warning (line 160)
+- L1820 *WARNING*: - L783 *WARNING*: - L4576 *WARNING*: - utils.logger\_singleton.logger.warning (line 179)
+- L1821 *WARNING*: - L784 *WARNING*: - L4577 *WARNING*: - utils.logger\_singleton.logger.warning (line 182)
+- L1822 *WARNING*: - L785 *WARNING*: - L4579 *WARNING*: - utils.logger\_singleton.logger.warning (line 189)
+- L1823 *WARNING*: - L786 *WARNING*: - L4582 *WARNING*: - utils.logger\_singleton.logger.warning (line 205)
+- L1824 *TODO*: - L787 *TODO*: - L4705 *TODO*: - TODO/FIXME/WARN:
+- L1825 *WARNING*: - L788 *WARNING*: - L4706 *WARNING*: - L89 **WARNING**: (f"\[browser*utils\] Failed to safely parse context*library
+- L1826 *WARNING*: - L789 *WARNING*: - L4708 *WARNING*: - L91 **WARNING**: (f"\[browser*utils\] Skipping unsafe context*library value
+- L1827 *WARNING*: - L790 *WARNING*: - L4710 *WARNING*: - L295 **WARNING**: (f"\[safe*attributes\] Playwright JS extraction failed:
+- L1828 *WARNING*: - L791 *WARNING*: - L4712 *WARNING*: - L309 **WARNING**: (f"\[safe*attributes\] Playwright fallback extraction
+- L1829 *WARNING*: - L792 *WARNING*: - L4714 *WARNING*: - L395 **WARNING**: (f"\[safe*count\] Object is not countable: {type(obj)}")
+- L1830 *WARNING*: - L793 *WARNING*: - L4715 *WARNING*: - L441 **WARNING**: (f"\[safe*launch\] browser*type is not a SyncBrowserType:
+- L1831 *WARNING*: - L794 *WARNING*: - L4717 *WARNING*: - L461 **WARNING**: (f"\[async*safe*launch\] browser*type is not an
+- L1832 *WARNING*: - L795 *WARNING*: - L4719 *WARNING*: - L540 **WARNING**: ({
+- L1833 *WARNING*: - L796 *WARNING*: - L4720 *WARNING*: - L541 **WARNING**: ",
+- L1834 *WARNING*: - L797 *WARNING*: - L4721 *WARNING*: - L569 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L1835 *WARNING*: - L798 *WARNING*: - L4723 *WARNING*: - L578 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual
+- L1836 *WARNING*: - L799 *WARNING*: - L4725 *WARNING*: - L602 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+- L1837 *WARNING*: - L800 *WARNING*: - L4727 *WARNING*: - L611 **WARNING**: ({
+- L1838 *WARNING*: - L801 *WARNING*: - L4728 *WARNING*: - L612 **WARNING**: ",
+- L1839 *WARNING*: - L802 *WARNING*: - L4729 *WARNING*: - L623 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual
+- L1840 *WARNING*: - L803 *WARNING*: - L4731 *WARNING*: - L712 **WARNING**: ("\[SCROLL\] User aborted scrolling.")
+- L1841 *WARNING*: - L804 *WARNING*: - L4732 *WARNING*: - L733 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may
+- L1842 *WARNING*: - L805 *WARNING*: - L4741 *WARNING*: - logger\_singleton.logger.warning (line 89)
+- L1843 *WARNING*: - L806 *WARNING*: - L4742 *WARNING*: - logger\_singleton.logger.warning (line 91)
+- L1844 *WARNING*: - L807 *WARNING*: - L4780 *WARNING*: - logger\_singleton.logger.warning (line 295)
+- L1845 *WARNING*: - L808 *WARNING*: - L4782 *WARNING*: - logger\_singleton.logger.warning (line 309)
+- L1846 *TODO*: - L809 *TODO*: - L4918 *TODO*: - TODO/FIXME/WARN:
+- L1847 *WARNING*: - L810 *WARNING*: - L4919 *WARNING*: - L118 **WARNING**: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
+- L1848 *WARNING*: - L811 *WARNING*: - L4920 *WARNING*: - L154 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
+- L1849 *WARNING*: - L812 *WARNING*: - L4938 *WARNING*: - logger\_singleton.logger.warning (line 118)
+- L1850 *WARNING*: - L813 *WARNING*: - L4949 *WARNING*: - logger\_singleton.logger.warning (line 154)
+- L1851 *TODO*: - L814 *TODO*: - L5078 *TODO*: - TODO/FIXME/WARN:
+- L1852 *WARNING*: - L815 *WARNING*: - L5079 *WARNING*: - L635 **WARNING**: ":
+- L1853 *WARNING*: - L816 *WARNING*: - L5080 *WARNING*: - L636 **WARNING**: (entry)
+- L1854 *WARNING*: - L817 *WARNING*: - L5081 *WARNING*: - L1029 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
+- L1855 *WARNING*: - L818 *WARNING*: - L5083 *WARNING*: - L1565 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
+- L1856 *WARNING*: - L819 *WARNING*: - L5085 *WARNING*: - L1570 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
+- L1857 *WARNING*: - L820 *WARNING*: - L5087 *WARNING*: - L1642 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
+- L1858 *TODO*: - L821 *TODO*: - L5627 *TODO*: - TODO/FIXME/WARN:
+- L1859 *WARNING*: - L822 *WARNING*: - L5628 *WARNING*: - L153 **WARNING**: (f"\[DOM*EXTRACTOR\] failure: {e}")
+- L1860 *WARNING*: - L823 *WARNING*: - L5661 *WARNING*: - logger\_singleton.logger.warning (line 153)
+- L1861 *TODO*: - L824 *TODO*: - L5864 *TODO*: - TODO/FIXME/WARN:
+- L1862 *WARNING*: - L825 *WARNING*: - L5865 *WARNING*: - L124 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
+- L1863 *WARNING*: - L826 *WARNING*: - L5867 *WARNING*: - L129 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in
+- L1864 *WARNING*: - L827 *WARNING*: - L5869 *WARNING*: - L171 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step
+- L1865 *WARNING*: - L828 *WARNING*: - L5871 *WARNING*: - L187 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table
+- L1866 *WARNING*: - L829 *WARNING*: - L5873 *WARNING*: - L217 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning
+- L1867 *WARNING*: - L830 *WARNING*: - L5875 *WARNING*: - L229 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed",
+- L1868 *WARNING*: - L831 *WARNING*: - L5877 *WARNING*: - L272 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed",
+- L1869 *WARNING*: - L832 *WARNING*: - L5879 *WARNING*: - L776 **WARNING**: ", "extractor", "No learned DOM patterns found.")
+- L1870 *WARNING*: - L833 *WARNING*: - L5880 *WARNING*: - L800 **WARNING**: ", "extractor", "Entry deleted.")
+- L1871 *WARNING*: - L834 *WARNING*: - L5881 *WARNING*: - L805 **WARNING**: ", "extractor", "Unknown action.")
+- L1872 *WARNING*: - L835 *WARNING*: - L5882 *WARNING*: - L807 **WARNING**: ", "extractor", "Invalid entry number.")
+- L1873 *TODO*: - L836 *TODO*: - L6022 *TODO*: - TODO/FIXME/WARN:
+- L1874 *WARNING*: - L837 *WARNING*: - L6023 *WARNING*: - L178 **WARNING**: (msg)
+- L1875 *WARNING*: - L838 *WARNING*: - L6065 *WARNING*: - logger\_singleton.logger.warning (line 178)
+- L1876 *TODO*: - L839 *TODO*: - L6132 *TODO*: - TODO/FIXME/WARN:
+- L1877 *WARNING*: - L840 *WARNING*: - L6133 *WARNING*: - L68 **WARNING**: (f"\[STRATEGY\] {name} failed: {e}")
+- L1878 *WARNING*: - L841 *WARNING*: - L6145 *WARNING*: - logger\_singleton.logger.warning (line 68)
+- L1879 *TODO*: - L842 *TODO*: - L6261 *TODO*: - TODO/FIXME/WARN:
+- L1880 *WARNING*: - L843 *WARNING*: - L6262 *WARNING*: - L374 **WARNING**: ({
+- L1881 *WARNING*: - L844 *WARNING*: - L6263 *WARNING*: - L375 **WARNING**: ",
+- L1882 *WARN*: - L845 *WARN*: - L6264 *WARN*: - L377 **WARN**: \] No supported file formats found on the page.",
+- L1883 *WARNING*: - L846 *WARNING*: - L6265 *WARNING*: - L402 **WARNING**: ({
+- L1884 *WARNING*: - L847 *WARNING*: - L6266 *WARNING*: - L403 **WARNING**: ",
+- L1885 *WARN*: - L848 *WARN*: - L6267 *WARN*: - L405 **WARN**: \] Unsupported format requested: {format*str}",
+- L1886 *WARNING*: - L849 *WARNING*: - L6268 *WARNING*: - L409 **WARNING**: ({
+- L1887 *WARNING*: - L850 *WARNING*: - L6269 *WARNING*: - L410 **WARNING**: ",
+- L1888 *WARNING*: - L851 *WARNING*: - L6270 *WARNING*: - L654 **WARNING**: ({
+- L1889 *WARNING*: - L852 *WARNING*: - L6271 *WARNING*: - L655 **WARNING**: ",
+- L1890 *WARNING*: - L853 *WARNING*: - L6272 *WARNING*: - L874 **WARNING**: ({
+- L1891 *WARNING*: - L854 *WARNING*: - L6273 *WARNING*: - L875 **WARNING**: ",
+- L1892 *WARNING*: - L855 *WARNING*: - L6274 *WARNING*: - L950 **WARNING**: ({
+- L1893 *WARNING*: - L856 *WARNING*: - L6275 *WARNING*: - L951 **WARNING**: ",
+- L1894 *TODO*: - L857 *TODO*: - L6613 *TODO*: - TODO/FIXME/WARN:
+- L1895 *WARNING*: - L858 *WARNING*: - L6614 *WARNING*: - L163 **WARNING**: ",
+- L1896 *WARNING*: - L859 *WARNING*: - L6615 *WARNING*: - L167 **WARNING**: (payload)
+- L1897 *WARNING*: - L860 *WARNING*: - L6616 *WARNING*: - L189 **WARNING**: ",
+- L1898 *WARNING*: - L861 *WARNING*: - L6617 *WARNING*: - L193 **WARNING**: (payload)
+- L1899 *WARNING*: - L862 *WARNING*: - L6618 *WARNING*: - L288 **WARNING**: ",
+- L1900 *WARNING*: - L863 *WARNING*: - L6619 *WARNING*: - L292 **WARNING**: (payload)
+- L1901 *WARNING*: - L864 *WARNING*: - L6620 *WARNING*: - L315 **WARNING**: ",
+- L1902 *WARNING*: - L865 *WARNING*: - L6621 *WARNING*: - L319 **WARNING**: (payload)
+- L1903 *WARNING*: - L866 *WARNING*: - L6622 *WARNING*: - L353 **WARNING**: ",
+- L1904 *WARNING*: - L867 *WARNING*: - L6623 *WARNING*: - L357 **WARNING**: (payload)
+- L1905 *WARNING*: - L868 *WARNING*: - L6624 *WARNING*: - L380 **WARNING**: ",
+- L1906 *WARNING*: - L869 *WARNING*: - L6625 *WARNING*: - L384 **WARNING**: (payload)
+- L1907 *WARNING*: - L870 *WARNING*: - L6626 *WARNING*: - L579 **WARNING**: ",
+- L1908 *WARNING*: - L871 *WARNING*: - L6627 *WARNING*: - L583 **WARNING**: (payload)
+- L1909 *WARNING*: - L872 *WARNING*: - L6628 *WARNING*: - L784 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L1910 *WARNING*: - L873 *WARNING*: - L6630 *WARNING*: - L807 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L1911 *WARNING*: - L874 *WARNING*: - L6632 *WARNING*: - L1034 **WARNING**: ",
+- L1912 *WARNING*: - L875 *WARNING*: - L6633 *WARNING*: - L1038 **WARNING**: (payload)
+- L1913 *WARNING*: - L876 *WARNING*: - L6634 *WARNING*: - L1045 **WARNING**: ",
+- L1914 *WARNING*: - L877 *WARNING*: - L6635 *WARNING*: - L1049 **WARNING**: (payload)
+- L1915 *WARNING*: - L878 *WARNING*: - L6636 *WARNING*: - L1376 **WARNING**: ",
+- L1916 *WARNING*: - L879 *WARNING*: - L6637 *WARNING*: - L1380 **WARNING**: (payload)
+- L1917 *WARNING*: - L880 *WARNING*: - L6638 *WARNING*: - L1438 **WARNING**: ",
+- L1918 *WARNING*: - L881 *WARNING*: - L6639 *WARNING*: - L1442 **WARNING**: (payload)
+- L1919 *WARNING*: - L882 *WARNING*: - L6640 *WARNING*: - L1691 **WARNING**: ({"level": "WARNING", "type": "dom*segments", "message":
+- L1920 *WARN*: - L883 *WARN*: - L6641 *WARN*: msg*warn})
+- L1921 *WARNING*: - L884 *WARNING*: - L6642 *WARNING*: - L1747 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message":
+- L1922 *WARNING*: - L885 *WARNING*: - L6644 *WARNING*: - L1754 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message":
+- L1923 *WARNING*: - L886 *WARNING*: - L6646 *WARNING*: - L1766 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message":
+- L1924 *WARNING*: - L887 *WARNING*: - L6648 *WARNING*: - L1789 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
+- L1925 *WARNING*: - L888 *WARNING*: - L6649 *WARNING*: - L1824 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
+- L1926 *WARNING*: - L889 *WARNING*: - L6650 *WARNING*: - L2003 **WARNING**: ({"level": "WARNING", "type": "segment*review",
+- L1927 *WARNING*: - L890 *WARNING*: - L6652 *WARNING*: - L2012 **WARNING**: ({
+- L1928 *WARNING*: - L891 *WARNING*: - L6653 *WARNING*: - L2013 **WARNING**: ",
+- L1929 *WARNING*: - L892 *WARNING*: - L6654 *WARNING*: - L2129 **WARNING**: ",
+- L1930 *WARNING*: - L893 *WARNING*: - L6655 *WARNING*: - L2133 **WARNING**: (payload)
+- L1931 *WARNING*: - L894 *WARNING*: - L6656 *WARNING*: - L2145 **WARNING**: ",
+- L1932 *WARNING*: - L895 *WARNING*: - L6657 *WARNING*: - L2149 **WARNING**: (payload)
+- L1933 *WARNING*: - L896 *WARNING*: - L6658 *WARNING*: - L2158 **WARNING**: ",
+- L1934 *WARNING*: - L897 *WARNING*: - L6659 *WARNING*: - L2162 **WARNING**: (payload)
+- L1935 *WARNING*: - L898 *WARNING*: - L6660 *WARNING*: - L2177 **WARNING**: ",
+- L1936 *WARNING*: - L899 *WARNING*: - L6661 *WARNING*: - L2181 **WARNING**: (payload)
+- L1937 *WARNING*: - L900 *WARNING*: - L6662 *WARNING*: - L2193 **WARNING**: ",
+- L1938 *WARNING*: - L901 *WARNING*: - L6663 *WARNING*: - L2197 **WARNING**: (payload)
+- L1939 *WARNING*: - L902 *WARNING*: - L6664 *WARNING*: - L2206 **WARNING**: ",
+- L1940 *WARNING*: - L903 *WARNING*: - L6665 *WARNING*: - L2210 **WARNING**: (payload)
+- L1941 *WARNING*: - L904 *WARNING*: - L6666 *WARNING*: - L2219 **WARNING**: ",
+- L1942 *WARNING*: - L905 *WARNING*: - L6667 *WARNING*: - L2223 **WARNING**: (payload)
+- L1943 *WARNING*: - L906 *WARNING*: - L6668 *WARNING*: - L2233 **WARNING**: ",
+- L1944 *WARNING*: - L907 *WARNING*: - L6669 *WARNING*: - L2237 **WARNING**: (payload)
+- L1945 *WARNING*: - L908 *WARNING*: - L6670 *WARNING*: - L2248 **WARNING**: ",
+- L1946 *WARNING*: - L909 *WARNING*: - L6680 *WARNING*: - logger\_singleton.logger.warning (line 167)
+- L1947 *WARNING*: - L910 *WARNING*: - L6685 *WARNING*: - logger\_singleton.logger.warning (line 193)
+- L1948 *WARNING*: - L911 *WARNING*: - L6701 *WARNING*: - logger\_singleton.logger.warning (line 292)
+- L1949 *WARNING*: - L912 *WARNING*: - L6707 *WARNING*: - logger\_singleton.logger.warning (line 319)
+- L1950 *WARNING*: - L913 *WARNING*: - L6718 *WARNING*: - logger\_singleton.logger.warning (line 357)
+- L1951 *TODO*: - L914 *TODO*: - L7188 *TODO*: - TODO/FIXME/WARN:
+- L1952 *WARNING*: - L915 *WARNING*: - L7189 *WARNING*: - L389 **WARNING**: (f"Failed loading local override for SentenceTransformer:
+- L1953 *WARNING*: - L916 *WARNING*: - L7191 *WARNING*: - L409 **WARNING**: ("TRANSFORMERS*OFFLINE/HUGGINGFACE*HUB*OFFLINE set;
+- L1954 *WARNING*: - L917 *WARNING*: - L7193 *WARNING*: - L426 **WARNING**: for noisy environments
+- L1955 *WARNING*: - L918 *WARNING*: - L7194 *WARNING*: - L429 **WARNING**: (f"Failed to load base SentenceTransformer (network/DNS).
+- L1956 *TODO*: - L919 *TODO*: - L7435 *TODO*: - TODO/FIXME/WARN:
+- L1957 *WARNING*: - L920 *WARNING*: - L7436 *WARNING*: - L105 **WARNING**: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using
+- L1958 *WARNING*: - L921 *WARNING*: - L7438 *WARNING*: - L108 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified.
+- L1959 *WARNING*: - L922 *WARNING*: - L7440 *WARNING*: - L531 **WARNING**: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
+- L1960 *WARNING*: - L923 *WARNING*: - L7441 *WARNING*: - L607 **WARNING**: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
+- L1961 *WARNING*: - L924 *WARNING*: - L7466 *WARNING*: - logger\_singleton.logger.warning (line 105)
+- L1962 *WARNING*: - L925 *WARNING*: - L7467 *WARNING*: - logger\_singleton.logger.warning (line 108)
+- L1963 *TODO*: - L926 *TODO*: - L7534 *TODO*: - TODO/FIXME/WARN:
+- L1964 *WARNING*: - L927 *WARNING*: - L7535 *WARNING*: - L26 **WARNING**: (f"\[PATTERN\] load fail {e}")
+- L1965 *WARNING*: - L928 *WARNING*: - L7536 *WARNING*: - L95 **WARNING**: (f"\[PATTERN\] pattern error {pat.get('name')}: {e}")
+- L1966 *WARNING*: - L929 *WARNING*: - L7539 *WARNING*: - logger\_singleton.logger.warning (line 26)
+- L1967 *WARNING*: - L930 *WARNING*: - L7553 *WARNING*: - logger\_singleton.logger.warning (line 95)
+- L1968 *TODO*: - L931 *TODO*: - L7821 *TODO*: - TODO/FIXME/WARN:
+- L1969 *WARNING*: - L932 *WARNING*: - L7822 *WARNING*: - L1353 **WARNING**: ("\[PIVOT\] No candidates detected – verify headers and
+- L1970 *TODO*: - L933 *TODO*: - L8158 *TODO*: - TODO/FIXME/WARN:
+- L1971 *WARNING*: - L934 *WARNING*: - L8159 *WARNING*: - L159 **WARNING**:         elif record.levelno &gt;= logging.WARNING:
+- L1972 *WARNING*: - L935 *WARNING*: - L8160 *WARNING*: - L160 **WARNING**: (msg)
+- L1973 *WARNING*: - L936 *WARNING*: - L8161 *WARNING*: - L236 **WARNING**: ": logging.WARNING,
+- L1974 *WARNING*: - L937 *WARNING*: - L8162 *WARNING*: - L307 **WARNING**: ": "yellow",
+- L1975 *WARNING*: - L938 *WARNING*: - L8163 *WARNING*: - L369 **WARNING**: (self, msg, context=None, exc*info=None):
+- L1976 *WARNING*: - L939 *WARNING*: - L8164 *WARNING*: - L371 **WARNING**: ", msg, context, color="yellow")
+- L1977 *WARNING*: - L940 *WARNING*: - L8165 *WARNING*: - L385 **WARNING**: ": "yellow",
+- L1978 *WARNING*: - L941 *WARNING*: - L8166 *WARNING*: - L598 **WARNING**: (f"Log directory does not exist: {log*dir}")
+- L1979 *WARNING*: - L942 *WARNING*: - L8167 *WARNING*: - L615 **WARNING**: (f"Corrupt line in {path}: {e}")
+- L1980 *TODO*: - L943 *TODO*: - L8404 *TODO*: - TODO/FIXME/WARN:
+- L1981 *WARNING*: - L944 *WARNING*: - L8405 *WARNING*: - L237 **WARNING**: (f"\[safe*query\] session.query({model}) failed: {e}")
+- L1982 *WARNING*: - L945 *WARNING*: - L8406 *WARNING*: - L260 **WARNING**: (f"\[safe*filter*by\] No mapper found for model {model}")
+- L1983 *WARNING*: - L946 *WARNING*: - L8407 *WARNING*: - L266 **WARNING**: (f"\[safe*filter*by\] Could not inspect model {model}:
+- L1984 *WARNING*: - L947 *WARNING*: - L8409 *WARNING*: - L280 **WARNING**: (f"\[safe*filter*by\] filter*by failed: {e}")
+- L1985 *WARNING*: - L948 *WARNING*: - L8410 *WARNING*: - L293 **WARNING**: (f"\[safe*first\] query.first() failed: {e}")
+- L1986 *WARNING*: - L949 *WARNING*: - L8411 *WARNING*: - L363 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
+- L1987 *WARNING*: - L950 *WARNING*: - L8413 *WARNING*: - L497 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
+- L1988 *WARNING*: - L951 *WARNING*: - L8414 *WARNING*: - L711 **WARNING**: (f"\[safe*append\] Target is not a list: {type(lst)};
+- L1989 *WARNING*: - L952 *WARNING*: - L8416 *WARNING*: - L733 **WARNING**: (f"\[safe*update\] Target is not a dict: {type(dct)}")
+- L1990 *WARNING*: - L953 *WARNING*: - L8417 *WARNING*: - L737 **WARNING**: (f"\[safe*update\] Updates is not a dict:
+- L1991 *WARNING*: - L954 *WARNING*: - L8419 *WARNING*: - L757 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)};
+- L1992 *WARNING*: - L955 *WARNING*: - L8421 *WARNING*: - L1097 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
+- L1993 *WARNING*: - L956 *WARNING*: - L8423 *WARNING*: - L1360 **WARNING**: (f"State '{state*norm}' not found in county map")
+- L1994 *WARNING*: - L957 *WARNING*: - L8424 *WARNING*: - L2224 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
+- L1995 *WARNING*: - L958 *WARNING*: - L8425 *WARNING*: - L2230 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+- L1996 *WARNING*: - L959 *WARNING*: - L8427 *WARNING*: - L2245 **WARNING**: ("\[inventory\] generate*project*map completed with
+- L1997 *TODO*: - L960 *TODO*: - L8429 *TODO*: - L2291 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
+- L1998 *TODO*: - L961 *TODO*: - L8431 *TODO*: - L2293 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+- L1999 *TODO*: - L962 *TODO*: - L8432 *TODO*: - L2965 **TODO**: /FIXME/WARN
+- L2000 *TODO*: - L963 *TODO*: - L8433 *TODO*: - L2968 **TODO**: /FIXME/WARN:")
+- L2001 *TODO*: - L964 *TODO*: - L8434 *TODO*: - L3038 **TODO**: /FIXME/WARN lines from webapp/ into a compact index.
+- L2002 *FIXME*: - L965 *FIXME*: - L8435 *FIXME*: - L3048 **FIXME**: ', 'BUG'\]
+- L2003 *TODO*: - L966 *TODO*: - L8436 *TODO*: - L3049 **TODO**: ', 'HACK', 'XXX'\]
+- L2004 *WARN*: - L967 *WARN*: - L8437 *WARN*: - L3050 **WARN**: ', 'WARNING', 'NOTE'\]
+- L2005 *TODO*: - L968 *TODO*: - L8438 *TODO*: - L3089 **TODO**: /FIXME Index"')
+- L2006 *TODO*: - L969 *TODO*: - L8439 *TODO*: - L3092 **TODO**: /FIXME annotations under ⁣`webapp/⁣`.")
+- L2007 *TODO*: - L970 *TODO*: - L8440 *TODO*: - L3134 **TODO**: {priority}-{abs(hash(path))}"
+- L2008 *WARNING*: - L971 *WARNING*: - L8441 *WARNING*: - L3173 **WARNING**: (f"\[noise\] No suggestions file found at {path}")
+- L2009 *TODO*: - L972 *TODO*: - L8442 *TODO*: - L3544 **TODO**: /FIXME/WARN ({mod*name})")
+- L2010 *WARNING*: - L973 *WARNING*: - L8461 *WARNING*: - utils.logger\_singleton.logger.warning (line 237)
+- L2011 *WARNING*: - L974 *WARNING*: - L8462 *WARNING*: - utils.logger\_singleton.logger.warning (line 260)
+- L2012 *WARNING*: - L975 *WARNING*: - L8464 *WARNING*: - utils.logger\_singleton.logger.warning (line 266)
+- L2013 *WARNING*: - L976 *WARNING*: - L8466 *WARNING*: - utils.logger\_singleton.logger.warning (line 280)
+- L2014 *WARNING*: - L977 *WARNING*: - L8468 *WARNING*: - utils.logger\_singleton.logger.warning (line 293)
+- L2015 *WARNING*: - L978 *WARNING*: - L8473 *WARNING*: - utils.logger\_singleton.logger.warning (line 363)
+- L2016 *WARNING*: - L979 *WARNING*: - L8489 *WARNING*: - utils.logger\_singleton.logger.warning (line 497)
+- L2017 *TODO*: - L980 *TODO*: - L8704 *TODO*: - TODO/FIXME/WARN:
+- L2018 *WARNING*: - L981 *WARNING*: - L8705 *WARNING*: - L37 **WARNING**: (f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
+- L2019 *WARNING*: - L982 *WARNING*: - L8706 *WARNING*: - L65 **WARNING**: (f"\[CONCURRENCY\] Strategy {name} error: {e}")
+- L2020 *WARNING*: - L983 *WARNING*: - L8707 *WARNING*: - L73 **WARNING**: (f"\[CONCURRENCY\] {*safe*run*strategy.**name**} {name}
+- L2021 *WARNING*: - L984 *WARNING*: - L8709 *WARNING*: - L102 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed:
+- L2022 *WARNING*: - L985 *WARNING*: - L8711 *WARNING*: - L120 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
+- L2023 *WARNING*: - L986 *WARNING*: - L8714 *WARNING*: - logger\_singleton.logger.warning (line 37)
+- L2024 *WARNING*: - L987 *WARNING*: - L8721 *WARNING*: - logger\_singleton.logger.warning (line 65)
+- L2025 *WARNING*: - L988 *WARNING*: - L8722 *WARNING*: - logger\_singleton.logger.warning (line 73)
+- L2026 *WARNING*: - L989 *WARNING*: - L8727 *WARNING*: - logger\_singleton.logger.warning (line 102)
+- L2027 *WARNING*: - L990 *WARNING*: - L8731 *WARNING*: - logger\_singleton.logger.warning (line 120)
+- L2028 *TODO*: - L991 *TODO*: - L8855 *TODO*: - TODO/FIXME/WARN:
+- L2029 *WARNING*: - L992 *WARNING*: - L8856 *WARNING*: - L816 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+- L2030 *WARNING*: - L993 *WARNING*: - L8858 *WARNING*: - L828 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+- L2031 *WARNING*: - L994 *WARNING*: - L8860 *WARNING*: - L836 **WARNING**: ", "builder", "\[TABLE*BUILDER\] all*panel*tables was not
+- L2032 *WARNING*: - L995 *WARNING*: - L8863 *WARNING*: - L845 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Dropping invalid table
+- L2033 *WARNING*: - L996 *WARNING*: - L8865 *WARNING*: - L862 **WARNING**: ", "builder", "\[TABLE*BUILDER\] sanitize failed",
+- L2034 *WARNING*: - L997 *WARNING*: - L8867 *WARNING*: - L867 **WARNING**: ", "builder", "\[TABLE*BUILDER\] harmonize failed",
+- L2035 *WARNING*: - L998 *WARNING*: - L8869 *WARNING*: - L873 **WARNING**: ", "builder", "\[TABLE*BUILDER\]
+- L2036 *WARNING*: - L999 *WARNING*: - L8871 *WARNING*: - L925 **WARNING**: ",
+- L2037 *WARNING*: - L1000 *WARNING*: - L8872 *WARNING*: - L950 **WARNING**: ", "builder", "\[TABLE*BUILDER\] entity annotate failed",
+- L2038 *WARNING*: - L1001 *WARNING*: - L8874 *WARNING*: - L955 **WARNING**: ", "builder", "\[TABLE*BUILDER\] stringify entity*info
+- L2039 *WARNING*: - L1002 *WARNING*: - L8876 *WARNING*: - L975 **WARNING**: ", "builder", "\[TABLE*BUILDER\] pivot*to*wide failed",
+- L2040 *WARNING*: - L1003 *WARNING*: - L8878 *WARNING*: - L995 **WARNING**: ", "builder", "\[TABLE*BUILDER\] ensure division totals
+- L2041 *WARNING*: - L1004 *WARNING*: - L8880 *WARNING*: - L1288 **WARNING**: ", "builder", f"\[TABLE*BUILDER\] Column marked
+- L2042 *WARNING*: - L1005 *WARNING*: - L8882 *WARNING*: - L1361 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist table
+- L2043 *WARNING*: - L1006 *WARNING*: - L8884 *WARNING*: - L1376 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist
+- L2044 *TODO*: - L1007 *TODO*: - L9039 *TODO*: - TODO/FIXME/WARN:
+- L2045 *WARNING*: - L1008 *WARNING*: - L9040 *WARNING*: - L231 **WARNING**: (f"\[TABLE BUILDER\] Concurrent strategies execution
+- L2046 *WARNING*: - L1009 *WARNING*: - L9042 *WARNING*: - L288 **WARNING**: (f"\[TABLE BUILDER\] RawJSON pivot failed: {e}")
+- L2047 *WARNING*: - L1010 *WARNING*: - L9043 *WARNING*: - L296 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide signature mismatch
+- L2048 *WARNING*: - L1011 *WARNING*: - L9045 *WARNING*: - L298 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide failed (skipped): {e}")
+- L2049 *WARNING*: - L1012 *WARNING*: - L9046 *WARNING*: - L349 **WARNING**: (f"\[TABLE BUILDER\] finalize output failed: {e}")
+- L2050 *WARNING*: - L1013 *WARNING*: - L9047 *WARNING*: - L414 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] Concurrent strategies
+- L2051 *WARNING*: - L1014 *WARNING*: - L9049 *WARNING*: - L477 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed:
+- L2052 *WARNING*: - L1015 *WARNING*: - L9072 *WARNING*: - logger\_singleton.logger.warning (line 231)
+- L2053 *WARNING*: - L1016 *WARNING*: - L9089 *WARNING*: - logger\_singleton.logger.warning (line 288)
+- L2054 *WARNING*: - L1017 *WARNING*: - L9092 *WARNING*: - logger\_singleton.logger.warning (line 296)
+- L2055 *WARNING*: - L1018 *WARNING*: - L9093 *WARNING*: - logger\_singleton.logger.warning (line 298)
+- L2056 *TODO*: - L1019 *TODO*: - L9156 *TODO*: - TODO/FIXME/WARN:
+- L2057 *WARNING*: - L1020 *WARNING*: - L9157 *WARNING*: - L312 **WARNING**: ("\[UserPrompt\] Webapp mode active but no
+- L2058 *WARNING*: - L1021 *WARNING*: - L9159 *WARNING*: - L349 **WARNING**: ("\[CLI Prompt\] EOFError encountered.")
+- L2059 *WARNING*: - L1022 *WARNING*: - L9160 *WARNING*: - L370 **WARNING**: ("\[Webapp Prompt\] socketio*emit*func not set.")
+- L2060 *WARNING*: - L1023 *WARNING*: - L9161 *WARNING*: - L428 **WARNING**: ": 30,
+- L2061 *WARNING*: - L1024 *WARNING*: - L9162 *WARNING*: - L507 **WARNING**: ("\n\[Prompt\] Timed out.")
+- L2062 *WARNING*: - L1025 *WARNING*: - L9163 *WARNING*: - L558 **WARNING**: ("\n\[Prompt\] No input available (EOF). Exiting prompt.")
+- L2063 *WARNING*: - L1026 *WARNING*: - L9164 *WARNING*: - L592 **WARNING**: ("Invalid input. Please try again.")
+- L2064 *WARNING*: - L1027 *WARNING*: - L9165 *WARNING*: - L594 **WARNING**: ("\[Prompt\] Too many invalid attempts.")
+- L2065 *WARNING*: - L1028 *WARNING*: - L9166 *WARNING*: - L659 **WARNING**: ("\[Prompt Queue\] Invalid queued yes/no response; falling
+- L2066 *WARNING*: - L1029 *WARNING*: - L9168 *WARNING*: - L674 **WARNING**: ("\n\[Prompt\] Timed out.")
+- L2067 *WARNING*: - L1030 *WARNING*: - L9169 *WARNING*: - L881 **WARNING**: ("\[yellow\]\[FEEDBACK\] Skipped manual
+- L2068 *WARNING*: - L1031 *WARNING*: - L9171 *WARNING*: - L913 **WARNING**: ("\[yellow\]Button confirmation cancelled by
+- L2069 *WARNING*: - L1032 *WARNING*: - L9203 *WARNING*: - logger.warning (line 312)
+- L2070 *WARNING*: - L1033 *WARNING*: - L9207 *WARNING*: - logger.warning (line 349)
+- L2071 *WARNING*: - L1034 *WARNING*: - L9210 *WARNING*: - logger.warning (line 370)
+- L2072 *TODO*: - L1035 *TODO*: - L9338 *TODO*: - TODO/FIXME/WARN:
+- L2073 *WARNING*: - L1036 *WARNING*: - L9339 *WARNING*: - L49 **WARNING**: ({
+- L2074 *WARNING*: - L1037 *WARNING*: - L9340 *WARNING*: - L50 **WARNING**: ",
+- L2075 *WARNING*: - L1038 *WARNING*: - L9341 *WARNING*: - L66 **WARNING**: ({
+- L2076 *WARNING*: - L1039 *WARNING*: - L9342 *WARNING*: - L67 **WARNING**: ",
+- L2077 *WARNING*: - L1040 *WARNING*: - L9343 *WARNING*: - L83 **WARNING**: ({
+- L2078 *WARNING*: - L1041 *WARNING*: - L9344 *WARNING*: - L84 **WARNING**: ",
+- L2079 *WARNING*: - L1042 *WARNING*: - L9350 *WARNING*: - utils.logger\_singleton.logger.warning (line 49)
+- L2080 *WARNING*: - L1043 *WARNING*: - L9353 *WARNING*: - utils.logger\_singleton.logger.warning (line 66)
+- L2081 *WARNING*: - L1044 *WARNING*: - L9354 *WARNING*: - utils.logger\_singleton.logger.warning (line 83)
+- L2082 *TODO*: - L1045 *TODO*: - L9430 *TODO*: - TODO/FIXME/WARN:
+- L2083 *WARNING*: - L1046 *WARNING*: - L9431 *WARNING*: - L17 **WARNING**: escalates to
+- L2084 *WARNING*: - L1047 *WARNING*: - L9432 *WARNING*: - L21 **WARNING**: category so it never escalates.
+- L2085 *WARNING*: - L1048 *WARNING*: - L9433 *WARNING*: - L23 **WARNING**: was ignored.
+- L2086 *TODO*: - L1049 *TODO*: - L9968 *TODO*: - TODO/FIXME/WARN:
+- L2087 *WARNING*: - L1050 *WARNING*: - L9969 *WARNING*: - L17 **WARNING**:     # Build a table that lacks candidate/ballot/total
+- L2088 *WARNING*: - L1051 *WARNING*: - L9970 *WARNING*: columns, forcing a 'normalized schema weak' warning
+- L2089 *WARNING*: - L1052 *WARNING*: - L9971 *WARNING*: - L39 **WARNING**: " and msg.get("status")=="weak"
+- L2090 *WARNING*: - L1053 *WARNING*: - L9972 *WARNING*: - L44 **WARNING**: " and inner.get("status")=="weak"
+- L2091 *WARNING*: - L1054 *WARNING*: - L9973 *WARNING*: - L49 **WARNING**: in captured logs; got: {captured}"
+- L2092 *TODO*: - L1055 *TODO*: - L10131 *TODO*: - TODO/FIXME/WARN:
+- L2093 *WARNING*: - L1056 *WARNING*: - L10132 *WARNING*: - L17 **WARNING**: ,ERROR")
+- L2094 *WARNING*: - L1060 *WARNING*: - L95 *WARNING*: - Monitor upstream pytest / SeleniumBase releases so the temporary unraisable warning suppression can be removed once socket...
+- L2095 *TODO*: - L1061 *TODO*: - L117 *TODO*: ## 🧭 Working TODO List
+- L2096 *TODO*: - L1065 *TODO*: - L3 *TODO*: title: "TODO/FIXME Index"
+- L2097 *TODO*: - L1066 *TODO*: - L6 *TODO*: Index scope: TODO/FIXME/HACK/XXX annotations under `webapp/`.
+- L2098 *TODO*: - L1067 *TODO*: - L13 *TODO*: No TODO/FIXME annotations found under `webapp/`.
+- L2099 *WARN*: - L1071 *WARN*: - L64 *WARN*: - Check logs for `[WARN] No output file path returned from parser.`
+- L2100 *WARNING*: - L1072 *WARNING*: - L104 *WARNING*: - Re-run the problematic PDF (e.g., the Minnesota 2016 sample) and confirm the logs show `pdf2image` succeeded or that the...
+- L2101 *WARNING*: - L1073 *WARNING*: - L118 *WARNING*: - **Root Cause**: Python 3.12 tightened validation around C-extension types that lack a `__module__` attribute. PyMuPDF whe...
+- L2102 *WARNING*: - L1074 *WARNING*: - L120 *WARNING*: 1. **Upgrade to the latest PyMuPDF release**. We pin the minimum supported version in `requirements.txt`. Run `pip install...
+- L2103 *WARNING*: - L1075 *WARNING*: - L122 *WARNING*: - **Project behaviour**: Our loader records the warning once and surfaces the affected type names in handler metadata so yo...
+- L2104 *WARN*: - L1079 *WARN*: - L124 *WARN*: print(f"[warn] Failed to organize context for diagnostics: {exc}")
+- L2105 *TODO*: - L1083 *TODO*: - L4 *TODO*: Scans text-based source files for TODO-like annotations and writes a markdown
+- L2106 *TODO*: - L1084 *TODO*: - L18 *TODO*: KEYWORDS = ("TODO", "FIXME", "HACK", "XXX", "WARNING", "WARN", "NOTE")
+- L2107 *FIXME*: - L1085 *FIXME*: - L20 *FIXME*: "FIXME": "high",
+- L2108 *TODO*: - L1086 *TODO*: - L21 *TODO*: "TODO": "medium",
+- L2109 *HACK*: - L1087 *HACK*: - L22 *HACK*: "HACK": "medium",
+- L2110 *XXX*: - L1088 *XXX*: - L23 *XXX*: "XXX": "medium",
+- L2111 *WARNING*: - L1089 *WARNING*: - L24 *WARNING*: "WARNING": "low",
+- L2112 *WARN*: - L1090 *WARN*: - L25 *WARN*: "WARN": "low",
+- L2113 *NOTE*: - L1091 *NOTE*: - L26 *NOTE*: "NOTE": "low",
+- L2114 *TODO*: - L1092 *TODO*: - L157 *TODO*: print(f"[FAIL] TODO debt thresholds exceeded: {joined}")
+- L2115 *TODO*: - L1093 *TODO*: - L172 *TODO*: "title: \"TODO/FIXME Index\"",
+- L2116 *TODO*: - L1094 *TODO*: - L175 *TODO*: f"Index scope: TODO/FIXME/HACK/XXX/WARNING/NOTE annotations under `{roots_text}`.",
+- L2117 *TODO*: - L1095 *TODO*: - L185 *TODO*: lines.append("No TODO/FIXME/WARNING/NOTE annotations found under specified roots.")
+- L2118 *TODO*: - L1096 *TODO*: - L213 *TODO*: parser = argparse.ArgumentParser(description="Generate TODO/FIXME index")
+- L2119 *WARNING*: - L1100 *WARNING*: - L438 *WARNING*: default_levels = {"ERROR", "WARNING"}
+- L2120 *WARN*: - L1101 *WARN*: - L446 *WARN*: if lvl == "WARN":
+- L2121 *WARNING*: - L1102 *WARNING*: - L447 *WARNING*: lvl = "WARNING"
+- L2122 *WARNING*: - L1103 *WARNING*: - L448 *WARNING*: if lvl in {"TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+- L2123 *WARNING*: - L1104 *WARNING*: - L742 *WARNING*: Levels: INFO, DEBUG, WARNING, ERROR, CRITICAL, TRACE
+- L2124 *WARNING*: - L1105 *WARNING*: - L781 *WARNING*: LEVELS = {"INFO", "DEBUG", "WARNING", "ERROR", "CRITICAL", "TRACE"}
+- L2125 *WARNING*: - L1106 *WARNING*: - L817 *WARNING*: elif "warning" in mlow:
+- L2126 *WARNING*: - L1107 *WARNING*: - L1078 *WARNING*: logger.warning({
+- L2127 *WARNING*: - L1108 *WARNING*: - L1079 *WARNING*: "level": "WARNING",
+- L2128 *WARNING*: - L1109 *WARNING*: - L1544 *WARNING*: logger.warning({"type": "sec", "message": "Favicon path escape blocked", "requested": ico_path})
+- L2129 *WARNING*: - L1110 *WARNING*: - L1646 *WARNING*: logger.warning({
+- L2130 *WARNING*: - L1111 *WARNING*: - L1647 *WARNING*: "level": "WARNING",
+- L2131 *WARNING*: - L1115 *WARNING*: - L43 *WARNING*: "raw_html": "<!DOCTYPE html><html lang=\"en\" data-beasties-container=\"\"><head>\n    <meta charset=\"utf-8\">\n    <title>...
+- L2132 *NOTE*: - L1119 *NOTE*: - L1895 *NOTE*: r"^\s*Note.*$",                     # Note
+- L2133 *WARNING*: - L1120 *WARNING*: - L2084 *WARNING*: "icon-bg-dark", "icon-bg-primary", "icon-bg-secondary", "icon-bg-success", "icon-bg-danger", "icon-bg-warning",
+- L2134 *WARNING*: - L1121 *WARNING*: - L2175 *WARNING*: "warning", "info_box", "navigation", "pagination", "tab", "modal", "tooltip", "ignore", "unknown"
+- L2135 *NOTE*: - L1122 *NOTE*: - L2208 *NOTE*: "navigation", "breadcrumb", "path", "route", "link", "reference", "citation", "annotation", "note", "comment",
+- L2136 *NOTE*: - L1123 *NOTE*: - L2284 *NOTE*: "Reference", "Citation", "Annotation", "Note", "Comment", "Feedback", "Suggestion", "Recommendation",
+- L2137 *NOTE*: - L1124 *NOTE*: - L2300 *NOTE*: "Route", "Link", "Reference", "Citation", "Annotation", "Note", "Comment", "Feedback", "Suggestion",
+- L2138 *WARNING*: - L1128 *WARNING*: - L282 *WARNING*: logger.warning(
+- L2139 *WARNING*: - L1129 *WARNING*: - L407 *WARNING*: logger.warning(f"[CONTEST] Skipping contest with suspiciously large or missing title: {str(title)[:100]}...")
+- L2140 *WARNING*: - L1130 *WARNING*: - L495 *WARNING*: logger.warning(f"[CONTEST] Filtered out {len(filtered_out)} contests due to missing required fields.")
+- L2141 *WARNING*: - L1131 *WARNING*: - L497 *WARNING*: logger.warning(f"  [Filtered] {reason}: {str(c)[:100]}...")
+- L2142 *WARNING*: - L1132 *WARNING*: - L500 *WARNING*: logger.warning("[CONTEST] No contests with required fields for downstream output.")
+- L2143 *WARNING*: - L1133 *WARNING*: - L816 *WARNING*: logger.warning(f"[ML] Anomaly index {idx} out of range for contests list of length {len(contests)}")
+- L2144 *WARNING*: - L1134 *WARNING*: - L1602 *WARNING*: logger.warning(f"  [yellow]{title}[/yellow]: {fixes}")
+- L2145 *WARNING*: - L1135 *WARNING*: - L1608 *WARNING*: logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Duplicate contest detected.\n  [dim]Context:[/dim] {contest}")
+- L2146 *WARNING*: - L1136 *WARNING*: - L1610 *WARNING*: logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing location info.\n  [dim]Context:[/dim] {contest}")
+- L2147 *WARNING*: - L1137 *WARNING*: - L1612 *WARNING*: logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing year.\n  [dim]Context:[/dim] {contest}")
+- L2148 *WARNING*: - L1138 *WARNING*: - L2082 *WARNING*: logger.warning(f"[ContextOrganizer] Could not update context library with feedback: {e}")
+- L2149 *WARNING*: - L1139 *WARNING*: - L2159 *WARNING*: logger.warning(f"[CONTEXT ORGANIZER] No table structure found for contest: {contest}")
+- L2150 *WARNING*: - L1143 *WARNING*: - L764 *WARNING*: logger.warning(f"\n[LIBRARIAN SELF-HEAL] Attempt {attempt}...")
+- L2151 *WARNING*: - L1144 *WARNING*: - L774 *WARNING*: logger.warning("[LIBRARIAN SELF-HEAL] Misalignments found. Launching manual_correction...")
+- L2152 *WARNING*: - L1145 *WARNING*: - L777 *WARNING*: logger.warning(f"[LIBRARIAN SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+- L2153 *WARNING*: - L1149 *WARNING*: - L134 *WARNING*: logger.warning({
+- L2154 *WARNING*: - L1150 *WARNING*: - L135 *WARNING*: "level": "WARNING",
+- L2155 *WARNING*: - L1151 *WARNING*: - L426 *WARNING*: logger.warning({
+- L2156 *WARNING*: - L1152 *WARNING*: - L427 *WARNING*: "level": "WARNING",
+- L2157 *WARNING*: - L1156 *WARNING*: - L216 *WARNING*: app_logger.warning(f"[HTML Handler] County '{county}' not found. Closest matches: {matches}")
+- L2158 *WARNING*: - L1157 *WARNING*: - L220 *WARNING*: app_logger.warning(f"[HTML Handler] Detected county '{county}' is not in known counties for state '{suggested_state or stat...
+- L2159 *WARNING*: - L1158 *WARNING*: - L241 *WARNING*: app_logger.warning(f"[HTML Handler] State '{user_state}' not found. Closest matches: {matches}")
+- L2160 *WARNING*: - L1159 *WARNING*: - L285 *WARNING*: app_logger.warning(f"[HTML Handler] County '{user_county}' not found. Closest matches: {matches}")
+- L2161 *WARNING*: - L1163 *WARNING*: - L382 *WARNING*: logger.warning({
+- L2162 *WARNING*: - L1164 *WARNING*: - L383 *WARNING*: "level": "WARNING",
+- L2163 *WARNING*: - L1165 *WARNING*: - L507 *WARNING*: logger.warning({
+- L2164 *WARNING*: - L1166 *WARNING*: - L508 *WARNING*: "level": "WARNING",
+- L2165 *WARNING*: - L1170 *WARNING*: - L922 *WARNING*: logger.warning({
+- L2166 *WARNING*: - L1171 *WARNING*: - L923 *WARNING*: "level": "WARNING",
+- L2167 *WARN*: - L1172 *WARN*: - L925 *WARN*: "message": f"[WARN] Skipping page {page_index} during OCR batch render: {exc}",
+- L2168 *WARNING*: - L1173 *WARNING*: - L1078 *WARNING*: logger.warning({
+- L2169 *WARNING*: - L1174 *WARNING*: - L1079 *WARNING*: "level": "WARNING",
+- L2170 *WARN*: - L1175 *WARN*: - L1082 *WARN*: "[WARN] Detected PyMuPDF %s. Upgrade to %s or newer to avoid parser instability."
+- L2171 *WARNING*: - L1176 *WARNING*: - L2635 *WARNING*: logger.warning({
+- L2172 *WARNING*: - L1177 *WARNING*: - L2636 *WARNING*: "level": "WARNING",
+- L2173 *WARN*: - L1178 *WARN*: - L2638 *WARN*: "message": "[WARN] Poppler binaries not detected; skipping pdf2image and using PyMuPDF fallback.",
+- L2174 *WARNING*: - L1179 *WARNING*: - L2658 *WARNING*: logger.warning({
+- L2175 *WARNING*: - L1180 *WARNING*: - L2659 *WARNING*: "level": "WARNING",
+- L2176 *WARN*: - L1181 *WARN*: - L2662 *WARN*: "[WARN] pdf2image conversion failed; "
+- L2177 *WARNING*: - L1182 *WARNING*: - L3012 *WARNING*: logger.warning({
+- L2178 *WARNING*: - L1183 *WARNING*: - L3013 *WARNING*: "level": "WARNING",
+- L2179 *WARN*: - L1184 *WARN*: - L3015 *WARN*: "message": "[WARN] Skipping full-document OCR pass due to expired sample budget.",
+- L2180 *WARNING*: - L1185 *WARNING*: - L3063 *WARNING*: logger.warning({
+- L2181 *WARNING*: - L1186 *WARNING*: - L3064 *WARNING*: "level": "WARNING",
+- L2182 *WARN*: - L1187 *WARN*: - L3066 *WARN*: "message": "[WARN] Aborting full-document OCR pass due to timeout budget.",
+- L2183 *WARNING*: - L1188 *WARNING*: - L3093 *WARNING*: logger.warning({
+- L2184 *WARNING*: - L1189 *WARNING*: - L3094 *WARNING*: "level": "WARNING",
+- L2185 *WARN*: - L1190 *WARN*: - L3097 *WARN*: "[WARN] Full-document OCR pass truncated due to OCR_FULLDOC_MAX_PAGES limit. "
+- L2186 *WARNING*: - L1191 *WARNING*: - L3179 *WARNING*: logger.warning({
+- L2187 *WARNING*: - L1192 *WARNING*: - L3180 *WARNING*: "level": "WARNING",
+- L2188 *WARN*: - L1193 *WARN*: - L3182 *WARN*: "message": f"[WARN] Multi-mode text extraction failed: {e}",
+- L2189 *WARNING*: - L1194 *WARNING*: - L4506 *WARNING*: logger.warning({
+- L2190 *WARNING*: - L1195 *WARNING*: - L4507 *WARNING*: "level": "WARNING",
+- L2191 *WARN*: - L1196 *WARN*: - L4509 *WARN*: "message": f"[WARN] fitz text extraction failed: {e}",
+- L2192 *WARNING*: - L1197 *WARNING*: - L4548 *WARNING*: logger.warning({
+- L2193 *WARNING*: - L1198 *WARNING*: - L4549 *WARNING*: "level": "WARNING",
+- L2194 *WARN*: - L1199 *WARN*: - L4551 *WARN*: "message": "[WARN] ENABLE_OCR_FORCE is set but Tesseract is unavailable; skipping OCR fallback.",
+- L2195 *WARNING*: - L1200 *WARNING*: - L4615 *WARNING*: logger.warning({
+- L2196 *WARNING*: - L1201 *WARNING*: - L4616 *WARNING*: "level": "WARNING",
+- L2197 *WARN*: - L1202 *WARN*: - L4618 *WARN*: "message": "[WARN] Low-signal text detected but OCR is unavailable or disabled.",
+- L2198 *WARNING*: - L1203 *WARNING*: - L4983 *WARNING*: logger.warning({
+- L2199 *WARNING*: - L1204 *WARNING*: - L4984 *WARNING*: "level": "WARNING",
+- L2200 *WARN*: - L1205 *WARN*: - L4986 *WARN*: "message": "[WARN] Auto contest selection failed in batch mode; falling back to filename.",
+- L2201 *WARNING*: - L1206 *WARNING*: - L5498 *WARNING*: logger.warning({
+- L2202 *WARNING*: - L1207 *WARNING*: - L5499 *WARNING*: "level": "WARNING",
+- L2203 *WARN*: - L1208 *WARN*: - L5501 *WARN*: "message": f"[WARN] Selected contest '{contest}' not found in column '{contest_column}'. Skipping row filter.",
+- L2204 *WARNING*: - L1209 *WARNING*: - L5600 *WARNING*: logger.warning({
+- L2205 *WARNING*: - L1210 *WARNING*: - L5601 *WARNING*: "level": "WARNING",
+- L2206 *WARN*: - L1211 *WARN*: - L5603 *WARN*: "message": f"[WARN] No structured rows matched the inferred column count of {len(headers)}. Total lines scanned: {unmatched_coun...
+- L2207 *WARNING*: - L1212 *WARNING*: - L5643 *WARNING*: logger.warning({
+- L2208 *WARNING*: - L1213 *WARNING*: - L5644 *WARNING*: "level": "WARNING",
+- L2209 *WARNING*: - L1214 *WARNING*: - L5836 *WARNING*: logger.warning({
+- L2210 *WARNING*: - L1215 *WARNING*: - L5837 *WARNING*: "level": "WARNING",
+- L2211 *WARNING*: - L1219 *WARNING*: - L25 *WARNING*: logger.warning("[WARN] context_library.json not found. Using fallback config for Arizona handler.")
+- L2212 *WARNING*: - L1220 *WARNING*: - L51 *WARNING*: logger.warning(f"[WARN] Could not expand card {i+1}: {e}")
+- L2213 *WARNING*: - L1221 *WARNING*: - L64 *WARNING*: logger.warning(f"[WARN] Vote Type toggle failed: {e}")
+- L2214 *WARNING*: - L1222 *WARNING*: - L77 *WARNING*: logger.warning(f"[WARN] County toggle failed: {e}")
+- L2215 *WARNING*: - L1223 *WARNING*: - L164 *WARNING*: logger.warning("[FALLBACK] No tables were parsed. Either no results are published yet or the structure has changed.")
+- L2216 *WARNING*: - L1224 *WARNING*: - L165 *WARNING*: logger.warning("[FALLBACK] Please verify that the site has posted election data.")
+- L2217 *WARNING*: - L1228 *WARNING*: - L123 *WARNING*: logger.warning("[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
+- L2218 *WARNING*: - L1232 *WARNING*: - L51 *WARNING*: logger.warning(f"[Example Handler] No specific parser implemented for county: '{county}'. Continuing with state-level logic....
+- L2219 *WARNING*: - L1233 *WARNING*: - L152 *WARNING*: logger.warning("[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
+- L2220 *WARNING*: - L1237 *WARNING*: - L72 *WARNING*: logger.warning("[WARNING] dom_parts missing after organize_and_enrich.")
+- L2221 *WARNING*: - L1238 *WARNING*: - L95 *WARNING*: logger.warning("[red]No contest selected. Skipping.[/red]")
+- L2222 *WARNING*: - L1239 *WARNING*: - L139 *WARNING*: logger.warning(f"[yellow][WARNING] Button '{btn1.get('label', '')}' is not clickable (visible={safe_is_visible(element, log...
+- L2223 *WARNING*: - L1240 *WARNING*: - L176 *WARNING*: logger.warning(f"[yellow][WARNING] Button '{btn2.get('label', '')}' is not clickable (visible={safe_is_visible(element, log...
+- L2224 *WARNING*: - L1244 *WARNING*: - L27 *WARNING*: logger.warning("[NY Handler] No county specified in html_context.")
+- L2225 *WARNING*: - L1245 *WARNING*: - L43 *WARNING*: logger.warning(f"[NY Handler] No specific parser implemented for county: '{county}'. Please add it under {module_path}.py")
+- L2226 *WARNING*: - L1249 *WARNING*: - L44 *WARNING*: logger.warning(f"[NAV] Step failed: {step} — {e}")
+- L2227 *WARNING*: - L1250 *WARNING*: - L55 *WARNING*: logger.warning(f"[bold yellow]Detected election:[/bold yellow] {header_text}")
+- L2228 *WARNING*: - L1251 *WARNING*: - L76 *WARNING*: logger.warning("[PA] Invalid index input for election selection.")
+- L2229 *WARNING*: - L1252 *WARNING*: - L78 *WARNING*: logger.warning("[PA] Elections dropdown not found.")
+- L2230 *WARNING*: - L1253 *WARNING*: - L80 *WARNING*: logger.warning(f"[PA] Failed to expand Elections menu or load selection: {e}")
+- L2231 *WARNING*: - L1254 *WARNING*: - L96 *WARNING*: logger.warning("[PA] County Breakdown link not found.")
+- L2232 *WARNING*: - L1255 *WARNING*: - L98 *WARNING*: logger.warning(f"[PA] Failed to click County Breakdown link: {e}")
+- L2233 *WARNING*: - L1256 *WARNING*: - L113 *WARNING*: logger.warning("[yellow]Multiple CSV files found in input. Please select one:[/yellow]")
+- L2234 *WARNING*: - L1260 *WARNING*: - L253 *WARNING*: logger.warning(f"[health_router] manual_correction failed (attempt {attempt}): {result.stderr}")
+- L2235 *WARNING*: - L1261 *WARNING*: - L337 *WARNING*: logger.warning("[SELF-HEAL] Misalignments found. Launching manual_correction...")
+- L2236 *WARNING*: - L1262 *WARNING*: - L339 *WARNING*: logger.warning(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+- L2237 *WARNING*: - L1263 *WARNING*: - L341 *WARNING*: logger.warning("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
+- L2238 *WARNING*: - L1264 *WARNING*: - L376 *WARNING*: logger.warning(f"[PIPELINE] Could not fix corrupted JSON files: {e}")
+- L2239 *WARNING*: - L1265 *WARNING*: - L393 *WARNING*: logger.warning("[PIPELINE] Misaligned NER examples found. Self-heal loop will be handled by scan_misaligned_ner.")
+- L2240 *WARNING*: - L1266 *WARNING*: - L395 *WARNING*: logger.warning("[PIPELINE] scan_misaligned_ner failed or file missing. Proceeding with caution.")
+- L2241 *WARNING*: - L1267 *WARNING*: - L427 *WARNING*: logger.warning("[PIPELINE] Model retraining failed.")
+- L2242 *WARNING*: - L1271 *WARNING*: - L18 *WARNING*: logger.warning("[INTEGRITY] Context library at %s is missing contest data", context_path)
+- L2243 *WARNING*: - L1275 *WARNING*: - L151 *WARNING*: logger.warning(f"Skipping non-dict entry in spacy_ner_train_data.jsonl: {entry}")
+- L2244 *WARNING*: - L1276 *WARNING*: - L460 *WARNING*: logger.warning("[DB][WARNING] No user tables found in schema 'public'.")
+- L2245 *WARNING*: - L1277 *WARNING*: - L503 *WARNING*: logger.warning("[CLEAN][WARNING] The following files are still too large after cleaning:")
+- L2246 *WARNING*: - L1278 *WARNING*: - L507 *WARNING*: logger.warning("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data:")
+- L2247 *WARNING*: - L1282 *WARNING*: - L361 *WARNING*: logger.warning(f"Coordinator ML scoring failed: {e}")
+- L2248 *WARNING*: - L1283 *WARNING*: - L382 *WARNING*: logger.warning(f"Coordinator field suggestion failed: {e}")
+- L2249 *WARNING*: - L1284 *WARNING*: - L395 *WARNING*: logger.warning(f"Log file not found: {path}")
+- L2250 *WARNING*: - L1285 *WARNING*: - L404 *WARNING*: logger.warning(f"[CORRUPT] {path} line {i}: {e}")
+- L2251 *WARNING*: - L1286 *WARNING*: - L434 *WARNING*: logger.warning(f"[SECURITY] Skipping invalid directory: {directory} - {e}")
+- L2252 *WARNING*: - L1287 *WARNING*: - L448 *WARNING*: logger.warning(f"[SECURITY] Skipping file outside allowed directories: {file} - {e}")
+- L2253 *WARNING*: - L1288 *WARNING*: - L454 *WARNING*: logger.warning(f"[SKIP] File not found: {file}")
+- L2254 *WARNING*: - L1289 *WARNING*: - L458 *WARNING*: logger.warning(f"[SKIP] File too large: {file}")
+- L2255 *WARNING*: - L1290 *WARNING*: - L483 *WARNING*: logger.warning(f"[CORRUPT-LINE] {file} line {i+1}: {line[:80]}... ({e})")
+- L2256 *WARNING*: - L1291 *WARNING*: - L497 *WARNING*: logger.warning(f"[CORRUPT] {len(corrupt_items)} lines saved to {corrupt_path}")
+- L2257 *WARNING*: - L1292 *WARNING*: - L502 *WARNING*: logger.warning(f"[FIXED] All lines invalid, recreated empty .jsonl file: {file}")
+- L2258 *WARNING*: - L1293 *WARNING*: - L516 *WARNING*: logger.warning(f"[CORRUPT] {file}: {e}")
+- L2259 *WARNING*: - L1294 *WARNING*: - L530 *WARNING*: logger.warning(f"[CORRUPT] Corrupt JSON saved to {corrupt_path}")
+- L2260 *WARNING*: - L1295 *WARNING*: - L536 *WARNING*: logger.warning(f"[FIXED] All content invalid, recreated minimal valid JSON in {file}")
+- L2261 *WARNING*: - L1296 *WARNING*: - L541 *WARNING*: logger.warning(f"[CORRUPT] {file}: {e}")
+- L2262 *WARNING*: - L1297 *WARNING*: - L555 *WARNING*: logger.warning(f"[QUARANTINED] {file} -> {dest_path}")
+- L2263 *WARNING*: - L1298 *WARNING*: - L559 *WARNING*: logger.warning(f"[DELETED] {file}")
+- L2264 *WARNING*: - L1299 *WARNING*: - L562 *WARNING*: logger.warning(f"[SKIP-DELETE] File already missing: {file}")
+- L2265 *WARNING*: - L1300 *WARNING*: - L597 *WARNING*: logger.warning(f"[SECURITY] Skipping invalid directory: {d} - {e}")
+- L2266 *WARNING*: - L1301 *WARNING*: - L615 *WARNING*: logger.warning(f"[SECURITY] Skipping file outside allowed directories: {f} - {e}")
+- L2267 *WARNING*: - L1302 *WARNING*: - L624 *WARNING*: logger.warning(f"[FIND-LOGS] Skipped {d}: {e}")
+- L2268 *WARNING*: - L1303 *WARNING*: - L649 *WARNING*: logger.warning(f"[CORRUPT] {path} line {line_num}: {e}")
+- L2269 *WARNING*: - L1304 *WARNING*: - L808 *WARNING*: logger.warning(f"Invalid JSON, skipping edit: {e}")
+- L2270 *WARNING*: - L1305 *WARNING*: - L851 *WARNING*: logger.warning(
+- L2271 *WARNING*: - L1306 *WARNING*: - L1105 *WARNING*: logger.warning(
+- L2272 *WARN*: - L1307 *WARN*: - L1211 *WARN*: If missing, create with DEFAULT_STRUCTURE. Warn if schema version mismatches.
+- L2273 *WARNING*: - L1308 *WARNING*: - L1232 *WARNING*: logger.warning(f"Schema version mismatch: found {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider m...
+- L2274 *WARNING*: - L1309 *WARNING*: - L1256 *WARNING*: logger.warning(f"[SECURITY] Skipping invalid log file: {log_file} - {e}")
+- L2275 *WARNING*: - L1310 *WARNING*: - L1288 *WARNING*: logger.warning(f"[AUTO] Could not delete log file {log_file}: {e}")
+- L2276 *WARNING*: - L1311 *WARNING*: - L1416 *WARNING*: logger.warning(f"[SKIP] Could not load {log_file}: {e}")
+- L2277 *WARNING*: - L1312 *WARNING*: - L1432 *WARNING*: logger.warning("No log files matched any of the specified fields. Will attempt to process all log files for all fields.")
+- L2278 *WARNING*: - L1313 *WARNING*: - L1518 *WARNING*: logger.warning(f"[SECURITY] Cannot delete file outside allowed directories: {log_file} - {e}")
+- L2279 *WARNING*: - L1314 *WARNING*: - L1520 *WARNING*: logger.warning(f"Could not delete log file {log_file}: {e}")
+- L2280 *WARNING*: - L1315 *WARNING*: - L1540 *WARNING*: logger.warning("[WARNING] No entries were processed. Check your log file naming, field configuration, or use --dry-run for...
+- L2281 *WARNING*: - L1319 *WARNING*: - L178 *WARNING*: logger.warning(f"[CLEAN] File not found: {jsonl_path}")
+- L2282 *WARNING*: - L1320 *WARNING*: - L186 *WARNING*: logger.warning(f"[CLEAN] Could not parse line: {e}")
+- L2283 *WARNING*: - L1321 *WARNING*: - L201 *WARNING*: logger.warning(f"[CLEAN] Alignment check failed for text: {text[:50]}... ({e})")
+- L2284 *WARNING*: - L1322 *WARNING*: - L274 *WARNING*: logger.warning(f"Failed to load {path}: {e}")
+- L2285 *WARNING*: - L1323 *WARNING*: - L403 *WARNING*: logger.warning(f"Skipping misaligned entity in: {text}")
+- L2286 *WARNING*: - L1324 *WARNING*: - L408 *WARNING*: logger.warning(f"Error validating entity alignment: {e}")
+- L2287 *WARNING*: - L1325 *WARNING*: - L434 *WARNING*: logger.warning(f"[spaCy] Could not check GPU availability: {e}")
+- L2288 *WARNING*: - L1326 *WARNING*: - L450 *WARNING*: logger.warning(f"[spaCy] Could not load lexeme normalization table. You may ignore this for English. Error: {e}")
+- L2289 *WARNING*: - L1327 *WARNING*: - L536 *WARNING*: logger.warning(f"[NER] Skipped {misaligned_count} misaligned examples. Saved to {misaligned_path}")
+- L2290 *WARNING*: - L1328 *WARNING*: - L550 *WARNING*: logger.warning("No NER training examples found. Skipping spaCy NER retraining.")
+- L2291 *WARNING*: - L1329 *WARNING*: - L619 *WARNING*: logger.warning("[SUGGESTION] Consider lowering min_delta or increasing patience if you want longer training.")
+- L2292 *WARNING*: - L1330 *WARNING*: - L621 *WARNING*: logger.warning("[SUGGESTION] Model improved until the last epoch. Consider increasing epochs for further improvement.")
+- L2293 *WARNING*: - L1331 *WARNING*: - L622 *WARNING*: logger.warning(f"[SUGGESTION] Next run: patience={patience}, min_delta={min_delta:.2f}, epochs={epochs}")
+- L2294 *WARNING*: - L1332 *WARNING*: - L708 *WARNING*: logger.warning("No training examples found. Aborting retraining.")
+- L2295 *WARNING*: - L1333 *WARNING*: - L727 *WARNING*: logger.warning(f"[WARN] Could not delete old model directory {oldest_path}: {e}")
+- L2296 *WARNING*: - L1334 *WARNING*: - L739 *WARNING*: logger.warning(f"[WARN] Failed to load existing model: {e}")
+- L2297 *WARNING*: - L1335 *WARNING*: - L742 *WARNING*: logger.warning("Falling back to base model (all-MiniLM-L6-v2).")
+- L2298 *WARNING*: - L1336 *WARNING*: - L782 *WARNING*: logger.warning(f"[WARN] Could not update canonical model directory: {e}")
+- L2299 *WARNING*: - L1337 *WARNING*: - L810 *WARNING*: logger.warning(f"MISALIGNED: {text} {annots['entities']}")
+- L2300 *WARNING*: - L1338 *WARNING*: - L840 *WARNING*: logger.warning("[DB] Base.metadata.tables is empty. No models registered? Did you import all model classes?")
+- L2301 *WARNING*: - L1342 *WARNING*: - L62 *WARNING*: logger.warning(f"[CORRUPT] Could not parse line: {e}")
+- L2302 *WARNING*: - L1343 *WARNING*: - L83 *WARNING*: logger.warning(f"\n[MISALIGNED] Top {top_n} most frequent misaligned NER texts:")
+- L2303 *WARNING*: - L1344 *WARNING*: - L85 *WARNING*: logger.warning(f"  {repr(text)}: {count} times")
+- L2304 *WARNING*: - L1345 *WARNING*: - L86 *WARNING*: logger.warning("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data.")
+- L2305 *WARNING*: - L1346 *WARNING*: - L87 *WARNING*: logger.warning("Run the manual_correction to review and clean these examples before retraining.")
+- L2306 *WARNING*: - L1347 *WARNING*: - L88 *WARNING*: logger.warning("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided valid...
+- L2307 *WARNING*: - L1348 *WARNING*: - L98 *WARNING*: logger.warning(f"[WARN] Could not remove old misaligned file: {e}")
+- L2308 *WARNING*: - L1349 *WARNING*: - L112 *WARNING*: logger.warning("[SELF-HEAL] Misalignments found. Launching manual_correction for spacy_ner_misaligned...")
+- L2309 *WARNING*: - L1350 *WARNING*: - L119 *WARNING*: logger.warning(f"[SELF-HEAL] manual_correction exited with code {result.returncode}")
+- L2310 *WARNING*: - L1351 *WARNING*: - L120 *WARNING*: logger.warning(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+- L2311 *WARNING*: - L1352 *WARNING*: - L122 *WARNING*: logger.warning("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
+- L2312 *WARNING*: - L1356 *WARNING*: - L61 *WARNING*: logger.warning("Deleting .processed_urls cache for fresh start...")
+- L2313 *WARNING*: - L1357 *WARNING*: - L430 *WARNING*: logger.warning({
+- L2314 *WARNING*: - L1358 *WARNING*: - L431 *WARNING*: "level": "WARNING",
+- L2315 *WARNING*: - L1359 *WARNING*: - L445 *WARNING*: logger.warning({
+- L2316 *WARNING*: - L1360 *WARNING*: - L446 *WARNING*: "level": "WARNING",
+- L2317 *WARNING*: - L1361 *WARNING*: - L508 *WARNING*: logger.warning({
+- L2318 *WARNING*: - L1362 *WARNING*: - L509 *WARNING*: "level": "WARNING",
+- L2319 *WARNING*: - L1363 *WARNING*: - L582 *WARNING*: logger.warning(payload_2)
+- L2320 *WARNING*: - L1364 *WARNING*: - L909 *WARNING*: logger.warning({
+- L2321 *WARNING*: - L1365 *WARNING*: - L910 *WARNING*: "level": "WARNING",
+- L2322 *WARNING*: - L1366 *WARNING*: - L956 *WARNING*: logger.warning({
+- L2323 *WARNING*: - L1367 *WARNING*: - L957 *WARNING*: "level": "WARNING",
+- L2324 *WARNING*: - L1368 *WARNING*: - L1010 *WARNING*: logger.warning({
+- L2325 *WARNING*: - L1369 *WARNING*: - L1011 *WARNING*: "level": "WARNING",
+- L2326 *WARNING*: - L1370 *WARNING*: - L1117 *WARNING*: "level": "WARNING",
+- L2327 *WARNING*: - L1371 *WARNING*: - L1122 *WARNING*: logger.warning(payload)
+- L2328 *WARNING*: - L1372 *WARNING*: - L1156 *WARNING*: logger.warning({
+- L2329 *WARNING*: - L1373 *WARNING*: - L1157 *WARNING*: "level": "WARNING",
+- L2330 *WARNING*: - L1374 *WARNING*: - L1237 *WARNING*: logger.warning({
+- L2331 *WARNING*: - L1375 *WARNING*: - L1238 *WARNING*: "level": "WARNING",
+- L2332 *WARNING*: - L1376 *WARNING*: - L1292 *WARNING*: "level": "WARNING",
+- L2333 *WARNING*: - L1377 *WARNING*: - L1297 *WARNING*: logger.warning(payload)
+- L2334 *WARNING*: - L1378 *WARNING*: - L1389 *WARNING*: logger.warning({
+- L2335 *WARNING*: - L1379 *WARNING*: - L1390 *WARNING*: "level": "WARNING",
+- L2336 *WARNING*: - L1380 *WARNING*: - L1407 *WARNING*: "level": "WARNING",
+- L2337 *WARNING*: - L1381 *WARNING*: - L1412 *WARNING*: logger.warning(payload)
+- L2338 *WARNING*: - L1382 *WARNING*: - L1423 *WARNING*: "level": "WARNING",
+- L2339 *WARNING*: - L1383 *WARNING*: - L1428 *WARNING*: logger.warning(payload)
+- L2340 *WARN*: - L1384 *WARN*: - L1430 *WARN*: msg = "[WARN] No output file path returned from parser and no output files found."
+- L2341 *WARNING*: - L1385 *WARNING*: - L1432 *WARNING*: "level": "WARNING",
+- L2342 *WARNING*: - L1386 *WARNING*: - L1437 *WARNING*: logger.warning(payload)
+- L2343 *WARNING*: - L1387 *WARNING*: - L1442 *WARNING*: "level": "WARNING",
+- L2344 *WARNING*: - L1388 *WARNING*: - L1447 *WARNING*: logger.warning(payload)
+- L2345 *WARNING*: - L1389 *WARNING*: - L1566 *WARNING*: logger.warning({
+- L2346 *WARNING*: - L1390 *WARNING*: - L1567 *WARNING*: "level": "WARNING",
+- L2347 *WARNING*: - L1391 *WARNING*: - L1627 *WARNING*: logger.warning({
+- L2348 *WARNING*: - L1392 *WARNING*: - L1628 *WARNING*: "level": "WARNING",
+- L2349 *WARNING*: - L1396 *WARNING*: - L203 *WARNING*: logger.warning({
+- L2350 *WARNING*: - L1397 *WARNING*: - L204 *WARNING*: "level": "WARNING",
+- L2351 *WARNING*: - L1401 *WARNING*: - L49 *WARNING*: logger.warning("[Router] handlers/states directory not found.")
+- L2352 *WARNING*: - L1402 *WARNING*: - L66 *WARNING*: logger.warning(f"[Router] counties directory not found for state: {state_key}")
+- L2353 *WARNING*: - L1403 *WARNING*: - L137 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] No handler states available for manual selection.")
+- L2354 *WARNING*: - L1404 *WARNING*: - L154 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
+- L2355 *WARNING*: - L1405 *WARNING*: - L157 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
+- L2356 *WARNING*: - L1406 *WARNING*: - L160 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] State '{state}' not found. Please try again.")
+- L2357 *WARNING*: - L1407 *WARNING*: - L179 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
+- L2358 *WARNING*: - L1408 *WARNING*: - L182 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] County '{county}' not found for state '{state}'. Please try again.")
+- L2359 *WARNING*: - L1409 *WARNING*: - L189 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] Too many failed attempts. Exiting fallback.")
+- L2360 *WARNING*: - L1410 *WARNING*: - L205 *WARNING*: logger.warning(f"[Router] Requested state '{state_name}' not found on disk. Skipping restrict filter.")
+- L2361 *WARNING*: - L1411 *WARNING*: - L512 *WARNING*: logger.warning(f"No counties found for state '{state}'. Try --fuzzy for fuzzy matching.")
+- L2362 *WARNING*: - L1412 *WARNING*: - L523 *WARNING*: logger.warning(f"Failed to load context from file: {e}")
+- L2363 *WARNING*: - L1413 *WARNING*: - L533 *WARNING*: logger.warning("No suitable handler found.")
+- L2364 *WARNING*: - L1414 *WARNING*: - L540 *WARNING*: logger.warning("No handler selected. Exiting.")
+- L2365 *WARNING*: - L1415 *WARNING*: - L547 *WARNING*: logger.warning("Still could not import a suitable handler.")
+- L2366 *WARNING*: - L1419 *WARNING*: - L102 *WARNING*: logger.warning(f"[browser_utils] Failed to safely parse context_library value for key '{key}'")
+- L2367 *WARNING*: - L1420 *WARNING*: - L104 *WARNING*: logger.warning(f"[browser_utils] Skipping unsafe context_library value for key '{key}'")
+- L2368 *WARNING*: - L1421 *WARNING*: - L308 *WARNING*: logger.warning(f"[safe_attributes] Playwright JS extraction failed: {e}")
+- L2369 *WARNING*: - L1422 *WARNING*: - L322 *WARNING*: logger.warning(f"[safe_attributes] Playwright fallback extraction failed: {e}")
+- L2370 *WARNING*: - L1423 *WARNING*: - L408 *WARNING*: logger and logger.warning(f"[safe_count] Object is not countable: {type(obj)}")
+- L2371 *WARNING*: - L1424 *WARNING*: - L454 *WARNING*: logger.warning(f"[safe_launch] browser_type is not a SyncBrowserType: {type(browser_type)}")
+- L2372 *WARNING*: - L1425 *WARNING*: - L474 *WARNING*: logger.warning(f"[async_safe_launch] browser_type is not an AsyncBrowserType: {type(browser_type)}")
+- L2373 *WARNING*: - L1426 *WARNING*: - L553 *WARNING*: logger.warning({
+- L2374 *WARNING*: - L1427 *WARNING*: - L554 *WARNING*: "level": "WARNING",
+- L2375 *WARNING*: - L1428 *WARNING*: - L582 *WARNING*: logger.warning(f"[CAPTCHA] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
+- L2376 *WARNING*: - L1429 *WARNING*: - L591 *WARNING*: logger.warning(f"[CAPTCHA] CAPTCHA detected in async mode. Manual intervention not implemented. (Session: {session_id})")
+- L2377 *WARNING*: - L1430 *WARNING*: - L615 *WARNING*: logger.warning(f"[CAPTCHA] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
+- L2378 *WARNING*: - L1431 *WARNING*: - L624 *WARNING*: logger.warning({
+- L2379 *WARNING*: - L1432 *WARNING*: - L625 *WARNING*: "level": "WARNING",
+- L2380 *WARNING*: - L1433 *WARNING*: - L636 *WARNING*: logger.warning(f"[CAPTCHA] CAPTCHA detected in sync mode. Manual intervention not implemented. (Session: {session_id})")
+- L2381 *WARNING*: - L1434 *WARNING*: - L794 *WARNING*: logger and logger.warning("[SCROLL] User aborted scrolling.")
+- L2382 *WARNING*: - L1435 *WARNING*: - L830 *WARNING*: logger and logger.warning("[SCROLL] Max scroll time/attempts exceeded. Page may not be fully loaded.")
+- L2383 *WARNING*: - L1439 *WARNING*: - L118 *WARNING*: logger.warning(f"[CAPTCHA] Foreground window fallback failed: {e}")
+- L2384 *WARNING*: - L1440 *WARNING*: - L154 *WARNING*: logger.warning("[CAPTCHA] CAPTCHA not resolved within timeout.")
+- L2385 *WARNING*: - L1444 *WARNING*: - L645 *WARNING*: elif lvl == "warning":
+- L2386 *WARNING*: - L1445 *WARNING*: - L646 *WARNING*: logger.warning(entry)
+- L2387 *WARNING*: - L1446 *WARNING*: - L1039 *WARNING*: _log("warning", "selector", f"Feedback loop {loop+1}: verifying contests", session_id=session_id,
+- L2388 *WARNING*: - L1447 *WARNING*: - L1626 *WARNING*: logger.warning({"level": "WARNING", "type": "selector", "message": "Empty search term", "session_id": session_id})
+- L2389 *WARNING*: - L1448 *WARNING*: - L1631 *WARNING*: logger.warning({"level": "WARNING", "type": "selector", "message": f"No matches for '{term}'", "session_id": session_id})
+- L2390 *WARNING*: - L1449 *WARNING*: - L1703 *WARNING*: logger.warning({"level": "WARNING", "type": "selector", "message": "No match; try again.", "session_id": session_id})
+- L2391 *WARNING*: - L1453 *WARNING*: - L153 *WARNING*: logger.warning(f"[DOM_EXTRACTOR] failure: {e}")
+- L2392 *WARNING*: - L1457 *WARNING*: - L124 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] No <table> found in provided table_html.", session_id)
+- L2393 *WARNING*: - L1458 *WARNING*: - L129 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] No <tr> rows found in table_html.", session_id)
+- L2394 *WARNING*: - L1459 *WARNING*: - L171 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] Candidate NLP/score step failed", session_id, error=str(e))
+- L2395 *WARNING*: - L1460 *WARNING*: - L187 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] No suitable table candidates found.", session_id)
+- L2396 *WARNING*: - L1461 *WARNING*: - L217 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] Error while scanning <table> elements", session_id, error=str(e))
+- L2397 *WARNING*: - L1462 *WARNING*: - L229 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] DOM extraction failed", session_id, error=str(e))
+- L2398 *WARNING*: - L1463 *WARNING*: - L272 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] Pattern extraction failed", session_id, error=str(e))
+- L2399 *WARNING*: - L1464 *WARNING*: - L776 *WARNING*: _emit("warning", "extractor", "No learned DOM patterns found.")
+- L2400 *WARNING*: - L1465 *WARNING*: - L800 *WARNING*: _emit("warning", "extractor", "Entry deleted.")
+- L2401 *WARNING*: - L1466 *WARNING*: - L805 *WARNING*: _emit("warning", "extractor", "Unknown action.")
+- L2402 *WARNING*: - L1467 *WARNING*: - L807 *WARNING*: _emit("warning", "extractor", "Invalid entry number.")
+- L2403 *WARNING*: - L1471 *WARNING*: - L68 *WARNING*: logger.warning(f"[STRATEGY] {name} failed: {e}")
+- L2404 *WARNING*: - L1475 *WARNING*: - L374 *WARNING*: logger.warning({
+- L2405 *WARNING*: - L1476 *WARNING*: - L375 *WARNING*: "level": "WARNING",
+- L2406 *WARN*: - L1477 *WARN*: - L377 *WARN*: "message": "[WARN] No supported file formats found on the page.",
+- L2407 *WARNING*: - L1478 *WARNING*: - L402 *WARNING*: logger.warning({
+- L2408 *WARNING*: - L1479 *WARNING*: - L403 *WARNING*: "level": "WARNING",
+- L2409 *WARN*: - L1480 *WARN*: - L405 *WARN*: "message": f"[WARN] Unsupported format requested: {format_str}",
+- L2410 *WARNING*: - L1481 *WARNING*: - L409 *WARNING*: logger.warning({
+- L2411 *WARNING*: - L1482 *WARNING*: - L410 *WARNING*: "level": "WARNING",
+- L2412 *WARNING*: - L1483 *WARNING*: - L667 *WARNING*: logger.warning({
+- L2413 *WARNING*: - L1484 *WARNING*: - L668 *WARNING*: "level": "WARNING",
+- L2414 *WARNING*: - L1485 *WARNING*: - L887 *WARNING*: logger.warning({
+- L2415 *WARNING*: - L1486 *WARNING*: - L888 *WARNING*: "level": "WARNING",
+- L2416 *WARNING*: - L1487 *WARNING*: - L965 *WARNING*: logger.warning({
+- L2417 *WARNING*: - L1488 *WARNING*: - L966 *WARNING*: "level": "WARNING",
+- L2418 *WARNING*: - L1492 *WARNING*: - L389 *WARNING*: logger.warning(f"Failed loading local override for SentenceTransformer: {e}")
+- L2419 *WARNING*: - L1493 *WARNING*: - L409 *WARNING*: logger.warning("TRANSFORMERS_OFFLINE/HUGGINGFACE_HUB_OFFLINE set; skipping HF download. Embeddings disabled.")
+- L2420 *WARNING*: - L1494 *WARNING*: - L426 *WARNING*: # Downgrade DNS/network errors to WARNING for noisy environments
+- L2421 *WARNING*: - L1495 *WARNING*: - L429 *WARNING*: logger.warning(f"Failed to load base SentenceTransformer (network/DNS). Running without embeddings. Error: {e}")
+- L2422 *WARNING*: - L1499 *WARNING*: - L128 *WARNING*: logger.warning("[yellow][OUTPUT] Year could not be verified. Using 'Unknown'.[/yellow]")
+- L2423 *WARNING*: - L1500 *WARNING*: - L131 *WARNING*: logger.warning("[yellow][OUTPUT] contests could not be verified. Using 'unknown_contests'.[/yellow]")
+- L2424 *WARNING*: - L1501 *WARNING*: - L569 *WARNING*: logger.warning(f"[OUTPUT_UTILS] Enrichment build failed: {e}")
+- L2425 *WARNING*: - L1502 *WARNING*: - L645 *WARNING*: logger.warning(f"[OUTPUT_UTILS] XLSX export failed: {e}")
+- L2426 *WARNING*: - L1506 *WARNING*: - L26 *WARNING*: logger.warning(f"[PATTERN] load fail {e}")
+- L2427 *WARNING*: - L1507 *WARNING*: - L95 *WARNING*: logger.warning(f"[PATTERN] pattern error {pat.get('name')}: {e}")
+- L2428 *WARNING*: - L1511 *WARNING*: - L1353 *WARNING*: logger.warning("[PIVOT] No candidates detected – verify headers and candidate column extraction.")
+- L2429 *WARNING*: - L1515 *WARNING*: - L159 *WARNING*: elif record.levelno >= logging.WARNING:
+- L2430 *WARNING*: - L1516 *WARNING*: - L160 *WARNING*: self.shared_logger.warning(msg)
+- L2431 *WARNING*: - L1517 *WARNING*: - L236 *WARNING*: "WARNING": logging.WARNING,
+- L2432 *WARNING*: - L1518 *WARNING*: - L307 *WARNING*: "WARNING": "yellow",
+- L2433 *WARNING*: - L1519 *WARNING*: - L369 *WARNING*: def warning(self, msg, context=None, exc_info=None):
+- L2434 *WARNING*: - L1520 *WARNING*: - L371 *WARNING*: self._log("WARNING", msg, context, color="yellow")
+- L2435 *WARNING*: - L1521 *WARNING*: - L385 *WARNING*: "warning": "yellow",
+- L2436 *WARNING*: - L1522 *WARNING*: - L598 *WARNING*: self.warning(f"Log directory does not exist: {log_dir}")
+- L2437 *WARNING*: - L1523 *WARNING*: - L615 *WARNING*: self.warning(f"Corrupt line in {path}: {e}")
+- L2438 *WARNING*: - L1527 *WARNING*: - L517 *WARNING*: logger.warning(f"[safe_query] session.query({model}) failed: {e}")
+- L2439 *WARNING*: - L1528 *WARNING*: - L540 *WARNING*: logger.warning(f"[safe_filter_by] No mapper found for model {model}")
+- L2440 *WARNING*: - L1529 *WARNING*: - L546 *WARNING*: logger.warning(f"[safe_filter_by] Could not inspect model {model}: {e}")
+- L2441 *WARNING*: - L1530 *WARNING*: - L560 *WARNING*: logger.warning(f"[safe_filter_by] filter_by failed: {e}")
+- L2442 *WARNING*: - L1531 *WARNING*: - L573 *WARNING*: logger.warning(f"[safe_first] query.first() failed: {e}")
+- L2443 *WARNING*: - L1532 *WARNING*: - L643 *WARNING*: logger.warning(f"[PLUGIN EXTRACTION] Plugin {plugin} has no callable 'extract' method.")
+- L2444 *WARNING*: - L1533 *WARNING*: - L777 *WARNING*: logger.warning(f"[WARN] Model save failed (attempt {attempt}): {e}")
+- L2445 *WARNING*: - L1534 *WARNING*: - L991 *WARNING*: logger.warning(f"[safe_append] Target is not a list: {type(lst)}; coercing to list.")
+- L2446 *WARNING*: - L1535 *WARNING*: - L1013 *WARNING*: logger.warning(f"[safe_update] Target is not a dict: {type(dct)}")
+- L2447 *WARNING*: - L1536 *WARNING*: - L1017 *WARNING*: logger.warning(f"[safe_update] Updates is not a dict: {type(updates)}")
+- L2448 *WARNING*: - L1537 *WARNING*: - L1037 *WARNING*: logger.warning(f"[safe_extend] Target is not a list: {type(lst)}; coercing to list.")
+- L2449 *WARNING*: - L1538 *WARNING*: - L1377 *WARNING*: logger.warning(f"[DOM_PARTS] '{label}' is not a list for URL: {url} (type: {type(lst).__name__})")
+- L2450 *WARNING*: - L1539 *WARNING*: - L1640 *WARNING*: logger.warning(f"State '{state_norm}' not found in county map")
+- L2451 *WARNING*: - L1540 *WARNING*: - L2490 *WARNING*: logger.warning(f"[inventory] architecture.md not found at {md_file}")
+- L2452 *WARNING*: - L1541 *WARNING*: - L2496 *WARNING*: logger.warning("[inventory] Markers not found in architecture.md; aborting replace.")
+- L2453 *WARNING*: - L1542 *WARNING*: - L2520 *WARNING*: logger.warning("[pipeline] generate_pipeline_map is a placeholder - use automate.py for full pipeline mapping")
+- L2454 *WARNING*: - L1546 *WARNING*: - L37 *WARNING*: logger.warning(f"[CONCURRENCY] DOM strategy {name} failed: {e}")
+- L2455 *WARNING*: - L1547 *WARNING*: - L65 *WARNING*: logger.warning(f"[CONCURRENCY] Strategy {name} error: {e}")
+- L2456 *WARNING*: - L1548 *WARNING*: - L73 *WARNING*: logger.warning(f"[CONCURRENCY] {_safe_run_strategy.__name__} {name} failed: {e}")
+- L2457 *WARNING*: - L1549 *WARNING*: - L102 *WARNING*: logger.warning(f"[CONCURRENCY][ASYNC] DOM strategy {name} failed: {e}")
+- L2458 *WARNING*: - L1550 *WARNING*: - L120 *WARNING*: logger.warning(f"[CONCURRENCY][ASYNC] Strategy {name} error: {e}")
+- L2459 *WARNING*: - L1554 *WARNING*: - L816 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] dynamic_table_extractor failed for panel table", session_id, error=str(e))
+- L2460 *WARNING*: - L1555 *WARNING*: - L828 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] dynamic_table_extractor failed (no panels path)", session_id, error=str(e))
+- L2461 *WARNING*: - L1556 *WARNING*: - L836 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] all_panel_tables was not a list; coercing to empty list", session_id, got_type...
+- L2462 *WARNING*: - L1557 *WARNING*: - L845 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] Dropping invalid table entry", session_id, entry_type=str(type(item)))
+- L2463 *WARNING*: - L1558 *WARNING*: - L862 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] sanitize failed", session_id, error=str(e))
+- L2464 *WARNING*: - L1559 *WARNING*: - L867 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] harmonize failed", session_id, error=str(e))
+- L2465 *WARNING*: - L1560 *WARNING*: - L873 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] collapse_ballot_synonym_columns failed", session_id, error=str(e))
+- L2466 *WARNING*: - L1561 *WARNING*: - L925 *WARNING*: "info" if status == "ok" else "warning",
+- L2467 *WARNING*: - L1562 *WARNING*: - L950 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] entity annotate failed", session_id, error=str(e))
+- L2468 *WARNING*: - L1563 *WARNING*: - L955 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] stringify entity_info failed", session_id, error=str(e))
+- L2469 *WARNING*: - L1564 *WARNING*: - L975 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] pivot_to_wide failed", session_id, error=str(e))
+- L2470 *WARNING*: - L1565 *WARNING*: - L995 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] ensure division totals failed", session_id, error=str(e))
+- L2471 *WARNING*: - L1566 *WARNING*: - L1288 *WARNING*: _emit("warning", "builder", f"[TABLE_BUILDER] Column marked incorrect: {col_name}", session_id, contest=contest)
+- L2472 *WARNING*: - L1567 *WARNING*: - L1361 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] Failed to persist table structure logs", session_id, error=str(e))
+- L2473 *WARNING*: - L1568 *WARNING*: - L1376 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] Failed to persist coordinator DB log", session_id, error=str(e))
+- L2474 *WARNING*: - L1572 *WARNING*: - L231 *WARNING*: logger.warning(f"[TABLE BUILDER] Concurrent strategies execution failed: {e}")
+- L2475 *WARNING*: - L1573 *WARNING*: - L288 *WARNING*: logger.warning(f"[TABLE BUILDER] RawJSON pivot failed: {e}")
+- L2476 *WARNING*: - L1574 *WARNING*: - L296 *WARNING*: logger.warning(f"[TABLE BUILDER] pivot_to_wide signature mismatch (skipped): {e}")
+- L2477 *WARNING*: - L1575 *WARNING*: - L298 *WARNING*: logger.warning(f"[TABLE BUILDER] pivot_to_wide failed (skipped): {e}")
+- L2478 *WARNING*: - L1576 *WARNING*: - L349 *WARNING*: logger.warning(f"[TABLE BUILDER] finalize output failed: {e}")
+- L2479 *WARNING*: - L1577 *WARNING*: - L414 *WARNING*: logger.warning(f"[TABLE BUILDER][ASYNC] Concurrent strategies execution failed: {e}")
+- L2480 *WARNING*: - L1578 *WARNING*: - L477 *WARNING*: logger.warning(f"[TABLE BUILDER][ASYNC] finalize output failed: {e}")
+- L2481 *WARNING*: - L1582 *WARNING*: - L312 *WARNING*: logger.warning("[UserPrompt] Webapp mode active but no socketio_emit_func set!")
+- L2482 *WARNING*: - L1583 *WARNING*: - L349 *WARNING*: logger.warning("[CLI Prompt] EOFError encountered.")
+- L2483 *WARNING*: - L1584 *WARNING*: - L370 *WARNING*: logger.warning("[Webapp Prompt] socketio_emit_func not set.")
+- L2484 *WARNING*: - L1585 *WARNING*: - L428 *WARNING*: "WARNING": 30,
+- L2485 *WARNING*: - L1586 *WARNING*: - L507 *WARNING*: logger.warning("\n[Prompt] Timed out.")
+- L2486 *WARNING*: - L1587 *WARNING*: - L558 *WARNING*: logger.warning("\n[Prompt] No input available (EOF). Exiting prompt.")
+- L2487 *WARNING*: - L1588 *WARNING*: - L592 *WARNING*: logger.warning("Invalid input. Please try again.")
+- L2488 *WARNING*: - L1589 *WARNING*: - L594 *WARNING*: logger.warning("[Prompt] Too many invalid attempts.")
+- L2489 *WARNING*: - L1590 *WARNING*: - L659 *WARNING*: logger.warning("[Prompt Queue] Invalid queued yes/no response; falling back to interactive prompt.")
+- L2490 *WARNING*: - L1591 *WARNING*: - L674 *WARNING*: logger.warning("\n[Prompt] Timed out.")
+- L2491 *WARNING*: - L1592 *WARNING*: - L881 *WARNING*: logger.warning("[yellow][FEEDBACK] Skipped manual correction.[/yellow]")
+- L2492 *WARNING*: - L1593 *WARNING*: - L913 *WARNING*: logger.warning("[yellow]Button confirmation cancelled by user.[/yellow]")
+- L2493 *WARNING*: - L1597 *WARNING*: - L49 *WARNING*: logger.warning({
+- L2494 *WARNING*: - L1598 *WARNING*: - L50 *WARNING*: "level": "WARNING",
+- L2495 *WARNING*: - L1599 *WARNING*: - L66 *WARNING*: logger.warning({
+- L2496 *WARNING*: - L1600 *WARNING*: - L67 *WARNING*: "level": "WARNING",
+- L2497 *WARNING*: - L1601 *WARNING*: - L83 *WARNING*: logger.warning({
+- L2498 *WARNING*: - L1602 *WARNING*: - L84 *WARNING*: "level": "WARNING",
+- L2499 *WARNING*: - L1606 *WARNING*: - L1323 *WARNING*: .log-line.level-WARNING {border-left-color:#ffd166;--level-color:#ffd166;}
+- L2500 *WARN*: - L1607 *WARN*: - L1568 *WARN*: .pipeline-hint[data-level="warn"] {
+- L2501 *NOTE*: - L1608 *NOTE*: - L2139 *NOTE*: .contest-collapsed-note {
+- L2502 *WARN*: - L1612 *WARN*: - L20 *WARN*: console.warn("Failed to parse JSON payload", err);
+- L2503 *WARNING*: - L1613 *WARNING*: - L156 *WARNING*: pushAlert(error.message || "Unable to refresh tasks.", "warning");
+- L2504 *NOTE*: - L1617 *NOTE*: - L3 *NOTE*: * NOTE: Real SQL injection mitigation must occur server-side via parameterized queries.
+- L2505 *WARN*: - L1621 *WARN*: - L63 *WARN*: else console.warn('Blocked unsafe navigation', raw);
+- L2506 *WARN*: - L1622 *WARN*: - L74 *WARN*: console.warn('Blocked unsafe navigation', target);
+- L2507 *WARN*: - L1626 *WARN*: - L251 *WARN*: level = 'warn';
+- L2508 *WARN*: - L1627 *WARN*: - L269 *WARN*: level = 'warn';
+- L2509 *WARNING*: - L1628 *WARNING*: - L677 *WARNING*: el.manualUploadSummary?.classList.add('text-warning');
+- L2510 *WARNING*: - L1629 *WARNING*: - L679 *WARNING*: el.manualUploadSummary?.classList.remove('text-warning');
+- L2511 *WARNING*: - L1630 *WARNING*: - L697 *WARNING*: el.manualUploadSummary?.classList.remove('text-warning');
+- L2512 *WARNING*: - L1631 *WARNING*: - L710 *WARNING*: el.manualUploadSummary?.classList.remove('text-warning');
+- L2513 *WARNING*: - L1632 *WARNING*: - L946 *WARNING*: node.classList.remove('alert-info', 'alert-success', 'alert-danger', 'alert-warning');
+- L2514 *WARNING*: - L1633 *WARNING*: - L955 *WARNING*: : tone === 'warning'
+- L2515 *WARNING*: - L1634 *WARNING*: - L956 *WARNING*: ? 'alert-warning'
+- L2516 *WARNING*: - L1635 *WARNING*: - L994 *WARNING*: invalid.length ? 'warning' : 'info'
+- L2517 *NOTE*: - L1636 *NOTE*: - L2941 *NOTE*: collapsedNote.className = 'contest-collapsed-note';
+- L2518 *WARNING*: - L1637 *WARNING*: - L4449 *WARNING*: 'INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL', 'TRACE'
+- L2519 *WARNING*: - L1638 *WARNING*: - L4816 *WARNING*: INFO:'🛈', DEBUG:'⚙️', WARNING:'⚠️', ERROR:'⛔', CRITICAL:'🚨',
+- L2520 *WARNING*: - L1639 *WARNING*: - L4820 *WARNING*: INFO:'#00ffe7', DEBUG:'#8ecae6', WARNING:'#ffd166', ERROR:'#eb4f43', CRITICAL:'#ff006e',
+- L2521 *WARN*: - L1640 *WARN*: - L4940 *WARN*: const warn = obj.level === 'WARNING';
+- L2522 *WARN*: - L1641 *WARN*: - L4941 *WARN*: if (logPanelControl.isCollapsed() && (severe || warn)) logPanelControl.expand();
+- L2523 *WARN*: - L1642 *WARN*: - L5608 *WARN*: console.warn('Socket disconnected:', reason);
+- L2524 *WARNING*: - L1646 *WARNING*: - L5 *WARNING*: */:root,[data-bs-theme=light]{--bs-blue:#0d6efd;--bs-indigo:#6610f2;--bs-purple:#6f42c1;--bs-pink:#d63384;--bs-red:#dc3545;--...
+- L2525 *WARNING*: - L1650 *WARNING*: - L115 *WARNING*: {% elif r.status == 'cancelled' %}<span class="badge bg-warning text-dark">Cancelled</span>
+- L2526 *WARNING*: - L1651 *WARNING*: - L161 *WARNING*: {% elif r.status == 'cancelled' %}<span class="badge bg-warning text-dark">Cancelled</span>
+- L2527 *WARNING*: - L1655 *WARNING*: - L247 *WARNING*: Filter logs by severity: INFO, WARNING, ERROR, etc.
+- L2528 *WARNING*: - L1659 *WARNING*: - L212 *WARNING*: # Forbidden dir should be skipped with warning
+- L2532 *WARN*: - L64 *WARN*: - Check logs for `[WARN] No output file path returned from parser.`
+- L2533 *WARNING*: - L104 *WARNING*: - Re-run the problematic PDF (e.g., the Minnesota 2016 sample) and confirm the logs show `pdf2image` succeeded or that the Poppler warning no...
+- L2534 *WARNING*: - L118 *WARNING*: - **Root Cause**: Python 3.12 tightened validation around C-extension types that lack a `__module__` attribute. PyMuPDF wheels prior to the up...
+- L2535 *WARNING*: - L120 *WARNING*: 1. **Upgrade to the latest PyMuPDF release**. We pin the minimum supported version in `requirements.txt`. Run `pip install --upgrade PyMuPDF`...
+- L2536 *WARNING*: - L122 *WARNING*: - **Project behaviour**: Our loader records the warning once and surfaces the affected type names in handler metadata so you can confirm wheth...
+- L2540 *WARN*: - L124 *WARN*: print(f"[warn] Failed to organize context for diagnostics: {exc}")
+- L2544 *TODO*: - L4 *TODO*: Scans text-based source files for TODO-like annotations and writes a markdown
+- L2545 *TODO*: - L18 *TODO*: KEYWORDS = ("TODO", "FIXME", "HACK", "XXX", "WARNING", "WARN", "NOTE")
+- L2546 *FIXME*: - L20 *FIXME*: "FIXME": "high",
+- L2547 *TODO*: - L21 *TODO*: "TODO": "medium",
+- L2548 *HACK*: - L22 *HACK*: "HACK": "medium",
+- L2549 *XXX*: - L23 *XXX*: "XXX": "medium",
+- L2550 *WARNING*: - L24 *WARNING*: "WARNING": "low",
+- L2551 *WARN*: - L25 *WARN*: "WARN": "low",
+- L2552 *NOTE*: - L26 *NOTE*: "NOTE": "low",
+- L2553 *TODO*: - L157 *TODO*: print(f"[FAIL] TODO debt thresholds exceeded: {joined}")
+- L2554 *TODO*: - L172 *TODO*: "title: \"TODO/FIXME Index\"",
+- L2555 *TODO*: - L175 *TODO*: f"Index scope: TODO/FIXME/HACK/XXX/WARNING/NOTE annotations under `{roots_text}`.",
+- L2556 *TODO*: - L185 *TODO*: lines.append("No TODO/FIXME/WARNING/NOTE annotations found under specified roots.")
+- L2557 *TODO*: - L213 *TODO*: parser = argparse.ArgumentParser(description="Generate TODO/FIXME index")
+- L2561 *WARNING*: - L438 *WARNING*: default_levels = {"ERROR", "WARNING"}
+- L2562 *WARN*: - L446 *WARN*: if lvl == "WARN":
+- L2563 *WARNING*: - L447 *WARNING*: lvl = "WARNING"
+- L2564 *WARNING*: - L448 *WARNING*: if lvl in {"TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+- L2565 *WARNING*: - L742 *WARNING*: Levels: INFO, DEBUG, WARNING, ERROR, CRITICAL, TRACE
+- L2566 *WARNING*: - L781 *WARNING*: LEVELS = {"INFO", "DEBUG", "WARNING", "ERROR", "CRITICAL", "TRACE"}
+- L2567 *WARNING*: - L817 *WARNING*: elif "warning" in mlow:
+- L2568 *WARNING*: - L1078 *WARNING*: logger.warning({
+- L2569 *WARNING*: - L1079 *WARNING*: "level": "WARNING",
+- L2570 *WARNING*: - L1544 *WARNING*: logger.warning({"type": "sec", "message": "Favicon path escape blocked", "requested": ico_path})
+- L2571 *WARNING*: - L1646 *WARNING*: logger.warning({
+- L2572 *WARNING*: - L1647 *WARNING*: "level": "WARNING",
+- L2576 *WARNING*: - L43 *WARNING*: "raw_html": "<!DOCTYPE html><html lang=\"en\" data-beasties-container=\"\"><head>\n    <meta charset=\"utf-8\">\n    <title>Election Results</t...
+- L2580 *NOTE*: - L1895 *NOTE*: r"^\s*Note.*$",                     # Note
+- L2581 *WARNING*: - L2084 *WARNING*: "icon-bg-dark", "icon-bg-primary", "icon-bg-secondary", "icon-bg-success", "icon-bg-danger", "icon-bg-warning",
+- L2582 *WARNING*: - L2175 *WARNING*: "warning", "info_box", "navigation", "pagination", "tab", "modal", "tooltip", "ignore", "unknown"
+- L2583 *NOTE*: - L2208 *NOTE*: "navigation", "breadcrumb", "path", "route", "link", "reference", "citation", "annotation", "note", "comment",
+- L2584 *NOTE*: - L2284 *NOTE*: "Reference", "Citation", "Annotation", "Note", "Comment", "Feedback", "Suggestion", "Recommendation",
+- L2585 *NOTE*: - L2300 *NOTE*: "Route", "Link", "Reference", "Citation", "Annotation", "Note", "Comment", "Feedback", "Suggestion",
+- L2589 *WARNING*: - L282 *WARNING*: logger.warning(
+- L2590 *WARNING*: - L407 *WARNING*: logger.warning(f"[CONTEST] Skipping contest with suspiciously large or missing title: {str(title)[:100]}...")
+- L2591 *WARNING*: - L495 *WARNING*: logger.warning(f"[CONTEST] Filtered out {len(filtered_out)} contests due to missing required fields.")
+- L2592 *WARNING*: - L497 *WARNING*: logger.warning(f"  [Filtered] {reason}: {str(c)[:100]}...")
+- L2593 *WARNING*: - L500 *WARNING*: logger.warning("[CONTEST] No contests with required fields for downstream output.")
+- L2594 *WARNING*: - L816 *WARNING*: logger.warning(f"[ML] Anomaly index {idx} out of range for contests list of length {len(contests)}")
+- L2595 *WARNING*: - L1602 *WARNING*: logger.warning(f"  [yellow]{title}[/yellow]: {fixes}")
+- L2596 *WARNING*: - L1608 *WARNING*: logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Duplicate contest detected.\n  [dim]Context:[/dim] {contest}")
+- L2597 *WARNING*: - L1610 *WARNING*: logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing location info.\n  [dim]Context:[/dim] {contest}")
+- L2598 *WARNING*: - L1612 *WARNING*: logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing year.\n  [dim]Context:[/dim] {contest}")
+- L2599 *WARNING*: - L2082 *WARNING*: logger.warning(f"[ContextOrganizer] Could not update context library with feedback: {e}")
+- L2600 *WARNING*: - L2159 *WARNING*: logger.warning(f"[CONTEXT ORGANIZER] No table structure found for contest: {contest}")
+- L2604 *WARNING*: - L764 *WARNING*: logger.warning(f"\n[LIBRARIAN SELF-HEAL] Attempt {attempt}...")
+- L2605 *WARNING*: - L774 *WARNING*: logger.warning("[LIBRARIAN SELF-HEAL] Misalignments found. Launching manual_correction...")
+- L2606 *WARNING*: - L777 *WARNING*: logger.warning(f"[LIBRARIAN SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+- L2610 *WARNING*: - L134 *WARNING*: logger.warning({
+- L2611 *WARNING*: - L135 *WARNING*: "level": "WARNING",
+- L2612 *WARNING*: - L426 *WARNING*: logger.warning({
+- L2613 *WARNING*: - L427 *WARNING*: "level": "WARNING",
+- L2617 *WARNING*: - L216 *WARNING*: app_logger.warning(f"[HTML Handler] County '{county}' not found. Closest matches: {matches}")
+- L2618 *WARNING*: - L220 *WARNING*: app_logger.warning(f"[HTML Handler] Detected county '{county}' is not in known counties for state '{suggested_state or state}'.")
+- L2619 *WARNING*: - L241 *WARNING*: app_logger.warning(f"[HTML Handler] State '{user_state}' not found. Closest matches: {matches}")
+- L2620 *WARNING*: - L285 *WARNING*: app_logger.warning(f"[HTML Handler] County '{user_county}' not found. Closest matches: {matches}")
+- L2624 *WARNING*: - L382 *WARNING*: logger.warning({
+- L2625 *WARNING*: - L383 *WARNING*: "level": "WARNING",
+- L2626 *WARNING*: - L507 *WARNING*: logger.warning({
+- L2627 *WARNING*: - L508 *WARNING*: "level": "WARNING",
+- L2631 *WARNING*: - L932 *WARNING*: logger.warning({
+- L2632 *WARNING*: - L933 *WARNING*: "level": "WARNING",
+- L2636 *WARNING*: - L25 *WARNING*: logger.warning("[WARN] context_library.json not found. Using fallback config for Arizona handler.")
+- L2637 *WARNING*: - L51 *WARNING*: logger.warning(f"[WARN] Could not expand card {i+1}: {e}")
+- L2638 *WARNING*: - L64 *WARNING*: logger.warning(f"[WARN] Vote Type toggle failed: {e}")
+- L2639 *WARNING*: - L77 *WARNING*: logger.warning(f"[WARN] County toggle failed: {e}")
+- L2640 *WARNING*: - L164 *WARNING*: logger.warning("[FALLBACK] No tables were parsed. Either no results are published yet or the structure has changed.")
+- L2641 *WARNING*: - L165 *WARNING*: logger.warning("[FALLBACK] Please verify that the site has posted election data.")
+- L2645 *WARNING*: - L123 *WARNING*: logger.warning("[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
+- L2649 *WARNING*: - L51 *WARNING*: logger.warning(f"[Example Handler] No specific parser implemented for county: '{county}'. Continuing with state-level logic.")
+- L2650 *WARNING*: - L152 *WARNING*: logger.warning("[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
+- L2654 *WARNING*: - L72 *WARNING*: logger.warning("[WARNING] dom_parts missing after organize_and_enrich.")
+- L2655 *WARNING*: - L95 *WARNING*: logger.warning("[red]No contest selected. Skipping.[/red]")
+- L2656 *WARNING*: - L139 *WARNING*: logger.warning(f"[yellow][WARNING] Button '{btn1.get('label', '')}' is not clickable (visible={safe_is_visible(element, logger)}, enabled={saf...
+- L2657 *WARNING*: - L176 *WARNING*: logger.warning(f"[yellow][WARNING] Button '{btn2.get('label', '')}' is not clickable (visible={safe_is_visible(element, logger)}, enabled={saf...
+- L2661 *WARNING*: - L27 *WARNING*: logger.warning("[NY Handler] No county specified in html_context.")
+- L2662 *WARNING*: - L43 *WARNING*: logger.warning(f"[NY Handler] No specific parser implemented for county: '{county}'. Please add it under {module_path}.py")
+- L2666 *WARNING*: - L44 *WARNING*: logger.warning(f"[NAV] Step failed: {step} — {e}")
+- L2667 *WARNING*: - L55 *WARNING*: logger.warning(f"[bold yellow]Detected election:[/bold yellow] {header_text}")
+- L2668 *WARNING*: - L76 *WARNING*: logger.warning("[PA] Invalid index input for election selection.")
+- L2669 *WARNING*: - L78 *WARNING*: logger.warning("[PA] Elections dropdown not found.")
+- L2670 *WARNING*: - L80 *WARNING*: logger.warning(f"[PA] Failed to expand Elections menu or load selection: {e}")
+- L2671 *WARNING*: - L96 *WARNING*: logger.warning("[PA] County Breakdown link not found.")
+- L2672 *WARNING*: - L98 *WARNING*: logger.warning(f"[PA] Failed to click County Breakdown link: {e}")
+- L2673 *WARNING*: - L113 *WARNING*: logger.warning("[yellow]Multiple CSV files found in input. Please select one:[/yellow]")
+- L2677 *WARNING*: - L253 *WARNING*: logger.warning(f"[health_router] manual_correction failed (attempt {attempt}): {result.stderr}")
+- L2678 *WARNING*: - L337 *WARNING*: logger.warning("[SELF-HEAL] Misalignments found. Launching manual_correction...")
+- L2679 *WARNING*: - L339 *WARNING*: logger.warning(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+- L2680 *WARNING*: - L341 *WARNING*: logger.warning("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
+- L2681 *WARNING*: - L376 *WARNING*: logger.warning(f"[PIPELINE] Could not fix corrupted JSON files: {e}")
+- L2682 *WARNING*: - L393 *WARNING*: logger.warning("[PIPELINE] Misaligned NER examples found. Self-heal loop will be handled by scan_misaligned_ner.")
+- L2683 *WARNING*: - L395 *WARNING*: logger.warning("[PIPELINE] scan_misaligned_ner failed or file missing. Proceeding with caution.")
+- L2684 *WARNING*: - L427 *WARNING*: logger.warning("[PIPELINE] Model retraining failed.")
+- L2688 *WARNING*: - L18 *WARNING*: logger.warning("[INTEGRITY] Context library at %s is missing contest data", context_path)
+- L2692 *WARNING*: - L151 *WARNING*: logger.warning(f"Skipping non-dict entry in spacy_ner_train_data.jsonl: {entry}")
+- L2693 *WARNING*: - L460 *WARNING*: logger.warning("[DB][WARNING] No user tables found in schema 'public'.")
+- L2694 *WARNING*: - L503 *WARNING*: logger.warning("[CLEAN][WARNING] The following files are still too large after cleaning:")
+- L2695 *WARNING*: - L507 *WARNING*: logger.warning("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data:")
+- L2699 *WARNING*: - L361 *WARNING*: logger.warning(f"Coordinator ML scoring failed: {e}")
+- L2700 *WARNING*: - L382 *WARNING*: logger.warning(f"Coordinator field suggestion failed: {e}")
+- L2701 *WARNING*: - L395 *WARNING*: logger.warning(f"Log file not found: {path}")
+- L2702 *WARNING*: - L404 *WARNING*: logger.warning(f"[CORRUPT] {path} line {i}: {e}")
+- L2703 *WARNING*: - L434 *WARNING*: logger.warning(f"[SECURITY] Skipping invalid directory: {directory} - {e}")
+- L2704 *WARNING*: - L448 *WARNING*: logger.warning(f"[SECURITY] Skipping file outside allowed directories: {file} - {e}")
+- L2705 *WARNING*: - L454 *WARNING*: logger.warning(f"[SKIP] File not found: {file}")
+- L2706 *WARNING*: - L458 *WARNING*: logger.warning(f"[SKIP] File too large: {file}")
+- L2707 *WARNING*: - L483 *WARNING*: logger.warning(f"[CORRUPT-LINE] {file} line {i+1}: {line[:80]}... ({e})")
+- L2708 *WARNING*: - L497 *WARNING*: logger.warning(f"[CORRUPT] {len(corrupt_items)} lines saved to {corrupt_path}")
+- L2709 *WARNING*: - L502 *WARNING*: logger.warning(f"[FIXED] All lines invalid, recreated empty .jsonl file: {file}")
+- L2710 *WARNING*: - L516 *WARNING*: logger.warning(f"[CORRUPT] {file}: {e}")
+- L2711 *WARNING*: - L530 *WARNING*: logger.warning(f"[CORRUPT] Corrupt JSON saved to {corrupt_path}")
+- L2712 *WARNING*: - L536 *WARNING*: logger.warning(f"[FIXED] All content invalid, recreated minimal valid JSON in {file}")
+- L2713 *WARNING*: - L541 *WARNING*: logger.warning(f"[CORRUPT] {file}: {e}")
+- L2714 *WARNING*: - L555 *WARNING*: logger.warning(f"[QUARANTINED] {file} -> {dest_path}")
+- L2715 *WARNING*: - L559 *WARNING*: logger.warning(f"[DELETED] {file}")
+- L2716 *WARNING*: - L562 *WARNING*: logger.warning(f"[SKIP-DELETE] File already missing: {file}")
+- L2717 *WARNING*: - L597 *WARNING*: logger.warning(f"[SECURITY] Skipping invalid directory: {d} - {e}")
+- L2718 *WARNING*: - L615 *WARNING*: logger.warning(f"[SECURITY] Skipping file outside allowed directories: {f} - {e}")
+- L2719 *WARNING*: - L624 *WARNING*: logger.warning(f"[FIND-LOGS] Skipped {d}: {e}")
+- L2720 *WARNING*: - L649 *WARNING*: logger.warning(f"[CORRUPT] {path} line {line_num}: {e}")
+- L2721 *WARNING*: - L808 *WARNING*: logger.warning(f"Invalid JSON, skipping edit: {e}")
+- L2722 *WARNING*: - L851 *WARNING*: logger.warning(
+- L2723 *WARNING*: - L1105 *WARNING*: logger.warning(
+- L2724 *WARN*: - L1211 *WARN*: If missing, create with DEFAULT_STRUCTURE. Warn if schema version mismatches.
+- L2725 *WARNING*: - L1232 *WARNING*: logger.warning(f"Schema version mismatch: found {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider migrating.")
+- L2726 *WARNING*: - L1256 *WARNING*: logger.warning(f"[SECURITY] Skipping invalid log file: {log_file} - {e}")
+- L2727 *WARNING*: - L1288 *WARNING*: logger.warning(f"[AUTO] Could not delete log file {log_file}: {e}")
+- L2728 *WARNING*: - L1416 *WARNING*: logger.warning(f"[SKIP] Could not load {log_file}: {e}")
+- L2729 *WARNING*: - L1432 *WARNING*: logger.warning("No log files matched any of the specified fields. Will attempt to process all log files for all fields.")
+- L2730 *WARNING*: - L1518 *WARNING*: logger.warning(f"[SECURITY] Cannot delete file outside allowed directories: {log_file} - {e}")
+- L2731 *WARNING*: - L1520 *WARNING*: logger.warning(f"Could not delete log file {log_file}: {e}")
+- L2732 *WARNING*: - L1540 *WARNING*: logger.warning("[WARNING] No entries were processed. Check your log file naming, field configuration, or use --dry-run for debugging.")
+- L2736 *WARNING*: - L178 *WARNING*: logger.warning(f"[CLEAN] File not found: {jsonl_path}")
+- L2737 *WARNING*: - L186 *WARNING*: logger.warning(f"[CLEAN] Could not parse line: {e}")
+- L2738 *WARNING*: - L201 *WARNING*: logger.warning(f"[CLEAN] Alignment check failed for text: {text[:50]}... ({e})")
+- L2739 *WARNING*: - L274 *WARNING*: logger.warning(f"Failed to load {path}: {e}")
+- L2740 *WARNING*: - L403 *WARNING*: logger.warning(f"Skipping misaligned entity in: {text}")
+- L2741 *WARNING*: - L408 *WARNING*: logger.warning(f"Error validating entity alignment: {e}")
+- L2742 *WARNING*: - L434 *WARNING*: logger.warning(f"[spaCy] Could not check GPU availability: {e}")
+- L2743 *WARNING*: - L450 *WARNING*: logger.warning(f"[spaCy] Could not load lexeme normalization table. You may ignore this for English. Error: {e}")
+- L2744 *WARNING*: - L536 *WARNING*: logger.warning(f"[NER] Skipped {misaligned_count} misaligned examples. Saved to {misaligned_path}")
+- L2745 *WARNING*: - L550 *WARNING*: logger.warning("No NER training examples found. Skipping spaCy NER retraining.")
+- L2746 *WARNING*: - L619 *WARNING*: logger.warning("[SUGGESTION] Consider lowering min_delta or increasing patience if you want longer training.")
+- L2747 *WARNING*: - L621 *WARNING*: logger.warning("[SUGGESTION] Model improved until the last epoch. Consider increasing epochs for further improvement.")
+- L2748 *WARNING*: - L622 *WARNING*: logger.warning(f"[SUGGESTION] Next run: patience={patience}, min_delta={min_delta:.2f}, epochs={epochs}")
+- L2749 *WARNING*: - L708 *WARNING*: logger.warning("No training examples found. Aborting retraining.")
+- L2750 *WARNING*: - L727 *WARNING*: logger.warning(f"[WARN] Could not delete old model directory {oldest_path}: {e}")
+- L2751 *WARNING*: - L739 *WARNING*: logger.warning(f"[WARN] Failed to load existing model: {e}")
+- L2752 *WARNING*: - L742 *WARNING*: logger.warning("Falling back to base model (all-MiniLM-L6-v2).")
+- L2753 *WARNING*: - L782 *WARNING*: logger.warning(f"[WARN] Could not update canonical model directory: {e}")
+- L2754 *WARNING*: - L810 *WARNING*: logger.warning(f"MISALIGNED: {text} {annots['entities']}")
+- L2755 *WARNING*: - L840 *WARNING*: logger.warning("[DB] Base.metadata.tables is empty. No models registered? Did you import all model classes?")
+- L2759 *WARNING*: - L62 *WARNING*: logger.warning(f"[CORRUPT] Could not parse line: {e}")
+- L2760 *WARNING*: - L83 *WARNING*: logger.warning(f"\n[MISALIGNED] Top {top_n} most frequent misaligned NER texts:")
+- L2761 *WARNING*: - L85 *WARNING*: logger.warning(f"  {repr(text)}: {count} times")
+- L2762 *WARNING*: - L86 *WARNING*: logger.warning("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data.")
+- L2763 *WARNING*: - L87 *WARNING*: logger.warning("Run the manual_correction to review and clean these examples before retraining.")
+- L2764 *WARNING*: - L88 *WARNING*: logger.warning("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
+- L2765 *WARNING*: - L98 *WARNING*: logger.warning(f"[WARN] Could not remove old misaligned file: {e}")
+- L2766 *WARNING*: - L112 *WARNING*: logger.warning("[SELF-HEAL] Misalignments found. Launching manual_correction for spacy_ner_misaligned...")
+- L2767 *WARNING*: - L119 *WARNING*: logger.warning(f"[SELF-HEAL] manual_correction exited with code {result.returncode}")
+- L2768 *WARNING*: - L120 *WARNING*: logger.warning(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+- L2769 *WARNING*: - L122 *WARNING*: logger.warning("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
+- L2773 *WARNING*: - L61 *WARNING*: logger.warning("Deleting .processed_urls cache for fresh start...")
+- L2774 *WARNING*: - L430 *WARNING*: logger.warning({
+- L2775 *WARNING*: - L431 *WARNING*: "level": "WARNING",
+- L2776 *WARNING*: - L445 *WARNING*: logger.warning({
+- L2777 *WARNING*: - L446 *WARNING*: "level": "WARNING",
+- L2778 *WARNING*: - L508 *WARNING*: logger.warning({
+- L2779 *WARNING*: - L509 *WARNING*: "level": "WARNING",
+- L2780 *WARNING*: - L582 *WARNING*: logger.warning(payload_2)
+- L2781 *WARNING*: - L909 *WARNING*: logger.warning({
+- L2782 *WARNING*: - L910 *WARNING*: "level": "WARNING",
+- L2783 *WARNING*: - L956 *WARNING*: logger.warning({
+- L2784 *WARNING*: - L957 *WARNING*: "level": "WARNING",
+- L2785 *WARNING*: - L1010 *WARNING*: logger.warning({
+- L2786 *WARNING*: - L1011 *WARNING*: "level": "WARNING",
+- L2787 *WARNING*: - L1117 *WARNING*: "level": "WARNING",
+- L2788 *WARNING*: - L1122 *WARNING*: logger.warning(payload)
+- L2789 *WARNING*: - L1156 *WARNING*: logger.warning({
+- L2790 *WARNING*: - L1157 *WARNING*: "level": "WARNING",
+- L2791 *WARNING*: - L1237 *WARNING*: logger.warning({
+- L2792 *WARNING*: - L1238 *WARNING*: "level": "WARNING",
+- L2793 *WARNING*: - L1292 *WARNING*: "level": "WARNING",
+- L2794 *WARNING*: - L1297 *WARNING*: logger.warning(payload)
+- L2795 *WARNING*: - L1389 *WARNING*: logger.warning({
+- L2796 *WARNING*: - L1390 *WARNING*: "level": "WARNING",
+- L2797 *WARNING*: - L1407 *WARNING*: "level": "WARNING",
+- L2798 *WARNING*: - L1412 *WARNING*: logger.warning(payload)
+- L2799 *WARNING*: - L1423 *WARNING*: "level": "WARNING",
+- L2800 *WARNING*: - L1428 *WARNING*: logger.warning(payload)
+- L2801 *WARN*: - L1430 *WARN*: msg = "[WARN] No output file path returned from parser and no output files found."
+- L2802 *WARNING*: - L1432 *WARNING*: "level": "WARNING",
+- L2803 *WARNING*: - L1437 *WARNING*: logger.warning(payload)
+- L2804 *WARNING*: - L1442 *WARNING*: "level": "WARNING",
+- L2805 *WARNING*: - L1447 *WARNING*: logger.warning(payload)
+- L2806 *WARNING*: - L1566 *WARNING*: logger.warning({
+- L2807 *WARNING*: - L1567 *WARNING*: "level": "WARNING",
+- L2808 *WARNING*: - L1627 *WARNING*: logger.warning({
+- L2809 *WARNING*: - L1628 *WARNING*: "level": "WARNING",
+- L2813 *WARNING*: - L203 *WARNING*: logger.warning({
+- L2814 *WARNING*: - L204 *WARNING*: "level": "WARNING",
+- L2818 *WARNING*: - L49 *WARNING*: logger.warning("[Router] handlers/states directory not found.")
+- L2819 *WARNING*: - L66 *WARNING*: logger.warning(f"[Router] counties directory not found for state: {state_key}")
+- L2820 *WARNING*: - L137 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] No handler states available for manual selection.")
+- L2821 *WARNING*: - L154 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
+- L2822 *WARNING*: - L157 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
+- L2823 *WARNING*: - L160 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] State '{state}' not found. Please try again.")
+- L2824 *WARNING*: - L179 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
+- L2825 *WARNING*: - L182 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] County '{county}' not found for state '{state}'. Please try again.")
+- L2826 *WARNING*: - L189 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] Too many failed attempts. Exiting fallback.")
+- L2827 *WARNING*: - L205 *WARNING*: logger.warning(f"[Router] Requested state '{state_name}' not found on disk. Skipping restrict filter.")
+- L2828 *WARNING*: - L512 *WARNING*: logger.warning(f"No counties found for state '{state}'. Try --fuzzy for fuzzy matching.")
+- L2829 *WARNING*: - L523 *WARNING*: logger.warning(f"Failed to load context from file: {e}")
+- L2830 *WARNING*: - L533 *WARNING*: logger.warning("No suitable handler found.")
+- L2831 *WARNING*: - L540 *WARNING*: logger.warning("No handler selected. Exiting.")
+- L2832 *WARNING*: - L547 *WARNING*: logger.warning("Still could not import a suitable handler.")
+- L2836 *WARNING*: - L102 *WARNING*: logger.warning(f"[browser_utils] Failed to safely parse context_library value for key '{key}'")
+- L2837 *WARNING*: - L104 *WARNING*: logger.warning(f"[browser_utils] Skipping unsafe context_library value for key '{key}'")
+- L2838 *WARNING*: - L308 *WARNING*: logger.warning(f"[safe_attributes] Playwright JS extraction failed: {e}")
+- L2839 *WARNING*: - L322 *WARNING*: logger.warning(f"[safe_attributes] Playwright fallback extraction failed: {e}")
+- L2840 *WARNING*: - L408 *WARNING*: logger and logger.warning(f"[safe_count] Object is not countable: {type(obj)}")
+- L2841 *WARNING*: - L454 *WARNING*: logger.warning(f"[safe_launch] browser_type is not a SyncBrowserType: {type(browser_type)}")
+- L2842 *WARNING*: - L474 *WARNING*: logger.warning(f"[async_safe_launch] browser_type is not an AsyncBrowserType: {type(browser_type)}")
+- L2843 *WARNING*: - L553 *WARNING*: logger.warning({
+- L2844 *WARNING*: - L554 *WARNING*: "level": "WARNING",
+- L2845 *WARNING*: - L582 *WARNING*: logger.warning(f"[CAPTCHA] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
+- L2846 *WARNING*: - L591 *WARNING*: logger.warning(f"[CAPTCHA] CAPTCHA detected in async mode. Manual intervention not implemented. (Session: {session_id})")
+- L2847 *WARNING*: - L615 *WARNING*: logger.warning(f"[CAPTCHA] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
+- L2848 *WARNING*: - L624 *WARNING*: logger.warning({
+- L2849 *WARNING*: - L625 *WARNING*: "level": "WARNING",
+- L2850 *WARNING*: - L636 *WARNING*: logger.warning(f"[CAPTCHA] CAPTCHA detected in sync mode. Manual intervention not implemented. (Session: {session_id})")
+- L2851 *WARNING*: - L794 *WARNING*: logger and logger.warning("[SCROLL] User aborted scrolling.")
+- L2852 *WARNING*: - L830 *WARNING*: logger and logger.warning("[SCROLL] Max scroll time/attempts exceeded. Page may not be fully loaded.")
+- L2856 *WARNING*: - L118 *WARNING*: logger.warning(f"[CAPTCHA] Foreground window fallback failed: {e}")
+- L2857 *WARNING*: - L154 *WARNING*: logger.warning("[CAPTCHA] CAPTCHA not resolved within timeout.")
+- L2861 *WARNING*: - L645 *WARNING*: elif lvl == "warning":
+- L2862 *WARNING*: - L646 *WARNING*: logger.warning(entry)
+- L2863 *WARNING*: - L1039 *WARNING*: _log("warning", "selector", f"Feedback loop {loop+1}: verifying contests", session_id=session_id,
+- L2864 *WARNING*: - L1626 *WARNING*: logger.warning({"level": "WARNING", "type": "selector", "message": "Empty search term", "session_id": session_id})
+- L2865 *WARNING*: - L1631 *WARNING*: logger.warning({"level": "WARNING", "type": "selector", "message": f"No matches for '{term}'", "session_id": session_id})
+- L2866 *WARNING*: - L1703 *WARNING*: logger.warning({"level": "WARNING", "type": "selector", "message": "No match; try again.", "session_id": session_id})
+- L2870 *WARNING*: - L153 *WARNING*: logger.warning(f"[DOM_EXTRACTOR] failure: {e}")
+- L2874 *WARNING*: - L124 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] No <table> found in provided table_html.", session_id)
+- L2875 *WARNING*: - L129 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] No <tr> rows found in table_html.", session_id)
+- L2876 *WARNING*: - L171 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] Candidate NLP/score step failed", session_id, error=str(e))
+- L2877 *WARNING*: - L187 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] No suitable table candidates found.", session_id)
+- L2878 *WARNING*: - L217 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] Error while scanning <table> elements", session_id, error=str(e))
+- L2879 *WARNING*: - L229 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] DOM extraction failed", session_id, error=str(e))
+- L2880 *WARNING*: - L272 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] Pattern extraction failed", session_id, error=str(e))
+- L2881 *WARNING*: - L776 *WARNING*: _emit("warning", "extractor", "No learned DOM patterns found.")
+- L2882 *WARNING*: - L800 *WARNING*: _emit("warning", "extractor", "Entry deleted.")
+- L2883 *WARNING*: - L805 *WARNING*: _emit("warning", "extractor", "Unknown action.")
+- L2884 *WARNING*: - L807 *WARNING*: _emit("warning", "extractor", "Invalid entry number.")
+- L2888 *WARNING*: - L68 *WARNING*: logger.warning(f"[STRATEGY] {name} failed: {e}")
+- L2892 *WARNING*: - L374 *WARNING*: logger.warning({
+- L2893 *WARNING*: - L375 *WARNING*: "level": "WARNING",
+- L2894 *WARN*: - L377 *WARN*: "message": "[WARN] No supported file formats found on the page.",
+- L2895 *WARNING*: - L402 *WARNING*: logger.warning({
+- L2896 *WARNING*: - L403 *WARNING*: "level": "WARNING",
+- L2897 *WARN*: - L405 *WARN*: "message": f"[WARN] Unsupported format requested: {format_str}",
+- L2898 *WARNING*: - L409 *WARNING*: logger.warning({
+- L2899 *WARNING*: - L410 *WARNING*: "level": "WARNING",
+- L2900 *WARNING*: - L667 *WARNING*: logger.warning({
+- L2901 *WARNING*: - L668 *WARNING*: "level": "WARNING",
+- L2902 *WARNING*: - L887 *WARNING*: logger.warning({
+- L2903 *WARNING*: - L888 *WARNING*: "level": "WARNING",
+- L2904 *WARNING*: - L965 *WARNING*: logger.warning({
+- L2905 *WARNING*: - L966 *WARNING*: "level": "WARNING",
+- L2909 *WARNING*: - L389 *WARNING*: logger.warning(f"Failed loading local override for SentenceTransformer: {e}")
+- L2910 *WARNING*: - L409 *WARNING*: logger.warning("TRANSFORMERS_OFFLINE/HUGGINGFACE_HUB_OFFLINE set; skipping HF download. Embeddings disabled.")
+- L2911 *WARNING*: - L426 *WARNING*: # Downgrade DNS/network errors to WARNING for noisy environments
+- L2912 *WARNING*: - L429 *WARNING*: logger.warning(f"Failed to load base SentenceTransformer (network/DNS). Running without embeddings. Error: {e}")
+- L2916 *WARNING*: - L128 *WARNING*: logger.warning("[yellow][OUTPUT] Year could not be verified. Using 'Unknown'.[/yellow]")
+- L2917 *WARNING*: - L131 *WARNING*: logger.warning("[yellow][OUTPUT] contests could not be verified. Using 'unknown_contests'.[/yellow]")
+- L2918 *WARNING*: - L569 *WARNING*: logger.warning(f"[OUTPUT_UTILS] Enrichment build failed: {e}")
+- L2919 *WARNING*: - L645 *WARNING*: logger.warning(f"[OUTPUT_UTILS] XLSX export failed: {e}")
+- L2923 *WARNING*: - L26 *WARNING*: logger.warning(f"[PATTERN] load fail {e}")
+- L2924 *WARNING*: - L95 *WARNING*: logger.warning(f"[PATTERN] pattern error {pat.get('name')}: {e}")
+- L2928 *WARNING*: - L1353 *WARNING*: logger.warning("[PIVOT] No candidates detected – verify headers and candidate column extraction.")
+- L2932 *WARNING*: - L159 *WARNING*: elif record.levelno >= logging.WARNING:
+- L2933 *WARNING*: - L160 *WARNING*: self.shared_logger.warning(msg)
+- L2934 *WARNING*: - L236 *WARNING*: "WARNING": logging.WARNING,
+- L2935 *WARNING*: - L307 *WARNING*: "WARNING": "yellow",
+- L2936 *WARNING*: - L369 *WARNING*: def warning(self, msg, context=None, exc_info=None):
+- L2937 *WARNING*: - L371 *WARNING*: self._log("WARNING", msg, context, color="yellow")
+- L2938 *WARNING*: - L385 *WARNING*: "warning": "yellow",
+- L2939 *WARNING*: - L598 *WARNING*: self.warning(f"Log directory does not exist: {log_dir}")
+- L2940 *WARNING*: - L615 *WARNING*: self.warning(f"Corrupt line in {path}: {e}")
+- L2944 *WARNING*: - L517 *WARNING*: logger.warning(f"[safe_query] session.query({model}) failed: {e}")
+- L2945 *WARNING*: - L540 *WARNING*: logger.warning(f"[safe_filter_by] No mapper found for model {model}")
+- L2946 *WARNING*: - L546 *WARNING*: logger.warning(f"[safe_filter_by] Could not inspect model {model}: {e}")
+- L2947 *WARNING*: - L560 *WARNING*: logger.warning(f"[safe_filter_by] filter_by failed: {e}")
+- L2948 *WARNING*: - L573 *WARNING*: logger.warning(f"[safe_first] query.first() failed: {e}")
+- L2949 *WARNING*: - L643 *WARNING*: logger.warning(f"[PLUGIN EXTRACTION] Plugin {plugin} has no callable 'extract' method.")
+- L2950 *WARNING*: - L777 *WARNING*: logger.warning(f"[WARN] Model save failed (attempt {attempt}): {e}")
+- L2951 *WARNING*: - L991 *WARNING*: logger.warning(f"[safe_append] Target is not a list: {type(lst)}; coercing to list.")
+- L2952 *WARNING*: - L1013 *WARNING*: logger.warning(f"[safe_update] Target is not a dict: {type(dct)}")
+- L2953 *WARNING*: - L1017 *WARNING*: logger.warning(f"[safe_update] Updates is not a dict: {type(updates)}")
+- L2954 *WARNING*: - L1037 *WARNING*: logger.warning(f"[safe_extend] Target is not a list: {type(lst)}; coercing to list.")
+- L2955 *WARNING*: - L1377 *WARNING*: logger.warning(f"[DOM_PARTS] '{label}' is not a list for URL: {url} (type: {type(lst).__name__})")
+- L2956 *WARNING*: - L1640 *WARNING*: logger.warning(f"State '{state_norm}' not found in county map")
+- L2957 *WARNING*: - L2490 *WARNING*: logger.warning(f"[inventory] architecture.md not found at {md_file}")
+- L2958 *WARNING*: - L2496 *WARNING*: logger.warning("[inventory] Markers not found in architecture.md; aborting replace.")
+- L2959 *WARNING*: - L2520 *WARNING*: logger.warning("[pipeline] generate_pipeline_map is a placeholder - use automate.py for full pipeline mapping")
+- L2963 *WARNING*: - L37 *WARNING*: logger.warning(f"[CONCURRENCY] DOM strategy {name} failed: {e}")
+- L2964 *WARNING*: - L65 *WARNING*: logger.warning(f"[CONCURRENCY] Strategy {name} error: {e}")
+- L2965 *WARNING*: - L73 *WARNING*: logger.warning(f"[CONCURRENCY] {_safe_run_strategy.__name__} {name} failed: {e}")
+- L2966 *WARNING*: - L102 *WARNING*: logger.warning(f"[CONCURRENCY][ASYNC] DOM strategy {name} failed: {e}")
+- L2967 *WARNING*: - L120 *WARNING*: logger.warning(f"[CONCURRENCY][ASYNC] Strategy {name} error: {e}")
+- L2971 *WARNING*: - L816 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] dynamic_table_extractor failed for panel table", session_id, error=str(e))
+- L2972 *WARNING*: - L828 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] dynamic_table_extractor failed (no panels path)", session_id, error=str(e))
+- L2973 *WARNING*: - L836 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] all_panel_tables was not a list; coercing to empty list", session_id, got_type=str(type(all_panel...
+- L2974 *WARNING*: - L845 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] Dropping invalid table entry", session_id, entry_type=str(type(item)))
+- L2975 *WARNING*: - L862 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] sanitize failed", session_id, error=str(e))
+- L2976 *WARNING*: - L867 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] harmonize failed", session_id, error=str(e))
+- L2977 *WARNING*: - L873 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] collapse_ballot_synonym_columns failed", session_id, error=str(e))
+- L2978 *WARNING*: - L925 *WARNING*: "info" if status == "ok" else "warning",
+- L2979 *WARNING*: - L950 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] entity annotate failed", session_id, error=str(e))
+- L2980 *WARNING*: - L955 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] stringify entity_info failed", session_id, error=str(e))
+- L2981 *WARNING*: - L975 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] pivot_to_wide failed", session_id, error=str(e))
+- L2982 *WARNING*: - L995 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] ensure division totals failed", session_id, error=str(e))
+- L2983 *WARNING*: - L1288 *WARNING*: _emit("warning", "builder", f"[TABLE_BUILDER] Column marked incorrect: {col_name}", session_id, contest=contest)
+- L2984 *WARNING*: - L1361 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] Failed to persist table structure logs", session_id, error=str(e))
+- L2985 *WARNING*: - L1376 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] Failed to persist coordinator DB log", session_id, error=str(e))
+- L2989 *WARNING*: - L231 *WARNING*: logger.warning(f"[TABLE BUILDER] Concurrent strategies execution failed: {e}")
+- L2990 *WARNING*: - L288 *WARNING*: logger.warning(f"[TABLE BUILDER] RawJSON pivot failed: {e}")
+- L2991 *WARNING*: - L296 *WARNING*: logger.warning(f"[TABLE BUILDER] pivot_to_wide signature mismatch (skipped): {e}")
+- L2992 *WARNING*: - L298 *WARNING*: logger.warning(f"[TABLE BUILDER] pivot_to_wide failed (skipped): {e}")
+- L2993 *WARNING*: - L349 *WARNING*: logger.warning(f"[TABLE BUILDER] finalize output failed: {e}")
+- L2994 *WARNING*: - L414 *WARNING*: logger.warning(f"[TABLE BUILDER][ASYNC] Concurrent strategies execution failed: {e}")
+- L2995 *WARNING*: - L477 *WARNING*: logger.warning(f"[TABLE BUILDER][ASYNC] finalize output failed: {e}")
+- L2999 *WARNING*: - L312 *WARNING*: logger.warning("[UserPrompt] Webapp mode active but no socketio_emit_func set!")
+- L3000 *WARNING*: - L349 *WARNING*: logger.warning("[CLI Prompt] EOFError encountered.")
+- L3001 *WARNING*: - L370 *WARNING*: logger.warning("[Webapp Prompt] socketio_emit_func not set.")
+- L3002 *WARNING*: - L428 *WARNING*: "WARNING": 30,
+- L3003 *WARNING*: - L507 *WARNING*: logger.warning("\n[Prompt] Timed out.")
+- L3004 *WARNING*: - L558 *WARNING*: logger.warning("\n[Prompt] No input available (EOF). Exiting prompt.")
+- L3005 *WARNING*: - L592 *WARNING*: logger.warning("Invalid input. Please try again.")
+- L3006 *WARNING*: - L594 *WARNING*: logger.warning("[Prompt] Too many invalid attempts.")
+- L3007 *WARNING*: - L659 *WARNING*: logger.warning("[Prompt Queue] Invalid queued yes/no response; falling back to interactive prompt.")
+- L3008 *WARNING*: - L674 *WARNING*: logger.warning("\n[Prompt] Timed out.")
+- L3009 *WARNING*: - L881 *WARNING*: logger.warning("[yellow][FEEDBACK] Skipped manual correction.[/yellow]")
+- L3010 *WARNING*: - L913 *WARNING*: logger.warning("[yellow]Button confirmation cancelled by user.[/yellow]")
+- L3014 *WARNING*: - L49 *WARNING*: logger.warning({
+- L3015 *WARNING*: - L50 *WARNING*: "level": "WARNING",
+- L3016 *WARNING*: - L66 *WARNING*: logger.warning({
+- L3017 *WARNING*: - L67 *WARNING*: "level": "WARNING",
+- L3018 *WARNING*: - L83 *WARNING*: logger.warning({
+- L3019 *WARNING*: - L84 *WARNING*: "level": "WARNING",
+- L3023 *WARNING*: - L1323 *WARNING*: .log-line.level-WARNING {border-left-color:#ffd166;--level-color:#ffd166;}
+- L3024 *WARN*: - L1568 *WARN*: .pipeline-hint[data-level="warn"] {
+- L3025 *NOTE*: - L2139 *NOTE*: .contest-collapsed-note {
+- L3029 *WARN*: - L20 *WARN*: console.warn("Failed to parse JSON payload", err);
+- L3030 *WARNING*: - L156 *WARNING*: pushAlert(error.message || "Unable to refresh tasks.", "warning");
+- L3034 *NOTE*: - L3 *NOTE*: * NOTE: Real SQL injection mitigation must occur server-side via parameterized queries.
+- L3038 *WARN*: - L63 *WARN*: else console.warn('Blocked unsafe navigation', raw);
+- L3039 *WARN*: - L74 *WARN*: console.warn('Blocked unsafe navigation', target);
+- L3043 *WARN*: - L251 *WARN*: level = 'warn';
+- L3044 *WARN*: - L269 *WARN*: level = 'warn';
+- L3045 *WARNING*: - L677 *WARNING*: el.manualUploadSummary?.classList.add('text-warning');
+- L3046 *WARNING*: - L679 *WARNING*: el.manualUploadSummary?.classList.remove('text-warning');
+- L3047 *WARNING*: - L697 *WARNING*: el.manualUploadSummary?.classList.remove('text-warning');
+- L3048 *WARNING*: - L710 *WARNING*: el.manualUploadSummary?.classList.remove('text-warning');
+- L3049 *WARNING*: - L946 *WARNING*: node.classList.remove('alert-info', 'alert-success', 'alert-danger', 'alert-warning');
+- L3050 *WARNING*: - L955 *WARNING*: : tone === 'warning'
+- L3051 *WARNING*: - L956 *WARNING*: ? 'alert-warning'
+- L3052 *WARNING*: - L994 *WARNING*: invalid.length ? 'warning' : 'info'
+- L3053 *NOTE*: - L2941 *NOTE*: collapsedNote.className = 'contest-collapsed-note';
+- L3054 *WARNING*: - L4449 *WARNING*: 'INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL', 'TRACE'
+- L3055 *WARNING*: - L4816 *WARNING*: INFO:'🛈', DEBUG:'⚙️', WARNING:'⚠️', ERROR:'⛔', CRITICAL:'🚨',
+- L3056 *WARNING*: - L4820 *WARNING*: INFO:'#00ffe7', DEBUG:'#8ecae6', WARNING:'#ffd166', ERROR:'#eb4f43', CRITICAL:'#ff006e',
+- L3057 *WARN*: - L4940 *WARN*: const warn = obj.level === 'WARNING';
+- L3058 *WARN*: - L4941 *WARN*: if (logPanelControl.isCollapsed() && (severe || warn)) logPanelControl.expand();
+- L3059 *WARN*: - L5608 *WARN*: console.warn('Socket disconnected:', reason);
+- L3063 *WARNING*: - L5 *WARNING*: */:root,[data-bs-theme=light]{--bs-blue:#0d6efd;--bs-indigo:#6610f2;--bs-purple:#6f42c1;--bs-pink:#d63384;--bs-red:#dc3545;--bs-orange:#fd7e14;-...
+- L3067 *WARNING*: - L115 *WARNING*: {% elif r.status == 'cancelled' %}<span class="badge bg-warning text-dark">Cancelled</span>
+- L3068 *WARNING*: - L161 *WARNING*: {% elif r.status == 'cancelled' %}<span class="badge bg-warning text-dark">Cancelled</span>
+- L3072 *WARNING*: - L247 *WARNING*: Filter logs by severity: INFO, WARNING, ERROR, etc.
+- L3076 *WARNING*: - L212 *WARNING*: # Forbidden dir should be skipped with warning
+
+### docs/troubleshooting.md
+
+- L64 *WARN*: - Check logs for `[WARN] No output file path returned from parser.`
+- L104 *WARNING*: - Re-run the problematic PDF (e.g., the Minnesota 2016 sample) and confirm the logs show `pdf2image` succeeded or that the Poppler warning no longer appears.
+- L118 *WARNING*: - **Root Cause**: Python 3.12 tightened validation around C-extension types that lack a `__module__` attribute. PyMuPDF wheels prior to the upstream fix still e...
+- L120 *WARNING*: 1. **Upgrade to the latest PyMuPDF release**. We pin the minimum supported version in `requirements.txt`. Run `pip install --upgrade PyMuPDF` to pick up the new...
+- L122 *WARNING*: - **Project behaviour**: Our loader records the warning once and surfaces the affected type names in handler metadata so you can confirm whether you are running...
+
+### scripts/debug_pdf_handler_mn.py
+
+- L124 *WARN*: print(f"[warn] Failed to organize context for diagnostics: {exc}")
+
+### scripts/generate_todo_index.py
+
+- L4 *TODO*: Scans text-based source files for TODO-like annotations and writes a markdown
+- L18 *TODO*: KEYWORDS = ("TODO", "FIXME", "HACK", "XXX", "WARNING", "WARN", "NOTE")
+- L20 *FIXME*: "FIXME": "high",
+- L21 *TODO*: "TODO": "medium",
+- L22 *HACK*: "HACK": "medium",
+- L23 *XXX*: "XXX": "medium",
+- L24 *WARNING*: "WARNING": "low",
+- L25 *WARN*: "WARN": "low",
+- L26 *NOTE*: "NOTE": "low",
+- L157 *TODO*: print(f"[FAIL] TODO debt thresholds exceeded: {joined}")
+- L185 *TODO*: "title: \"TODO/FIXME Index\"",
+- L188 *TODO*: f"Index scope: TODO/FIXME/HACK/XXX/WARNING/NOTE annotations under `{roots_text}`.",
+- L198 *TODO*: lines.append("No TODO/FIXME/WARNING/NOTE annotations found under specified roots.")
+- L226 *TODO*: parser = argparse.ArgumentParser(description="Generate TODO/FIXME index")
+
+### webapp/Smart_Elections_Parser_Webapp.py
+
+- L427 *WARNING*: WEBAPP_CONSOLE_LEVELS = set(os.environ.get("WEBAPP_CONSOLE_LEVELS", "ERROR,WARNING").upper().split(","))
+- L705 *WARNING*: Levels: INFO, DEBUG, WARNING, ERROR, CRITICAL, TRACE
+- L744 *WARNING*: LEVELS = {"INFO", "DEBUG", "WARNING", "ERROR", "CRITICAL", "TRACE"}
+- L780 *WARNING*: elif "warning" in mlow:
+- L1179 *WARNING*: # For websocket handshake only: add Cache-Control so webhint stops warning
+- L1497 *WARNING*: logger.warning({"type": "sec", "message": "Favicon path escape blocked", "requested": ico_path})
+- L1599 *WARNING*: logger.warning({
+- L1600 *WARNING*: "level": "WARNING",
+- L1910 *WARNING*: "level": "WARNING",
+- L1993 *WARNING*: logger.warning(
+- L1995 *WARNING*: "level": "WARNING",
+- L2005 *WARNING*: logger.warning(
+- L2007 *WARNING*: "level": "WARNING",
+- L2037 *WARNING*: logger.warning(
+- L2039 *WARNING*: "level": "WARNING",
+- L2324 *WARNING*: logger.warning({
+- L2325 *WARNING*: "level": "WARNING",
+- L2389 *WARNING*: logger.warning({
+- L2390 *WARNING*: "level": "WARNING",
+- L2440 *WARNING*: logger.warning({
+- L2441 *WARNING*: "level": "WARNING",
+- L2463 *WARNING*: logger.warning({
+- L2464 *WARNING*: "level": "WARNING",
+- L2472 *WARNING*: logger.warning({
+- L2473 *WARNING*: "level": "WARNING",
+- L2480 *WARNING*: logger.warning({
+- L2481 *WARNING*: "level": "WARNING",
+
+### webapp/parser/Context_Integration/Context_Library/cache/context_cache.json
+
+- L43 *WARNING*: "raw_html": "<!DOCTYPE html><html lang=\"en\" data-beasties-container=\"\"><head>\n    <meta charset=\"utf-8\">\n    <title>Election Results</title>\n    <base...
+
+### webapp/parser/Context_Integration/Context_Library/constants.py
+
+- L1895 *NOTE*: r"^\s*Note.*$",                     # Note
+- L2084 *WARNING*: "icon-bg-dark", "icon-bg-primary", "icon-bg-secondary", "icon-bg-success", "icon-bg-danger", "icon-bg-warning",
+- L2175 *WARNING*: "warning", "info_box", "navigation", "pagination", "tab", "modal", "tooltip", "ignore", "unknown"
+- L2208 *NOTE*: "navigation", "breadcrumb", "path", "route", "link", "reference", "citation", "annotation", "note", "comment",
+- L2284 *NOTE*: "Reference", "Citation", "Annotation", "Note", "Comment", "Feedback", "Suggestion", "Recommendation",
+- L2300 *NOTE*: "Route", "Link", "Reference", "Citation", "Annotation", "Note", "Comment", "Feedback", "Suggestion",
+
+### webapp/parser/Context_Integration/context_coordinator.py
+
+- L863 *WARNING*: logger.warning("[ALERT MONITOR] Thread did not stop cleanly.")
+- L951 *WARNING*: logger.warning({
+- L952 *WARNING*: "level": "WARNING",
+- L1350 *WARNING*: logger.warning(f"[yellow]Integrity issues:[/yellow] {issues['integrity_issues']}")
+- L1589 *WARNING*: logger.warning(f"[ContextCoordinator] No table structure found for contest: {contest}")
+- L1766 *WARNING*: logger.warning(f"[get_feedback_pattern_kb] Skipping corrupt line: {e}")
+- L1878 *WARNING*: logger.warning("[group_dom_nodes_by_label] No organized DOM parts. (Further warnings suppressed)")
+- L1880 *WARNING*: logger.warning(f"[group_dom_nodes_by_label] No organized DOM parts. (Occurred {ContextCoordinator._dom_parts_warning_count} times)")
+- L1885 *WARNING*: logger.warning("[group_dom_nodes_by_label] No DOM nodes found.")
+- L1903 *WARNING*: logger.warning("[submit_user_feedback] ContextOrganizer has no submit_user_feedback method.")
+- L1931 *WARNING*: logger.warning(f"[correct_and_update_contest] Contest {contest_id} missing type/election_types after sync.")
+- L1955 *WARNING*: logger.warning("[print_contest_summary] No organized contests to summarize.")
+- L1968 *WARNING*: logger.warning("[plot_contest_distribution] No organized contests to plot.")
+- L2019 *WARNING*: logger.warning("No organized DOM parts.")
+- L2022 *WARNING*: logger.warning("No organized DOM parts. (Further warnings suppressed)")
+- L2033 *WARNING*: logger.warning("[get_contest_groups] No contest groups found.")
+- L2042 *WARNING*: logger.warning("[get_panel_groups] No panel groups found.")
+- L2051 *WARNING*: logger.warning("[get_button_groups] No button groups found.")
+- L2060 *WARNING*: logger.warning("[get_table_groups] No table groups found.")
+- L2069 *WARNING*: logger.warning("[get_relationships] No organized context.")
+- L2177 *WARNING*: logger.warning(f"[fuzzy_score] One or both inputs are empty: a='{a_str}', b='{b_str}'")
+- L2183 *WARNING*: logger.warning(f"[fuzzy_score] One or both inputs are too short: a='{a_str}', b='{b_str}'")
+- L2629 *WARNING*: logger.warning(f"[extract_field] Unknown field_type: {field_type}")
+- L2887 *WARNING*: logger.warning(f"[get_full_contest] Contest {contest_id} missing type/election_types after sync.")
+- L2972 *WARNING*: logger.warning(f"[list_tables] Table '{tbl}' missing metadata or columns.")
+- L3004 *WARNING*: logger.warning(f"[get_table_metadata] Table '{table_name}' missing columns.")
+- L3022 *WARNING*: logger.warning(f"[check_missing_tables] Missing tables: {missing}")
+- L3083 *WARNING*: logger.warning(f"[save_table_structure] Failed to save structure for contest: {contest}")
+- L3260 *WARNING*: logger.warning(f"[get_best_button_advanced] Contest argument was not a dict. Converted to: {contest}")
+- L3264 *WARNING*: logger.warning(f"[get_best_button_advanced] Keywords argument was not a list. Converted to: {keywords}")
+- L3268 *WARNING*: logger.warning(f"[get_best_button_advanced] Context argument was not a dict. Converted to: {context}")
+- L3275 *WARNING*: logger.warning("[get_best_button_advanced] _semantic_model is not set or is not an object. Using None.")
+- L3420 *WARNING*: logger.warning(f"[yellow][Coordinator] Button '{cand.get('label')}' rejected, retrying...[/yellow]")
+
+### webapp/parser/Context_Integration/context_organizer.py
+
+- L282 *WARNING*: logger.warning(
+- L407 *WARNING*: logger.warning(f"[CONTEST] Skipping contest with suspiciously large or missing title: {str(title)[:100]}...")
+- L495 *WARNING*: logger.warning(f"[CONTEST] Filtered out {len(filtered_out)} contests due to missing required fields.")
+- L497 *WARNING*: logger.warning(f"  [Filtered] {reason}: {str(c)[:100]}...")
+- L500 *WARNING*: logger.warning("[CONTEST] No contests with required fields for downstream output.")
+- L816 *WARNING*: logger.warning(f"[ML] Anomaly index {idx} out of range for contests list of length {len(contests)}")
+- L1602 *WARNING*: logger.warning(f"  [yellow]{title}[/yellow]: {fixes}")
+- L1608 *WARNING*: logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Duplicate contest detected.\n  [dim]Context:[/dim] {contest}")
+- L1610 *WARNING*: logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing location info.\n  [dim]Context:[/dim] {contest}")
+- L1612 *WARNING*: logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing year.\n  [dim]Context:[/dim] {contest}")
+- L2082 *WARNING*: logger.warning(f"[ContextOrganizer] Could not update context library with feedback: {e}")
+- L2159 *WARNING*: logger.warning(f"[CONTEXT ORGANIZER] No table structure found for contest: {contest}")
+
+### webapp/parser/Context_Integration/librarian.py
+
+- L764 *WARNING*: logger.warning(f"\n[LIBRARIAN SELF-HEAL] Attempt {attempt}...")
+- L774 *WARNING*: logger.warning("[LIBRARIAN SELF-HEAL] Misalignments found. Launching manual_correction...")
+- L777 *WARNING*: logger.warning(f"[LIBRARIAN SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+
+### webapp/parser/handlers/batch_handler.py
+
+- L134 *WARNING*: logger.warning({
+- L135 *WARNING*: "level": "WARNING",
+- L426 *WARNING*: logger.warning({
+- L427 *WARNING*: "level": "WARNING",
+
+### webapp/parser/handlers/formats/html_handler.py
+
+- L216 *WARNING*: app_logger.warning(f"[HTML Handler] County '{county}' not found. Closest matches: {matches}")
+- L220 *WARNING*: app_logger.warning(f"[HTML Handler] Detected county '{county}' is not in known counties for state '{suggested_state or state}'.")
+- L241 *WARNING*: app_logger.warning(f"[HTML Handler] State '{user_state}' not found. Closest matches: {matches}")
+- L285 *WARNING*: app_logger.warning(f"[HTML Handler] County '{user_county}' not found. Closest matches: {matches}")
+
+### webapp/parser/handlers/formats/json_handler.py
+
+- L382 *WARNING*: logger.warning({
+- L383 *WARNING*: "level": "WARNING",
+- L507 *WARNING*: logger.warning({
+- L508 *WARNING*: "level": "WARNING",
+
+### webapp/parser/handlers/formats/pdf_handler.py
+
+- L922 *WARNING*: logger.warning({
+- L923 *WARNING*: "level": "WARNING",
+- L925 *WARN*: "message": f"[WARN] Skipping page {page_index} during OCR batch render: {exc}",
+- L1078 *WARNING*: logger.warning({
+- L1079 *WARNING*: "level": "WARNING",
+- L1082 *WARN*: "[WARN] Detected PyMuPDF %s. Upgrade to %s or newer to avoid parser instability."
+- L2635 *WARNING*: logger.warning({
+- L2636 *WARNING*: "level": "WARNING",
+- L2638 *WARN*: "message": "[WARN] Poppler binaries not detected; skipping pdf2image and using PyMuPDF fallback.",
+- L2658 *WARNING*: logger.warning({
+- L2659 *WARNING*: "level": "WARNING",
+- L2662 *WARN*: "[WARN] pdf2image conversion failed; "
+- L3012 *WARNING*: logger.warning({
+- L3013 *WARNING*: "level": "WARNING",
+- L3015 *WARN*: "message": "[WARN] Skipping full-document OCR pass due to expired sample budget.",
+- L3063 *WARNING*: logger.warning({
+- L3064 *WARNING*: "level": "WARNING",
+- L3066 *WARN*: "message": "[WARN] Aborting full-document OCR pass due to timeout budget.",
+- L3093 *WARNING*: logger.warning({
+- L3094 *WARNING*: "level": "WARNING",
+- L3097 *WARN*: "[WARN] Full-document OCR pass truncated due to OCR_FULLDOC_MAX_PAGES limit. "
+- L3179 *WARNING*: logger.warning({
+- L3180 *WARNING*: "level": "WARNING",
+- L3182 *WARN*: "message": f"[WARN] Multi-mode text extraction failed: {e}",
+- L4506 *WARNING*: logger.warning({
+- L4507 *WARNING*: "level": "WARNING",
+- L4509 *WARN*: "message": f"[WARN] fitz text extraction failed: {e}",
+- L4548 *WARNING*: logger.warning({
+- L4549 *WARNING*: "level": "WARNING",
+- L4551 *WARN*: "message": "[WARN] ENABLE_OCR_FORCE is set but Tesseract is unavailable; skipping OCR fallback.",
+- L4615 *WARNING*: logger.warning({
+- L4616 *WARNING*: "level": "WARNING",
+- L4618 *WARN*: "message": "[WARN] Low-signal text detected but OCR is unavailable or disabled.",
+- L4983 *WARNING*: logger.warning({
+- L4984 *WARNING*: "level": "WARNING",
+- L4986 *WARN*: "message": "[WARN] Auto contest selection failed in batch mode; falling back to filename.",
+- L5498 *WARNING*: logger.warning({
+- L5499 *WARNING*: "level": "WARNING",
+- L5501 *WARN*: "message": f"[WARN] Selected contest '{contest}' not found in column '{contest_column}'. Skipping row filter.",
+- L5600 *WARNING*: logger.warning({
+- L5601 *WARNING*: "level": "WARNING",
+- L5603 *WARN*: "message": f"[WARN] No structured rows matched the inferred column count of {len(headers)}. Total lines scanned: {unmatched_count}",
+- L5643 *WARNING*: logger.warning({
+- L5644 *WARNING*: "level": "WARNING",
+- L5836 *WARNING*: logger.warning({
+- L5837 *WARNING*: "level": "WARNING",
+
+### webapp/parser/handlers/states/arizona/arizona.py
+
+- L25 *WARNING*: logger.warning("[WARN] context_library.json not found. Using fallback config for Arizona handler.")
+- L51 *WARNING*: logger.warning(f"[WARN] Could not expand card {i+1}: {e}")
+- L64 *WARNING*: logger.warning(f"[WARN] Vote Type toggle failed: {e}")
+- L77 *WARNING*: logger.warning(f"[WARN] County toggle failed: {e}")
+- L164 *WARNING*: logger.warning("[FALLBACK] No tables were parsed. Either no results are published yet or the structure has changed.")
+- L165 *WARNING*: logger.warning("[FALLBACK] Please verify that the site has posted election data.")
+
+### webapp/parser/handlers/states/example state/example_county/example_county.py
+
+- L123 *WARNING*: logger.warning("[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
+
+### webapp/parser/handlers/states/example state/example_state.py
+
+- L51 *WARNING*: logger.warning(f"[Example Handler] No specific parser implemented for county: '{county}'. Continuing with state-level logic.")
+- L152 *WARNING*: logger.warning("[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
+
+### webapp/parser/handlers/states/new_york/county/rockland.py
+
+- L72 *WARNING*: logger.warning("[WARNING] dom_parts missing after organize_and_enrich.")
+- L95 *WARNING*: logger.warning("[red]No contest selected. Skipping.[/red]")
+- L139 *WARNING*: logger.warning(f"[yellow][WARNING] Button '{btn1.get('label', '')}' is not clickable (visible={safe_is_visible(element, logger)}, enabled={safe_is_enabled(eleme...
+- L176 *WARNING*: logger.warning(f"[yellow][WARNING] Button '{btn2.get('label', '')}' is not clickable (visible={safe_is_visible(element, logger)}, enabled={safe_is_enabled(eleme...
+
+### webapp/parser/handlers/states/new_york/new_york.py
+
+- L27 *WARNING*: logger.warning("[NY Handler] No county specified in html_context.")
+- L43 *WARNING*: logger.warning(f"[NY Handler] No specific parser implemented for county: '{county}'. Please add it under {module_path}.py")
+
+### webapp/parser/handlers/states/pennsylvania/pennsylvania.py
+
+- L44 *WARNING*: logger.warning(f"[NAV] Step failed: {step} — {e}")
+- L55 *WARNING*: logger.warning(f"[bold yellow]Detected election:[/bold yellow] {header_text}")
+- L76 *WARNING*: logger.warning("[PA] Invalid index input for election selection.")
+- L78 *WARNING*: logger.warning("[PA] Elections dropdown not found.")
+- L80 *WARNING*: logger.warning(f"[PA] Failed to expand Elections menu or load selection: {e}")
+- L96 *WARNING*: logger.warning("[PA] County Breakdown link not found.")
+- L98 *WARNING*: logger.warning(f"[PA] Failed to click County Breakdown link: {e}")
+- L113 *WARNING*: logger.warning("[yellow]Multiple CSV files found in input. Please select one:[/yellow]")
+
+### webapp/parser/health/health_router.py
+
+- L253 *WARNING*: logger.warning(f"[health_router] manual_correction failed (attempt {attempt}): {result.stderr}")
+- L337 *WARNING*: logger.warning("[SELF-HEAL] Misalignments found. Launching manual_correction...")
+- L339 *WARNING*: logger.warning(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+- L341 *WARNING*: logger.warning("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
+- L376 *WARNING*: logger.warning(f"[PIPELINE] Could not fix corrupted JSON files: {e}")
+- L393 *WARNING*: logger.warning("[PIPELINE] Misaligned NER examples found. Self-heal loop will be handled by scan_misaligned_ner.")
+- L395 *WARNING*: logger.warning("[PIPELINE] scan_misaligned_ner failed or file missing. Proceeding with caution.")
+- L427 *WARNING*: logger.warning("[PIPELINE] Model retraining failed.")
+
+### webapp/parser/health/integrity_check_runner.py
+
+- L18 *WARNING*: logger.warning("[INTEGRITY] Context library at %s is missing contest data", context_path)
+
+### webapp/parser/health/log_cache_cleaner_bot.py
+
+- L151 *WARNING*: logger.warning(f"Skipping non-dict entry in spacy_ner_train_data.jsonl: {entry}")
+- L460 *WARNING*: logger.warning("[DB][WARNING] No user tables found in schema 'public'.")
+- L503 *WARNING*: logger.warning("[CLEAN][WARNING] The following files are still too large after cleaning:")
+- L507 *WARNING*: logger.warning("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data:")
+
+### webapp/parser/health/manual_correction_bot.py
+
+- L361 *WARNING*: logger.warning(f"Coordinator ML scoring failed: {e}")
+- L382 *WARNING*: logger.warning(f"Coordinator field suggestion failed: {e}")
+- L395 *WARNING*: logger.warning(f"Log file not found: {path}")
+- L404 *WARNING*: logger.warning(f"[CORRUPT] {path} line {i}: {e}")
+- L434 *WARNING*: logger.warning(f"[SECURITY] Skipping invalid directory: {directory} - {e}")
+- L448 *WARNING*: logger.warning(f"[SECURITY] Skipping file outside allowed directories: {file} - {e}")
+- L454 *WARNING*: logger.warning(f"[SKIP] File not found: {file}")
+- L458 *WARNING*: logger.warning(f"[SKIP] File too large: {file}")
+- L483 *WARNING*: logger.warning(f"[CORRUPT-LINE] {file} line {i+1}: {line[:80]}... ({e})")
+- L497 *WARNING*: logger.warning(f"[CORRUPT] {len(corrupt_items)} lines saved to {corrupt_path}")
+- L502 *WARNING*: logger.warning(f"[FIXED] All lines invalid, recreated empty .jsonl file: {file}")
+- L516 *WARNING*: logger.warning(f"[CORRUPT] {file}: {e}")
+- L530 *WARNING*: logger.warning(f"[CORRUPT] Corrupt JSON saved to {corrupt_path}")
+- L536 *WARNING*: logger.warning(f"[FIXED] All content invalid, recreated minimal valid JSON in {file}")
+- L541 *WARNING*: logger.warning(f"[CORRUPT] {file}: {e}")
+- L555 *WARNING*: logger.warning(f"[QUARANTINED] {file} -> {dest_path}")
+- L559 *WARNING*: logger.warning(f"[DELETED] {file}")
+- L562 *WARNING*: logger.warning(f"[SKIP-DELETE] File already missing: {file}")
+- L597 *WARNING*: logger.warning(f"[SECURITY] Skipping invalid directory: {d} - {e}")
+- L615 *WARNING*: logger.warning(f"[SECURITY] Skipping file outside allowed directories: {f} - {e}")
+- L624 *WARNING*: logger.warning(f"[FIND-LOGS] Skipped {d}: {e}")
+- L649 *WARNING*: logger.warning(f"[CORRUPT] {path} line {line_num}: {e}")
+- L808 *WARNING*: logger.warning(f"Invalid JSON, skipping edit: {e}")
+- L851 *WARNING*: logger.warning(
+- L1105 *WARNING*: logger.warning(
+- L1211 *WARN*: If missing, create with DEFAULT_STRUCTURE. Warn if schema version mismatches.
+- L1232 *WARNING*: logger.warning(f"Schema version mismatch: found {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider migrating.")
+- L1256 *WARNING*: logger.warning(f"[SECURITY] Skipping invalid log file: {log_file} - {e}")
+- L1288 *WARNING*: logger.warning(f"[AUTO] Could not delete log file {log_file}: {e}")
+- L1416 *WARNING*: logger.warning(f"[SKIP] Could not load {log_file}: {e}")
+- L1432 *WARNING*: logger.warning("No log files matched any of the specified fields. Will attempt to process all log files for all fields.")
+- L1518 *WARNING*: logger.warning(f"[SECURITY] Cannot delete file outside allowed directories: {log_file} - {e}")
+- L1520 *WARNING*: logger.warning(f"Could not delete log file {log_file}: {e}")
+- L1540 *WARNING*: logger.warning("[WARNING] No entries were processed. Check your log file naming, field configuration, or use --dry-run for debugging.")
+
+### webapp/parser/health/retrain_table_structure_models.py
+
+- L178 *WARNING*: logger.warning(f"[CLEAN] File not found: {jsonl_path}")
+- L186 *WARNING*: logger.warning(f"[CLEAN] Could not parse line: {e}")
+- L201 *WARNING*: logger.warning(f"[CLEAN] Alignment check failed for text: {text[:50]}... ({e})")
+- L274 *WARNING*: logger.warning(f"Failed to load {path}: {e}")
+- L403 *WARNING*: logger.warning(f"Skipping misaligned entity in: {text}")
+- L408 *WARNING*: logger.warning(f"Error validating entity alignment: {e}")
+- L434 *WARNING*: logger.warning(f"[spaCy] Could not check GPU availability: {e}")
+- L450 *WARNING*: logger.warning(f"[spaCy] Could not load lexeme normalization table. You may ignore this for English. Error: {e}")
+- L536 *WARNING*: logger.warning(f"[NER] Skipped {misaligned_count} misaligned examples. Saved to {misaligned_path}")
+- L550 *WARNING*: logger.warning("No NER training examples found. Skipping spaCy NER retraining.")
+- L619 *WARNING*: logger.warning("[SUGGESTION] Consider lowering min_delta or increasing patience if you want longer training.")
+- L621 *WARNING*: logger.warning("[SUGGESTION] Model improved until the last epoch. Consider increasing epochs for further improvement.")
+- L622 *WARNING*: logger.warning(f"[SUGGESTION] Next run: patience={patience}, min_delta={min_delta:.2f}, epochs={epochs}")
+- L708 *WARNING*: logger.warning("No training examples found. Aborting retraining.")
+- L727 *WARNING*: logger.warning(f"[WARN] Could not delete old model directory {oldest_path}: {e}")
+- L739 *WARNING*: logger.warning(f"[WARN] Failed to load existing model: {e}")
+- L742 *WARNING*: logger.warning("Falling back to base model (all-MiniLM-L6-v2).")
+- L782 *WARNING*: logger.warning(f"[WARN] Could not update canonical model directory: {e}")
+- L810 *WARNING*: logger.warning(f"MISALIGNED: {text} {annots['entities']}")
+- L840 *WARNING*: logger.warning("[DB] Base.metadata.tables is empty. No models registered? Did you import all model classes?")
+
+### webapp/parser/health/scan_misaligned_ner.py
+
+- L62 *WARNING*: logger.warning(f"[CORRUPT] Could not parse line: {e}")
+- L83 *WARNING*: logger.warning(f"\n[MISALIGNED] Top {top_n} most frequent misaligned NER texts:")
+- L85 *WARNING*: logger.warning(f"  {repr(text)}: {count} times")
+- L86 *WARNING*: logger.warning("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data.")
+- L87 *WARNING*: logger.warning("Run the manual_correction to review and clean these examples before retraining.")
+- L88 *WARNING*: logger.warning("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
+- L98 *WARNING*: logger.warning(f"[WARN] Could not remove old misaligned file: {e}")
+- L112 *WARNING*: logger.warning("[SELF-HEAL] Misalignments found. Launching manual_correction for spacy_ner_misaligned...")
+- L119 *WARNING*: logger.warning(f"[SELF-HEAL] manual_correction exited with code {result.returncode}")
+- L120 *WARNING*: logger.warning(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+- L122 *WARNING*: logger.warning("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
+
+### webapp/parser/html_election_parser.py
+
+- L61 *WARNING*: logger.warning("Deleting .processed_urls cache for fresh start...")
+- L430 *WARNING*: logger.warning({
+- L431 *WARNING*: "level": "WARNING",
+- L445 *WARNING*: logger.warning({
+- L446 *WARNING*: "level": "WARNING",
+- L508 *WARNING*: logger.warning({
+- L509 *WARNING*: "level": "WARNING",
+- L582 *WARNING*: logger.warning(payload_2)
+- L909 *WARNING*: logger.warning({
+- L910 *WARNING*: "level": "WARNING",
+- L956 *WARNING*: logger.warning({
+- L957 *WARNING*: "level": "WARNING",
+- L1010 *WARNING*: logger.warning({
+- L1011 *WARNING*: "level": "WARNING",
+- L1117 *WARNING*: "level": "WARNING",
+- L1122 *WARNING*: logger.warning(payload)
+- L1156 *WARNING*: logger.warning({
+- L1157 *WARNING*: "level": "WARNING",
+- L1237 *WARNING*: logger.warning({
+- L1238 *WARNING*: "level": "WARNING",
+- L1292 *WARNING*: "level": "WARNING",
+- L1297 *WARNING*: logger.warning(payload)
+- L1389 *WARNING*: logger.warning({
+- L1390 *WARNING*: "level": "WARNING",
+- L1407 *WARNING*: "level": "WARNING",
+- L1412 *WARNING*: logger.warning(payload)
+- L1423 *WARNING*: "level": "WARNING",
+- L1428 *WARNING*: logger.warning(payload)
+- L1430 *WARN*: msg = "[WARN] No output file path returned from parser and no output files found."
+- L1432 *WARNING*: "level": "WARNING",
+- L1437 *WARNING*: logger.warning(payload)
+- L1442 *WARNING*: "level": "WARNING",
+- L1447 *WARNING*: logger.warning(payload)
+- L1566 *WARNING*: logger.warning({
+- L1567 *WARNING*: "level": "WARNING",
+- L1627 *WARNING*: logger.warning({
+- L1628 *WARNING*: "level": "WARNING",
+
+### webapp/parser/navigator/navigation_runner.py
+
+- L203 *WARNING*: logger.warning({
+- L204 *WARNING*: "level": "WARNING",
+
+### webapp/parser/state_router.py
+
+- L49 *WARNING*: logger.warning("[Router] handlers/states directory not found.")
+- L66 *WARNING*: logger.warning(f"[Router] counties directory not found for state: {state_key}")
+- L137 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] No handler states available for manual selection.")
+- L154 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
+- L157 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
+- L160 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] State '{state}' not found. Please try again.")
+- L179 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
+- L182 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] County '{county}' not found for state '{state}'. Please try again.")
+- L189 *WARNING*: logger.warning(f"[Fallback][Session:{session_id}] Too many failed attempts. Exiting fallback.")
+- L205 *WARNING*: logger.warning(f"[Router] Requested state '{state_name}' not found on disk. Skipping restrict filter.")
+- L512 *WARNING*: logger.warning(f"No counties found for state '{state}'. Try --fuzzy for fuzzy matching.")
+- L523 *WARNING*: logger.warning(f"Failed to load context from file: {e}")
+- L533 *WARNING*: logger.warning("No suitable handler found.")
+- L540 *WARNING*: logger.warning("No handler selected. Exiting.")
+- L547 *WARNING*: logger.warning("Still could not import a suitable handler.")
+
+### webapp/parser/utils/browser_utils.py
+
+- L102 *WARNING*: logger.warning(f"[browser_utils] Failed to safely parse context_library value for key '{key}'")
+- L104 *WARNING*: logger.warning(f"[browser_utils] Skipping unsafe context_library value for key '{key}'")
+- L308 *WARNING*: logger.warning(f"[safe_attributes] Playwright JS extraction failed: {e}")
+- L322 *WARNING*: logger.warning(f"[safe_attributes] Playwright fallback extraction failed: {e}")
+- L408 *WARNING*: logger and logger.warning(f"[safe_count] Object is not countable: {type(obj)}")
+- L454 *WARNING*: logger.warning(f"[safe_launch] browser_type is not a SyncBrowserType: {type(browser_type)}")
+- L474 *WARNING*: logger.warning(f"[async_safe_launch] browser_type is not an AsyncBrowserType: {type(browser_type)}")
+- L553 *WARNING*: logger.warning({
+- L554 *WARNING*: "level": "WARNING",
+- L582 *WARNING*: logger.warning(f"[CAPTCHA] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
+- L591 *WARNING*: logger.warning(f"[CAPTCHA] CAPTCHA detected in async mode. Manual intervention not implemented. (Session: {session_id})")
+- L615 *WARNING*: logger.warning(f"[CAPTCHA] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
+- L624 *WARNING*: logger.warning({
+- L625 *WARNING*: "level": "WARNING",
+- L636 *WARNING*: logger.warning(f"[CAPTCHA] CAPTCHA detected in sync mode. Manual intervention not implemented. (Session: {session_id})")
+- L794 *WARNING*: logger and logger.warning("[SCROLL] User aborted scrolling.")
+- L830 *WARNING*: logger and logger.warning("[SCROLL] Max scroll time/attempts exceeded. Page may not be fully loaded.")
+
+### webapp/parser/utils/captcha_tools.py
+
+- L118 *WARNING*: logger.warning(f"[CAPTCHA] Foreground window fallback failed: {e}")
+- L154 *WARNING*: logger.warning("[CAPTCHA] CAPTCHA not resolved within timeout.")
+
+### webapp/parser/utils/contest_selector.py
+
+- L645 *WARNING*: elif lvl == "warning":
+- L646 *WARNING*: logger.warning(entry)
+- L1039 *WARNING*: _log("warning", "selector", f"Feedback loop {loop+1}: verifying contests", session_id=session_id,
+- L1626 *WARNING*: logger.warning({"level": "WARNING", "type": "selector", "message": "Empty search term", "session_id": session_id})
+- L1631 *WARNING*: logger.warning({"level": "WARNING", "type": "selector", "message": f"No matches for '{term}'", "session_id": session_id})
+- L1703 *WARNING*: logger.warning({"level": "WARNING", "type": "selector", "message": "No match; try again.", "session_id": session_id})
+
+### webapp/parser/utils/dom_extractor.py
+
+- L153 *WARNING*: logger.warning(f"[DOM_EXTRACTOR] failure: {e}")
+
+### webapp/parser/utils/dynamic_table_extractor.py
+
+- L124 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] No <table> found in provided table_html.", session_id)
+- L129 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] No <tr> rows found in table_html.", session_id)
+- L171 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] Candidate NLP/score step failed", session_id, error=str(e))
+- L187 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] No suitable table candidates found.", session_id)
+- L217 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] Error while scanning <table> elements", session_id, error=str(e))
+- L229 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] DOM extraction failed", session_id, error=str(e))
+- L272 *WARNING*: _emit("warning", "extractor", "[EXTRACTOR] Pattern extraction failed", session_id, error=str(e))
+- L776 *WARNING*: _emit("warning", "extractor", "No learned DOM patterns found.")
+- L800 *WARNING*: _emit("warning", "extractor", "Entry deleted.")
+- L805 *WARNING*: _emit("warning", "extractor", "Unknown action.")
+- L807 *WARNING*: _emit("warning", "extractor", "Invalid entry number.")
+
+### webapp/parser/utils/extraction_strategies.py
+
+- L68 *WARNING*: logger.warning(f"[STRATEGY] {name} failed: {e}")
+
+### webapp/parser/utils/format_router.py
+
+- L374 *WARNING*: logger.warning({
+- L375 *WARNING*: "level": "WARNING",
+- L377 *WARN*: "message": "[WARN] No supported file formats found on the page.",
+- L402 *WARNING*: logger.warning({
+- L403 *WARNING*: "level": "WARNING",
+- L405 *WARN*: "message": f"[WARN] Unsupported format requested: {format_str}",
+- L409 *WARNING*: logger.warning({
+- L410 *WARNING*: "level": "WARNING",
+- L667 *WARNING*: logger.warning({
+- L668 *WARNING*: "level": "WARNING",
+- L887 *WARNING*: logger.warning({
+- L888 *WARNING*: "level": "WARNING",
+- L965 *WARNING*: logger.warning({
+- L966 *WARNING*: "level": "WARNING",
+
+### webapp/parser/utils/html_scanner.py
+
+- L163 *WARNING*: "level": "WARNING",
+- L167 *WARNING*: logger.warning(payload)
+- L189 *WARNING*: "level": "WARNING",
+- L193 *WARNING*: logger.warning(payload)
+- L288 *WARNING*: "level": "WARNING",
+- L292 *WARNING*: logger.warning(payload)
+- L315 *WARNING*: "level": "WARNING",
+- L319 *WARNING*: logger.warning(payload)
+- L353 *WARNING*: "level": "WARNING",
+- L357 *WARNING*: logger.warning(payload)
+- L380 *WARNING*: "level": "WARNING",
+- L384 *WARNING*: logger.warning(payload)
+- L579 *WARNING*: "level": "WARNING",
+- L583 *WARNING*: logger.warning(payload)
+- L784 *WARNING*: logger.warning(f"[ML SIMILARITY] No embedding computed for segment: {safe_get(segment, 'segment_hash', None)}")
+- L807 *WARNING*: logger.warning(f"[ML SIMILARITY] No embedding computed for segment: {safe_get(segment, 'segment_hash', None)}")
+- L1034 *WARNING*: "level": "WARNING",
+- L1038 *WARNING*: logger.warning(payload)
+- L1045 *WARNING*: "level": "WARNING",
+- L1049 *WARNING*: logger.warning(payload)
+- L1376 *WARNING*: "level": "WARNING",
+- L1380 *WARNING*: logger.warning(payload)
+- L1438 *WARNING*: "level": "WARNING",
+- L1442 *WARNING*: logger.warning(payload)
+- L1691 *WARNING*: logger.warning({"level": "WARNING", "type": "dom_segments", "message": msg_warn})
+- L1747 *WARNING*: logger.warning({"level": "WARNING", "type": "page_hash", "message": msg})
+- L1754 *WARNING*: logger.warning({"level": "WARNING", "type": "page_hash", "message": msg})
+- L1766 *WARNING*: logger.warning({"level": "WARNING", "type": "page_hash", "message": msg})
+- L1789 *WARNING*: logger.warning({"level": "WARNING", "type": "cache", "message": msg})
+- L1824 *WARNING*: logger.warning({"level": "WARNING", "type": "cache", "message": msg})
+- L2003 *WARNING*: logger.warning({"level": "WARNING", "type": "segment_review", "message": msg})
+- L2012 *WARNING*: else logger.warning({
+- L2013 *WARNING*: "level": "WARNING",
+- L2129 *WARNING*: "level": "WARNING",
+- L2133 *WARNING*: logger.warning(payload)
+- L2145 *WARNING*: "level": "WARNING",
+- L2149 *WARNING*: logger.warning(payload)
+- L2158 *WARNING*: "level": "WARNING",
+- L2162 *WARNING*: logger.warning(payload)
+- L2177 *WARNING*: "level": "WARNING",
+- L2181 *WARNING*: logger.warning(payload)
+- L2193 *WARNING*: "level": "WARNING",
+- L2197 *WARNING*: logger.warning(payload)
+- L2206 *WARNING*: "level": "WARNING",
+- L2210 *WARNING*: logger.warning(payload)
+- L2219 *WARNING*: "level": "WARNING",
+- L2223 *WARNING*: logger.warning(payload)
+- L2233 *WARNING*: "level": "WARNING",
+- L2237 *WARNING*: logger.warning(payload)
+- L2248 *WARNING*: "level": "WARNING",
+- L2252 *WARNING*: logger.warning(payload)
+- L2262 *WARNING*: "level": "WARNING",
+- L2266 *WARNING*: logger.warning(payload)
+- L2278 *WARNING*: "level": "WARNING",
+- L2282 *WARNING*: logger.warning(payload)
+- L2293 *WARNING*: "level": "WARNING",
+- L2297 *WARNING*: logger.warning(payload)
+- L2307 *WARNING*: "level": "WARNING",
+- L2311 *WARNING*: logger.warning(payload)
+- L2321 *WARNING*: "level": "WARNING",
+- L2325 *WARNING*: logger.warning(payload)
+- L2335 *WARNING*: "level": "WARNING",
+- L2339 *WARNING*: logger.warning(payload)
+- L2349 *WARNING*: "level": "WARNING",
+- L2353 *WARNING*: logger.warning(payload)
+- L2369 *WARNING*: "level": "WARNING",
+- L2373 *WARNING*: logger.warning(payload)
+- L2384 *WARNING*: "level": "WARNING",
+- L2388 *WARNING*: logger.warning(payload)
+- L2399 *WARNING*: "level": "WARNING",
+- L2403 *WARNING*: logger.warning(payload)
+- L2414 *WARNING*: "level": "WARNING",
+- L2418 *WARNING*: logger.warning(payload)
+- L2429 *WARNING*: "level": "WARNING",
+- L2433 *WARNING*: logger.warning(payload)
+- L2441 *WARNING*: "level": "WARNING",
+- L2445 *WARNING*: logger.warning(payload)
+- L2454 *WARNING*: "level": "WARNING",
+- L2458 *WARNING*: logger.warning(payload)
+- L2472 *WARNING*: "level": "WARNING",
+- L2476 *WARNING*: logger.warning(payload)
+- L2486 *WARNING*: "level": "WARNING",
+- L2490 *WARNING*: logger.warning(payload)
+- L2501 *WARNING*: "level": "WARNING",
+- L2505 *WARNING*: logger.warning(payload)
+- L2515 *WARNING*: "level": "WARNING",
+- L2519 *WARNING*: logger.warning(payload)
+- L2529 *WARNING*: "level": "WARNING",
+- L2533 *WARNING*: logger.warning(payload)
+- L2543 *WARNING*: "level": "WARNING",
+- L2547 *WARNING*: logger.warning(payload)
+- L2790 *WARNING*: logger.warning({"level": "WARNING", "type": "context", "message": msg})
+- L2806 *WARNING*: logger.warning({"level": "WARNING", "type": "context", "message": msg})
+- L2815 *WARNING*: logger.warning({"level": "WARNING", "type": "context", "message": msg})
+- L2827 *WARNING*: logger.warning({"level": "WARNING", "type": "context", "message": msg})
+- L2837 *WARNING*: logger.warning({"level": "WARNING", "type": "context", "message": msg})
+- L2847 *WARNING*: logger.warning({"level": "WARNING", "type": "context", "message": msg})
+- L2869 *WARNING*: logger.warning({"level": "WARNING", "type": "scan_html", "message": msg})
+- L3297 *WARNING*: logger.warning({"level": "WARNING", "type": "dom_debug", "message": msg_warn})
+
+### webapp/parser/utils/model_registry.py
+
+- L389 *WARNING*: logger.warning(f"Failed loading local override for SentenceTransformer: {e}")
+- L409 *WARNING*: logger.warning("TRANSFORMERS_OFFLINE/HUGGINGFACE_HUB_OFFLINE set; skipping HF download. Embeddings disabled.")
+- L426 *WARNING*: # Downgrade DNS/network errors to WARNING for noisy environments
+- L429 *WARNING*: logger.warning(f"Failed to load base SentenceTransformer (network/DNS). Running without embeddings. Error: {e}")
+
+### webapp/parser/utils/output_utils.py
+
+- L128 *WARNING*: logger.warning("[yellow][OUTPUT] Year could not be verified. Using 'Unknown'.[/yellow]")
+- L131 *WARNING*: logger.warning("[yellow][OUTPUT] contests could not be verified. Using 'unknown_contests'.[/yellow]")
+- L569 *WARNING*: logger.warning(f"[OUTPUT_UTILS] Enrichment build failed: {e}")
+- L645 *WARNING*: logger.warning(f"[OUTPUT_UTILS] XLSX export failed: {e}")
+
+### webapp/parser/utils/pattern_extractor.py
+
+- L26 *WARNING*: logger.warning(f"[PATTERN] load fail {e}")
+- L95 *WARNING*: logger.warning(f"[PATTERN] pattern error {pat.get('name')}: {e}")
+
+### webapp/parser/utils/pivot.py
+
+- L1353 *WARNING*: logger.warning("[PIVOT] No candidates detected – verify headers and candidate column extraction.")
+
+### webapp/parser/utils/shared_logger.py
+
+- L159 *WARNING*: elif record.levelno >= logging.WARNING:
+- L160 *WARNING*: self.shared_logger.warning(msg)
+- L236 *WARNING*: "WARNING": logging.WARNING,
+- L307 *WARNING*: "WARNING": "yellow",
+- L369 *WARNING*: def warning(self, msg, context=None, exc_info=None):
+- L371 *WARNING*: self._log("WARNING", msg, context, color="yellow")
+- L385 *WARNING*: "warning": "yellow",
+- L598 *WARNING*: self.warning(f"Log directory does not exist: {log_dir}")
+- L615 *WARNING*: self.warning(f"Corrupt line in {path}: {e}")
+
+### webapp/parser/utils/shared_logic.py
+
+- L373 *WARNING*: logger.warning(f"[safe_query] session.query({model}) failed: {e}")
+- L396 *WARNING*: logger.warning(f"[safe_filter_by] No mapper found for model {model}")
+- L402 *WARNING*: logger.warning(f"[safe_filter_by] Could not inspect model {model}: {e}")
+- L416 *WARNING*: logger.warning(f"[safe_filter_by] filter_by failed: {e}")
+- L429 *WARNING*: logger.warning(f"[safe_first] query.first() failed: {e}")
+- L499 *WARNING*: logger.warning(f"[PLUGIN EXTRACTION] Plugin {plugin} has no callable 'extract' method.")
+- L633 *WARNING*: logger.warning(f"[WARN] Model save failed (attempt {attempt}): {e}")
+- L847 *WARNING*: logger.warning(f"[safe_append] Target is not a list: {type(lst)}; coercing to list.")
+- L869 *WARNING*: logger.warning(f"[safe_update] Target is not a dict: {type(dct)}")
+- L873 *WARNING*: logger.warning(f"[safe_update] Updates is not a dict: {type(updates)}")
+- L893 *WARNING*: logger.warning(f"[safe_extend] Target is not a list: {type(lst)}; coercing to list.")
+- L1233 *WARNING*: logger.warning(f"[DOM_PARTS] '{label}' is not a list for URL: {url} (type: {type(lst).__name__})")
+- L1496 *WARNING*: logger.warning(f"State '{state_norm}' not found in county map")
+- L2360 *WARNING*: logger.warning(f"[inventory] architecture.md not found at {md_file}")
+- L2366 *WARNING*: logger.warning("[inventory] Markers not found in architecture.md; aborting replace.")
+- L2381 *WARNING*: logger.warning("[inventory] generate_project_map completed with warnings; check markers and path.")
+- L2427 *TODO*: """Find lines containing TODO/FIXME/WARN and similar keywords (case-insensitive). Returns list of (lineno, keyword, cleaned_text)."""
+- L2429 *TODO*: pat = re.compile(r"\b(TODO|FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+- L3106 *TODO*: # TODO/FIXME/WARN
+- L3109 *TODO*: lines.append("- TODO/FIXME/WARN:")
+- L3179 *TODO*: """Aggregate TODO/FIXME/WARN lines from webapp/ into a compact index.
+- L3189 *FIXME*: high_keywords = ['FIXME', 'BUG']
+- L3190 *TODO*: medium_keywords = ['TODO', 'HACK', 'XXX']
+- L3191 *WARN*: low_keywords = ['WARN', 'WARNING', 'NOTE']
+- L3230 *TODO*: lines.append('title: "TODO/FIXME Index"')
+- L3233 *TODO*: lines.append("Index scope: TODO/FIXME annotations under `webapp/`.")
+- L3279 *TODO*: raw_id = f"todo-{priority}-{abs(hash(path))}"
+- L3318 *WARNING*: logger.warning(f"[noise] No suggestions file found at {path}")
+- L3689 *TODO*: lines.append(f"#### ⚠️ TODO/FIXME/WARN ({mod_name})")
+
+### webapp/parser/utils/strategy_concurrency.py
+
+- L37 *WARNING*: logger.warning(f"[CONCURRENCY] DOM strategy {name} failed: {e}")
+- L65 *WARNING*: logger.warning(f"[CONCURRENCY] Strategy {name} error: {e}")
+- L73 *WARNING*: logger.warning(f"[CONCURRENCY] {_safe_run_strategy.__name__} {name} failed: {e}")
+- L102 *WARNING*: logger.warning(f"[CONCURRENCY][ASYNC] DOM strategy {name} failed: {e}")
+- L120 *WARNING*: logger.warning(f"[CONCURRENCY][ASYNC] Strategy {name} error: {e}")
+
+### webapp/parser/utils/table_builder.py
+
+- L816 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] dynamic_table_extractor failed for panel table", session_id, error=str(e))
+- L828 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] dynamic_table_extractor failed (no panels path)", session_id, error=str(e))
+- L836 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] all_panel_tables was not a list; coercing to empty list", session_id, got_type=str(type(all_panel_tables)))
+- L845 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] Dropping invalid table entry", session_id, entry_type=str(type(item)))
+- L862 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] sanitize failed", session_id, error=str(e))
+- L867 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] harmonize failed", session_id, error=str(e))
+- L873 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] collapse_ballot_synonym_columns failed", session_id, error=str(e))
+- L925 *WARNING*: "info" if status == "ok" else "warning",
+- L950 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] entity annotate failed", session_id, error=str(e))
+- L955 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] stringify entity_info failed", session_id, error=str(e))
+- L975 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] pivot_to_wide failed", session_id, error=str(e))
+- L995 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] ensure division totals failed", session_id, error=str(e))
+- L1288 *WARNING*: _emit("warning", "builder", f"[TABLE_BUILDER] Column marked incorrect: {col_name}", session_id, contest=contest)
+- L1361 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] Failed to persist table structure logs", session_id, error=str(e))
+- L1376 *WARNING*: _emit("warning", "builder", "[TABLE_BUILDER] Failed to persist coordinator DB log", session_id, error=str(e))
+
+### webapp/parser/utils/table_core.py
+
+- L231 *WARNING*: logger.warning(f"[TABLE BUILDER] Concurrent strategies execution failed: {e}")
+- L288 *WARNING*: logger.warning(f"[TABLE BUILDER] RawJSON pivot failed: {e}")
+- L296 *WARNING*: logger.warning(f"[TABLE BUILDER] pivot_to_wide signature mismatch (skipped): {e}")
+- L298 *WARNING*: logger.warning(f"[TABLE BUILDER] pivot_to_wide failed (skipped): {e}")
+- L349 *WARNING*: logger.warning(f"[TABLE BUILDER] finalize output failed: {e}")
+- L414 *WARNING*: logger.warning(f"[TABLE BUILDER][ASYNC] Concurrent strategies execution failed: {e}")
+- L477 *WARNING*: logger.warning(f"[TABLE BUILDER][ASYNC] finalize output failed: {e}")
+
+### webapp/parser/utils/user_prompt.py
+
+- L312 *WARNING*: logger.warning("[UserPrompt] Webapp mode active but no socketio_emit_func set!")
+- L349 *WARNING*: logger.warning("[CLI Prompt] EOFError encountered.")
+- L370 *WARNING*: logger.warning("[Webapp Prompt] socketio_emit_func not set.")
+- L428 *WARNING*: "WARNING": 30,
+- L507 *WARNING*: logger.warning("\n[Prompt] Timed out.")
+- L558 *WARNING*: logger.warning("\n[Prompt] No input available (EOF). Exiting prompt.")
+- L592 *WARNING*: logger.warning("Invalid input. Please try again.")
+- L594 *WARNING*: logger.warning("[Prompt] Too many invalid attempts.")
+- L659 *WARNING*: logger.warning("[Prompt Queue] Invalid queued yes/no response; falling back to interactive prompt.")
+- L674 *WARNING*: logger.warning("\n[Prompt] Timed out.")
+- L881 *WARNING*: logger.warning("[yellow][FEEDBACK] Skipped manual correction.[/yellow]")
+- L913 *WARNING*: logger.warning("[yellow]Button confirmation cancelled by user.[/yellow]")
+
+### webapp/parser/web_pipeline.py
+
+- L49 *WARNING*: logger.warning({
+- L50 *WARNING*: "level": "WARNING",
+- L66 *WARNING*: logger.warning({
+- L67 *WARNING*: "level": "WARNING",
+- L83 *WARNING*: logger.warning({
+- L84 *WARNING*: "level": "WARNING",
+
+### webapp/static/css/run_parser.css
+
+- L1323 *WARNING*: .log-line.level-WARNING {border-left-color:#ffd166;--level-color:#ffd166;}
+- L1568 *WARN*: .pipeline-hint[data-level="warn"] {
+- L2139 *NOTE*: .contest-collapsed-note {
+
+### webapp/static/js/azure_health.js
+
+- L20 *WARN*: console.warn("Failed to parse JSON payload", err);
+- L156 *WARNING*: pushAlert(error.message || "Unable to refresh tasks.", "warning");
+
+### webapp/static/js/data_framework.js
+
+- L3 *NOTE*: * NOTE: Real SQL injection mitigation must occur server-side via parameterized queries.
+
+### webapp/static/js/nav_guard.js
+
+- L63 *WARN*: else console.warn('Blocked unsafe navigation', raw);
+- L74 *WARN*: console.warn('Blocked unsafe navigation', target);
+
+### webapp/static/js/run_parser.js
+
+- L251 *WARN*: level = 'warn';
+- L269 *WARN*: level = 'warn';
+- L677 *WARNING*: el.manualUploadSummary?.classList.add('text-warning');
+- L679 *WARNING*: el.manualUploadSummary?.classList.remove('text-warning');
+- L697 *WARNING*: el.manualUploadSummary?.classList.remove('text-warning');
+- L710 *WARNING*: el.manualUploadSummary?.classList.remove('text-warning');
+- L946 *WARNING*: node.classList.remove('alert-info', 'alert-success', 'alert-danger', 'alert-warning');
+- L955 *WARNING*: : tone === 'warning'
+- L956 *WARNING*: ? 'alert-warning'
+- L994 *WARNING*: invalid.length ? 'warning' : 'info'
+- L2941 *NOTE*: collapsedNote.className = 'contest-collapsed-note';
+- L4449 *WARNING*: 'INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL', 'TRACE'
+- L4816 *WARNING*: INFO:'🛈', DEBUG:'⚙️', WARNING:'⚠️', ERROR:'⛔', CRITICAL:'🚨',
+- L4820 *WARNING*: INFO:'#00ffe7', DEBUG:'#8ecae6', WARNING:'#ffd166', ERROR:'#eb4f43', CRITICAL:'#ff006e',
+- L4940 *WARN*: const warn = obj.level === 'WARNING';
+- L4941 *WARN*: if (logPanelControl.isCollapsed() && (severe || warn)) logPanelControl.expand();
+- L5608 *WARN*: console.warn('Socket disconnected:', reason);
+
+### webapp/static/vendor/bootstrap-5.3.0.min.css
+
+- L5 *WARNING*: */:root,[data-bs-theme=light]{--bs-blue:#0d6efd;--bs-indigo:#6610f2;--bs-purple:#6f42c1;--bs-pink:#d63384;--bs-red:#dc3545;--bs-orange:#fd7e14;--bs-yellow:#ffc1...
+
+### webapp/templates/history.html
+
+- L115 *WARNING*: {% elif r.status == 'cancelled' %}<span class="badge bg-warning text-dark">Cancelled</span>
+- L161 *WARNING*: {% elif r.status == 'cancelled' %}<span class="badge bg-warning text-dark">Cancelled</span>
+
+### webapp/templates/run_parser.html
+
+- L247 *WARNING*: Filter logs by severity: INFO, WARNING, ERROR, etc.
+
+### webapp/tests/test_manual_correction_security.py
+
+- L212 *WARNING*: # Forbidden dir should be skipped with warning
