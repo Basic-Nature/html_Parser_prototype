@@ -80,14 +80,14 @@ def remove_url(index_or_value) -> bool:
     if isinstance(index_or_value, int):
         if 0 <= index_or_value < len(urls):
             popped = urls.pop(index_or_value)
-            logger.warning(f"[REMOVED] {popped}")
+            logger.info(f"[REMOVED] {popped}")
             removed = True
     else:
         target = str(index_or_value).strip().lower()
         new_urls = [u for u in urls if u.lower() != target]
         if len(new_urls) != len(urls):
             urls = new_urls
-            logger.warning(f"[REMOVED] {index_or_value}")
+            logger.info(f"[REMOVED] {index_or_value}")
             removed = True
     if removed:
         save_urls(urls)
@@ -126,7 +126,7 @@ def list_files(folder, allow_delete=False):
             if 0 <= idx < len(files):
                 try:
                     os.remove(os.path.join(folder, files[idx]))
-                    logger.warning(f"[DELETED] {files[idx]}")
+                    logger.info(f"[DELETED] {files[idx]}")
                 except Exception as e:
                     logger.error(f"[ERROR] Delete failed: {e}")
 

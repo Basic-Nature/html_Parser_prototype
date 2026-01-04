@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import os
 from typing import Generator, List, Optional
 
 # webapp/parser/utils/db_utils.py
@@ -27,8 +28,14 @@ from .models import (
     WarehouseElectionResult,
 )
 
+# Allow tests to override DB engine to avoid external DB connections
+TEST_SQLITE_URL = os.environ.get("TEST_SQLITE_URL")
+
 # Set up SQLAlchemy engine and session
-engine = get_sqlalchemy_engine()
+if TEST_SQLITE_URL:
+    engine = create_engine(TEST_SQLITE_URL, future=True)
+else:
+    engine = get_sqlalchemy_engine()
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 _engine = None  # for lazy initialization if needed
 
@@ -58,7 +65,7 @@ def get_session() -> Generator[Session, None, None]:
 def get_engine() -> create_engine:
     global _engine
     if _engine is None:
-        _engine = get_sqlalchemy_engine()
+        _engine = engine
     return _engine
 
 # --- Contest Operations ---

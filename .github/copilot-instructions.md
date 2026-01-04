@@ -1,40 +1,46 @@
 # Smart Elections Parser – Copilot Guide
 
-**Read first:** [readme.md](../readme.md), [docs/architecture.md](../docs/architecture.md) for flow, [docs/handlers.md](../docs/handlers.md) for contracts, [docs/project_audit.md](../docs/project_audit.md) for hotspots, [docs/index.md](../docs/index.md) for doc entry points.
+**Read first**
+- Docs live in `docs/` (architecture, handlers, project_audit, index). Open the relevant doc before touching code; follow described contracts and hotspots.
+- Repo entry points: CLI [webapp/parser/html_election_parser.py](../webapp/parser/html_election_parser.py); Flask UI [webapp/Smart_Elections_Parser_Webapp.py](../webapp/Smart_Elections_Parser_Webapp.py). `.env` must be populated.
 
-**Entrypoints & routing**
-- CLI orchestrator [webapp/parser/html_election_parser.py](../webapp/parser/html_election_parser.py); Flask UI [webapp/Smart_Elections_Parser_Webapp.py](../webapp/Smart_Elections_Parser_Webapp.py). Both require a filled `.env` (DB + secrets).
-- Routing: [webapp/parser/state_router.py](../webapp/parser/state_router.py) → state/county handlers; fallback format routing via [webapp/parser/utils/format_router.py](../webapp/parser/utils/format_router.py) using `html_scanner` and `prompt_user_for_format`.
-- Navigation runs first: recipes in [webapp/parser/navigator/navigation_recipes.orjson](../webapp/parser/navigator/navigation_recipes.orjson) execute before routing; telemetry to `log/navigation_learning_log.jsonl` feeds health/retraining.
+**Workflow (keep edits minimal)**
+- Locate the handler/format/state router before adding logic; reuse helpers in `utils/shared_logic.py`, `Context_Integration`, and `handlers/shared` instead of ad-hoc code.
+- Preserve existing logging style (`logger.mode` CLI vs non-CLI) and avoid noisy warnings; favor info/debug for non-critical paths.
+- Respect path/slug safety helpers; never bypass traversal guards.
 
-**Handler contract**
-- Return `(headers, data_rows, contest, metadata)`; always gather input via `prompt_user_input()` from [webapp/parser/utils/user_prompt.py](../webapp/parser/utils/user_prompt.py).
-- State/county handlers live under [webapp/parser/handlers/states](../webapp/parser/handlers/states); format fallbacks under [webapp/parser/handlers/formats](../webapp/parser/handlers/formats). Reuse shared helpers in [webapp/parser/handlers/shared](../webapp/parser/handlers/shared).
-- Metadata drives output paths: results stored as `output/{state}/{county}/{race}/` with CSV + JSON metadata.
+**Contracts & routing**
+- Handlers return `(headers, data_rows, contest, metadata)` and collect input via `prompt_user_input()`.
+- Routing: `state_router.py` → state/county handlers; fallback formats via `utils/format_router.py` using `html_scanner` + `prompt_user_for_format`.
+- Navigation recipes (`navigator/navigation_recipes.orjson`) run before routing; telemetry to `log/navigation_learning_log.jsonl` powers health/retraining.
 
-**Table + context pipeline**
-- All formats flow through [webapp/parser/utils/table_builder.py](../webapp/parser/utils/table_builder.py) and [webapp/parser/utils/dynamic_table_extractor.py](../webapp/parser/utils/dynamic_table_extractor.py); supply `provided_tables` + `skip_pivot` via `html_context` when pre-extracted rows exist.
-- Context/ML integrity orchestration in [webapp/parser/Context_Integration/context_coordinator.py](../webapp/parser/Context_Integration/context_coordinator.py) and [webapp/parser/Context_Integration/context_organizer.py](../webapp/parser/Context_Integration/context_organizer.py); knowledge base [webapp/parser/Context_Integration/Context_Library/context_library.json](../webapp/parser/Context_Integration/Context_Library/context_library.json); anomaly checks in [webapp/parser/Context_Integration/Integrity_check.py](../webapp/parser/Context_Integration/Integrity_check.py).
-- Use safety helpers from [webapp/parser/utils/shared_logic.py](../webapp/parser/utils/shared_logic.py) for slugs/paths/audit logging; avoid ad-hoc `os.path`.
+**Context/ML pipeline**
+- Context integrity lives in `Context_Integration/*` (coordinator/organizer/library/integrity checks). Keep `table_builder.py`/`dynamic_table_extractor.py` contracts intact; pass `provided_tables`/`skip_pivot` via `html_context` when pre-extracted.
+- Use canonical labels/validators; prefer shared utilities for normalization, hashing, and safe updates.
 
-**Automation, tests, quality gates**
-- `python automate.py` runs pipeline map generation, health bots, JS/TS lint + type checks, sample tests, and webapp import check. Flags: `--skip-web`, `--skip-health`, `--skip-tests`, `--skip-webapp-check`.
-- Node scripts in [package.json](../package.json): `npm run check-js`, `lint:web`, `verify:python`, `verify:all`. Lint/type config in [pyproject.toml](../pyproject.toml); mypy targets format handlers/tests, ruff lenient elsewhere.
-- Quick PDF smoke: `python run_statement_test.py`; fuller coverage under [webapp/tests](../webapp/tests).
+**Front-end (neon/metallic)**
+- JS: `static/js/run_parser.js`; CSS: `static/css/run_parser.css`. No inline styles—extend via classes/tokens under `@layer tokens`.
+- Keep contest modal logic (`deriveOfficeTitle`/`deriveOfficeKey`, bundle expansion) and busy state hooks (`PendingOverlay`, `modalRestore`) in sync with backend events.
 
-**Health + navigation feedback**
-- Health bots orchestrated via [webapp/parser/health/health_router.py](../webapp/parser/health/health_router.py); surfaced at `/azure_health` with streaming logs. Navigation feedback ingestion: [webapp/parser/health/navigation_feedback_ingest.py](../webapp/parser/health/navigation_feedback_ingest.py) converts navigation logs for correction/retraining.
+**Automation & tests**
+- Primary check: `python automate.py` (flags: `--skip-web`, `--skip-health`, `--skip-tests`, `--skip-webapp-check`).
+- JS/TS: `npm run check-js`, `lint:web`; Python: `npm run verify:python`, `verify:all`; quick PDF smoke: `python run_statement_test.py`; deeper coverage: `webapp/tests`.
+- TODO index: `python scripts/generate_todo_index.py --root webapp --root scripts --root docs [--ruff-json report.json] [--max-total N --max-high M]` writes `docs/todos.md`.
 
-**Front-end rules (UI is neon/metallic)**
-- JS logic: [webapp/static/js/run_parser.js](../webapp/static/js/run_parser.js); styles: [webapp/static/css/run_parser.css](../webapp/static/css/run_parser.css). No inline styles; extend via classes/tokens under `@layer tokens`.
-- Contest modal & bundles depend on `deriveOfficeTitle`/`deriveOfficeKey` + `expandedBundles/expandedOffices`; keep show/hide + bundleChildren in sync. Busy state: any backend prompt must call `PendingOverlay.show(...)`, `modalRestore.setBusyForSession`, and clear on `parser_output`/`session_state`.
+**Ops & perf**
+- `sitecustomize.py` installs Click parser shim—keep until upstream resolves warnings.
+- PDFs: set `POPPLER_PATH` on Windows or install `poppler-utils` on Linux/Azure for pdf2image.
 
-**Ops and perf**
-- `sitecustomize.py` installs Click parser shim; keep until upstream warnings resolved.
-- PDFs: set `POPPLER_PATH` on Windows or install `poppler-utils` on Linux/Azure for faster pdf2image.
-
-**Data safety & integrity**
-- Prefer `.env` for secrets; path traversal protections already present—do not bypass. Ensure outputs include metadata and contest context; if extraction returns boilerplate, abort and prompt rather than emitting empty CSV.
+**Data safety**
+- Keep secrets in `.env`; outputs must include metadata/contest context. If extraction is boilerplate or empty, prompt/abort instead of emitting empty CSVs.
 
 **Roadmap anchors**
-- Focus on schema consistency (party/division/jurisdiction columns), richer metadata (source/confidence), unified contest selection across formats, and multi-contest PDF regression fixtures. High/medium TODOs: [webapp/parser/utils/shared_logic.py](../webapp/parser/utils/shared_logic.py), [webapp/parser/health/manual_correction_bot.py](../webapp/parser/health/manual_correction_bot.py); see [docs/todos.md](../docs/todos.md).
+- Prioritize schema consistency (party/division/jurisdiction), richer metadata (source/confidence), unified contest selection, and multi-contest PDF regression fixtures. High/medium TODOs: `utils/shared_logic.py`, `health/manual_correction_bot.py`, see `docs/todos.md`.
+
+**Version control & assistant limits**
+- Use `git status`, `git diff`, `git log -p`, and `git reflog` to audit changes and reconcile temp or prior edits.
+- Assistant visibility is limited to the current workspace and this conversation; it cannot recall past sessions or unseen temp copies.
+
+**Hard stop (edits)**
+- Do NOT rewrite or truncate whole files. Always read the file, preserve existing content, and apply minimal, targeted diffs.
+- For larger changes, create a brief plan first and ensure context is restored before finishing; avoid dropping or reordering unrelated code.

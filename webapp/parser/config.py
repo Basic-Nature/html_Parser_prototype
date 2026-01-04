@@ -325,7 +325,7 @@ def get_sqlalchemy_engine():
             if strict_aad:
                 raise
             if POSTGRES_USER_RAW and POSTGRES_PASSWORD_RAW:
-                logger.warning("[DB][AAD] Falling back to password auth.")
+                logger.info("[DB][AAD] Falling back to password auth.")
                 return create_engine(
                     POSTGRES_URL,
                     pool_pre_ping=True,

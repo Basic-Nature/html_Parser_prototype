@@ -61,10 +61,33 @@ module = ["webapp.parser.handlers.formats.pdf_handler"]
 ignore_errors = true
 
 [tool.pytest.ini_options]
-addopts = "-p no:unraisableexception -p no:seleniumbase"
+minversion = "7.0"
+testpaths = ["webapp/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-p no:unraisableexception -p no:seleniumbase -ra --strict-markers --tb=short"
 filterwarnings = [
   "ignore:Importing 'parser.split_arg_string' is deprecated, it will only be available in 'shell_completion' in Click 9.0.:DeprecationWarning"
 ]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests requiring external resources",
+    "unit: marks pure unit tests",
+]
+
+[tool.coverage.run]
+source = ["webapp/parser"]
+omit = [
+    "*/tests/*",
+    "*/migrations/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
 
 # Enforce on tests to keep examples/types honest
 [[tool.mypy.overrides]]
@@ -77,4 +100,12 @@ check_untyped_defs = true
 selenium = [
   "seleniumbase>=4.40.8",
 ]
+
+[tool.poe.tasks]
+run-tests = { cmd = "./scripts/run_tests.sh" }
+run-tests-win = { cmd = "pwsh ./scripts/run_tests.ps1" }
+smoke = { cmd = "./scripts/run_pipeline_smoke.sh" }
+ci-verify = { cmd = "./scripts/ci_verify.sh" }
+run-webapp = { cmd = "./scripts/run_webapp.sh" }
+run-webapp-win = { cmd = "pwsh ./scripts/run_webapp.ps1" }
 
