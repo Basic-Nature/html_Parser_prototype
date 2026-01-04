@@ -1,7 +1,9 @@
 # Flask Routes Security Patch
-# Apply these changes to webapp/Smart_Elections_Parser_Webapp.py
+
+## Apply these changes to webapp/Smart_Elections_Parser_Webapp.py
 
 ## Add imports at top (after existing imports from shared_logic)
+
 ```python
 from webapp.parser.utils.shared_logic import (
     safe_get,
@@ -20,6 +22,7 @@ from webapp.parser.utils.shared_logic import (
 ```
 
 ## Add security validation functions (before route definitions)
+
 ```python
 # Define allowed root directories for file operations (SECURITY)
 ALLOWED_FS_ROOTS = {
@@ -119,6 +122,7 @@ def validate_fs_path(root: str, subpath: str = "", name: str = "") -> tuple[bool
 ```
 
 ## Replace /api/fs/list route (lines ~1087-1119)
+
 ```python
 @app.route("/api/fs/list", methods=["GET"])
 def api_fs_list():
@@ -167,6 +171,7 @@ def api_fs_list():
 ```
 
 ## Replace /api/fs/mkdir route (lines ~1124-1146)
+
 ```python
 @app.route("/api/fs/mkdir", methods=["POST"])
 def api_fs_mkdir():
@@ -212,6 +217,7 @@ def api_fs_mkdir():
 ```
 
 ## Replace /api/fs/delete route (lines ~1148-1176)
+
 ```python
 @app.route("/api/fs/delete", methods=["POST"])
 def api_fs_delete():
@@ -274,6 +280,7 @@ def api_fs_delete():
 ```
 
 ## Replace /download_fs route (lines ~1178-1194)
+
 ```python
 @app.route("/download_fs")
 def download_fs():
@@ -305,6 +312,7 @@ def download_fs():
 ```
 
 ## Security Benefits
+
 1. **Path Traversal Prevention**: All paths validated before use
 2. **Strict Sanitization**: Filenames sanitized with strict_mode=True
 3. **Whitelist Approach**: Only allowed roots accepted
@@ -313,6 +321,7 @@ def download_fs():
 6. **Fail Secure**: Errors result in access denial
 
 ## Testing Checklist
+
 - [ ] Normal file listing works
 - [ ] Directory creation works
 - [ ] File deletion works

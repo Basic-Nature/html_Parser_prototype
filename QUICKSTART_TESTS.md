@@ -3,17 +3,21 @@
 ## Prerequisites Check
 
 1. **Verify Python is available**:
+
    ```powershell
    .venv\Scripts\python.exe --version
    ```
+
    Should show Python 3.11 or higher.
 
 2. **Install test dependencies**:
+
    ```powershell
    .venv\Scripts\python.exe -m pip install pytest pytest-cov pytest-mock
    ```
 
 3. **Validate setup**:
+
    ```powershell
    .venv\Scripts\python.exe validate_tests.py
    ```
@@ -21,16 +25,19 @@
 ## Running Tests - Common Commands
 
 ### Run All Tests
+
 ```powershell
 .venv\Scripts\python.exe run_tests.py
 ```
 
 ### Run with Verbose Output
+
 ```powershell
 .venv\Scripts\python.exe run_tests.py -v
 ```
 
 ### Run Specific Test Module
+
 ```powershell
 # Test shared logic utilities
 .venv\Scripts\python.exe run_tests.py --module test_shared_logic
@@ -43,11 +50,13 @@
 ```
 
 ### Run with Coverage Report
+
 ```powershell
 .venv\Scripts\python.exe run_tests.py --coverage
 ```
 
 Then open the coverage report:
+
 ```powershell
 start htmlcov\index.html
 ```
@@ -73,21 +82,26 @@ If you prefer using pytest directly:
 ## Understanding Test Output
 
 ### Success
-```
+
+```text
 webapp/tests/test_shared_logic.py::TestSafeFilename::test_basic_filename PASSED
 ```
 
 ### Failure
-```
+
+```text
 webapp/tests/test_shared_logic.py::TestSafeFilename::test_basic_filename FAILED
 ```
+
 The output will show:
+
 - What was expected
 - What was actually received
 - The line where the assertion failed
 
 ### Example Test Run
-```
+
+```text
 ======================== test session starts ========================
 collected 45 items
 
@@ -107,7 +121,9 @@ webapp/tests/test_batch_processor.py .            [100%]
 ## Troubleshooting
 
 ### Import Errors
+
 If you see import errors:
+
 ```powershell
 # Make sure you're in the project root
 cd C:\Users\olivi\html_Parser_prototype
@@ -117,6 +133,7 @@ cd C:\Users\olivi\html_Parser_prototype
 ```
 
 ### Missing Dependencies
+
 ```powershell
 # Install all test dependencies
 .venv\Scripts\python.exe -m pip install -r requirements.txt
@@ -124,6 +141,7 @@ cd C:\Users\olivi\html_Parser_prototype
 ```
 
 ### Tests Not Found
+
 ```powershell
 # Verify test files exist
 Get-ChildItem -Path webapp\tests -Filter "test_*.py"
@@ -145,6 +163,7 @@ Get-ChildItem -Path webapp\tests -Filter "test_*.py"
 5. Run your new tests
 
 Example:
+
 ```python
 """Tests for my new module"""
 import pytest
@@ -163,4 +182,4 @@ class TestMyFunction:
 
 - See `webapp/tests/README.md` for detailed documentation
 - Check existing tests for examples
-- pytest documentation: https://docs.pytest.org/
+- pytest documentation: <https://docs.pytest.org/>

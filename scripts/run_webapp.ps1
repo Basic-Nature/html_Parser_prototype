@@ -1,30 +1,27 @@
-Here is the updated `scripts\run_webapp.ps1` file with the suggested code changes incorporated:
-````````powershell
 #!/usr/bin/env pwsh
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$Python = $env:PYTHON
-if (-not $Python) { $Python = "python" }
-$EnvFile = $env:ENV_FILE
-if (-not $EnvFile) { $EnvFile = Join-Path $Root ".env" }
+$Python = if ($env:PYTHON) { $env:PYTHON } else { "python" }
+$EnvFile = if ($env:ENV_FILE) { $env:ENV_FILE } else { Join-Path $Root ".env" }
 $Required = @("FLASK_SECRET_KEY", "POSTGRES_HOST", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD")
 
 function Log { param([string]$Message) Write-Host "[run_webapp] $Message" }
 function Fatal { param([string]$Message) Write-Host "[run_webapp][fatal] $Message" -ForegroundColor Red; exit 1 }
 
-Set-Location $Root
+Set-Location -Path $Root
 
 if (Test-Path $EnvFile) {
     Log "loading env from $EnvFile"
-    Get-Content $EnvFile | ForEach-Object {
-        if ($_ -match '^(?<k>[A-Za-z_][A-Za-z0-9_]*)=(?<v>.*)$') {
-            $key = $Matches['k']
-            $val = $Matches['v']
+    foreach ($line in Get-Content $EnvFile) {
+        if ($line -match '^(?<k>[A-Za-z_][A-Za-z0-9_]*)=(?<v>.*)$') {
+            $key = $Matches.k
+            $val = $Matches.v
             if ($val.StartsWith('"') -and $val.EndsWith('"')) { $val = $val.Trim('"') }
             if ($val.StartsWith("'") -and $val.EndsWith("'")) { $val = $val.Trim("'") }
-            $env:$key = $val
+            $envPath = "Env:\$key"
+            Set-Item -Path $envPath -Value $val
         }
     }
 } else {
@@ -33,20 +30,23 @@ if (Test-Path $EnvFile) {
 
 $missing = @()
 foreach ($var in $Required) {
-    if (-not $env:$var) { $missing += $var }
+    $current = [Environment]::GetEnvironmentVariable($var)
+    if (-not $current) { $missing += $var }
 }
 if ($missing.Count -gt 0) {
     Fatal "Missing required env vars: $($missing -join ' '). Set them in $EnvFile or environment."
 }
 
 # Ensure runtime directories exist
-New-Item -ItemType Directory -Force -Path (Join-Path $Root "input") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $Root "output") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $Root "uploads") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $Root "log") | Out-Null
+foreach ($path in @("input", "output", "uploads", "log")) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $Root $path) | Out-Null
+}
 
 if (-not $env:EMBEDDING_CACHE_DB_MODE) {
-    $envLower = ($env:DEPLOY_ENV) ? $env:DEPLOY_ENV.ToLower() : "local"
+    $envLower = "local"
+    if ($env:DEPLOY_ENV) {
+        $envLower = $env:DEPLOY_ENV.ToLower()
+    }
     if ($envLower -in @("", "local", "dev", "development", "test")) {
         $env:EMBEDDING_CACHE_DB_MODE = "off"
         Log "EMBEDDING_CACHE_DB_MODE defaulting to off for $envLower (override to rw/ro as needed)"

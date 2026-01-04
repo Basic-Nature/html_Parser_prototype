@@ -4,9 +4,9 @@ import sys
 from pathlib import Path
 
 try:
-    import dotenv
+    from dotenv import load_dotenv  # type: ignore[import]
 
-    dotenv.load_dotenv()
+    load_dotenv()
 except ImportError:
     pass
 

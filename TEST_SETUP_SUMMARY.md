@@ -5,11 +5,13 @@
 All test files have been successfully created in the `webapp/tests/` directory:
 
 ### Core Test Infrastructure
+
 - ? `webapp/tests/__init__.py` - Test package initialization
 - ? `webapp/tests/conftest.py` - Shared pytest fixtures and configuration
 - ? `webapp/tests/README.md` - Comprehensive testing documentation
 
 ### Test Modules
+
 - ? `webapp/tests/test_shared_logic.py` - Tests for utils/shared_logic.py (127 lines)
 - ? `webapp/tests/test_detect.py` - Tests for utils/detect.py (136 lines)
 - ? `webapp/tests/test_table_builder.py` - Tests for table building (66 lines)
@@ -21,6 +23,7 @@ All test files have been successfully created in the `webapp/tests/` directory:
 - ? `webapp/tests/test_batch_processor.py` - Tests for batch processor (23 lines)
 
 ### Test Utilities
+
 - ? `run_tests.py` - Test runner script with command-line options
 - ? `validate_tests.py` - Setup validation script
 - ? `pyproject.toml` - Updated with pytest configuration
@@ -34,14 +37,12 @@ The test suite covers:
    - Slug generation
    - Safe accessor functions
    - Location normalization
-
 2. **Detection & Parsing** (test_detect.py)
    - Text and header normalization
    - Location header detection
    - Candidate column detection
    - Data harmonization
    - Numeric parsing
-
 3. **Table Building** (test_table_builder.py)
    - Simple table building
    - Table pivoting
@@ -74,6 +75,7 @@ The test suite covers:
 ## ?? Running Tests
 
 ### Quick Start
+
 ```bash
 # Activate virtual environment (if not already active)
 .venv\Scripts\Activate.ps1
@@ -92,6 +94,7 @@ The test suite covers:
 ```
 
 ### Direct pytest Commands
+
 ```bash
 # Run all tests
 .venv\Scripts\python.exe -m pytest webapp/tests
@@ -114,6 +117,7 @@ The test suite covers:
 - `scripts/run_webapp.sh` / `scripts/run_webapp.ps1`: Safeguard launcher for `python -m webapp.Smart_Elections_Parser_Webapp`; loads `.env`, verifies `FLASK_SECRET_KEY` and DB env vars, creates runtime dirs, then starts the server. Override env file via `ENV_FILE=...`.
 
 ### Quick Start (Unix)
+
 ```bash
 ./scripts/run_tests.sh -q
 ./scripts/run_pipeline_smoke.sh
@@ -121,6 +125,7 @@ The test suite covers:
 ```
 
 ### Quick Start (Windows)
+
 ```powershell
 ./scripts/run_tests.ps1 -q
 ```
@@ -128,16 +133,19 @@ The test suite covers:
 ## ?? Next Steps
 
 1. **Install Test Dependencies** (if not already installed):
+
    ```bash
    .venv\Scripts\python.exe -m pip install pytest pytest-cov pytest-mock
    ```
 
 2. **Validate Setup**:
+
    ```bash
    .venv\Scripts\python.exe validate_tests.py
    ```
 
 3. **Run Tests**:
+
    ```bash
    .venv\Scripts\python.exe run_tests.py
    ```
@@ -160,11 +168,13 @@ All test modules can use these fixtures from `conftest.py`:
 ## ?? Test Markers
 
 Tests can be marked with:
+
 - `@pytest.mark.unit` - Pure unit tests
 - `@pytest.mark.integration` - Integration tests
 - `@pytest.mark.slow` - Slow-running tests
 
 Run specific markers:
+
 ```bash
 .venv\Scripts\python.exe -m pytest -m unit webapp/tests
 .venv\Scripts\python.exe -m pytest -m "not slow" webapp/tests
@@ -173,6 +183,7 @@ Run specific markers:
 ## ?? Configuration
 
 Test configuration is in `pyproject.toml`:
+
 - Test discovery patterns
 - Coverage settings
 - Warning filters
@@ -181,6 +192,7 @@ Test configuration is in `pyproject.toml`:
 ## ?? Documentation
 
 See `webapp/tests/README.md` for:
+
 - Detailed usage instructions
 - Writing new tests
 - Best practices

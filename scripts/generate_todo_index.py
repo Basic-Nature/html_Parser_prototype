@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import textwrap
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -204,14 +205,18 @@ def format_markdown(entries: Iterable[TodoEntry], project_root: Path, roots: Seq
         rel = entry.path.relative_to(project_root) if entry.path.is_absolute() else entry.path
         grouped.setdefault(rel.as_posix(), []).append(entry)
 
+    wrap_width = 120
     for rel_path in sorted(grouped.keys()):
         lines.append(f"### {rel_path}")
         lines.append("")
         for entry in grouped[rel_path]:
-            snippet = entry.text
-            if len(snippet) > 160:
-                snippet = snippet[:160].rstrip() + "..."
-            lines.append(f"- L{entry.lineno} *{entry.keyword}*: {snippet}")
+            snippet = entry.text.strip()
+            prefix = f"- L{entry.lineno} *{entry.keyword}*: "
+            available = max(20, wrap_width - len(prefix))
+            wrapped = textwrap.wrap(snippet, width=available) or [""]
+            lines.append(prefix + wrapped[0])
+            for cont in wrapped[1:]:
+                lines.append(f"  {cont}")
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"

@@ -3,11 +3,13 @@
 ## Quick Start
 
 ### For Normal/Production Use
+
 ```bash
 pip install -r requirements.txt
 ```
 
 ### For Development (includes testing, linting, type checking)
+
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
 ```
@@ -18,24 +20,29 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 ### Prerequisites
 
-**Python Version Required:** 3.12+
+#### Python Version Required
 
-**System Dependencies (for PDF processing):**
+Python 3.12+ is required.
 
-**Windows:**
+#### System Dependencies (for PDF processing)
+
+##### Windows
+
 ```powershell
 # Install Poppler for pdf2image (faster PDF processing)
 # Download from: https://github.com/oschwartz10612/poppler-windows/releases
 # Add to PATH or set POPPLER_PATH environment variable
 ```
 
-**Linux/Ubuntu:**
+##### Linux/Ubuntu
+
 ```bash
 sudo apt-get update
 sudo apt-get install -y poppler-utils tesseract-ocr ghostscript
 ```
 
-**macOS:**
+##### macOS
+
 ```bash
 brew install poppler tesseract ghostscript
 ```
@@ -66,12 +73,14 @@ python -m pip install --upgrade pip
 
 ### 3. Install Dependencies
 
-**Option A: Production/Normal Use**
+#### Option A: Production/Normal Use
+
 ```bash
 pip install -r requirements.txt
 ```
 
-**Option B: Development Environment**
+#### Option B: Development Environment
+
 ```bash
 # Install all dependencies including dev tools
 pip install -r requirements.txt -r requirements-dev.txt
@@ -81,7 +90,8 @@ pip install -r requirements.txt
 pip install pytest pytest-cov pytest-mock
 ```
 
-**Option C: With Optional Features**
+#### Option C: With Optional Features
+
 ```bash
 # Install with Selenium (for CAPTCHA visual bypass)
 pip install -r requirements.txt seleniumbase>=4.40.8
@@ -110,17 +120,20 @@ python -m spacy download en_core_web_sm
 
 ### Core Production Dependencies
 
-**Web Scraping & Browser Automation:**
+#### Web Scraping & Browser Automation
+
 - `playwright>=1.54.0` - Browser automation
 - `selectolax>=0.3.32` - Fast HTML parsing
 - `langdetect>=1.0.9` - Language detection
 
-**Web Framework:**
+#### Web Framework
+
 - `flask-socketio>=5.5.1` - Real-time communication
 - `gunicorn>=23.0.0` - Production WSGI server
 - `eventlet>=0.40.2` - Async networking
 
-**File Processing:**
+#### File Processing
+
 - `pandas>=2.3.1` - Data manipulation
 - `pytesseract>=0.3.13` - OCR capabilities
 - `pdf2image>=1.17.0` - PDF to image conversion
@@ -129,21 +142,25 @@ python -m spacy download en_core_web_sm
 - `pdfminer.six>=20221105` - PDF text extraction
 - `opencv-python>=4.12.0.88` - Computer vision
 
-**Database:**
+#### Database
+
 - `sqlalchemy>=2.0.42` - ORM
 - `psycopg2>=2.9.10` - PostgreSQL adapter
 
-**Data Export:**
+#### Data Export
+
 - `openpyxl>=3.1.5` - Excel file handling
 
-**NLP & Machine Learning:**
+#### NLP & Machine Learning
+
 - `spacy>=3.8.7` - NLP framework
 - `sentence_transformers>=5.1.0` - Embeddings
 - `torch==2.7.1+cpu` - PyTorch (CPU version)
 - `nltk>=3.9.1` - Natural language toolkit
 - `spacy-lookups-data>=1.0.5` - spaCy data
 
-**Utilities:**
+#### Utilities
+
 - `rich>=14.1.0` - Terminal formatting
 - `rapidfuzz>=3.13.0` - String matching
 - `matplotlib>=3.10.5` - Visualization
@@ -153,17 +170,20 @@ python -m spacy download en_core_web_sm
 
 ### Development Dependencies
 
-**Code Quality:**
+#### Code Quality
+
 - `ruff==0.6.9` - Fast linter and formatter
 - `mypy==1.11.2` - Static type checker
 - `types-requests==2.32.0.20241016` - Type stubs
 
-**Git Hooks:**
+#### Git Hooks
+
 - `pre-commit==3.8.0` - Git pre-commit hooks
 
 ### Testing Dependencies (Not in requirements files)
 
 Add these for testing:
+
 ```bash
 pip install pytest pytest-cov pytest-mock
 ```
@@ -275,6 +295,7 @@ python security_audit.py --dir webapp/parser
 ### Issue 1: PyTorch Installation Fails
 
 **Solution:**
+
 ```bash
 # Install PyTorch separately first
 pip install torch==2.7.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu
@@ -285,6 +306,7 @@ pip install -r requirements.txt
 ### Issue 2: pdf2image "Unable to get page count"
 
 **Solution:**
+
 ```bash
 # Windows: Install Poppler
 # Download from: https://github.com/oschwartz10612/poppler-windows/releases
@@ -301,6 +323,7 @@ brew install poppler
 ### Issue 3: Tesseract Not Found
 
 **Solution:**
+
 ```bash
 # Windows: Download installer
 # https://github.com/UB-Mannheim/tesseract/wiki
@@ -316,6 +339,7 @@ brew install tesseract
 ### Issue 4: psycopg2 Build Fails
 
 **Solution:**
+
 ```bash
 # Use binary wheel instead
 pip install psycopg2-binary
@@ -324,6 +348,7 @@ pip install psycopg2-binary
 ### Issue 5: Ghostscript Not Found
 
 **Solution:**
+
 ```bash
 # Windows: Download installer
 # https://ghostscript.com/releases/gsdnld.html
@@ -340,21 +365,25 @@ brew install ghostscript
 ## Dependency Update Strategy
 
 ### Check for Updates
+
 ```bash
 pip list --outdated
 ```
 
 ### Update Specific Package
+
 ```bash
 pip install --upgrade package-name
 ```
 
 ### Update All Dependencies (Careful!)
+
 ```bash
 pip install --upgrade -r requirements.txt
 ```
 
 ### Freeze Current Environment
+
 ```bash
 pip freeze > requirements-frozen.txt
 ```
@@ -424,17 +453,20 @@ python security_audit.py
 
 ## Platform-Specific Notes
 
-### Windows
+### Windows Notes
+
 - Use `venv\Scripts\activate` to activate virtual environment
 - Install Poppler manually for PDF processing
 - May need Visual C++ build tools for some packages
 
-### Linux
+### Linux Notes
+
 - Use `source venv/bin/activate` to activate virtual environment
 - Install system packages: `poppler-utils`, `tesseract-ocr`, `ghostscript`
 - May need `python3-dev` for building some packages
 
-### macOS
+### macOS Notes
+
 - Use `source venv/bin/activate` to activate virtual environment
 - Use Homebrew for system dependencies
 - May need Xcode command line tools

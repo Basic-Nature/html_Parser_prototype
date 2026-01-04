@@ -1,9 +1,7 @@
 ---
 layout: default
-title: "GitHub Pages Fix Notes"
+title: "GitHub Pages Mermaid Rendering Fix"
 ---
-
-# GitHub Pages Mermaid Rendering Fix
 
 This document describes changes made to restore proper mermaid diagram rendering
 in the GitHub Pages site after script-regenerated `docs/*.md` files stopped
@@ -42,6 +40,7 @@ title: "Page Title"
 ### 3. New `assets/js/mermaid-init.js`
 
 This script:
+
 - Waits for DOMContentLoaded
 - Converts Jekyll's `<pre><code class="language-mermaid">` blocks to
   `<div class="mermaid">` elements that Mermaid.js expects
@@ -56,6 +55,7 @@ This script:
 ### 5. Configuration (`_config.yml`)
 
 Ensured correct `url` and `baseurl` settings:
+
 ```yaml
 url: "https://basic-nature.github.io"
 baseurl: "/html_Parser_prototype"
@@ -92,6 +92,7 @@ bundle exec jekyll serve --source docs
 ```
 
 In browser DevTools:
+
 - Network tab: Ensure no 404s for `mermaid-init.js` or `mermaid.min.js`
 - Console: Check for no mermaid-related errors
 - Page: Verify diagrams render correctly

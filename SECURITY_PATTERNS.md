@@ -51,6 +51,7 @@ ALLOWED_ROOTS = [LOG_DIR_PATH, CONTEXT_LIBRARY_DIR, PROJECT_ROOT_PATH]
 ```
 
 **Rules:**
+
 - Use `Path().resolve()` to get absolute paths
 - Include only directories your module legitimately needs to access
 - Document why each root is needed
@@ -94,6 +95,7 @@ def safe_path(path, allowed_roots=None):
 ```
 
 **Rules:**
+
 - ALWAYS call before file operations
 - ALWAYS resolve() both path and roots
 - ALWAYS raise ValueError on failure
@@ -244,11 +246,13 @@ def join_paths_safely(base, *components):
 ### manual_correction_bot.py
 
 **Security Boundary:**
+
 ```python
 ALLOWED_ROOTS = [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR, PROJECT_ROOT]
 ```
 
 **Critical Functions:**
+
 - `load_jsonl()` - Validates before reading
 - `save_jsonl()` - Validates main and temp paths
 - `atomic_write_json()` - Validates all paths (main, backup, temp)
@@ -258,16 +262,19 @@ ALLOWED_ROOTS = [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR, PROJECT_ROOT]
 - `import_correction_session()` - Validates import and destination
 
 **Testing:**
+
 See `webapp/tests/test_manual_correction_security.py`
 
 ### librarian.py
 
 **Security Boundary:**
+
 ```python
 ALLOWED_ROOTS = [LOG_DIR_PATH, CONTEXT_LIBRARY_DIR, PROJECT_ROOT_PATH, BASE_DIR_PATH]
 ```
 
 **Critical Functions:**
+
 - `get_safe_log_path()` - Sanitizes filename and validates path
 - `atomic_write_json()` - Validates all derived paths
 - `load_context_library()` - Validates library path and backup paths
@@ -279,20 +286,24 @@ ALLOWED_ROOTS = [LOG_DIR_PATH, CONTEXT_LIBRARY_DIR, PROJECT_ROOT_PATH, BASE_DIR_
 - `self_heal_context_library()` - Validates script paths before subprocess
 
 **Testing:**
+
 See `webapp/tests/test_librarian_security.py`
 
 ### context_coordinator.py
 
 **Security Boundary:**
+
 ```python
 # Uses librarian.py's ALLOWED_ROOTS via atomic_write_json import
 ```
 
 **Critical Functions:**
+
 - `_log_jsonl()` - Should validate log_path parameter
 - `_log_enrichment_snapshot()` - Constructs paths for logging
 
 **Recommended Patch:**
+
 ```python
 def _log_jsonl(self, log_path, log_entry):
     """Centralized JSONL logging with path validation."""
