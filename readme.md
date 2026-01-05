@@ -114,7 +114,8 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
      - **Accessible:** Designed for both technical and non-technical users, making it ideal for teams, researchers, and those learning to code.
    - **How to Use the Web UI:**
      1. Install requirements:  
-        `pip install -r requirements.txt`  
+        `pip install -r requirements.txt`
+        - Python 3.12 (Windows) tested combo: `pip install -r requirements.txt -c constraints/local-py312.txt`
         `python -m spacy download en_core_web_sm`
      2. **Set up your `.env` file** (or set environment variables in your shell or IDE launch configuration):  
         - Required variables include:  
