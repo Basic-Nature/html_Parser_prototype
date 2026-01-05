@@ -1,5 +1,7 @@
 # Phase 2 Security & Verification Foundation - Completion Summary
 
+<!-- markdownlint-disable MD009 MD013 MD034 -->
+
 **Status:** ? **COMPLETE**  
 **Date:** 2025-12-31  
 **Completion:** 100%

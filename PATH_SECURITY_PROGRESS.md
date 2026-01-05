@@ -1,5 +1,7 @@
 # Path Traversal Security Fixes - Progress Report
 
+<!-- markdownlint-disable MD009 MD013 MD034 -->
+
 ## ? Completed (HIGH PRIORITY)
 
 ### 1. Core Security Utilities (shared_logic.py)
