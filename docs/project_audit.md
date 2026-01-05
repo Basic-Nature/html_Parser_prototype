@@ -3,6 +3,8 @@ layout: default
 title: "Project Audit"
 ---
 
+<!-- markdownlint-disable-file MD013 -->
+
 Audit scope: `webapp/parser/` modules.
 
 Modules scanned: 98 | ~54212 non-empty LOC

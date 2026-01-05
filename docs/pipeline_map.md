@@ -186,7 +186,7 @@ Click to expand each module for full audit details.
 - `typing`
 - `typing`
 
-#### ⚠️ TODO/FIXME/WARN (Context_Integration_Context_Library_constants)
+#### ⚠️ Task markers (Context_Integration_Context_Library_constants)
 
 - L1895 **NOTE**: .*$",                     # Note
 - L2084 **WARNING**: ",
@@ -276,7 +276,7 @@ Click to expand each module for full audit details.
 - `orjson`
 - `rapidfuzz`
 
-#### ⚠️ TODO/FIXME/WARN (Context_Integration_context_coordinator)
+#### ⚠️ Task markers (Context_Integration_context_coordinator)
 
 - L863 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
 - L951 **WARNING**: ({
@@ -345,7 +345,7 @@ plot.")
 - `config`
 - `config`
 
-#### ⚠️ TODO/FIXME/WARN (Context_Integration_context_organizer)
+#### ⚠️ Task markers (Context_Integration_context_organizer)
 
 - L282 **WARNING**: (
 - L407 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or
@@ -446,7 +446,7 @@ contest: {contest}")
 
 ```
 
-#### ⚠️ TODO/FIXME/WARN (Context_Integration_librarian)
+#### ⚠️ Task markers (Context_Integration_librarian)
 
 - L764 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
 - L774 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
@@ -550,7 +550,7 @@ rescanning...")
 - `utils.shared_logic`
 - `utils.user_prompt`
 
-#### ⚠️ TODO/FIXME/WARN (handlers_batch_handler)
+#### ⚠️ Task markers (handlers_batch_handler)
 
 - L134 **WARNING**: ({
 - L135 **WARNING**: ",
@@ -617,7 +617,7 @@ rescanning...")
 - `utils.shared_logic`
 - `utils.shared_logic`
 
-#### ⚠️ TODO/FIXME/WARN (handlers_formats_html_handler)
+#### ⚠️ Task markers (handlers_formats_html_handler)
 
 - L216 **WARNING**: (f"\[HTML Handler\] County '{county}' not found. Closest
 matches: {matches}")
@@ -670,7 +670,7 @@ Closest matches: {matches}")
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
 
-#### ⚠️ TODO/FIXME/WARN (handlers_formats_json_handler)
+#### ⚠️ Task markers (handlers_formats_json_handler)
 
 - L382 **WARNING**: ({
 - L383 **WARNING**: ",
@@ -730,7 +730,7 @@ Closest matches: {matches}")
 - `PIL`
 - `Context_Integration.location_inference`
 
-#### ⚠️ TODO/FIXME/WARN (handlers_formats_pdf_handler)
+#### ⚠️ Task markers (handlers_formats_pdf_handler)
 
 - L922 **WARNING**: ({
 - L923 **WARNING**: ",
@@ -856,7 +856,7 @@ budget.",
 
 ```
 
-#### ⚠️ TODO/FIXME/WARN (handlers_states_arizona_arizona)
+#### ⚠️ Task markers (handlers_states_arizona_arizona)
 
 - L25 **WARNING**: ("\[WARN\] context*library.json not found. Using fallback
 config for Arizona handler.")
@@ -886,7 +886,7 @@ election data.")
 - `utils.table_builder`
 - `utils.table_core`
 
-#### ⚠️ TODO/FIXME/WARN (handlers_states_example state_example_county_example_county)
+#### ⚠️ Task markers (handlers_states_example state_example_county_example_county)
 
 - L123 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
 selectors. Trying table-based extraction...\[/yellow\]")
@@ -914,7 +914,7 @@ selectors. Trying table-based extraction...\[/yellow\]")
 - `utils.table_builder`
 - `utils.table_core`
 
-#### ⚠️ TODO/FIXME/WARN (handlers_states_example state_example_state)
+#### ⚠️ Task markers (handlers_states_example state_example_state)
 
 - L51 **WARNING**: (f"\[Example Handler\] No specific parser implemented for
 county: '{county}'. Continuing with state-level logic.")
@@ -945,7 +945,7 @@ selectors. Trying table-based extraction...\[/yellow\]")
 - `utils.table_builder`
 - `utils.table_core`
 
-#### ⚠️ TODO/FIXME/WARN (handlers_states_new_york_county_rockland)
+#### ⚠️ Task markers (handlers_states_new_york_county_rockland)
 
 - L72 **WARNING**: ("\[WARNING\] dom*parts missing after
 organize*and*enrich.")
@@ -976,7 +976,7 @@ enabled={safe*is*enabled(element, logger)})\[/yellow\]")
 - `utils.shared_logic`
 - `utils.shared_logic`
 
-#### ⚠️ TODO/FIXME/WARN (handlers_states_new_york_new_york)
+#### ⚠️ Task markers (handlers_states_new_york_new_york)
 
 - L27 **WARNING**: ("\[NY Handler\] No county specified in html*context.")
 - L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
@@ -1013,7 +1013,7 @@ county: '{county}'. Please add it under {module*path}.py")
 - `utils.shared_logic`
 - `utils.shared_logic`
 
-#### ⚠️ TODO/FIXME/WARN (handlers_states_pennsylvania_pennsylvania)
+#### ⚠️ Task markers (handlers_states_pennsylvania_pennsylvania)
 
 - L44 **WARNING**: (f"\[NAV\] Step failed: {step} — {e}")
 - L55 **WARNING**: (f"\[bold yellow\]Detected election:\[/bold yellow\]
@@ -1137,7 +1137,7 @@ select one:\[/yellow\]")
 - `config`
 - `config`
 
-#### ⚠️ TODO/FIXME/WARN (health_health_router)
+#### ⚠️ Task markers (health_health_router)
 
 - L253 **WARNING**: (f"\[health*router\] manual*correction failed (attempt
 {attempt}): {result.stderr}")
@@ -1174,7 +1174,7 @@ Proceeding with caution.")
 - `webapp.parser.config`
 - `webapp.parser.utils.logger_singleton`
 
-#### ⚠️ TODO/FIXME/WARN (health_integrity_check_runner)
+#### ⚠️ Task markers (health_integrity_check_runner)
 
 - L18 **WARNING**: ("\[INTEGRITY\] Context library at %s is missing contest
 data", context*path)
@@ -1217,7 +1217,7 @@ data", context*path)
 - `utils.logger_singleton`
 - `context_migration`
 
-#### ⚠️ TODO/FIXME/WARN (health_log_cache_cleaner_bot)
+#### ⚠️ Task markers (health_log_cache_cleaner_bot)
 
 - L151 **WARNING**: (f"Skipping non-dict entry in spacy*ner*train*data.jsonl:
 {entry}")
@@ -1283,7 +1283,7 @@ these from your training data:")
 - `config`
 - `config`
 
-#### ⚠️ TODO/FIXME/WARN (health_manual_correction_bot)
+#### ⚠️ Task markers (health_manual_correction_bot)
 
 - L361 **WARNING**: (f"Coordinator ML scoring failed: {e}")
 - L382 **WARNING**: (f"Coordinator field suggestion failed: {e}")
@@ -1383,7 +1383,7 @@ JSON in {file}")
 - `typing`
 - `typing`
 
-#### ⚠️ TODO/FIXME/WARN (health_retrain_table_structure_models)
+#### ⚠️ Task markers (health_retrain_table_structure_models)
 
 - L178 **WARNING**: (f"\[CLEAN\] File not found: {jsonl*path}")
 - L186 **WARNING**: (f"\[CLEAN\] Could not parse line: {e}")
@@ -1439,7 +1439,7 @@ registered? Did you import all model classes?")
 - `config`
 - `utils.logger_singleton`
 
-#### ⚠️ TODO/FIXME/WARN (health_scan_misaligned_ner)
+#### ⚠️ Task markers (health_scan_misaligned_ner)
 
 - L62 **WARNING**: (f"\[CORRUPT\] Could not parse line: {e}")
 - L83 **WARNING**: (f"\n\[MISALIGNED\] Top {top*n} most frequent misaligned
@@ -1526,7 +1526,7 @@ may remain.")
 - `config`
 - `config`
 
-#### ⚠️ TODO/FIXME/WARN (html_election_parser)
+#### ⚠️ Task markers (html_election_parser)
 
 - L61 **WARNING**: ("Deleting .processed*urls cache for fresh start...")
 - L430 **WARNING**: ({
@@ -1620,7 +1620,7 @@ may remain.")
 - `navigation_recipes`
 - `navigation_recipes`
 
-#### ⚠️ TODO/FIXME/WARN (navigator_navigation_runner)
+#### ⚠️ Task markers (navigator_navigation_runner)
 
 - L203 **WARNING**: ({
 - L204 **WARNING**: ",
@@ -1776,7 +1776,7 @@ may remain.")
 
 ```
 
-#### ⚠️ TODO/FIXME/WARN (state_router)
+#### ⚠️ Task markers (state_router)
 
 - L49 **WARNING**: ("\[Router\] handlers/states directory not found.")
 - L66 **WARNING**: (f"\[Router\] counties directory not found for state:
@@ -1854,7 +1854,7 @@ fuzzy matching.")
 - `playwright.async_api`
 - `playwright.async_api`
 
-#### ⚠️ TODO/FIXME/WARN (utils_browser_utils)
+#### ⚠️ Task markers (utils_browser_utils)
 
 - L102 **WARNING**: (f"\[browser*utils\] Failed to safely parse
 context*library value for key '{key}'")
@@ -1939,7 +1939,7 @@ not be fully loaded.")
 - `shared_logic`
 - `shared_logic`
 
-#### ⚠️ TODO/FIXME/WARN (utils_captcha_tools)
+#### ⚠️ Task markers (utils_captcha_tools)
 
 - L118 **WARNING**: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
 - L154 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
@@ -2033,7 +2033,7 @@ not be fully loaded.")
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
 
-#### ⚠️ TODO/FIXME/WARN (utils_contest_selector)
+#### ⚠️ Task markers (utils_contest_selector)
 
 - L645 **WARNING**: ":
 - L646 **WARNING**: (entry)
@@ -2238,7 +2238,7 @@ match; try again.", "session*id": session*id})
 - `detect`
 - `logger_singleton`
 
-#### ⚠️ TODO/FIXME/WARN (utils_dom_extractor)
+#### ⚠️ Task markers (utils_dom_extractor)
 
 - L153 **WARNING**: (f"\[DOM*EXTRACTOR\] failure: {e}")
 
@@ -2326,7 +2326,7 @@ match; try again.", "session*id": session*id})
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
 
-#### ⚠️ TODO/FIXME/WARN (utils_dynamic_table_extractor)
+#### ⚠️ Task markers (utils_dynamic_table_extractor)
 
 - L124 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
 provided table*html.", session*id)
@@ -2426,7 +2426,7 @@ session*id, error=str(e))
 - `detect`
 - `detect`
 
-#### ⚠️ TODO/FIXME/WARN (utils_extraction_strategies)
+#### ⚠️ Task markers (utils_extraction_strategies)
 
 - L68 **WARNING**: (f"\[STRATEGY\] {name} failed: {e}")
 
@@ -2477,7 +2477,7 @@ session*id, error=str(e))
 - `handlers.formats`
 - `handlers.formats`
 
-#### ⚠️ TODO/FIXME/WARN (utils_format_router)
+#### ⚠️ Task markers (utils_format_router)
 
 - L374 **WARNING**: ({
 - L375 **WARNING**: ",
@@ -2573,7 +2573,7 @@ session*id, error=str(e))
 - `numpy`
 - `orjson`
 
-#### ⚠️ TODO/FIXME/WARN (utils_html_scanner)
+#### ⚠️ Task markers (utils_html_scanner)
 
 - L163 **WARNING**: ",
 - L167 **WARNING**: (payload)
@@ -2796,7 +2796,7 @@ session*id, error=str(e))
 - `Context_Integration.librarian`
 - `logger_singleton`
 
-#### ⚠️ TODO/FIXME/WARN (utils_model_registry)
+#### ⚠️ Task markers (utils_model_registry)
 
 - L389 **WARNING**: (f"Failed loading local override for SentenceTransformer:
 {e}")
@@ -2905,7 +2905,7 @@ Running without embeddings. Error: {e}")
 - `rawjson_utils`
 - `pivot`
 
-#### ⚠️ TODO/FIXME/WARN (utils_output_utils)
+#### ⚠️ Task markers (utils_output_utils)
 
 - L128 **WARNING**: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using
 'Unknown'.\[/yellow\]")
@@ -2936,7 +2936,7 @@ Using 'unknown*contests'.\[/yellow\]")
 - `logger_singleton`
 - `shared_logic`
 
-#### ⚠️ TODO/FIXME/WARN (utils_pattern_extractor)
+#### ⚠️ Task markers (utils_pattern_extractor)
 
 - L26 **WARNING**: (f"\[PATTERN\] load fail {e}")
 - L95 **WARNING**: (f"\[PATTERN\] pattern error {pat.get('name')}: {e}")
@@ -3043,7 +3043,7 @@ Using 'unknown*contests'.\[/yellow\]")
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
 
-#### ⚠️ TODO/FIXME/WARN (utils_pivot)
+#### ⚠️ Task markers (utils_pivot)
 
 - L1353 **WARNING**: ("\[PIVOT\] No candidates detected – verify headers and
 candidate column extraction.")
@@ -3155,7 +3155,7 @@ candidate column extraction.")
 - `orjson`
 - `rich`
 
-#### ⚠️ TODO/FIXME/WARN (utils_shared_logger)
+#### ⚠️ Task markers (utils_shared_logger)
 
 - L159 **WARNING**:         elif record.levelno &gt;= logging.WARNING:
 - L160 **WARNING**: (msg)
@@ -3182,20 +3182,20 @@ candidate column extraction.")
 - `EventLike` (class, line 120)
 - `Predictable` (class, line 129)
 - `safe_filename` (function, line 155)
-- `is_path_safe` (function, line 225)
-- `safe_resolve_path` (function, line 258)
-- `safe_join_path` (function, line 268)
-- `safe_slug` (function, line 278)
-- `safe_query` (function, line 294)
-- `safe_key` (function, line 305)
-- `_filter_valid_kwargs` (function, line 316)
-- `safe_filter_by` (function, line 334)
-- `safe_first` (function, line 348)
-- `get_or_create` (function, line 361)
-- `safe_translate` (function, line 384)
-- `safe_scheme` (function, line 396)
-- `safe_netloc` (function, line 404)
-- `safe_geturl` (function, line 412)
+- `is_path_safe` (function, line 241)
+- `safe_resolve_path` (function, line 274)
+- `safe_join_path` (function, line 305)
+- `validate_directory_path` (function, line 333)
+- `safe_slug` (function, line 349)
+- `safe_query` (function, line 365)
+- `safe_key` (function, line 376)
+- `_filter_valid_kwargs` (function, line 387)
+- `safe_filter_by` (function, line 405)
+- `safe_first` (function, line 419)
+- `get_or_create` (function, line 432)
+- `safe_translate` (function, line 455)
+- `safe_scheme` (function, line 467)
+- `safe_netloc` (function, line 475)
 
 #### 📦 Key Imports (utils_shared_logic)
 
@@ -3220,37 +3220,36 @@ candidate column extraction.")
 - `typing`
 - `typing`
 
-#### ⚠️ TODO/FIXME/WARN (utils_shared_logic)
+#### ⚠️ Task markers (utils_shared_logic)
 
-- L302 **WARNING**: (f"\[safe*query\] session.query({model}) failed: {e}")
-- L325 **WARNING**: (f"\[safe*filter*by\] No mapper found for model {model}")
-- L331 **WARNING**: (f"\[safe*filter*by\] Could not inspect model {model}:
+- L373 **WARNING**: (f"\[safe*query\] session.query({model}) failed: {e}")
+- L396 **WARNING**: (f"\[safe*filter*by\] No mapper found for model {model}")
+- L402 **WARNING**: (f"\[safe*filter*by\] Could not inspect model {model}:
 {e}")
-- L345 **WARNING**: (f"\[safe*filter*by\] filter*by failed: {e}")
-- L358 **WARNING**: (f"\[safe*first\] query.first() failed: {e}")
-- L428 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
+- L416 **WARNING**: (f"\[safe*filter*by\] filter*by failed: {e}")
+- L429 **WARNING**: (f"\[safe*first\] query.first() failed: {e}")
+- L499 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
 'extract' method.")
-- L562 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
-- L776 **WARNING**: (f"\[safe*append\] Target is not a list: {type(lst)};
+- L633 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
+- L847 **WARNING**: (f"\[safe*append\] Target is not a list: {type(lst)};
 coercing to list.")
-- L798 **WARNING**: (f"\[safe*update\] Target is not a dict: {type(dct)}")
-- L802 **WARNING**: (f"\[safe*update\] Updates is not a dict:
+- L869 **WARNING**: (f"\[safe*update\] Target is not a dict: {type(dct)}")
+- L873 **WARNING**: (f"\[safe*update\] Updates is not a dict:
 {type(updates)}")
-- L822 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)};
+- L893 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)};
 coercing to list.")
-- L1162 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
+- L1233 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
 (type: {type(lst).**name**})")
-- L1425 **WARNING**: (f"State '{state*norm}' not found in county map")
-- L2289 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
-- L2295 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+- L1496 **WARNING**: (f"State '{state*norm}' not found in county map")
+- L2360 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
+- L2366 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
 aborting replace.")
-- L2310 **WARNING**: ("\[inventory\] generate*project*map completed with
+- L2381 **WARNING**: ("\[inventory\] generate*project*map completed with
 warnings; check markers and path.")
-- L2356 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
-list of (lineno, keyword, cleaned*text)."""
-- L2358 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-- L3035 **TODO**: /FIXME/WARN
-- L3038 **TODO**: /FIXME/WARN:")
+- L2427 **WARN**: ) and return their metadata."""
+- L2429 **WARN**: ", "WARNING", "NOTE", "HA" + "CK", "X"*3, "BUG")
+- L3190 **BUG**: '\]
+- L3192 **WARN**: ', 'WARNING', 'NOTE'\]
 
 ### utils/spacy\_utils.py {#webapp-parser-utils-spacy-utils-py}
 
@@ -3326,7 +3325,7 @@ list of (lineno, keyword, cleaned*text)."""
 - `browser_utils`
 - `logger_singleton`
 
-#### ⚠️ TODO/FIXME/WARN (utils_strategy_concurrency)
+#### ⚠️ Task markers (utils_strategy_concurrency)
 
 - L37 **WARNING**: (f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
 - L65 **WARNING**: (f"\[CONCURRENCY\] Strategy {name} error: {e}")
@@ -3408,7 +3407,7 @@ failed: {e}")
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
 
-#### ⚠️ TODO/FIXME/WARN (utils_table_builder)
+#### ⚠️ Task markers (utils_table_builder)
 
 - L816 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
 failed for panel table", session*id, error=str(e))
@@ -3481,7 +3480,7 @@ coordinator DB log", session*id, error=str(e))
 - `extraction_strategies`
 - `extraction_strategies`
 
-#### ⚠️ TODO/FIXME/WARN (utils_table_core)
+#### ⚠️ Task markers (utils_table_core)
 
 - L231 **WARNING**: (f"\[TABLE BUILDER\] Concurrent strategies execution
 failed: {e}")
@@ -3528,7 +3527,7 @@ execution failed: {e}")
 - `rich.progress`
 - `rich.progress`
 
-#### ⚠️ TODO/FIXME/WARN (utils_user_prompt)
+#### ⚠️ Task markers (utils_user_prompt)
 
 - L312 **WARNING**: ("\[UserPrompt\] Webapp mode active but no
 socketio*emit*func set!")
@@ -3599,7 +3598,7 @@ user.\[/yellow\]")
 - `utils.shared_logic`
 - `utils.shared_logic`
 
-#### ⚠️ TODO/FIXME/WARN (web_pipeline)
+#### ⚠️ Task markers (web_pipeline)
 
 - L49 **WARNING**: ({
 - L50 **WARNING**: ",

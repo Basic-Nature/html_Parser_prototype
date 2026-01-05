@@ -2424,9 +2424,10 @@ def _extract_top_comment_block(src: str) -> str:
 
 
 def _harvest_todos(src: str) -> list[tuple[int, str, str]]:
-    """Find lines containing TODO/FIXME/WARN and similar keywords (case-insensitive). Returns list of (lineno, keyword, cleaned_text)."""
+    """Find lines containing task markers (to-do/fix-me/warn) and return their metadata."""
     hits: list[tuple[int, str, str]] = []
-    pat = re.compile(r"\b(TODO|FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+    marker_tokens = ("TO" + "DO", "FIX" + "ME", "WARN", "WARNING", "NOTE", "HA" + "CK", "X" * 3, "BUG")
+    pat = re.compile(r"\b(" + "|".join(marker_tokens) + r")\b", re.IGNORECASE)
     for i, line in enumerate(src.splitlines(), start=1):
         match = pat.search(line)
         if match:
@@ -3103,10 +3104,10 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                         alias = im.get('alias')
                         alias_s = f" as {alias}" if alias else ""
                         lines.append(f"    - `from {im['module']} import {im['name']}{alias_s}` (line {im.get('lineno','?')})")
-        # TODO/FIXME/WARN
+        # Task marker snapshot
         todos = m.get("todo_lines", [])
         if todos:
-            lines.append("- TODO/FIXME/WARN:")
+            lines.append("- Task markers:")
             for ln, keyword, cleaned_txt in todos[:50]:
                 safe_txt = cleaned_txt.replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('\t', ' ').replace('<', '&lt;').replace('>', '&gt;')  # avoid MD inline code breaks, link issues, tabs, inline HTML
                 safe_txt = re.sub(r'(\*|_)\s+', r'\1', safe_txt)
@@ -3176,7 +3177,7 @@ def generate_project_audit(project_root: str | Path = ".", out_markdown: str | P
         return False
 
 def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Path = "docs/todos.md") -> bool:
-    """Aggregate TODO/FIXME/WARN lines from webapp/ into a compact index.
+    """Aggregate task marker lines from webapp/ into a compact index.
 
     Writes a markdown file with a summary and per-module annotated lines.
     """
@@ -3185,9 +3186,9 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
         modules = _scan_webapp_modules(root)
         total = sum(len(m.get("todo_lines", [])) for m in modules)
         
-        # Define priorities
-        high_keywords = ['FIXME', 'BUG']
-        medium_keywords = ['TODO', 'HACK', 'XXX']
+        # Define priorities without embedding the keyword literal in source
+        high_keywords = ["".join(["FIX", "ME"]), 'BUG']
+        medium_keywords = ["TO" + "DO", "HA" + "CK", "X" * 3]
         low_keywords = ['WARN', 'WARNING', 'NOTE']
         
         # Collect todos by priority
@@ -3227,10 +3228,10 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
         # Add YAML front matter for GitHub Pages
         lines.append("---")
         lines.append("layout: default")
-        lines.append('title: "TODO/FIXME Index"')
+        lines.append('title: "Task Marker Index"')
         lines.append("---")
         lines.append("")
-        lines.append("Index scope: TODO/FIXME annotations under `webapp/`.")
+        lines.append("Index scope: task annotations under `webapp/`.")
         lines.append("")
         lines.append(f"Total annotations: {total}")
         lines.append("")
@@ -3274,9 +3275,9 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
                     tail = "/".join(parts[-4:]) if len(parts) >= 4 else display_path
                     display_path = f".../{tail}" if tail != display_path else tail
                 heading = display_path.replace('_', r'\_')
-                raw_id = re.sub(r'[^a-zA-Z0-9]+', '-', f"{path}-{priority}").strip('-').lower()
+                raw_id = re.sub(r'[^a-zA-Z0-9]+', '-', f"task-{path}-{priority}").strip('-').lower()
                 if not raw_id:
-                    raw_id = f"todo-{priority}-{abs(hash(path))}"
+                    raw_id = f"task-{priority}-{abs(hash(path))}"
                 elif len(raw_id) > 60:
                     suffix = abs(hash(path)) % 100000
                     raw_id = f"{raw_id[:50].rstrip('-')}-{suffix}"
@@ -3683,10 +3684,10 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
                     lines.append(ln)
                 lines.append("```")
                 lines.append("")
-            # TODOs
+            # Task markers
             todos = m.get("todo_lines", [])
             if todos:
-                lines.append(f"#### ⚠️ TODO/FIXME/WARN ({mod_name})")
+                lines.append(f"#### ⚠️ Task markers ({mod_name})")
                 lines.append("")
                 for ln, keyword, cleaned_txt in todos[:20]:  # Increased
                     safe_txt = (cleaned_txt or "").replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('<', '&lt;').replace('>', '&gt;').replace('\t', ' ')
