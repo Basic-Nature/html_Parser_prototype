@@ -14,8 +14,8 @@ Comprehensive pipeline audit for `webapp/parser/`.
 
 ## Overview
 
-- **Total Modules Audited:** 50
-- **Total Connections:** 67
+- **Total Modules Audited:** 52
+- **Total Connections:** 69
 - **Clusters:** Entry, Pipeline, Routing, State Handlers, Format Handlers,
 Shared Handlers, Services, Utils, Context Integration, Health
 - **Audit Scope:** All `webapp/parser/` files with full context, imports,
@@ -249,9 +249,9 @@ Click to expand each module for full audit details.
 #### 🔧 Key Functions & Classes (Context_Integration_context_coordinator)
 
 - `get_semantic_score` (function, line 97)
-- `merge_and_rank_candidates` (function, line 145)
-- `dynamic_state_county_detection` (function, line 235)
-- `ContextCoordinator` (class, line 824)
+- `merge_and_rank_candidates` (function, line 166)
+- `dynamic_state_county_detection` (function, line 256)
+- `ContextCoordinator` (class, line 857)
 
 #### 📦 Key Imports (Context_Integration_context_coordinator)
 
@@ -278,35 +278,35 @@ Click to expand each module for full audit details.
 
 #### ⚠️ Task markers (Context_Integration_context_coordinator)
 
-- L863 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
-- L951 **WARNING**: ({
-- L952 **WARNING**: ",
-- L1350 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
+- L896 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
+- L984 **WARNING**: ({
+- L985 **WARNING**: ",
+- L1383 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
 {issues\['integrity*issues'\]}")
-- L1589 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
+- L1622 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
 contest: {contest}")
-- L1766 **WARNING**: (f"\[get*feedback*pattern*kb\] Skipping corrupt line:
+- L1799 **WARNING**: (f"\[get*feedback*pattern*kb\] Skipping corrupt line:
 {e}")
-- L1878 **WARNING**: ("\[group*dom*nodes*by*label\] No organized DOM parts.
+- L1911 **WARNING**: ("\[group*dom*nodes*by*label\] No organized DOM parts.
 (Further warnings suppressed)")
-- L1880 **WARNING**: (f"\[group*dom*nodes*by*label\] No organized DOM parts.
+- L1913 **WARNING**: (f"\[group*dom*nodes*by*label\] No organized DOM parts.
 (Occurred {ContextCoordinator.*dom*parts*warning*count} times)")
-- L1885 **WARNING**: ("\[group*dom*nodes*by*label\] No DOM nodes found.")
-- L1903 **WARNING**: ("\[submit*user*feedback\] ContextOrganizer has no
+- L1918 **WARNING**: ("\[group*dom*nodes*by*label\] No DOM nodes found.")
+- L1936 **WARNING**: ("\[submit*user*feedback\] ContextOrganizer has no
 submit*user*feedback method.")
-- L1931 **WARNING**: (f"\[correct*and*update*contest\] Contest {contest*id}
+- L1964 **WARNING**: (f"\[correct*and*update*contest\] Contest {contest*id}
 missing type/election*types after sync.")
-- L1955 **WARNING**: ("\[print*contest*summary\] No organized contests to
+- L1988 **WARNING**: ("\[print*contest*summary\] No organized contests to
 summarize.")
-- L1968 **WARNING**: ("\[plot*contest*distribution\] No organized contests to
+- L2001 **WARNING**: ("\[plot*contest*distribution\] No organized contests to
 plot.")
-- L2019 **WARNING**: ("No organized DOM parts.")
-- L2022 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
-- L2033 **WARNING**: ("\[get*contest*groups\] No contest groups found.")
-- L2042 **WARNING**: ("\[get*panel*groups\] No panel groups found.")
-- L2051 **WARNING**: ("\[get*button*groups\] No button groups found.")
-- L2060 **WARNING**: ("\[get*table*groups\] No table groups found.")
-- L2069 **WARNING**: ("\[get*relationships\] No organized context.")
+- L2052 **WARNING**: ("No organized DOM parts.")
+- L2055 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
+- L2066 **WARNING**: ("\[get*contest*groups\] No contest groups found.")
+- L2075 **WARNING**: ("\[get*panel*groups\] No panel groups found.")
+- L2084 **WARNING**: ("\[get*button*groups\] No button groups found.")
+- L2093 **WARNING**: ("\[get*table*groups\] No table groups found.")
+- L2102 **WARNING**: ("\[get*relationships\] No organized context.")
 
 ### Context\_Integration/context\_organizer.py {#webapp-parser-context-integration-context-organizer-py}
 
@@ -480,6 +480,8 @@ rescanning...")
 - `get_subprocess_env` (function, line 242)
 - `get_supported_formats` (function, line 251)
 - `get_sqlalchemy_engine` (function, line 287)
+- `get_ocr_config_dict` (function, line 519)
+- `log_ocr_config_summary` (function, line 571)
 
 #### 📦 Key Imports (config)
 
@@ -492,6 +494,28 @@ rescanning...")
 - `azure.identity`
 - `sqlalchemy`
 - `utils.logger_singleton`
+
+### config/\_ocr\_helpers.py {#webapp-parser-config-ocr-helpers-py}
+
+> OCR Configuration Helper Functions
+
+#### 🔧 Key Functions & Classes (config__ocr_helpers)
+
+- `get_ocr_config_dict` (function, line 8)
+- `log_ocr_config_summary` (function, line 43)
+
+### config/ocr\_tuning.py {#webapp-parser-config-ocr-tuning-py}
+
+> OCR Tuning Parameters — Centralized Configuration
+
+#### 🔧 Key Functions & Classes (config_ocr_tuning)
+
+- `OcrTuningConfig` (class, line 46)
+
+#### 📦 Key Imports (config_ocr_tuning)
+
+- `os`
+- `typing`
 
 ### data\_manager.py {#webapp-parser-data-manager-py}
 
@@ -681,31 +705,31 @@ Closest matches: {matches}")
 
 #### 🔧 Key Functions & Classes (handlers_formats_pdf_handler)
 
-- `_env_truthy` (function, line 161)
-- `PDFParseCancelled` (class, line 183)
-- `_sanitize_cache_get` (function, line 188)
-- `_sanitize_cache_set` (function, line 199)
-- `_normalize_angle` (function, line 210)
-- `_quantize_angle` (function, line 218)
-- `_collect_page_orientation` (function, line 228)
-- `_get_page_orientation_map` (function, line 308)
-- `_log_orientation_application` (function, line 372)
-- `_apply_page_orientation` (function, line 385)
-- `_expand_focus_windows` (function, line 416)
-- `_normalize_contest_key` (function, line 442)
-- `_contest_title_tokens` (function, line 449)
-- `_ensure_not_cancelled` (function, line 455)
-- `_cancelled_result` (function, line 516)
-- `_estimate_ocr_time_budgets` (function, line 541)
-- `_refine_focus_windows_for_contest` (function, line 552)
-- `_focus_windows_from_line_records` (function, line 595)
-- `_merge_focus_windows` (function, line 653)
-- `_autopick_contest_from_probe` (function, line 680)
-- `_compute_sample_page_indices` (function, line 729)
-- `_contest_probe_scan` (function, line 761)
-- `_yield_full_pass_batches` (function, line 861)
-- `_camelot_signal_sets` (function, line 933)
-- `_split_ws_blocks` (function, line 976)
+- `_env_truthy` (function, line 183)
+- `PDFParseCancelled` (class, line 205)
+- `_sanitize_cache_get` (function, line 210)
+- `_sanitize_cache_set` (function, line 221)
+- `_normalize_angle` (function, line 232)
+- `_quantize_angle` (function, line 240)
+- `_collect_page_orientation` (function, line 250)
+- `_get_page_orientation_map` (function, line 330)
+- `_log_orientation_application` (function, line 394)
+- `_apply_page_orientation` (function, line 407)
+- `_expand_focus_windows` (function, line 438)
+- `_normalize_contest_key` (function, line 464)
+- `_contest_title_tokens` (function, line 471)
+- `_ensure_not_cancelled` (function, line 477)
+- `_cancelled_result` (function, line 538)
+- `_estimate_ocr_time_budgets` (function, line 563)
+- `_refine_focus_windows_for_contest` (function, line 574)
+- `_focus_windows_from_line_records` (function, line 617)
+- `_merge_focus_windows` (function, line 675)
+- `_autopick_contest_from_probe` (function, line 702)
+- `_compute_sample_page_indices` (function, line 751)
+- `_contest_probe_scan` (function, line 783)
+- `_yield_full_pass_batches` (function, line 883)
+- `_camelot_signal_sets` (function, line 955)
+- `_split_ws_blocks` (function, line 998)
 
 #### 📦 Key Imports (handlers_formats_pdf_handler)
 
@@ -732,30 +756,30 @@ Closest matches: {matches}")
 
 #### ⚠️ Task markers (handlers_formats_pdf_handler)
 
-- L922 **WARNING**: ({
-- L923 **WARNING**: ",
-- L925 **WARN**: \] Skipping page {page*index} during OCR batch render:
+- L944 **WARNING**: ({
+- L945 **WARNING**: ",
+- L947 **WARN**: \] Skipping page {page*index} during OCR batch render:
 {exc}",
-- L1078 **WARNING**: ({
-- L1079 **WARNING**: ",
-- L1082 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
+- L1100 **WARNING**: ({
+- L1101 **WARNING**: ",
+- L1104 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
 parser instability."
-- L2635 **WARNING**: ({
-- L2636 **WARNING**: ",
-- L2638 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
+- L2696 **WARNING**: ({
+- L2697 **WARNING**: ",
+- L2699 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
 using PyMuPDF fallback.",
-- L2658 **WARNING**: ({
-- L2659 **WARNING**: ",
-- L2662 **WARN**: \] pdf2image conversion failed; "
-- L3012 **WARNING**: ({
-- L3013 **WARNING**: ",
-- L3015 **WARN**: \] Skipping full-document OCR pass due to expired sample
+- L2719 **WARNING**: ({
+- L2720 **WARNING**: ",
+- L2723 **WARN**: \] pdf2image conversion failed; "
+- L3090 **WARNING**: ({
+- L3091 **WARNING**: ",
+- L3093 **WARN**: \] Skipping full-document OCR pass due to expired sample
 budget.",
-- L3063 **WARNING**: ({
-- L3064 **WARNING**: ",
-- L3066 **WARN**: \] Aborting full-document OCR pass due to timeout budget.",
-- L3093 **WARNING**: ({
-- L3094 **WARNING**: ",
+- L3141 **WARNING**: ({
+- L3142 **WARNING**: ",
+- L3144 **WARN**: \] Aborting full-document OCR pass due to timeout budget.",
+- L3171 **WARNING**: ({
+- L3172 **WARNING**: ",
 
 ### handlers/formats/txt\_handler.py {#webapp-parser-handlers-formats-txt-handler-py}
 
@@ -2764,14 +2788,11 @@ session*id, error=str(e))
 
 #### 🔧 Key Functions & Classes (utils_model_registry)
 
-- `_hf_offline` (function, line 41)
-- `load_vocab_from_file` (function, line 50)
-- `build_reverse_vocab` (function, line 68)
-- `advanced_tokenizer` (function, line 92)
-- `ContestFieldClassifier` (class, line 105)
-- `CandidateClassifier` (class, line 186)
-- `ModelRegistry` (class, line 236)
-- `TableDetectionModel` (class, line 490)
+- `_hf_offline` (function, line 40)
+- `load_vocab_from_file` (function, line 49)
+- `build_reverse_vocab` (function, line 67)
+- `advanced_tokenizer` (function, line 91)
+- `ModelRegistry` (class, line 254)
 
 #### 📦 Key Imports (utils_model_registry)
 
@@ -2785,9 +2806,6 @@ session*id, error=str(e))
 - `typing`
 - `typing`
 - `typing`
-- `torch`
-- `torch.nn`
-- `torch.nn.functional`
 - `selectolax.parser`
 - `config`
 - `config`
@@ -2798,12 +2816,12 @@ session*id, error=str(e))
 
 #### ⚠️ Task markers (utils_model_registry)
 
-- L389 **WARNING**: (f"Failed loading local override for SentenceTransformer:
+- L424 **WARNING**: (f"Failed loading local override for SentenceTransformer:
 {e}")
-- L409 **WARNING**: ("TRANSFORMERS*OFFLINE/HUGGINGFACE*HUB*OFFLINE set;
+- L444 **WARNING**: ("TRANSFORMERS*OFFLINE/HUGGINGFACE*HUB*OFFLINE set;
 skipping HF download. Embeddings disabled.")
-- L426 **WARNING**: for noisy environments
-- L429 **WARNING**: (f"Failed to load base SentenceTransformer (network/DNS).
+- L461 **WARNING**: for noisy environments
+- L464 **WARNING**: (f"Failed to load base SentenceTransformer (network/DNS).
 Running without embeddings. Error: {e}")
 
 ### utils/models.py {#webapp-parser-utils-models-py}
@@ -3255,31 +3273,31 @@ warnings; check markers and path.")
 
 #### 🔧 Key Functions & Classes (utils_spacy_utils)
 
-- `extract_entities` (function, line 34)
-- `get_sentences` (function, line 49)
-- `clean_text` (function, line 53)
-- `extract_entities_from_list` (function, line 56)
-- `extract_entity_labels` (function, line 59)
-- `is_location_entity` (function, line 63)
-- `extract_locations` (function, line 66)
-- `extract_dates` (function, line 70)
-- `filter_entities_by_type` (function, line 74)
-- `entity_frequency` (function, line 78)
-- `get_entity_context` (function, line 87)
-- `similarity_score` (function, line 97)
-- `extract_persons` (function, line 104)
-- `extract_organizations` (function, line 108)
-- `extract_money` (function, line 112)
-- `extract_emails` (function, line 116)
-- `extract_urls` (function, line 119)
-- `load_known_states_counties` (function, line 125)
-- `normalize_location` (function, line 136)
-- `is_known_state` (function, line 144)
-- `is_known_county` (function, line 147)
-- `detect_noisy_or_ambiguous_entities` (function, line 150)
-- `canonicalize_entity` (function, line 167)
-- `validate_contest` (function, line 173)
-- `flag_suspicious_contests` (function, line 200)
+- `_get_nlp` (function, line 25)
+- `extract_entities` (function, line 43)
+- `get_sentences` (function, line 61)
+- `clean_text` (function, line 68)
+- `extract_entities_from_list` (function, line 71)
+- `extract_entity_labels` (function, line 74)
+- `is_location_entity` (function, line 81)
+- `extract_locations` (function, line 84)
+- `extract_dates` (function, line 91)
+- `filter_entities_by_type` (function, line 98)
+- `entity_frequency` (function, line 105)
+- `get_entity_context` (function, line 117)
+- `similarity_score` (function, line 127)
+- `extract_persons` (function, line 137)
+- `extract_organizations` (function, line 144)
+- `extract_money` (function, line 151)
+- `extract_emails` (function, line 158)
+- `extract_urls` (function, line 161)
+- `load_known_states_counties` (function, line 167)
+- `normalize_location` (function, line 178)
+- `is_known_state` (function, line 186)
+- `is_known_county` (function, line 189)
+- `detect_noisy_or_ambiguous_entities` (function, line 192)
+- `canonicalize_entity` (function, line 212)
+- `validate_contest` (function, line 218)
 
 #### 📦 Key Imports (utils_spacy_utils)
 
@@ -3294,11 +3312,14 @@ warnings; check markers and path.")
 - `typing`
 - `typing`
 - `orjson`
-- `spacy`
 - `Context_Integration.Context_Library.constants`
 - `logger_singleton`
 - `shared_logic`
 - `shared_logic`
+
+#### ⚠️ Task markers (utils_spacy_utils)
+
+- L38 **WARNING**: (f"spaCy unavailable or model load failed: {e}")
 
 ### utils/strategy\_concurrency.py {#webapp-parser-utils-strategy-concurrency-py}
 

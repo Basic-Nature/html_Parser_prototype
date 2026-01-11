@@ -1068,6 +1068,14 @@ def generate_generic_html_result(
         "row_count": len(rows_final),
         "column_count": len(headers_final)
     })
+    
+    # Add ML quality metrics
+    from .config import log_extraction_quality
+    quality = log_extraction_quality(
+        headers_final, rows_final, metadata, "html_handler", logger, session_id
+    )
+    metadata["quality_metrics"] = quality
+    
     return headers_final, rows_final, contest_label, metadata
 
 def orchestrate_url(

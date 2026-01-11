@@ -17,25 +17,24 @@ import threading
 from collections import Counter
 from typing import Any, Callable, Dict
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+# Lazy/defensive torch import: avoid hard failure on environments where
+# DLLs are unavailable. Downstream code must check availability.
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+except Exception:
+    torch = None  # type: ignore[assignment]
+    nn = None     # type: ignore[assignment]
+    F = None      # type: ignore[assignment]
 from selectolax.parser import HTMLParser
 
 from ..config import MODEL_DIR, PROJECT_ROOT, TABLE_MODEL_PATH, VOCAB_DIR
 from ..Context_Integration.librarian import load_context_library
 from .logger_singleton import logger
-
-try:
-    from sentence_transformers import SentenceTransformer
-except ImportError:
-    SentenceTransformer = None
-
-try:
-    import spacy
-except ImportError:
-    spacy = None
-    Language = None
+SentenceTransformer = None  # defer import to use-sites
+spacy = None  # defer import to use-sites
+Language = None
 _lock = threading.Lock()
 
 def _hf_offline() -> bool:
@@ -89,148 +88,167 @@ IDX2YEAR = build_reverse_vocab(YEAR2IDX, cast_int=True)
 
 # --- Advanced Tokenizer ---
 
-def advanced_tokenizer(text: str, max_len: int = 20) -> torch.Tensor:
+def advanced_tokenizer(text: str, max_len: int = 20):
     """
     Tokenizes text using the project vocabulary.
-    Handles lowercasing, punctuation, and OOV words.
-    Pads/truncates to max_len.
+    Returns a torch.Tensor when torch is available; otherwise raises ImportError.
     """
     tokens = re.findall(r"\w+", text.lower())
     idxs = [WORD2IDX.get(tok, 0) for tok in tokens]
     idxs = idxs[:max_len] + [0] * (max_len - len(idxs))
+    if torch is None:
+        raise ImportError("Torch is not available for advanced_tokenizer")
     return torch.tensor(idxs).unsqueeze(0)  # (1, max_len)
 
 # --- ContestFieldClassifier (Multi-head, Multi-field) ---
 
-class ContestFieldClassifier(nn.Module):
-    """
-    Predicts contest fields (year, state, county, type_) from contest title text.
-    Returns predictions with confidence and explanations.
-    """
-    def __init__(self, vocab_size, embed_dim, num_years, num_states, num_counties, num_types):
-        super().__init__()
-        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
-        self.encoder = nn.LSTM(embed_dim, embed_dim, batch_first=True, bidirectional=True)
-        self.year_head = nn.Linear(embed_dim * 2, num_years)
-        self.state_head = nn.Linear(embed_dim * 2, num_states)
-        self.county_head = nn.Linear(embed_dim * 2, num_counties)
-        self.type_head = nn.Linear(embed_dim * 2, num_types)
-
-    def forward(self, x):
-        emb = self.embedding(x)
-        _, (h_n, _) = self.encoder(emb)
-        h = torch.cat([h_n[0], h_n[1]], dim=-1)  # (batch, embed_dim*2)
-        year_logits = self.year_head(h)
-        state_logits = self.state_head(h)
-        county_logits = self.county_head(h)
-        type_logits = self.type_head(h)
-        return year_logits, state_logits, county_logits, type_logits
-
-    @classmethod
-    def load_from_checkpoint(cls, path) -> "ContestFieldClassifier":
-        # Load vocab sizes dynamically
-        model = cls(
-            vocab_size=max(WORD2IDX.values(), default=1) + 1,
-            embed_dim=128,
-            num_years=max(YEAR2IDX.values(), default=1) + 1,
-            num_states=max(STATE2IDX.values(), default=1) + 1,
-            num_counties=max(COUNTY2IDX.values(), default=1) + 1,
-            num_types=max(TYPE2IDX.values(), default=1) + 1
-        )
-        model.load_state_dict(torch.load(path, map_location="cpu"))
-        model.eval()
-        return model
-
-    def predict(self, text: str) -> Dict[str, Dict[str, Any]]:
+if torch is not None and nn is not None and F is not None:
+    class ContestFieldClassifier(nn.Module):
         """
-        Predict all contest fields from text.
-        Returns a dict: {field: {"value": ..., "confidence": ..., "explanation": ...}}
+        Predicts contest fields (year, state, county, type_) from contest title text.
+        Returns predictions with confidence and explanations.
         """
-        x = advanced_tokenizer(text)
-        with torch.no_grad():
-            year_logits, state_logits, county_logits, type_logits = self.forward(x)
-            year_probs = F.softmax(year_logits, dim=1).squeeze()
-            state_probs = F.softmax(state_logits, dim=1).squeeze()
-            county_probs = F.softmax(county_logits, dim=1).squeeze()
-            type_probs = F.softmax(type_logits, dim=1).squeeze()
+        def __init__(self, vocab_size, embed_dim, num_years, num_states, num_counties, num_types):
+            super().__init__()
+            self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+            self.encoder = nn.LSTM(embed_dim, embed_dim, batch_first=True, bidirectional=True)
+            self.year_head = nn.Linear(embed_dim * 2, num_years)
+            self.state_head = nn.Linear(embed_dim * 2, num_states)
+            self.county_head = nn.Linear(embed_dim * 2, num_counties)
+            self.type_head = nn.Linear(embed_dim * 2, num_types)
 
-            year_idx = int(year_probs.argmax())
-            state_idx = int(state_probs.argmax())
-            county_idx = int(county_probs.argmax())
-            type_idx = int(type_probs.argmax())
+        def forward(self, x):
+            emb = self.embedding(x)
+            _, (h_n, _) = self.encoder(emb)
+            h = torch.cat([h_n[0], h_n[1]], dim=-1)  # (batch, embed_dim*2)
+            year_logits = self.year_head(h)
+            state_logits = self.state_head(h)
+            county_logits = self.county_head(h)
+            type_logits = self.type_head(h)
+            return year_logits, state_logits, county_logits, type_logits
 
-            result = {
-                "year": {
-                    "value": IDX2YEAR.get(year_idx, None),
-                    "confidence": float(year_probs[year_idx]),
-                    "explanation": f"Predicted year from text, top prob: {float(year_probs[year_idx]):.2f}"
-                },
-                "state": {
-                    "value": IDX2STATE.get(state_idx, None),
-                    "confidence": float(state_probs[state_idx]),
-                    "explanation": f"Predicted state from text, top prob: {float(state_probs[state_idx]):.2f}"
-                },
-                "county": {
-                    "value": IDX2COUNTY.get(county_idx, None),
-                    "confidence": float(county_probs[county_idx]),
-                    "explanation": f"Predicted county from text, top prob: {float(county_probs[county_idx]):.2f}"
-                },
-                "type_": {
-                    "value": IDX2TYPE.get(type_idx, None),
-                    "confidence": float(type_probs[type_idx]),
-                    "explanation": f"Predicted type from text, top prob: {float(type_probs[type_idx]):.2f}"
+        @classmethod
+        def load_from_checkpoint(cls, path) -> "ContestFieldClassifier":
+            # Load vocab sizes dynamically
+            model = cls(
+                vocab_size=max(WORD2IDX.values(), default=1) + 1,
+                embed_dim=128,
+                num_years=max(YEAR2IDX.values(), default=1) + 1,
+                num_states=max(STATE2IDX.values(), default=1) + 1,
+                num_counties=max(COUNTY2IDX.values(), default=1) + 1,
+                num_types=max(TYPE2IDX.values(), default=1) + 1
+            )
+            model.load_state_dict(torch.load(path, map_location="cpu"))
+            model.eval()
+            return model
+
+        def predict(self, text: str) -> Dict[str, Dict[str, Any]]:
+            """
+            Predict all contest fields from text.
+            Returns a dict: {field: {"value": ..., "confidence": ..., "explanation": ...}}
+            """
+            x = advanced_tokenizer(text)
+            with torch.no_grad():
+                year_logits, state_logits, county_logits, type_logits = self.forward(x)
+                year_probs = F.softmax(year_logits, dim=1).squeeze()
+                state_probs = F.softmax(state_logits, dim=1).squeeze()
+                county_probs = F.softmax(county_logits, dim=1).squeeze()
+                type_probs = F.softmax(type_logits, dim=1).squeeze()
+
+                year_idx = int(year_probs.argmax())
+                state_idx = int(state_probs.argmax())
+                county_idx = int(county_probs.argmax())
+                type_idx = int(type_probs.argmax())
+
+                result = {
+                    "year": {
+                        "value": IDX2YEAR.get(year_idx, None),
+                        "confidence": float(year_probs[year_idx]),
+                        "explanation": f"Predicted year from text, top prob: {float(year_probs[year_idx]):.2f}"
+                    },
+                    "state": {
+                        "value": IDX2STATE.get(state_idx, None),
+                        "confidence": float(state_probs[state_idx]),
+                        "explanation": f"Predicted state from text, top prob: {float(state_probs[state_idx]):.2f}"
+                    },
+                    "county": {
+                        "value": IDX2COUNTY.get(county_idx, None),
+                        "confidence": float(county_probs[county_idx]),
+                        "explanation": f"Predicted county from text, top prob: {float(county_probs[county_idx]):.2f}"
+                    },
+                    "type_": {
+                        "value": IDX2TYPE.get(type_idx, None),
+                        "confidence": float(type_probs[type_idx]),
+                        "explanation": f"Predicted type from text, top prob: {float(type_probs[type_idx]):.2f}"
+                    }
                 }
-            }
-            return result
+                return result
+else:
+    class ContestFieldClassifier:  # type: ignore[no-redef]
+        @classmethod
+        def load_from_checkpoint(cls, path):
+            raise ImportError("Torch is not available: cannot load ContestFieldClassifier")
 
-class CandidateClassifier(nn.Module):
-    """
-    Predicts candidate from input text.
-    Returns predictions with confidence and explanations.
-    """
-    def __init__(self, vocab_size, embed_dim, num_candidates):
-        super().__init__()
-        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
-        self.encoder = nn.LSTM(embed_dim, embed_dim, batch_first=True, bidirectional=True)
-        self.candidate_head = nn.Linear(embed_dim * 2, num_candidates)
+        def predict(self, text: str):
+            raise ImportError("Torch is not available: predict() unsupported")
 
-    def forward(self, x):
-        emb = self.embedding(x)
-        _, (h_n, _) = self.encoder(emb)
-        h = torch.cat([h_n[0], h_n[1]], dim=-1)  # (batch, embed_dim*2)
-        candidate_logits = self.candidate_head(h)
-        return candidate_logits
-
-    @classmethod
-    def load_from_checkpoint(cls, path, vocab_size, embed_dim, num_candidates):
-        model = cls(vocab_size, embed_dim, num_candidates)
-        model.load_state_dict(torch.load(path, map_location="cpu"))
-        model.eval()
-        return model
-
-    def predict(self, text, tokenizer, idx2candidate):
+if torch is not None and nn is not None and F is not None:
+    class CandidateClassifier(nn.Module):
         """
-        Predict candidate from text.
-        Args:
-            text: str, input text
-            tokenizer: function, returns torch tensor of token indices
-            idx2candidate: dict, maps index to candidate string
-        Returns:
-            dict: {"value": ..., "confidence": ..., "explanation": ...}
+        Predicts candidate from input text.
+        Returns predictions with confidence and explanations.
         """
-        x = tokenizer(text)
-        with torch.no_grad():
-            logits = self.forward(x)
-            probs = F.softmax(logits, dim=1).squeeze()
-            idx = int(probs.argmax())
-            value = idx2candidate.get(idx, None)
-            confidence = float(probs[idx])
-            explanation = f"Predicted candidate from text, top prob: {confidence:.2f}"
-            return {
-                "value": value,
-                "confidence": confidence,
-                "explanation": explanation
-            }
+        def __init__(self, vocab_size, embed_dim, num_candidates):
+            super().__init__()
+            self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+            self.encoder = nn.LSTM(embed_dim, embed_dim, batch_first=True, bidirectional=True)
+            self.candidate_head = nn.Linear(embed_dim * 2, num_candidates)
+
+        def forward(self, x):
+            emb = self.embedding(x)
+            _, (h_n, _) = self.encoder(emb)
+            h = torch.cat([h_n[0], h_n[1]], dim=-1)  # (batch, embed_dim*2)
+            candidate_logits = self.candidate_head(h)
+            return candidate_logits
+
+        @classmethod
+        def load_from_checkpoint(cls, path, vocab_size, embed_dim, num_candidates):
+            model = cls(vocab_size, embed_dim, num_candidates)
+            model.load_state_dict(torch.load(path, map_location="cpu"))
+            model.eval()
+            return model
+
+        def predict(self, text, tokenizer, idx2candidate):
+            """
+            Predict candidate from text.
+            Args:
+                text: str, input text
+                tokenizer: function, returns torch tensor of token indices
+                idx2candidate: dict, maps index to candidate string
+            Returns:
+                dict: {"value": ..., "confidence": ..., "explanation": ...}
+            """
+            x = tokenizer(text)
+            with torch.no_grad():
+                logits = self.forward(x)
+                probs = F.softmax(logits, dim=1).squeeze()
+                idx = int(probs.argmax())
+                value = idx2candidate.get(idx, None)
+                confidence = float(probs[idx])
+                explanation = f"Predicted candidate from text, top prob: {confidence:.2f}"
+                return {
+                    "value": value,
+                    "confidence": confidence,
+                    "explanation": explanation
+                }
+else:
+    class CandidateClassifier:  # type: ignore[no-redef]
+        @classmethod
+        def load_from_checkpoint(cls, path, vocab_size, embed_dim, num_candidates):
+            raise ImportError("Torch is not available: cannot load CandidateClassifier")
+
+        def predict(self, text, tokenizer, idx2candidate):
+            raise ImportError("Torch is not available: predict() unsupported")
 # --- ModelRegistry Integration ---
 
 class ModelRegistry(object):
@@ -257,8 +275,14 @@ class ModelRegistry(object):
 
     @classmethod
     def get_spacy_model(cls, model_name=None, use_finetuned=True):
+        # Lazy import of spaCy to avoid thinc->torch import chain at module import
+        global spacy
         if spacy is None:
-            raise ImportError("spaCy is not installed.")
+            try:
+                import spacy as _spacy
+                spacy = _spacy
+            except Exception as e:
+                raise ImportError(f"spaCy unavailable: {e}")
         with _lock:
             key = f"spacy:{model_name or 'default'}:{use_finetuned}"
             if key in cls._nlp_models:
@@ -298,6 +322,8 @@ class ModelRegistry(object):
 
     @classmethod
     def get_torch_contest_model(cls) -> "ContestFieldClassifier":
+        if torch is None:
+            raise ImportError("Torch is not available in this environment.")
         if cls._torch_contest_model is None:
             model_path = cls._model_paths["torch_contest"]
             if not os.path.exists(model_path):
@@ -316,6 +342,9 @@ class ModelRegistry(object):
         Loads and caches the torch-based CandidateClassifier model.
         Dynamically builds vocab from librarian.py if available.
         """
+        if torch is None:
+            logger.error("Torch is not available in this environment.")
+            return None
         if cls._torch_candidate_model is not None:
             return cls._torch_candidate_model
 
@@ -365,8 +394,14 @@ class ModelRegistry(object):
 
     @classmethod
     def get_sentence_transformer(cls, model_name=None, use_finetuned=True, device=None):
+        # Lazy import to avoid heavy dependencies during module import
+        global SentenceTransformer
         if SentenceTransformer is None:
-            raise ImportError("sentence_transformers is not installed.")
+            try:
+                from sentence_transformers import SentenceTransformer as _ST
+                SentenceTransformer = _ST
+            except Exception as e:
+                raise ImportError(f"sentence_transformers unavailable: {e}")
         with _lock:
             base_name = model_name or "all-MiniLM-L6-v2"
             if not isinstance(base_name, str) or not base_name.strip() or base_name.startswith("SentenceTransformer("):
@@ -487,120 +522,130 @@ class ModelRegistry(object):
             return getattr(model.modules[0], 'model_name_or_path')
         return str(model)
 
-class TableDetectionModel(nn.Module):
-    """
-    Robust Table Detection Model for HTML.
-    Combines a simple neural network for table structure classification
-    with rule-based extraction using selectolax as a fallback.
-    """
-
-    def __init__(self, input_dim=128, hidden_dim=64, num_classes=2):
-        super().__init__()
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, num_classes)
-
-    @classmethod
-    def load_from_checkpoint(cls, path=None):
+if torch is not None and nn is not None and F is not None:
+    class TableDetectionModel(nn.Module):
         """
-        Load the model from a PyTorch checkpoint.
-        If no path is provided, use TABLE_MODEL_PATH from config.py.
+        Robust Table Detection Model for HTML.
+        Combines a simple neural network for table structure classification
+        with rule-based extraction using selectolax as a fallback.
         """
-        if path is None:
-            path = TABLE_MODEL_PATH
-        checkpoint = torch.load(path, map_location="cpu")
-        model = cls(**checkpoint.get("model_args", {}))
-        model.load_state_dict(checkpoint["state_dict"])
-        model.eval()
-        return model
 
-    def forward(self, x) -> torch.Tensor:
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
+        def __init__(self, input_dim=128, hidden_dim=64, num_classes=2):
+            super().__init__()
+            self.fc1 = nn.Linear(input_dim, hidden_dim)
+            self.fc2 = nn.Linear(hidden_dim, num_classes)
 
-    def predict_tables(self, html: str) -> list[dict]:
-        """
-        Detect and extract tables from HTML using selectolax.
-        Returns a list of dicts: [{"headers": [...], "data": [...], "meta": {...}}, ...]
-        """
-        tables = []
-        tree = HTMLParser(html)
+        @classmethod
+        def load_from_checkpoint(cls, path=None):
+            """
+            Load the model from a PyTorch checkpoint.
+            If no path is provided, use TABLE_MODEL_PATH from config.py.
+            """
+            if path is None:
+                path = TABLE_MODEL_PATH
+            checkpoint = torch.load(path, map_location="cpu")
+            model = cls(**checkpoint.get("model_args", {}))
+            model.load_state_dict(checkpoint["state_dict"])
+            model.eval()
+            return model
 
-        for table in tree.css("table"):
-            headers = []
+        def forward(self, x) -> Any:
+            x = F.relu(self.fc1(x))
+            x = self.fc2(x)
+            return x
+
+        def predict_tables(self, html: str) -> list[dict]:
+            """
+            Detect and extract tables from HTML using selectolax.
+            Returns a list of dicts: [{"headers": [...], "data": [...], "meta": {...}}, ...]
+            """
+            tables = []
+            tree = HTMLParser(html)
+
+            for table in tree.css("table"):
+                headers = []
+                data = []
+                meta = {}
+
+                # Extract headers
+                header_row = table.css_first("tr")
+                if header_row:
+                    headers = [cell.text(strip=True) for cell in header_row.css("th,td")]
+                # Extract data rows
+                for row in table.css("tr")[1:]:
+                    cells = row.css("td,th")
+                    row_data = {headers[i]: cells[i].text(strip=True) if i < len(cells) else "" for i in range(len(headers))}
+                    if any(row_data.values()):
+                        data.append(row_data)
+                meta = {
+                    "source": "selectolax_table",
+                    "n_rows": len(data),
+                    "n_cols": len(headers),
+                    "table_html": table.html[:1000] if hasattr(table, "html") else ""
+                }
+                tables.append({"headers": headers, "data": data, "meta": meta})
+
+            # Fallback: Regex-based detection for table-like structures
+            if not tables:
+                tables.extend(self._regex_table_detection(html))
+
+            return tables
+
+        def _regex_table_detection(self, html: str) -> list[dict]:
+            """
+            Fallback: Use regex to find repeated row/column patterns in flat HTML.
+            Returns list of {headers, data, meta}.
+            """
+            tables = []
+            lines = [line.strip() for line in html.splitlines() if line.strip()]
+            col_counts = [len(re.split(r"\s{2,}|\t|\|", line)) for line in lines]
+            if not col_counts:
+                return []
+            count_freq = Counter(col_counts)
+            common_col = max(
+                (count for count in count_freq if count > 1),
+                key=lambda count: count_freq[count],
+                default=None,
+            )
+            if not common_col or count_freq[common_col] < 2:
+                return []
+            rows = [
+                re.split(r"\s{2,}|\t|\|", line)
+                for line, col_count in zip(lines, col_counts)
+                if col_count == common_col
+            ]
+            if len(rows) < 2:
+                return []
+            headers = rows[0]
             data = []
-            meta = {}
-
-            # Extract headers
-            header_row = table.css_first("tr")
-            if header_row:
-                headers = [cell.text(strip=True) for cell in header_row.css("th,td")]
-            # Extract data rows
-            for row in table.css("tr")[1:]:
-                cells = row.css("td,th")
-                row_data = {headers[i]: cells[i].text(strip=True) if i < len(cells) else "" for i in range(len(headers))}
+            for row in rows[1:]:
+                row_data = {headers[i]: row[i] if i < len(row) else "" for i in range(len(headers))}
                 if any(row_data.values()):
                     data.append(row_data)
             meta = {
-                "source": "selectolax_table",
+                "source": "regex_table",
                 "n_rows": len(data),
                 "n_cols": len(headers),
-                "table_html": table.html[:1000] if hasattr(table, "html") else ""
             }
             tables.append({"headers": headers, "data": data, "meta": meta})
+            return tables
+else:
+    class TableDetectionModel:  # type: ignore[no-redef]
+        @classmethod
+        def load_from_checkpoint(cls, path=None):
+            raise ImportError("Torch is not available: cannot load TableDetectionModel")
 
-        # Fallback: Regex-based detection for table-like structures
-        if not tables:
-            tables.extend(self._regex_table_detection(html))
-
-        return tables
-
-    def _regex_table_detection(self, html: str) -> list[dict]:
-        """
-        Fallback: Use regex to find repeated row/column patterns in flat HTML.
-        Returns list of {headers, data, meta}.
-        """
-        tables = []
-        lines = [line.strip() for line in html.splitlines() if line.strip()]
-        col_counts = [len(re.split(r"\s{2,}|\t|\|", line)) for line in lines]
-        if not col_counts:
-            return []
-        count_freq = Counter(col_counts)
-        common_col = max(
-            (count for count in count_freq if count > 1),
-            key=lambda count: count_freq[count],
-            default=None,
-        )
-        if not common_col or count_freq[common_col] < 2:
-            return []
-        rows = [
-            re.split(r"\s{2,}|\t|\|", line)
-            for line, col_count in zip(lines, col_counts)
-            if col_count == common_col
-        ]
-        if len(rows) < 2:
-            return []
-        headers = rows[0]
-        data = []
-        for row in rows[1:]:
-            row_data = {headers[i]: row[i] if i < len(row) else "" for i in range(len(headers))}
-            if any(row_data.values()):
-                data.append(row_data)
-        meta = {
-            "source": "regex_table",
-            "n_rows": len(data),
-            "n_cols": len(headers),
-        }
-        tables.append({"headers": headers, "data": data, "meta": meta})
-        return tables
+        def predict_tables(self, html: str) -> list[dict]:
+            raise ImportError("Torch is not available: predict_tables unsupported")
+            
 
 # --- Example Usage ---
 
 if __name__ == "__main__":
     # Example: Predict fields for a contest title
+    test_title = "2022 General Election Los Angeles County California"
     try:
         model = ModelRegistry.get_torch_contest_model()
-        test_title = "2022 General Election Los Angeles County California"
         result = model.predict(test_title)
         print("Prediction for:", test_title)
         for field, info in result.items():

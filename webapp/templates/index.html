@@ -66,6 +66,10 @@
                 <h3>Run Parser</h3>
                 <p>Start a new parsing job using the current configuration. Manage custom URL-to-handler mappings for tricky or new election sites. Import/export hints, undo changes, and validate handler modules.</p>
             </a>
+            <a class="feature" href="{{ url_for('quality_dashboard') }}" data-bs-toggle="tooltip" title="View extraction quality metrics and performance analytics.">
+                <h3>Quality Metrics</h3>
+                <p>Monitor extraction confidence, data quality trends, and handler performance with interactive charts and detailed analytics.</p>
+            </a>
             <a class="feature" href="{{ url_for('history') }}" data-bs-toggle="tooltip" title="Audit prior changes and restore snapshots.">
                 <h3>Change History</h3>
                 <p>View the full history of URL hint changes and parser configuration updates for transparency and auditability.</p>

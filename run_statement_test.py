@@ -1,12 +1,13 @@
 import argparse
+import os
 import pathlib
 
 from webapp.parser.handlers.formats.pdf_handler import parse_pdf_election_results
 
 
-DEFAULT_PDF = pathlib.Path(
-	r"c:\Users\edu-loaner\html_Parser_prototype\uploads\Democratic District Attorney New York 2025.pdf"
-)
+# Use project root relative path instead of hardcoded user path
+_PROJECT_ROOT = pathlib.Path(__file__).resolve().parent
+DEFAULT_PDF = _PROJECT_ROOT / "uploads" / "Democratic District Attorney New York 2025.pdf"
 
 
 def _describe_result(pdf_path: pathlib.Path, headers, data, metadata, contest, show_recon_debug: bool = False):

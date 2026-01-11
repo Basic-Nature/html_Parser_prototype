@@ -385,8 +385,22 @@ __all__ = [
     # Helpers
     "get_subprocess_env","get_supported_formats",
     
-    # OCR paths
+    # OCR paths & toggles
     "ENABLE_OCR","ENABLE_OCR_FORCE","POPPLER_PATH","TESSERACT_CMD","OCR_DEBUG_DIR",
+    
+    # OCR Tuning Parameters
+    "OCR_CONFIDENCE_THRESHOLD","OCR_MIN_ALPHA_SIGNAL","OCR_AVG_CONF_ACCEPT",
+    "OCR_DPI_MIN","OCR_DPI_MAX","OCR_DPI_STEP","OCR_PSM_LIST","OCR_OEM_LIST",
+    "OCR_PREPROCESS_VARIANTS","OCR_SAMPLE_BUDGET","OCR_MAX_RUNS",
+    "OCR_ORIENTATION_THRESHOLD","OCR_DENSE_LINE_THRESHOLD",
+    "OCR_TABLE_SIGNAL_MIN_COLS","OCR_TABLE_SIGNAL_MIN_ROWS",
+    "OCR_MARKUP_HTML_TAG_RATIO","OCR_DEBUG_SAVE_IMAGES",
+    "OCR_FAST_MODE_DPI_LIMIT","OCR_FAST_MODE_SAMPLE_LIMIT",
+    "PDF_FAST_MODE","PDF_PROBE_MAX_PAGES",
+    # OCR helpers
+    "get_ocr_config_dict","log_ocr_config_summary",
+    # ML quality metrics
+    "build_extraction_quality_metrics","log_extraction_quality",
 ]
 
 # === END OF CONFIGURATION ===
@@ -461,3 +475,348 @@ __all__ = [
 # - SUPPORTED_FORMATS
 
 # -------------------------------------------------------------------------
+
+# === OCR Tuning Configuration ===
+# Centralized OCR parameters for PDF parsing with ML-ready tuning support
+# All values can be overridden via environment variables
+
+# Core Quality Thresholds
+OCR_CONFIDENCE_THRESHOLD = int(os.environ.get("OCR_CONFIDENCE_THRESHOLD", "30"))
+OCR_MIN_ALPHA_SIGNAL = int(os.environ.get("OCR_MIN_ALPHA_SIGNAL", "200"))
+OCR_AVG_CONF_ACCEPT = float(os.environ.get("OCR_AVG_CONF_ACCEPT", "70.0"))
+
+# Adaptive Search Space
+OCR_DPI_MIN = int(os.environ.get("OCR_DPI_MIN", "200"))
+OCR_DPI_MAX = int(os.environ.get("OCR_DPI_MAX", "350"))
+OCR_DPI_STEP = int(os.environ.get("OCR_DPI_STEP", "50"))
+OCR_PSM_LIST = [int(x.strip()) for x in os.environ.get("OCR_PSM_LIST", "6,4,3,11,12,1,13").split(",") if x.strip()]
+OCR_OEM_LIST = [int(x.strip()) for x in os.environ.get("OCR_OEM_LIST", "1,3,2,0").split(",") if x.strip()]
+OCR_PREPROCESS_VARIANTS = [x.strip() for x in os.environ.get("OCR_PREPROCESS_VARIANTS", "none,gray,thresh,sharp_contrast").split(",") if x.strip()]
+
+# Search Budget & Convergence
+OCR_SAMPLE_BUDGET = int(os.environ.get("OCR_SAMPLE_BUDGET", "12"))
+OCR_MAX_RUNS = int(os.environ.get("OCR_MAX_RUNS", "20"))
+
+# Orientation & Layout
+OCR_ORIENTATION_THRESHOLD = float(os.environ.get("OCR_ORIENTATION_THRESHOLD", "10.0"))
+OCR_DENSE_LINE_THRESHOLD = int(os.environ.get("OCR_DENSE_LINE_THRESHOLD", "500"))
+
+# Table Detection Heuristics
+OCR_TABLE_SIGNAL_MIN_COLS = int(os.environ.get("OCR_TABLE_SIGNAL_MIN_COLS", "2"))
+OCR_TABLE_SIGNAL_MIN_ROWS = int(os.environ.get("OCR_TABLE_SIGNAL_MIN_ROWS", "3"))
+
+# Markup Detection
+OCR_MARKUP_HTML_TAG_RATIO = float(os.environ.get("OCR_MARKUP_HTML_TAG_RATIO", "0.3"))
+
+# Debug & Fast Mode
+OCR_DEBUG_SAVE_IMAGES = os.environ.get("OCR_DEBUG_SAVE_IMAGES", "1").lower() in ("1", "true", "yes")
+OCR_FAST_MODE_DPI_LIMIT = int(os.environ.get("OCR_FAST_MODE_DPI_LIMIT", "250"))
+OCR_FAST_MODE_SAMPLE_LIMIT = int(os.environ.get("OCR_FAST_MODE_SAMPLE_LIMIT", "6"))
+
+# PDF-specific fast mode (enables aggressive optimization for PDF parsing)
+PDF_FAST_MODE = os.environ.get("PDF_FAST_MODE", "false").lower() in ("1", "true", "yes")
+PDF_PROBE_MAX_PAGES = int(os.environ.get("PDF_PROBE_MAX_PAGES", "5"))
+
+# --- OCR telemetry helpers (kept lightweight, no external deps) ---
+def get_ocr_config_dict(config_module=None) -> dict:
+    """Return a dictionary snapshot of OCR-related tuning and environment.
+
+    If a module is provided, values are read via getattr; otherwise, local constants are used.
+    """
+    src = config_module if config_module is not None else globals()
+    # Helper to read from module or local globals
+    def _get(name, default=None):
+        try:
+            if src is globals():
+                return globals().get(name, default)
+            return getattr(src, name, default)
+        except Exception:
+            return default
+
+    return {
+        # Toggles & paths
+        "ENABLE_OCR": _get("ENABLE_OCR", True),
+        "ENABLE_OCR_FORCE": _get("ENABLE_OCR_FORCE", False),
+        "POPPLER_PATH": _get("POPPLER_PATH"),
+        "TESSERACT_CMD": _get("TESSERACT_CMD"),
+        "OCR_DEBUG_DIR": str(_get("OCR_DEBUG_DIR")) if _get("OCR_DEBUG_DIR") is not None else None,
+        # Thresholds
+        "OCR_CONFIDENCE_THRESHOLD": _get("OCR_CONFIDENCE_THRESHOLD", 30),
+        "OCR_MIN_ALPHA_SIGNAL": _get("OCR_MIN_ALPHA_SIGNAL", 200),
+        "OCR_AVG_CONF_ACCEPT": _get("OCR_AVG_CONF_ACCEPT", 70.0),
+        # Search space
+        "OCR_DPI_MIN": _get("OCR_DPI_MIN", 200),
+        "OCR_DPI_MAX": _get("OCR_DPI_MAX", 350),
+        "OCR_DPI_STEP": _get("OCR_DPI_STEP", 50),
+        "OCR_PSM_LIST": list(_get("OCR_PSM_LIST", [])) or [6,4,3,11,12,1,13],
+        "OCR_OEM_LIST": list(_get("OCR_OEM_LIST", [])) or [1,3,2,0],
+        "OCR_PREPROCESS_VARIANTS": list(_get("OCR_PREPROCESS_VARIANTS", [])) or ["none","gray","thresh","sharp_contrast"],
+        # Budget & convergence
+        "OCR_SAMPLE_BUDGET": _get("OCR_SAMPLE_BUDGET", 12),
+        "OCR_MAX_RUNS": _get("OCR_MAX_RUNS", 20),
+        # Orientation & layout
+        "OCR_ORIENTATION_THRESHOLD": _get("OCR_ORIENTATION_THRESHOLD", 10.0),
+        "OCR_DENSE_LINE_THRESHOLD": _get("OCR_DENSE_LINE_THRESHOLD", 500),
+        # Table heuristics
+        "OCR_TABLE_SIGNAL_MIN_COLS": _get("OCR_TABLE_SIGNAL_MIN_COLS", 2),
+        "OCR_TABLE_SIGNAL_MIN_ROWS": _get("OCR_TABLE_SIGNAL_MIN_ROWS", 3),
+        # Markup detection
+        "OCR_MARKUP_HTML_TAG_RATIO": _get("OCR_MARKUP_HTML_TAG_RATIO", 0.3),
+        # Fast/debug
+        "OCR_DEBUG_SAVE_IMAGES": _get("OCR_DEBUG_SAVE_IMAGES", True),
+        "OCR_FAST_MODE_DPI_LIMIT": _get("OCR_FAST_MODE_DPI_LIMIT", 250),
+        "OCR_FAST_MODE_SAMPLE_LIMIT": _get("OCR_FAST_MODE_SAMPLE_LIMIT", 6),
+        "PDF_FAST_MODE": _get("PDF_FAST_MODE", False),
+        "PDF_PROBE_MAX_PAGES": _get("PDF_PROBE_MAX_PAGES", 5),
+    }
+
+def log_ocr_config_summary(config_module, logger, session_id=None) -> None:
+    """Emit a concise log line summarizing active OCR config.
+
+    Uses the existing SharedLogger style (level/type/message) with an attached snapshot.
+    """
+    try:
+        snapshot = get_ocr_config_dict(config_module)
+        logger.info({
+            "level": "INFO",
+            "type": "status",
+            "message": "[OCR] Active tuning parameters",
+            "session_id": session_id,
+            "ocr_config": snapshot,
+        })
+    except Exception:
+        # Avoid throwing from logging helper; keep it best-effort
+        pass
+
+def build_extraction_quality_metrics(
+    headers: list[str],
+    data: list[dict],
+    metadata: dict,
+    handler_name: str = "unknown",
+    session_id: str | None = None,
+) -> dict:
+    """Build standardized quality metrics for ML analysis and telemetry.
+
+    Captures extraction quality indicators that ML models can use to:
+    - Correlate tuning parameters with output quality
+    - Identify patterns in successful vs. failed extractions
+    - Tune adaptive search strategies dynamically
+    - Flag anomalous or low-confidence results for review
+
+    Args:
+        headers: Column headers extracted from source
+        data: Row data (list of dicts)
+        metadata: Handler-specific metadata dict
+        handler_name: Name of handler (pdf, html, csv, json, etc.)
+        session_id: Optional session identifier
+
+    Returns:
+        dict: Quality metrics snapshot with structure:
+            {
+                "handler": str,
+                "row_count": int,
+                "column_count": int,
+                "empty_row_ratio": float,
+                "null_cell_ratio": float,
+                "avg_row_density": float,
+                "header_completeness": float,
+                "data_type_diversity": int,
+                "has_numeric_columns": bool,
+                "has_text_columns": bool,
+                "extraction_confidence": float | None,
+                "ocr_metrics": dict | None,  # OCR-specific metrics (if applicable)
+                "table_metrics": dict | None,  # Table structure metrics (if applicable)
+                "session_id": str | None,
+            }
+    """
+    import re
+    from collections import Counter
+
+    metrics = {
+        "handler": handler_name,
+        "row_count": len(data),
+        "column_count": len(headers),
+        "session_id": session_id,
+    }
+
+    if not data:
+        # Empty dataset - minimal metrics
+        metrics.update({
+            "empty_row_ratio": 1.0,
+            "null_cell_ratio": 1.0,
+            "avg_row_density": 0.0,
+            "header_completeness": 1.0 if headers else 0.0,
+            "data_type_diversity": 0,
+            "has_numeric_columns": False,
+            "has_text_columns": False,
+            "extraction_confidence": 0.0,
+        })
+        return metrics
+
+    # Calculate empty row ratio (rows with all empty/null values)
+    empty_rows = sum(1 for row in data if all(not str(v).strip() for v in row.values()))
+    metrics["empty_row_ratio"] = empty_rows / len(data) if data else 0.0
+
+    # Calculate null cell ratio (empty cells / total cells)
+    total_cells = len(data) * len(headers)
+    null_cells = sum(
+        sum(1 for v in row.values() if not str(v).strip())
+        for row in data
+    )
+    metrics["null_cell_ratio"] = null_cells / total_cells if total_cells > 0 else 0.0
+
+    # Calculate average row density (non-empty cells per row)
+    row_densities = [
+        sum(1 for v in row.values() if str(v).strip()) / len(headers) if headers else 0.0
+        for row in data
+    ]
+    metrics["avg_row_density"] = sum(row_densities) / len(row_densities) if row_densities else 0.0
+
+    # Header completeness (non-empty headers / total headers)
+    non_empty_headers = sum(1 for h in headers if str(h).strip())
+    metrics["header_completeness"] = non_empty_headers / len(headers) if headers else 0.0
+
+    # Data type diversity (unique inferred types across all cells)
+    type_pattern_counts = Counter()
+    for row in data[:min(100, len(data))]:  # Sample first 100 rows for performance
+        for val in row.values():
+            val_str = str(val).strip()
+            if not val_str:
+                type_pattern_counts["empty"] += 1
+            elif re.fullmatch(r"-?\d+", val_str):
+                type_pattern_counts["integer"] += 1
+            elif re.fullmatch(r"-?\d+\.\d+", val_str):
+                type_pattern_counts["float"] += 1
+            elif re.fullmatch(r"\d{1,2}/\d{1,2}/\d{2,4}", val_str):
+                type_pattern_counts["date"] += 1
+            elif val_str.lower() in {"true", "false", "yes", "no"}:
+                type_pattern_counts["boolean"] += 1
+            else:
+                type_pattern_counts["text"] += 1
+    metrics["data_type_diversity"] = len([t for t in type_pattern_counts if t != "empty"])
+    metrics["has_numeric_columns"] = any(t in type_pattern_counts for t in ["integer", "float"])
+    metrics["has_text_columns"] = "text" in type_pattern_counts
+
+    # Extract OCR-specific metrics if available (multiple formats supported)
+    ocr_metrics = None
+    
+    # Format 1: Nested ocr_stats dict (legacy/test format)
+    if "ocr_stats" in metadata and isinstance(metadata["ocr_stats"], dict):
+        stats = metadata["ocr_stats"]
+        ocr_metrics = {
+            "avg_confidence": stats.get("avg_confidence"),
+            "min_confidence": stats.get("min_confidence"),
+            "ocr_run_count": stats.get("ocr_run_count"),
+            "ocr_time_sec": stats.get("ocr_time_sec"),
+            "ocr_pages_processed": stats.get("ocr_pages_processed"),
+        }
+    
+    # Format 2: Direct metadata fields (PDF handler format)
+    elif any(k in metadata for k in ["ocr_confidence_avg", "ocr_runs", "ocr_used"]):
+        ocr_metrics = {
+            "avg_confidence": metadata.get("ocr_confidence_avg"),
+            "min_confidence": metadata.get("ocr_min_confidence"),  # May not always be present
+            "ocr_run_count": metadata.get("ocr_runs"),
+            "ocr_time_sec": metadata.get("ocr_time_sec"),  # May not always be present
+            "ocr_pages_processed": metadata.get("ocr_pages_processed"),  # May not always be present
+        }
+        # Remove None values for cleaner output
+        ocr_metrics = {k: v for k, v in ocr_metrics.items() if v is not None}
+    metrics["ocr_metrics"] = ocr_metrics if ocr_metrics else None
+
+    # Extract table structure metrics if available
+    table_metrics = None
+    if any(k in metadata for k in ["layout_table_rows", "page_line_total", "pdf_page_total"]):
+        table_metrics = {
+            "layout_rows": metadata.get("layout_table_rows"),
+            "layout_cols": metadata.get("layout_table_cols"),
+            "page_count": metadata.get("pdf_page_total"),
+            "line_count": metadata.get("page_line_total"),
+            "table_confidence": metadata.get("table_extraction_confidence"),
+        }
+        # Remove None values
+        table_metrics = {k: v for k, v in table_metrics.items() if v is not None}
+    metrics["table_metrics"] = table_metrics if table_metrics else None
+
+    # Overall extraction confidence (weighted heuristic based on multiple factors)
+    confidence_factors = []
+    weights = []
+    
+    # Data completeness (weight: 0.3)
+    if metrics["avg_row_density"] > 0:
+        confidence_factors.append(metrics["avg_row_density"])
+        weights.append(0.3)
+    
+    # Header quality (weight: 0.2)
+    if metrics["header_completeness"] > 0:
+        confidence_factors.append(metrics["header_completeness"])
+        weights.append(0.2)
+    
+    # Non-empty rows (weight: 0.2)
+    if 1 - metrics["empty_row_ratio"] > 0:
+        confidence_factors.append(1 - metrics["empty_row_ratio"])
+        weights.append(0.2)
+    
+    # OCR quality (weight: 0.3 - most important for PDF extractions)
+    if ocr_metrics and ocr_metrics.get("avg_confidence"):
+        ocr_conf = ocr_metrics["avg_confidence"]
+        # Normalize if confidence is in 0-100 range
+        ocr_normalized = ocr_conf / 100.0 if ocr_conf > 1.0 else ocr_conf
+        confidence_factors.append(ocr_normalized)
+        weights.append(0.3)
+    
+    # Weighted average (or simple average if no weights)
+    if confidence_factors:
+        if len(weights) == len(confidence_factors):
+            # Normalize weights to sum to 1.0
+            total_weight = sum(weights)
+            normalized_weights = [w / total_weight for w in weights]
+            metrics["extraction_confidence"] = sum(
+                f * w for f, w in zip(confidence_factors, normalized_weights)
+            )
+        else:
+            # Fallback to simple average
+            metrics["extraction_confidence"] = sum(confidence_factors) / len(confidence_factors)
+    else:
+        metrics["extraction_confidence"] = None
+
+    return metrics
+
+
+def log_extraction_quality(
+    headers: list[str],
+    data: list[dict],
+    metadata: dict,
+    handler_name: str,
+    logger,
+    session_id: str | None = None,
+) -> dict:
+    """Build and log extraction quality metrics for ML analysis.
+
+    This is the main entrypoint for handlers to report quality metrics.
+    Calls build_extraction_quality_metrics() and logs the result.
+
+    Returns:
+        dict: The quality metrics snapshot (same as build_extraction_quality_metrics)
+    """
+    try:
+        quality = build_extraction_quality_metrics(
+            headers, data, metadata, handler_name, session_id
+        )
+        logger.info({
+            "level": "INFO",
+            "type": "ml_quality",
+            "message": f"[ML] Extraction quality metrics ({handler_name})",
+            "session_id": session_id,
+            "quality_metrics": quality,
+        })
+        return quality
+    except Exception as e:
+        # Best-effort logging; don't throw
+        logger.warning({
+            "level": "WARNING",
+            "type": "ml_quality",
+            "message": f"[ML] Failed to build quality metrics: {e}",
+            "session_id": session_id,
+        })
+        return {}

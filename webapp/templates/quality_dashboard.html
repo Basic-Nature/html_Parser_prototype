@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quality Metrics Dashboard - Smart Elections Parser</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/quality_dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <h1>📊 Quality Metrics Dashboard</h1>
+        
+        <!-- Filters -->
+        <div class="filters">
+            <div class="filter-group">
+                <label for="handlerFilter">Handler:</label>
+                <select id="handlerFilter">
+                    <option value="">All Handlers</option>
+                    <option value="pdf_handler">PDF</option>
+                    <option value="html_handler">HTML</option>
+                    <option value="csv_handler">CSV</option>
+                    <option value="json_handler">JSON</option>
+                    <option value="xlsx_handler">Excel</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label for="stateFilter">State:</label>
+                <select id="stateFilter">
+                    <option value="">All States</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label for="minConfidence">Min Confidence:</label>
+                <input type="number" id="minConfidence" min="0" max="1" step="0.1" placeholder="0.0 - 1.0">
+            </div>
+            
+            <div class="filter-group">
+                <label for="limitFilter">Limit:</label>
+                <input type="number" id="limitFilter" min="1" max="1000" value="100">
+            </div>
+        </div>
+        
+        <!-- Summary Stats -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalCount">-</div>
+                <div class="stat-label">Total Extractions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgConfidence">-</div>
+                <div class="stat-label">Avg Confidence</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgRows">-</div>
+                <div class="stat-label">Avg Rows</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgCols">-</div>
+                <div class="stat-label">Avg Columns</div>
+            </div>
+        </div>
+        
+        <!-- Export Button -->
+        <button class="export-btn" id="exportBtn">📥 Export Dataset (CSV)</button>
+        
+        <!-- Charts -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>Extraction Confidence Over Time</h3>
+                <canvas id="confidenceChart"></canvas>
+            </div>
+            
+            <div class="chart-card">
+                <h3>Quality by Handler</h3>
+                <canvas id="handlerChart"></canvas>
+            </div>
+            
+            <div class="chart-card">
+                <h3>Confidence Distribution</h3>
+                <canvas id="distributionChart"></canvas>
+            </div>
+            
+            <div class="chart-card">
+                <h3>Empty Row Ratio</h3>
+                <canvas id="emptyRowChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Data Table -->
+        <div class="data-table">
+            <h3 style="padding: 1rem; margin: 0; background: var(--bg-dark, #0f1419); color: var(--text-primary, #e2e8f0);">Recent Extractions</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Handler</th>
+                        <th>State</th>
+                        <th>Contest</th>
+                        <th>Rows</th>
+                        <th>Cols</th>
+                        <th>Confidence</th>
+                        <th>Empty %</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTableBody">
+                    <tr><td colspan="8" style="text-align: center; padding: 2rem;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/quality_dashboard.js') }}"></script>
+</body>
+</html>

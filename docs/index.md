@@ -28,6 +28,19 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
 
   <div class="feature" data-section="todos">
     <h3>📋 Development Roadmap</h3>
+    <p>Complete feature roadmap including ML quality metrics optimization progress.</p>
+    <a href="roadmap">View Roadmap →</a>
+  </div>
+  <div class="feature" data-section="ml-quality">
+    <h3>🤖 ML Quality Metrics</h3>
+    <p>Machine learning-ready quality indicators with training dataset generator and interactive dashboard.</p>
+    <a href="ML_QUALITY_METRICS_SUMMARY">View ML Quality →</a>
+  </div>
+  <div class="feature" data-section="ml-optimization">
+    <h3>⚡ Performance Optimizations</h3>
+    <p>Latest performance improvements: weighted confidence scoring, multi-format OCR extraction, and caching (10-50x faster exports).</p>
+    <a href="ML_OPTIMIZATION_SUMMARY">View Optimizations →</a>
+  </div>
     <p>Current TODOs, planned features, and development priorities across the codebase.</p>
     <a href="todos">View Roadmap →</a>
   </div>

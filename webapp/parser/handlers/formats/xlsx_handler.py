@@ -337,9 +337,15 @@ def parse_xlsx_election_results(
         "message": f"[{_HANDLER_NAME}] Metadata written to: {result.get('metadata_path')}",
         "session_id": session_id,
     })
+    
+    # Add ML quality metrics
+    from ...config import log_extraction_quality
+    quality = log_extraction_quality(
+        headers_final, data_final, metadata, "xlsx_handler", logger, session_id
+    )
+    metadata["quality_metrics"] = quality
 
     return headers_final, data_final, contest, metadata
-
 
 def parse(
     page: Any | None = None,
@@ -413,6 +419,14 @@ def parse(
             "csv_path": finalized.get("csv_path"),
             "metadata_path": finalized.get("metadata_path"),
         }
+        
+        # Add ML quality metrics
+        from ...config import log_extraction_quality
+        quality = log_extraction_quality(
+            headers_final, data_final, metadata, "xlsx_handler", logger, session_id
+        )
+        metadata["quality_metrics"] = quality
+        
         return headers_final, data_final, contest, metadata
 
     if html_context.get("skip_format") or html_context.get("manual_skip"):

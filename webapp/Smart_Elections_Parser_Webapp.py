@@ -1752,6 +1752,81 @@ def site_webmanifest():
     resp.headers["ETag"] = etag
     return resp
 
+@app.route("/quality_dashboard")
+def quality_dashboard():
+    """Quality metrics visualization dashboard."""
+    return render_template("quality_dashboard.html")
+
+@app.route("/api/quality_metrics", methods=["GET"])
+def api_quality_metrics():
+    """API endpoint for quality metrics data."""
+    import json
+    from pathlib import Path
+    
+    # Query parameters for filtering
+    handler_filter = request.args.get("handler")
+    state_filter = request.args.get("state")
+    min_confidence = request.args.get("min_confidence", type=float)
+    limit = request.args.get("limit", default=100, type=int)
+    
+    results = []
+    
+    # Scan output directory for metadata files
+    output_dir = Path(OUTPUT_DIR)
+    if not output_dir.exists():
+        return jsonify({"metrics": [], "count": 0})
+    
+    for folder in output_dir.iterdir():
+        if not folder.is_dir():
+            continue
+        
+        metadata_file = folder / "metadata.json"
+        if not metadata_file.exists():
+            continue
+        
+        try:
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                metadata = json.load(f)
+            
+            # Must have quality metrics
+            if "quality_metrics" not in metadata:
+                continue
+            
+            # Apply filters
+            if handler_filter and metadata.get("handler") != handler_filter:
+                continue
+            if state_filter and metadata.get("state") != state_filter:
+                continue
+            
+            quality = metadata.get("quality_metrics", {})
+            conf = quality.get("extraction_confidence")
+            if min_confidence is not None and (conf is None or conf < min_confidence):
+                continue
+            
+            # Extract relevant fields
+            result = {
+                "folder": folder.name,
+                "handler": metadata.get("handler"),
+                "state": metadata.get("state"),
+                "county": metadata.get("county"),
+                "contest": metadata.get("contest"),
+                "row_count": metadata.get("row_count"),
+                "column_count": metadata.get("column_count"),
+                "quality_metrics": quality,
+                "timestamp": metadata.get("timestamp") or folder.name.split("__")[-1],
+            }
+            results.append(result)
+            
+            if len(results) >= limit:
+                break
+        except Exception as e:
+            continue
+    
+    # Sort by timestamp (newest first)
+    results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    
+    return jsonify({"metrics": results, "count": len(results)})
+
 @app.route("/upload/input", methods=["POST"])
 def upload_to_input() -> str:
     file = request.files.get("file")

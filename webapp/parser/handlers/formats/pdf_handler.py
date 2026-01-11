@@ -20,6 +20,28 @@ from ...config import (
     ENABLE_OCR,
     ENABLE_PARALLEL,
     OUTPUT_DIR,
+    # OCR Tuning Parameters (centralized in config.py)
+    OCR_CONFIDENCE_THRESHOLD,
+    OCR_MIN_ALPHA_SIGNAL,
+    OCR_AVG_CONF_ACCEPT,
+    OCR_DPI_MIN,
+    OCR_DPI_MAX,
+    OCR_DPI_STEP,
+    OCR_PSM_LIST,
+    OCR_OEM_LIST,
+    OCR_PREPROCESS_VARIANTS,
+    OCR_SAMPLE_BUDGET,
+    OCR_MAX_RUNS,
+    OCR_ORIENTATION_THRESHOLD,
+    OCR_DENSE_LINE_THRESHOLD,
+    OCR_TABLE_SIGNAL_MIN_COLS,
+    OCR_TABLE_SIGNAL_MIN_ROWS,
+    OCR_MARKUP_HTML_TAG_RATIO,
+    OCR_DEBUG_SAVE_IMAGES,
+    OCR_FAST_MODE_DPI_LIMIT,
+    OCR_FAST_MODE_SAMPLE_LIMIT,
+    PDF_FAST_MODE,
+    PDF_PROBE_MAX_PAGES,
 )
 import html
 # Optional flags/paths; provide safe defaults if missing
@@ -2258,19 +2280,39 @@ def _associate_tables_with_contests(contest_positions: list[dict], tables: list[
 
 def _is_mostly_markup(text: str) -> bool:
     """
-    Return True if the extracted 'text' is actually markup-wrappers (e.g., <img> tags) with little real text.
+    Return True if the extracted 'text' is actually markup-wrappers (e.g., <img> tags)
+    with little real text. This function intentionally strips base64 image payloads
+    and common HTML wrappers before estimating remaining alphabetic signal to avoid
+    misclassifying large data:image blobs as textual content.
     """
     if not isinstance(text, str):
         return False
-    s = text.strip().lower()
+    s = text.strip()
     if not s:
         return False
-    # Heuristics: presence of HTML tags + low alphabetic character count
-    has_tags = any(tok in s for tok in ("<img", "<div", "<span", "<html", "<svg", "<p", "<table", "data:image/"))
+
+    s_lower = s.lower()
+    # Fast path: if no obvious markup tokens, bail out early
+    has_tags = any(tok in s_lower for tok in ("<img", "<div", "<span", "<html", "<svg", "<p", "<table", "data:image/"))
     if not has_tags:
         return False
-    alpha = sum(1 for ch in s[:8000] if ch.isalpha())
-    return alpha < 200
+
+    # Strip data:image payloads and very long base64-like runs (noise)
+    try:
+        s_wo_b64 = re.sub(r'src\s*=\s*"data:image/[^\"]+"', 'src="[image]"', s, flags=re.IGNORECASE)
+        s_wo_b64 = re.sub(r'[A-Za-z0-9+/=]{200,}', ' ', s_wo_b64)
+    except Exception:
+        s_wo_b64 = s
+
+    # Remove tags to evaluate remaining plain text signal
+    try:
+        s_plain = re.sub(r'<[^>]+>', ' ', s_wo_b64)
+    except Exception:
+        s_plain = s_wo_b64
+
+    # Compute alphabetic characters in a limited window to keep it cheap
+    alpha = sum(1 for ch in s_plain[:8000] if ch.isalpha())
+    return alpha < OCR_MIN_ALPHA_SIGNAL
 
 def _sanitize_extracted_text(text: str) -> str:
     """
@@ -2395,6 +2437,25 @@ def _sanitize_extracted_text(text: str) -> str:
         pass
 
     result = "\n".join(neat)
+    # Fallback: if sanitization collapsed almost everything, prefer a gentler pass
+    # to keep textual signal for downstream contest/title detection.
+    if len(result) < 200 and len(text) > 5000:
+        try:
+            gentle_lines = []
+            for raw in raw_lines:
+                collapsed = re.sub(r'\s+', ' ', raw).strip()
+                if collapsed:
+                    gentle_lines.append(collapsed)
+            fallback_result = "\n".join(gentle_lines)
+            if len(fallback_result) > len(result):
+                logger.info({
+                    "level": "INFO",
+                    "type": "handler",
+                    "message": "[INFO] sanitize fallback engaged; returning gentle cleaned text.",
+                })
+                result = fallback_result
+        except Exception:
+            pass
     try:
         if cache_key:
             _sanitize_cache_set(cache_key, result, confidence)
@@ -2753,10 +2814,12 @@ def _dedupe_contest_titles(titles: list[str]) -> list[str]:
             out.append(t)
     return out
 
-def _ocr_images(images, tesseract_config: str, confidence_threshold=30):
+def _ocr_images(images, tesseract_config: str, confidence_threshold=None):
     """
     Run pytesseract on a list of PIL images and return combined text and avg confidence.
     """
+    if confidence_threshold is None:
+        confidence_threshold = OCR_CONFIDENCE_THRESHOLD
     if not pytesseract:
         return "", 0.0, []
 
@@ -2816,9 +2879,9 @@ def _ocr_images(images, tesseract_config: str, confidence_threshold=30):
 def adaptive_ocr_pipeline(
     pdf_path,
     session_id=None,
-    target_conf=70.0,
+    target_conf=None,
     max_seconds: int | None = None,
-    max_runs=20,
+    max_runs=None,
     *,
     doc_page_count: int | None = None,
     page_focus_windows: list[tuple[int, int]] | None = None,
@@ -2834,6 +2897,11 @@ def adaptive_ocr_pipeline(
     - Early stop on reaching target_conf or exceeding budgets
     Returns: best_text, best_conf, runs_summary(list of dict)
     """
+    if target_conf is None:
+        target_conf = OCR_AVG_CONF_ACCEPT
+    if max_runs is None:
+        max_runs = OCR_MAX_RUNS
+    
     start = time.time()
     sample_budget = max_seconds if (isinstance(max_seconds, (int, float)) and max_seconds > 0) else None
     sample_deadline = (start + sample_budget) if sample_budget else None
@@ -2855,16 +2923,26 @@ def adaptive_ocr_pipeline(
         except Exception:
             page_count = None
 
-    if page_count and page_count >= 180:
-        dpi_list = [250, 300]
-        psm_list = [6, 4, 3]
+    fast_mode = os.environ.get("PDF_FAST_MODE", "0").lower() in {"1", "true", "yes"}
+    if fast_mode:
+        dpi_max_fast = OCR_FAST_MODE_DPI_LIMIT
+        dpi_list = [d for d in range(OCR_DPI_MIN, dpi_max_fast + 1, OCR_DPI_STEP)]
+        if not dpi_list:
+            dpi_list = [250]
+        psm_list = OCR_PSM_LIST[:3]
+    elif page_count and page_count >= 180:
+        # Very long docs: reduce DPI to avoid exhaustion
+        dpi_list = [d for d in range(OCR_DPI_MIN, 301, OCR_DPI_STEP)]
+        if not dpi_list:
+            dpi_list = [250, 300]
+        psm_list = OCR_PSM_LIST[:3]
     else:
-        dpi_list = [200, 250, 300, 350]
-        psm_list = [6, 4, 3, 11, 12, 1, 13]
-    # Try LSTM-only first, then default, then combo, then legacy-only
-    # 1=LSTM only, 3=Default, 2=Legacy+LSTM, 0=Legacy only
-    oem_list = [1, 3, 2, 0]
-    conf_threshold_word = 30
+        dpi_list = list(range(OCR_DPI_MIN, OCR_DPI_MAX + 1, OCR_DPI_STEP))
+        if not dpi_list:
+            dpi_list = [200, 250, 300, 350]
+        psm_list = OCR_PSM_LIST
+    oem_list = OCR_OEM_LIST
+    conf_threshold_word = OCR_CONFIDENCE_THRESHOLD
     # Precompute sample page indices (first/middle/last up to 5 pages)
     sample_indices = _compute_sample_page_indices(
         page_count,
@@ -4397,14 +4475,27 @@ def _pick_representative_title(titles: list[str]) -> str:
 
 def _dedupe_contest_titles(titles):
     return list(dict.fromkeys(titles))
-
-    
+   
 def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, cancel_flag=None) -> tuple[list[str], list[dict], str, dict]:
     """ Main PDF handler function."""
+    # Log active OCR tuning config at parse start for diagnostics
+    from ...config import log_ocr_config_summary, get_ocr_config_dict, log_extraction_quality
+    from ... import config as cfg_module
+    log_ocr_config_summary(cfg_module, logger, session_id=session_id)
+    
+    def _finalize_with_quality(headers, data, contest, metadata):
+        """Wrapper to add ML quality logging before returning results."""
+        # Add quality metrics to metadata
+        quality = log_extraction_quality(
+            headers, data, metadata, "pdf_handler", logger, session_id
+        )
+        metadata["quality_metrics"] = quality
+        return headers, data, contest, metadata
+    
     _log_ocr_environment(session_id=session_id)
     all_text = ""
     page_text_map: list[dict] = []
-    metadata = {}
+    metadata = {"ocr_config": get_ocr_config_dict(cfg_module)}
     tried_associated = False
     headers = []
     ocr_score = 0.0
@@ -4419,6 +4510,17 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
 
     def _ensure_contest_focus():
         nonlocal contest_probe_info, page_focus_windows
+        # Fast mode: limit to first N pages to accelerate OCR/debug
+        fast_mode = str(os.environ.get("PDF_FAST_MODE", "")).lower() in {"1", "true", "yes"}
+        if fast_mode:
+            try:
+                n = int(os.environ.get("PDF_FAST_PAGES", "5"))
+            except Exception:
+                n = 5
+            total = pdf_page_total or n
+            end_page = max(1, min(n, int(total)))
+            page_focus_windows = [(1, end_page)]
+            return
         if page_focus_windows is not None:
             return
         if not pdf_page_total or pdf_page_total < _OCR_CONTEST_PROBE_MIN_PAGES:
@@ -4426,10 +4528,16 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
             return
         _ensure_not_cancelled(cancel_flag, session_id, "pdf:contest_probe_init")
         if not contest_probe_info:
+            # Allow env override to cap probe workload
+            max_pages_override = os.environ.get("PDF_PROBE_MAX_PAGES")
+            try:
+                max_pages_override = int(max_pages_override) if max_pages_override else None
+            except Exception:
+                max_pages_override = None
             contest_probe_info = _contest_probe_scan(
                 pdf_path,
                 session_id=session_id,
-                max_pages=_OCR_CONTEST_PROBE_MAX_PAGES,
+                max_pages=max_pages_override or _OCR_CONTEST_PROBE_MAX_PAGES,
                 stride=_OCR_CONTEST_PROBE_STRIDE,
                 dpi=_OCR_CONTEST_PROBE_DPI,
                 max_hits=_OCR_CONTEST_PROBE_MAX_HITS,
@@ -5030,7 +5138,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
             coordinator,
             session_id=session_id,
         )
-        return headers_final, data_final, selected_contest_title, metadata
+        return _finalize_with_quality(headers_final, data_final, selected_contest_title, metadata)
     
     # Special handling for New York location
     if location == "New York":
@@ -5548,7 +5656,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
                         coordinator,
                         session_id=session_id,
                     )
-            return headers_final, data_final, selected_contest_title, metadata
+            return _finalize_with_quality(headers_final, data_final, selected_contest_title, metadata)
 
         else:
             tried_associated = True
@@ -5594,7 +5702,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
                     coordinator,
                     session_id=session_id,
                 )
-                return headers_final, data_final, selected_contest_title, metadata
+                return _finalize_with_quality(headers_final, data_final, selected_contest_title, metadata)
 
             unmatched_count = len(lines[header_line_idx + 1:])
             logger.warning({
@@ -5707,7 +5815,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
                     coordinator,
                     session_id=session_id,
                 )
-            return headers_final, data_final, selected_contest_title, metadata
+            return _finalize_with_quality(headers_final, data_final, selected_contest_title, metadata)
 
     if statement_rows and statement_headers:
         # Ensure contest metadata reflects statement extraction path
@@ -5732,7 +5840,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
             coordinator,
             session_id=session_id,
         )
-        return headers_final, data_final, selected_contest_title, metadata
+        return _finalize_with_quality(headers_final, data_final, selected_contest_title, metadata)
 
     if not tried_associated:
         # Try associated tables as fallback
@@ -5839,7 +5947,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
         "message": f"[OUTPUT] Wrote plain text to: {result.get('csv_path')}",
         "session_id": session_id
     })
-    return ["text"], [{"text": clean_text}], selected_contest_title, metadata
+    return _finalize_with_quality(["text"], [{"text": clean_text}], selected_contest_title, metadata)
 
 def parse(page=None, coordinator=None, html_context=None, manual_file=None, session_id=None, **kwargs):
     """
@@ -5926,6 +6034,12 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
                 "pdf2image_available": bool(pdf2image),
             },
         }
+        # Add quality metrics for provided_tables path
+        from ...config import log_extraction_quality
+        quality = log_extraction_quality(
+            headers_final, data_final, metadata, "pdf_handler", logger, session_id
+        )
+        metadata["quality_metrics"] = quality
         return headers_final, data_final, contest, metadata
     cancel_flag = kwargs.get("cancel_flag")
 
