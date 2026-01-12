@@ -11,6 +11,9 @@ import platform
 import shutil
 import importlib
 import hashlib
+import atexit
+import gc
+import tempfile
 from typing import Any
 from collections import Counter, OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -179,6 +182,11 @@ _PAGE_ORIENTATION_DEFAULT: dict[str, int] = {}
 _PAGE_ORIENTATION_LOGGED: set[str] = set()
 _PAGE_ORIENTATION_APPLIED: set[tuple[str, int, int]] = set()
 
+# PDF resource cleanup tracking (prevent Windows file lock errors)
+_PDF_IMAGE_REFS: list[Image.Image] = []
+_PDF_TEMP_DIRS: set[str] = set()
+_PDF_CLEANUP_REGISTERED = False
+
 
 def _env_truthy(value: str | None, default: bool = False) -> bool:
     if value is None:
@@ -204,6 +212,59 @@ _STATEMENT_SCAN_PAGE_LIMIT = 20
 
 class PDFParseCancelled(RuntimeError):
     """Raised when a cooperative cancel flag requests early exit."""
+
+
+def _cleanup_pdf_resources() -> None:
+    """
+    Safe cleanup of PDF resources before exit.
+    Closes PIL Image objects and removes temp directories to prevent Windows file locks.
+    """
+    global _PDF_IMAGE_REFS, _PDF_TEMP_DIRS
+    
+    # Close all PIL Image objects (releases pdfium handles)
+    for img in _PDF_IMAGE_REFS:
+        try:
+            if hasattr(img, 'close'):
+                img.close()
+        except Exception:
+            pass
+    _PDF_IMAGE_REFS.clear()
+    
+    # Force garbage collection to release file handles
+    gc.collect()
+    
+    # Small delay for Windows file system to release locks
+    time.sleep(0.1)
+    
+    # Clean up temp directories with retry logic
+    for temp_dir in list(_PDF_TEMP_DIRS):
+        if not os.path.exists(temp_dir):
+            continue
+        for attempt in range(3):
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=False)
+                break
+            except PermissionError:
+                if attempt < 2:
+                    time.sleep(0.2)
+                    gc.collect()
+                else:
+                    # Last resort: mark for deletion on reboot (Windows only)
+                    try:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                    except Exception:
+                        pass
+            except Exception:
+                break
+    _PDF_TEMP_DIRS.clear()
+
+
+def _register_pdf_cleanup() -> None:
+    """Register PDF cleanup handler (once only)."""
+    global _PDF_CLEANUP_REGISTERED
+    if not _PDF_CLEANUP_REGISTERED:
+        atexit.register(_cleanup_pdf_resources)
+        _PDF_CLEANUP_REGISTERED = True
 
 
 
@@ -2702,14 +2763,34 @@ def _pdf_to_images(
                     _POPPLER_WARNING_SHOWN = True
                 _PDF2IMAGE_DISABLED_REASON = "poppler_not_found"
             else:
-                kwargs = {"dpi": dpi}
+                # Register cleanup handler for temp files
+                _register_pdf_cleanup()
+                
+                # Track temp directory created by pdf2image
+                temp_dir = tempfile.mkdtemp(prefix="pdf2image_")
+                _PDF_TEMP_DIRS.add(temp_dir)
+                
+                kwargs = {"dpi": dpi, "output_folder": temp_dir}
                 if poppler_path and is_windows:
                     kwargs["poppler_path"] = poppler_path
-                images_raw = pdf2image.convert_from_path(pdf_path, **kwargs)
-                if images_raw:
-                    for idx, img in enumerate(images_raw):
-                        _store(idx, img)
-                    return results
+                
+                images_raw = []
+                try:
+                    images_raw = pdf2image.convert_from_path(pdf_path, **kwargs)
+                    if images_raw:
+                        for idx, img in enumerate(images_raw):
+                            # Track image refs for cleanup
+                            _PDF_IMAGE_REFS.append(img)
+                            _store(idx, img)
+                        return results
+                finally:
+                    # Explicitly close images after use
+                    for img in images_raw:
+                        try:
+                            if hasattr(img, 'close'):
+                                img.close()
+                        except Exception:
+                            pass
         except Exception as e:
             reason = (str(e) or "pdf2image_failed").strip()
             reason_lower = reason.lower()
@@ -2730,6 +2811,8 @@ def _pdf_to_images(
             results.clear()
 
     # Fallback: render via PyMuPDF (no Poppler needed)
+    _register_pdf_cleanup()
+    doc = None
     try:
         doc = fitz.open(pdf_path)
         total = len(doc)
@@ -2743,8 +2826,14 @@ def _pdf_to_images(
             pix = page.get_pixmap(dpi=dpi)
             mode = "RGBA" if pix.alpha else "RGB"
             pil_img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+            # Track for cleanup
+            _PDF_IMAGE_REFS.append(pil_img)
             _store(i, pil_img)
-        doc.close()
+            # Explicitly release pixmap memory
+            pix = None
+        if doc:
+            doc.close()
+            doc = None
     except Exception as e:
         logger.error({
             "level": "ERROR",
@@ -2753,6 +2842,15 @@ def _pdf_to_images(
             "session_id": session_id
         })
         results.clear()
+    finally:
+        # Ensure doc is closed even on exception
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
+        # Force cleanup of any partial results
+        gc.collect()
     return results
 
 def _prep_variants(images):

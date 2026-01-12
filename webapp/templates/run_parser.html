@@ -31,6 +31,8 @@
 
   <!-- Single consolidated app stylesheet (bootstrap_overrides merged) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser.css') }}">
+  <!-- Modern dashboard interface -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser_modern.css') }}">
 </head>
 <body data-page="run-parser" data-allow-style="1">
     <nav class="navbar">
@@ -116,308 +118,177 @@
             </div>
         </aside>
 
-        <!-- Main Parser UI -->
-        <div class="container-main">
-            <h1>Run the Smart Elections Parser</h1>
-            <div class="subtitle">Start a new parsing job and view the results below.</div>
-
-            <div id="pipelineStepper" class="pipeline-stepper" role="list" aria-label="Parser pipeline">
-                <div class="pipeline-step" data-step-id="prepare" role="listitem" tabindex="0">
-                    <span class="step-badge">1</span>
-                    <div class="step-copy">
-                        <span class="step-title">Prepare Inputs</span>
-                        <span class="step-caption">URLs &amp; uploads</span>
-                    </div>
-                </div>
-                <div class="pipeline-step" data-step-id="source" role="listitem" tabindex="0">
-                    <span class="step-badge">2</span>
-                    <div class="step-copy">
-                        <span class="step-title">Choose Source</span>
-                        <span class="step-caption">Select input location</span>
-                    </div>
-                </div>
-                <div class="pipeline-step" data-step-id="run" role="listitem" tabindex="0">
-                    <span class="step-badge">3</span>
-                    <div class="step-copy">
-                        <span class="step-title">Run &amp; Monitor</span>
-                        <span class="step-caption">Launch parser session</span>
-                    </div>
-                </div>
-                <div class="pipeline-step" data-step-id="resolve" role="listitem" tabindex="0">
-                    <span class="step-badge">4</span>
-                    <div class="step-copy">
-                        <span class="step-title">Resolve Prompts</span>
-                        <span class="step-caption">Complete selections</span>
-                    </div>
-                </div>
-                <div class="pipeline-step" data-step-id="review" role="listitem" tabindex="0">
-                    <span class="step-badge">5</span>
-                    <div class="step-copy">
-                        <span class="step-title">Review Output</span>
-                        <span class="step-caption">Download &amp; export</span>
-                    </div>
-                </div>
+        <!-- Modern Dashboard Interface -->
+        <div class="modern-layout">
+          <nav class="navbar-modern">
+            <div class="navbar-content">
+              <h1 class="navbar-title">🗳️ Smart Elections Parser</h1>
+              <div class="navbar-actions">
+                <button class="btn-icon" id="btnCommandPalette" title="Command Palette (Ctrl+Shift+P)">⌘</button>
+                <button class="btn-icon" id="btnNotifications" title="Notifications">🔔</button>
+                <button class="btn-icon" id="btnTheme" title="Toggle Theme">🌙</button>
+              </div>
             </div>
-            <div id="pipelineHint" class="pipeline-hint" role="status" aria-live="polite"></div>
+          </nav>
 
-            <!-- Collapsible Instructions Panel -->
-            <button type="button"
-                    class="btn btn-outline-primary btn-sm mb-1em"
-                    id="toggleInstructionsBtn"
-                    aria-expanded="false"
-                    aria-controls="instructionsPanel">
-                📖 Show Instructions
-            </button>
-            <div class="instructions hidden" id="instructionsPanel" tabindex="-1">
-                <strong>Instructions:</strong>
-                <ul>
-                    <li>Click <b>Run Parser</b> to start the election data extraction process for the selected files or URLs.</li>
-                    <li>
-                        The parser will automatically process the files or URLs you provide, using built-in logic for supported states and formats.
-                    </li>
-                    <li>
-                        Results and detailed logs will be displayed in the output area below. You can filter logs by level or type using the dropdowns.
-                    </li>
-                    <li>
-                        <b>Advanced:</b> To add support for new states or custom formats, contribute a handler module on <a href="https://github.com/basic-nature/html_Parser_prototype" target="_blank" rel="noopener">GitHub</a>. See the repository for contribution guidelines and instructions.
-                    </li>
-                    <li>
-                        Use the <b>Bypass Output</b> option to stream results directly for download, instead of saving them to the Output Folder.
-                    </li>
-                    <li>
-                        Manage multiple parsing sessions using the session controls in the footer.
-                    </li>
-                </ul>
+          <div class="dashboard-grid">
+            <!-- LEFT SIDEBAR -->
+            <aside class="sidebar-left">
+              <section class="sidebar-section">
+                <h3 class="sidebar-header"><span>📋 URLs</span> <button class="btn-icon-small" id="btnAddUrl">+</button></h3>
+                <div class="url-list" id="urlList"></div>
+              </section>
+              <hr class="sidebar-divider">
+              <section class="sidebar-section">
+                <h3 class="sidebar-header">📁 Files</h3>
+                <div class="folder-item">
+                  <details open><summary>📂 Input Folder</summary>
+                  <div class="file-list" id="inputFiles"></div></details>
+                </div>
+                <div class="folder-item">
+                  <details open><summary>📤 Uploads</summary>
+                  <div class="file-list" id="uploadFiles"></div></details>
+                </div>
+                <div class="folder-item">
+                  <details><summary>📥 Output</summary>
+                  <div class="file-list" id="outputFiles"></div></details>
+                </div>
+              </section>
+            </aside>
+
+            <!-- MAIN CONTENT -->
+            <main class="main-content">
+              <div class="results-header">
+                <div>
+                  <h2>Parsed Results</h2>
+                  <p class="text-muted"><span id="resultCount">0</span> results • Last updated: <span id="lastUpdated">now</span></p>
+                </div>
+                <div class="results-actions">
+                  <input type="text" id="searchResults" class="search-box" placeholder="Search results...">
+                  <button class="btn-primary" id="btnRefreshResults">🔄 Refresh</button>
+                </div>
+              </div>
+              <div class="results-grid" id="resultsGrid"></div>
+              <div class="empty-state" id="emptyState">
+                <div class="empty-state-icon">📊</div>
+                <h3>No results yet</h3>
+                <p>Run the parser or select files from the sidebar to view results.</p>
+              </div>
+            </main>
+
+            <!-- RIGHT SIDEBAR -->
+            <aside class="sidebar-right">
+              <section class="sidebar-section">
+                <h3 class="sidebar-header">⚙️ Controls</h3>
+                <div class="control-group">
+                  <label>File Source</label>
+                  <div class="radio-group">
+                    <label class="radio-label"><input type="radio" name="fileSource" value="input" checked>Input Folder</label>
+                    <label class="radio-label"><input type="radio" name="fileSource" value="uploads">Manual Upload</label>
+                  </div>
+                </div>
+                <div class="control-group">
+                  <label class="checkbox-label"><input type="checkbox" id="outputBypass"> Bypass Output Files</label>
+                  <small>Don't save CSV to disk</small>
+                </div>
+                <button class="btn-primary btn-large" id="btnRunParser2">▶ Run Parser</button>
+                <button class="btn-danger btn-large" id="btnCancel" disabled>⏹ Cancel</button>
+              </section>
+              <hr class="sidebar-divider">
+              <section class="sidebar-section">
+                <h3 class="sidebar-header">🔍 Filters</h3>
+                <div class="control-group">
+                  <label>Confidence</label>
+                  <input type="range" id="filterConfidence" min="0" max="100" value="0" class="slider">
+                  <small id="filterConfidenceValue">0%+</small>
+                </div>
+                <div class="control-group">
+                  <label>State</label>
+                  <select id="filterState" class="form-control-sm"></select>
+                </div>
+                <div class="control-group">
+                  <label>Log Level</label>
+                  <select id="filterLevel" class="form-control-sm">
+                    <option value="">All Levels</option>
+                    <option value="ERROR">Errors</option>
+                    <option value="WARNING">Warnings</option>
+                    <option value="INFO">Info</option>
+                  </select>
+                </div>
+              </section>
+            </aside>
+          </div>
+
+          <!-- LOG DRAWER -->
+          <div class="log-drawer minimized" id="logDrawer">
+            <div class="drawer-handle" id="drawerHandle">
+              <span class="handle-icon">⌃</span>
+              <div class="drawer-badges">
+                <span class="log-badge error" id="errorCount">0</span>
+                <span class="log-badge warning" id="warningCount">0</span>
+                <span class="log-badge info" id="infoCount">0</span>
+              </div>
+              <span class="drawer-hint">Debug Console • Click to expand</span>
             </div>
-
-            {% with messages = get_flashed_messages(with_categories=true) %}
-              {% if messages %}
-                {% for category, message in messages %}
-                  <div class="flash">{{ message }}</div>
-                {% endfor %}
-              {% endif %}
-            {% endwith %}
-
-            <div class="form-section">
-                <div class="primary-actions" data-step-target="run">
-                    <button type="button" class="run-btn" id="runParserBtn" data-bs-toggle="tooltip" title="Start a new parsing session">
-                    Run Parser
-                    </button>
-                    <button type="button" class="run-btn" id="cancelParserBtn" data-bs-toggle="tooltip" title="Send cancel request to active session">
-                    Cancel
-                    </button>
-                    <button type="button" class="btn btn-danger ms-1em" id="toggleOutputBypassBtn"
-                            aria-pressed="false" aria-controls="outputSection">
-                        Bypass Output
-                        <span class="help-icon" tabindex="0" aria-label="Bypass Output Help">
-                            ?
-                            <span class="custom-tooltip">
-                                When enabled, parsed results are streamed directly to you and NOT saved to the Output Folder.
-                                Use this for quick downloads or previews.
-                            </span>
-                        </span>
-                    </button>
-                    <span class="output-badge" id="outputBypassBadge">BYPASS</span>
-                </div>
-
-                <!-- File Source Dropdown -->
-                <div class="dropdown-group" data-step-target="source">
-                <label for="fileSourceSelect" class="dropdown-label">
-                    File Source:
-                    <span class="help-icon" tabindex="0" aria-label="File Source">
-                    ?
-                    <span class="custom-tooltip">
-                      Choose where the parser should get its input files. 'Input Folder' uses standard downloads or files, 'Manual Uploads' lets you select a file you uploaded.
-                    </span>
-                    </span>
-                </label>
-                <select id="fileSourceSelect" class="log-select file-source-select" aria-label="Select file source for manual format parsing">
-                    <option value="input" {{ 'selected' if manual_source == 'input' else '' }}>Input Folder (auto-detect/download)</option>
-                    <option value="uploads" {{ 'selected' if manual_source == 'uploads' else '' }}>Manual Uploads (select & parse uploaded file)</option>
-                </select>
-                </div>
-
-                <!-- Level Dropdown -->
-                <div class="dropdown-group">
-                <label for="logFilterSelect" class="dropdown-label">
-                    Level:
-                    <span class="help-icon" tabindex="0" aria-label="Log Level">
-                    ?
-                    <span class="custom-tooltip">
-                      Filter logs by severity: INFO, WARNING, ERROR, etc.
-                    </span>
-                    </span>
-                </label>
-                <select id="logFilterSelect" class="log-select" aria-label="Filter logs by level">
-                    <option value="all">All</option>
-                </select>
-                </div>
-
-                <!-- Type Dropdown -->
-                <div class="dropdown-group">
-                <label for="logTypeFilterSelect" class="dropdown-label">
-                    Type:
-                    <span class="help-icon" tabindex="0" aria-label="Log Type">
-                    ?
-                    <span class="custom-tooltip">
-                      Filter logs by type, such as input, output, validation, etc.
-                    </span>
-                    </span>
-                </label>
-                <select id="logTypeFilterSelect" class="log-select" aria-label="Filter logs by type">
-                    <option value="all">All Types</option>
-                </select>
-                </div>
-
-                <!-- Output Mode Dropdown -->
-                <div class="dropdown-group">
-                <label for="outputModeSelect" class="dropdown-label">
-                    Output Mode:
-                    <span class="help-icon" tabindex="0" aria-label="Output Mode">
-                    ?
-                    <span class="custom-tooltip">
-                      Choose how results are delivered: 'Live' streams results as they are parsed, 'Batch' delivers all results at the end.
-                    </span>
-                </label>
-                <select id="outputModeSelect" class="log-select">
-                    <option value="live">Live</option>
-                    <option value="batch">Batch</option>
-                </select>
-                </div>
-
-                <div class="dropdown d-inline-block ms-2">
-                <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    More
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                    <li><button class="dropdown-item" type="button" id="actionClearOutput">Clear output</button></li>
-                    <li><button class="dropdown-item" type="button" id="actionCopyOutput">Copy output</button></li>
-                </ul>
-                </div>
+            <div class="drawer-content">
+              <div class="drawer-toolbar">
+                <h4>Debug Console</h4>
+                <div><button class="btn-sm" id="btnClearLogs">Clear</button></div>
+              </div>
+              <div class="log-output" id="logOutput"></div>
             </div>
+          </div>
 
-            <div id="sessionInfo" class="session-info text-end mb-1em">
-                <span class="session-label">Session:</span>
-                <span id="activeSessionId" class="session-id"></span>
-                <span id="sessionSwitcher" class="session-switcher"></span>
-            </div>
-
-            <div class="log-panel" data-step-target="review">
-                <div class="log-panel-header">
-                    <h2 class="log-panel-title">Activity Log</h2>
-                    <button type="button" class="btn btn-outline-light btn-sm" id="toggleLogPanelBtn" aria-expanded="false" aria-controls="logPanelBody">Show Log</button>
+          <!-- FILE PREVIEW MODAL -->
+          <div class="modal" id="previewModal" style="display: none;">
+            <div class="modal-content modal-large">
+              <div class="modal-header">
+                <h3 id="previewTitle">File Preview</h3>
+                <button class="btn-close" id="btnClosePreview">&times;</button>
+              </div>
+              <div class="modal-body">
+                <div class="preview-tabs">
+                  <button class="tab-btn active" data-tab="preview">Preview</button>
+                  <button class="tab-btn" data-tab="info">Info</button>
                 </div>
-                <div class="log-panel-body collapsed" id="logPanelBody">
-                    <div class="output-section" id="terminal" role="log" aria-live="polite">
-                        {% if parser_output %}
-                            {{ parser_output }}
-                        {% else %}
-                            <span class="terminal-hint">Parser output will appear here after you run the parser.</span>
-                        {% endif %}
-                        <div id="bypassDownloadHint" class="hidden">
-                            <span class="help-icon" tabindex="0" aria-label="Direct Download">
-                                ?
-                                <span class="custom-tooltip">
-                                  Output bypass is ON. Results will be streamed directly for download and will NOT appear in the Output Folder.
-                                </span>
-                            </span>
-                            <span>Output bypass is enabled. Results will be streamed directly for download.</span>
-                        </div>
-                    </div>
+                <div class="tab-content active" id="tabPreview">
+                  <div class="table-wrapper"><table id="previewTable" class="preview-table"></table></div>
                 </div>
+                <div class="tab-content" id="tabInfo"><div class="info-grid" id="infoGrid"></div></div>
+              </div>
             </div>
+          </div>
 
-            <div class="prompt-section" data-step-target="resolve">
-                <form id="promptForm" autocomplete="off">
-                    <input type="text" id="promptInput" placeholder="Type a command...">
-                    <button type="submit">Send</button>
-                </form>
+          <!-- COMMAND PALETTE -->
+          <div class="command-palette" id="commandPalette" style="display: none;">
+            <div class="command-palette-content">
+              <input type="text" class="command-input" id="commandInput" placeholder="Type a command... (ESC to close)">
+              <div class="command-results" id="commandResults"></div>
             </div>
+          </div>
+
+          <!-- TOAST NOTIFICATIONS -->
+          <div class="toast-container" id="toastContainer"></div>
         </div>
     </div>
-    <!-- Download Selection Modal -->
-    <div id="downloadModal" class="modal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Select URL</h5>
-                <div class="modal-header-actions ms-auto d-flex gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-secondary hidden" id="modalAddDirectUrl">Add Direct URL</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary hidden" id="modalAddManualUpload">Upload File</button>
-                    <button type="button" class="btn-close" id="closeDownloadModal" aria-label="Close"></button>
-                </div>
-            </div>
-            <div class="modal-body">
-                <div id="modalQuickAddContainer" class="modal-quick-add hidden" aria-live="polite">
-                    <div id="modalQuickAddDirectPanel" class="quick-add-section hidden" aria-hidden="true">
-                        <label for="directUrlTextarea" class="dropdown-label">
-                            Direct URLs:
-                            <span class="help-icon" tabindex="0" aria-label="Direct URLs">
-                                ?
-                                <span class="custom-tooltip">
-                                    Paste one or more election result URLs (HTTP or HTTPS). Each valid URL runs immediately and skips the urls.txt prompt.
-                                </span>
-                            </span>
-                        </label>
-                        <textarea id="directUrlTextarea" class="form-control" rows="3" placeholder="https://example.gov/results/latest"></textarea>
-                        <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
-                            <span id="directUrlFeedback" class="text-muted small">Enter one URL per line.</span>
-                            <div class="btn-group btn-group-sm" role="group" aria-label="Direct URL actions">
-                                <button type="button" class="btn btn-outline-secondary" id="modalQuickAddDirectAdd">Add to List</button>
-                                <button type="button" class="btn btn-outline-secondary" id="directUrlClearBtn">Clear</button>
-                                <button type="button" class="btn btn-outline-secondary" id="modalQuickAddDirectCancel">Done</button>
-                            </div>
-                        </div>
-                        <hr class="my-3">
-                    </div>
-                    <div id="modalQuickAddManualPanel" class="quick-add-section hidden" aria-hidden="true">
-                        <div class="modal-inline-heading d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
-                            <label for="manualUploadSelect" class="dropdown-label mb-0">
-                                Manual Upload File:
-                                <span class="help-icon" tabindex="0" aria-label="Manual Upload File">
-                                    ?
-                                    <span class="custom-tooltip">
-                                        Pick a file from the uploads folder to parse immediately. This sets the source to Manual Uploads when you run the parser.
-                                    </span>
-                                </span>
-                            </label>
-                            <div class="btn-group btn-group-sm" role="group" aria-label="Manual upload actions">
-                                <button type="button" class="btn btn-outline-secondary" id="manualUploadRefreshBtn" title="Refresh uploads list">⟳</button>
-                                <button type="button" class="btn btn-outline-secondary" id="manualUploadBrowseBtn" title="Browse uploads">Browse</button>
-                                <label for="modalQuickAddUploadInput" class="btn btn-outline-secondary mb-0" title="Upload new file">Upload</label>
-                                <input type="file" id="modalQuickAddUploadInput" class="visually-hidden" aria-label="Upload new file to manual uploads">
-                            </div>
-                        </div>
-                        <select id="manualUploadSelect" class="form-select" aria-label="Select manual upload file">
-                            <option value="">— No file selected —</option>
-                        </select>
-                        <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
-                            <span id="manualUploadSummary" class="text-muted small">No file selected.</span>
-                            <div class="btn-group btn-group-sm" role="group" aria-label="Manual upload selection actions">
-                                <button type="button" class="btn btn-outline-secondary" id="manualUploadClearBtn">Clear</button>
-                                <button type="button" class="btn btn-outline-secondary" id="modalQuickAddManualDone">Done</button>
-                            </div>
-                        </div>
-                        <hr class="my-3">
-                    </div>
-                    <div id="modalQuickAddMessage" class="alert hidden mt-2" role="status"></div>
-                </div>
-                <input type="search" id="downloadSearch" class="form-control mb-2" placeholder="Filter by keyword, type, or format...">
-                <div id="downloadSummary" class="mb-2"></div>
-                <div id="downloadOptions"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" id="cancelDownloadModal">Cancel</button>
-            </div>
-            </div>
-        </div>
-    </div>
-        <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap-5.3.0.bundle.min.js') }}"></script>
-        <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io-4.7.5.min.js') }}"></script>
-        <script nonce="{{ g.csp_nonce }}">
-            window.__SOCKETIO_CONFIG__ = {{ socketio_client_config | tojson }};
-        </script>
+    <!-- SheetJS for CSV/XLSX preview -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap-5.3.0.bundle.min.js') }}"></script>
+    <!-- htmllint-disable -->
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io-4.7.5.min.js') }}" data-socketio-config="{{ socketio_client_config | tojson | safe }}"></script>
+    <script nonce="{{ g.csp_nonce }}">
+        // Extract config from data attribute to avoid Jinja2 in script content
+        const configEl = document.querySelector('script[data-socketio-config]');
+        if (configEl) {
+            window.__SOCKETIO_CONFIG__ = JSON.parse(configEl.getAttribute('data-socketio-config'));
+        }
+    </script>
+    <!-- htmllint-enable -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/nav_guard.js') }}?v={{ static_version }}" defer></script>
+    <!-- Modern dashboard interface (includes all features) -->
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/run_parser_modern.js') }}?v={{ static_version }}" defer></script>
+    <!-- Fallback classic script for backward compatibility -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/run_parser.js') }}?v={{ static_version }}" defer></script>
 
     <footer id="sessionFooter" class="minimized">

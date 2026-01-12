@@ -1714,6 +1714,11 @@ def run_parser():
         print(traceback.format_exc())
         return "Internal Server Error", 500
 
+@app.route("/run_parser_modern", methods=["GET"])
+def run_parser_modern():
+    """Redirect to consolidated modern interface at /run_parser."""
+    return redirect(url_for("run_parser"))
+
 @app.route("/site.webmanifest")
 def site_webmanifest():
     manifest = {

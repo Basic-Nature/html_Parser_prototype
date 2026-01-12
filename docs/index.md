@@ -66,6 +66,7 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
 
 - [**Noise Filtering**](noise_override_suggestions) - PDF/OCR processing overrides
 - [**Troubleshooting**](troubleshooting) - Common issues and solutions
+- [**PDF Resource Cleanup**](PDF_RESOURCE_CLEANUP) - Windows file lock safeguards for PDF processing
 - [**Election Integrity Guidelines**](Election_Integrity_Guidelines) - Integrity and transparency practices
 
 ---

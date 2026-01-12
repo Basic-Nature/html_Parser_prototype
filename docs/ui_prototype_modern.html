@@ -1,0 +1,734 @@
+<!-- Quick Prototype: Modern Run Parser UI -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Run Parser UI - Modern Prototype</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f1419;
+      color: #e2e8f0;
+      height: 100vh;
+      overflow: hidden;
+    }
+    
+    .navbar {
+      background: #1a232a;
+      padding: 1rem 2rem;
+      border-bottom: 1px solid #334155;
+    }
+    
+    .layout-dashboard {
+      display: grid;
+      grid-template-columns: 280px 1fr 320px;
+      height: calc(100vh - 60px);
+      gap: 0;
+    }
+    
+    /* Left Sidebar */
+    .sidebar {
+      background: #1a232a;
+      border-right: 1px solid #334155;
+      overflow-y: auto;
+      padding: 1.5rem;
+    }
+    
+    .sidebar h3 {
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 1rem;
+    }
+    
+    .file-item {
+      padding: 0.5rem;
+      border-radius: 4px;
+      margin-bottom: 0.25rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .file-item:hover {
+      background: #2a3642;
+    }
+    
+    /* Main Content */
+    .main-content {
+      background: #0f1419;
+      overflow-y: auto;
+      padding: 2rem;
+    }
+    
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    
+    .results-header h2 {
+      font-size: 1.5rem;
+    }
+    
+    .badge {
+      background: #2563eb;
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.875rem;
+      margin-left: 0.5rem;
+    }
+    
+    /* Results Grid */
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    
+    .result-card {
+      background: #1a232a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1.5rem;
+      transition: all 0.3s;
+      cursor: pointer;
+    }
+    
+    .result-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(37, 99, 235, 0.2);
+      border-color: #2563eb;
+    }
+    
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    
+    .file-icon {
+      font-size: 2rem;
+    }
+    
+    .file-name {
+      flex: 1;
+      font-weight: 600;
+    }
+    
+    .file-type-badge {
+      background: #334155;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+    }
+    
+    .card-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    
+    .stat {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    
+    .stat .label {
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+    
+    .stat .value {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+    
+    .confidence-high {
+      color: #10b981;
+    }
+    
+    .card-preview {
+      background: #0f1419;
+      border-radius: 4px;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+      overflow: hidden;
+      max-height: 120px;
+    }
+    
+    .card-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    
+    .btn-sm {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid #334155;
+      background: transparent;
+      color: #e2e8f0;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+    
+    .btn-sm:hover {
+      background: #2563eb;
+      border-color: #2563eb;
+    }
+    
+    /* Progress Card */
+    .progress-card {
+      background: #1a232a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    
+    .status-badge {
+      background: #f59e0b;
+      color: #000;
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    
+    .status-badge.running {
+      background: #3b82f6;
+      color: #fff;
+    }
+    
+    .progress-stages {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    
+    .stage {
+      flex: 1;
+      padding: 0.5rem;
+      border-radius: 4px;
+      text-align: center;
+      font-size: 0.875rem;
+      background: #2a3642;
+    }
+    
+    .stage.completed {
+      background: #10b981;
+      color: #000;
+    }
+    
+    .stage.active {
+      background: #3b82f6;
+      animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    
+    .progress-bar {
+      background: #2a3642;
+      border-radius: 8px;
+      height: 24px;
+      overflow: hidden;
+      position: relative;
+      margin-bottom: 1rem;
+    }
+    
+    .progress-fill {
+      background: linear-gradient(90deg, #2563eb, #3b82f6);
+      height: 100%;
+      transition: width 0.5s ease;
+    }
+    
+    .progress-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    
+    /* Session Panel */
+    .session-panel {
+      background: #1a232a;
+      border-left: 1px solid #334155;
+      overflow-y: auto;
+      padding: 1.5rem;
+    }
+    
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    
+    .btn-icon {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.875rem;
+    }
+    
+    .session-card {
+      background: #2a3642;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    
+    .session-card.active {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    }
+    
+    .session-id {
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+    
+    .control-group {
+      margin-bottom: 1rem;
+    }
+    
+    .control-group label {
+      display: block;
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+      color: #94a3b8;
+    }
+    
+    .form-control-sm {
+      width: 100%;
+      padding: 0.5rem;
+      background: #2a3642;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+    }
+    
+    .btn-primary {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      width: 100%;
+      margin-bottom: 0.5rem;
+      transition: background 0.2s;
+    }
+    
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+    
+    .btn-danger {
+      background: #ef4444;
+    }
+    
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+    
+    /* Log Drawer */
+    .log-drawer {
+      position: fixed;
+      bottom: 0;
+      left: 280px;
+      right: 320px;
+      background: #1a232a;
+      border-top: 2px solid #334155;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    
+    .log-drawer.minimized {
+      height: 48px;
+    }
+    
+    .log-drawer.expanded {
+      height: 400px;
+    }
+    
+    .drawer-handle {
+      padding: 0.75rem 1.5rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      user-select: none;
+    }
+    
+    .drawer-handle:hover {
+      background: #2a3642;
+    }
+    
+    .handle-icon {
+      font-size: 1.25rem;
+      transition: transform 0.3s;
+    }
+    
+    .log-drawer.expanded .handle-icon {
+      transform: rotate(180deg);
+    }
+    
+    .log-badge {
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    
+    .log-badge.error {
+      background: #ef4444;
+      color: white;
+    }
+    
+    .log-badge.warning {
+      background: #f59e0b;
+      color: #000;
+    }
+    
+    .log-badge.info {
+      background: #3b82f6;
+      color: white;
+    }
+    
+    .drawer-content {
+      display: none;
+      padding: 1.5rem;
+      height: calc(100% - 48px);
+      overflow-y: auto;
+    }
+    
+    .log-drawer.expanded .drawer-content {
+      display: block;
+    }
+    
+    .drawer-hint {
+      color: #94a3b8;
+      font-size: 0.875rem;
+    }
+    
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+    }
+    
+    .empty-state img {
+      width: 200px;
+      opacity: 0.5;
+      margin-bottom: 1.5rem;
+    }
+    
+    .empty-state h3 {
+      margin-bottom: 0.5rem;
+    }
+    
+    .empty-state p {
+      color: #94a3b8;
+      margin-bottom: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <strong>Smart Elections Parser - Modern UI Prototype</strong>
+  </nav>
+  
+  <div class="layout-dashboard">
+    <!-- Left Sidebar: Files & URLs -->
+    <aside class="sidebar">
+      <h3>URLs & Files</h3>
+      <div class="file-item">📄 urls.txt (15 items)</div>
+      <div class="file-item">📁 Input Folder (3 files)</div>
+      <div class="file-item">📁 Uploads (7 files)</div>
+      <div class="file-item">📁 Output Folder (12 results)</div>
+    </aside>
+    
+    <!-- Main Content: Results Dashboard -->
+    <main class="main-content">
+      <div class="results-header">
+        <h2>
+          Parsed Results
+          <span class="badge">3 items</span>
+        </h2>
+        <div>
+          <button class="btn-sm">Grid</button>
+          <button class="btn-sm">List</button>
+        </div>
+      </div>
+      
+      <!-- Progress Card (Active Session) -->
+      <div class="progress-card">
+        <div class="progress-header">
+          <h4>Session: sess_abc123</h4>
+          <span class="status-badge running">Running</span>
+        </div>
+        
+        <div class="progress-stages">
+          <div class="stage completed">✓ Prepare</div>
+          <div class="stage completed">✓ Source</div>
+          <div class="stage active">⟳ Run</div>
+          <div class="stage">○ Review</div>
+        </div>
+        
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 60%;"></div>
+          <span class="progress-text">60% - Processing URL 3/5</span>
+        </div>
+        
+        <div style="display: flex; gap: 1rem; font-size: 0.875rem; color: #94a3b8;">
+          <div>🕒 Elapsed: 00:02:34</div>
+          <div>📊 Parsed: 3 files</div>
+          <div>⚠️ Warnings: 2</div>
+        </div>
+      </div>
+      
+      <!-- Results Grid -->
+      <div class="results-grid">
+        <!-- Result Card 1 -->
+        <div class="result-card">
+          <div class="card-header">
+            <span class="file-icon">📊</span>
+            <span class="file-name">Alameda County</span>
+            <span class="file-type-badge">CSV</span>
+          </div>
+          
+          <div class="card-stats">
+            <div class="stat">
+              <span class="label">Rows</span>
+              <span class="value">1,234</span>
+            </div>
+            <div class="stat">
+              <span class="label">Confidence</span>
+              <span class="value confidence-high">94.5%</span>
+            </div>
+          </div>
+          
+          <div class="card-preview">
+Candidate       | Votes  | %
+John Doe        | 45,234 | 52.3%
+Jane Smith      | 41,123 | 47.7%
+          </div>
+          
+          <div class="card-actions">
+            <button class="btn-sm">👁 Preview</button>
+            <button class="btn-sm">⬇ Download</button>
+          </div>
+        </div>
+        
+        <!-- Result Card 2 -->
+        <div class="result-card">
+          <div class="card-header">
+            <span class="file-icon">📄</span>
+            <span class="file-name">San Francisco County</span>
+            <span class="file-type-badge">JSON</span>
+          </div>
+          
+          <div class="card-stats">
+            <div class="stat">
+              <span class="label">Records</span>
+              <span class="value">987</span>
+            </div>
+            <div class="stat">
+              <span class="label">Confidence</span>
+              <span class="value confidence-high">91.2%</span>
+            </div>
+          </div>
+          
+          <div class="card-preview">
+{
+  "contest": "County Attorney",
+  "candidates": [
+    { "name": "Alice Brown", ... }
+  ]
+}
+          </div>
+          
+          <div class="card-actions">
+            <button class="btn-sm">👁 Preview</button>
+            <button class="btn-sm">⬇ Download</button>
+          </div>
+        </div>
+        
+        <!-- Result Card 3 -->
+        <div class="result-card">
+          <div class="card-header">
+            <span class="file-icon">📊</span>
+            <span class="file-name">Santa Clara County</span>
+            <span class="file-type-badge">XLSX</span>
+          </div>
+          
+          <div class="card-stats">
+            <div class="stat">
+              <span class="label">Sheets</span>
+              <span class="value">3</span>
+            </div>
+            <div class="stat">
+              <span class="label">Confidence</span>
+              <span class="value confidence-high">89.7%</span>
+            </div>
+          </div>
+          
+          <div class="card-preview">
+Sheet 1: Statewide Results
+Sheet 2: County Breakdown
+Sheet 3: Precincts
+          </div>
+          
+          <div class="card-actions">
+            <button class="btn-sm">👁 Preview</button>
+            <button class="btn-sm">⬇ Download</button>
+          </div>
+        </div>
+      </div>
+    </main>
+    
+    <!-- Right Panel: Session Management -->
+    <aside class="session-panel">
+      <div class="panel-header">
+        <h3>Sessions</h3>
+        <button class="btn-icon">+ New</button>
+      </div>
+      
+      <!-- Active Session -->
+      <div class="session-card active">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <span class="session-id">sess_abc123</span>
+          <span style="font-size: 0.75rem; color: #3b82f6;">● Running</span>
+        </div>
+        <div style="font-size: 0.875rem; color: #94a3b8;">
+          Processing 3/5 URLs
+        </div>
+      </div>
+      
+      <!-- Completed Session -->
+      <div class="session-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <span class="session-id">sess_def456</span>
+          <span style="font-size: 0.75rem; color: #10b981;">✓ Completed</span>
+        </div>
+        <div style="font-size: 0.875rem; color: #94a3b8;">
+          10 files parsed
+        </div>
+      </div>
+      
+      <hr style="border-color: #334155; margin: 1.5rem 0;">
+      
+      <h4 style="margin-bottom: 1rem;">Controls</h4>
+      
+      <div class="control-group">
+        <label>File Source</label>
+        <select class="form-control-sm">
+          <option>Input Folder</option>
+          <option>Manual Uploads</option>
+        </select>
+      </div>
+      
+      <div class="control-group">
+        <label>
+          <input type="checkbox"> Bypass Output
+        </label>
+      </div>
+      
+      <button class="btn-primary">▶ Run Parser</button>
+      <button class="btn-primary btn-danger">⏹ Cancel</button>
+      
+      <hr style="border-color: #334155; margin: 1.5rem 0;">
+      
+      <h4 style="margin-bottom: 1rem;">Filters</h4>
+      
+      <div class="control-group">
+        <label>Level</label>
+        <select class="form-control-sm">
+          <option>All Levels</option>
+          <option>Errors</option>
+          <option>Warnings</option>
+        </select>
+      </div>
+      
+      <div class="control-group">
+        <label>Type</label>
+        <select class="form-control-sm">
+          <option>All Types</option>
+          <option>Input</option>
+          <option>Output</option>
+        </select>
+      </div>
+    </aside>
+  </div>
+  
+  <!-- Log Drawer (Minimized by Default) -->
+  <div class="log-drawer minimized" id="logDrawer" onclick="toggleDrawer()">
+    <div class="drawer-handle">
+      <span class="handle-icon">⌃</span>
+      <span>
+        <span class="log-badge error">2</span>
+        <span class="log-badge warning">5</span>
+        <span class="log-badge info">127</span>
+      </span>
+      <span class="drawer-hint">Click to expand debug console</span>
+    </div>
+    
+    <div class="drawer-content">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+        <h3>Debug Console</h3>
+        <div>
+          <button class="btn-sm">Clear</button>
+          <button class="btn-sm">Export</button>
+        </div>
+      </div>
+      <div style="font-family: 'Courier New', monospace; font-size: 0.75rem; color: #94a3b8;">
+        [INFO] Parser connected. Starting session...<br>
+        [INFO] Loading URLs from urls.txt (15 entries)<br>
+        [WARNING] URL #3 returned 404 - skipping<br>
+        [INFO] Successfully parsed Alameda County (1,234 rows)<br>
+        [ERROR] Failed to parse file: invalid JSON structure<br>
+        [INFO] Session progress: 3/5 complete (60%)<br>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    function toggleDrawer() {
+      const drawer = document.getElementById('logDrawer');
+      drawer.classList.toggle('minimized');
+      drawer.classList.toggle('expanded');
+    }
+  </script>
+</body>
+</html>
