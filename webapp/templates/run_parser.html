@@ -33,22 +33,12 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser_modern.css') }}?v={{ static_version }}">
 </head>
 <body data-page="run-parser" data-allow-style="1">
-    <nav class="navbar">
-        <a href="{{ url_for('index') }}">Dashboard</a>
-        <a href="{{ url_for('data_framework') }}">Data Framework</a>
-        <a href="{{ url_for('history') }}">History</a>
-        <a href="{{ url_for('run_parser') }}" class="active" data-step-target="run">Run Parser</a>
-        <a href="https://basic-nature.github.io/html_Parser_prototype/"
-           target="_blank"
-           rel="noopener noreferrer"
-           class="ext-link">About</a>
-      <a href="{{ url_for('quick_reference_page') }}">Quick Reference</a>
-    </nav>
-    <button id="sidebarToggleBtn" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="false">☰ Menu</button>
-    <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
-    <div class="layout-flex">
         <!-- Sidebar: Unified File Management & URL Manager -->
         <aside id="sidebar" class="sidebar">
+            <!-- Toggle Button for Mobile -->
+            <button id="sidebarToggleBtn" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="false">☰ Menu</button>
+            <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
+            
             <div class="sidebar-content">
                 {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
@@ -59,15 +49,17 @@
                 {% endwith %}
                 
                 <!-- URLs Section -->
-                <section class="sidebar-section">
-                    <h3 class="sidebar-header"><span>📋 URLs</span> <button class="btn-icon-small" id="btnAddUrl">+</button></h3>
-                    <input type="search" class="url-search-box" placeholder="Search state, county, or URL..." aria-label="Search URLs">
-                    <div class="url-lines" id="urlLinesBox"></div>
-                    <form id="addUrlForm" class="flex-wrap-row mb-1em mt-1em">
-                        <input type="url" id="newUrl" class="url-add-input" placeholder="Paste new election results URL here" required aria-label="New URL">
-                        <button type="submit" class="btn btn-success url-add-btn">Add URL</button>
-                        <button type="button" class="btn btn-primary ms-1em" id="refreshUrlListBtn" title="Refresh URL list">⟳</button>
-                    </form>
+                <section class="sidebar-section" id="urlsSection">
+                    <h3 class="sidebar-header"><span>📋 URLs</span> <button class="btn-icon-small" id="btnAddUrl">+</button> <button class="btn-icon-small collapse-toggle" id="btnCollapseUrls" title="Minimize URLs section">▼</button></h3>
+                    <div class="urls-container">
+                        <input type="search" class="url-search-box" placeholder="Search state, county, or URL..." aria-label="Search URLs">
+                        <div class="url-lines" id="urlLinesBox"></div>
+                        <form id="addUrlForm" class="flex-wrap-row mb-1em mt-1em">
+                            <input type="url" id="newUrl" class="url-add-input" placeholder="Paste new election results URL here" required aria-label="New URL">
+                            <button type="submit" class="btn btn-success url-add-btn">Add URL</button>
+                            <button type="button" class="btn btn-primary ms-1em" id="refreshUrlListBtn" title="Refresh URL list">⟳</button>
+                        </form>
+                    </div>
                 </section>
                 
                 <hr class="sidebar-divider spaced-divider">
@@ -103,18 +95,18 @@
                                 </form>
                                 
                                 <!-- Manual Upload File Selection -->
-                                <div class="manual-upload-controls" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
-                                  <label for="manualUploadSelect" class="form-label" style="font-size: 0.75rem; font-weight: 600; margin-bottom: 0.375rem; display: block; color: var(--text-muted);">
+                                <div class="manual-upload-controls">
+                                  <label for="manualUploadSelect" class="form-label manual-upload-label">
                                     Select File to Parse
                                   </label>
-                                  <select id="manualUploadSelect" class="form-control" style="font-size: 0.813rem; padding: 0.375rem;">
+                                  <select id="manualUploadSelect" class="form-control manual-upload-select">
                                     <option value="">-- Choose a file --</option>
                                   </select>
-                                  <div style="display: flex; gap: 0.375rem; margin-top: 0.5rem;">
-                                    <button type="button" id="manualUploadRefreshBtn" class="btn btn-sm" style="flex: 1;">↻ Refresh</button>
-                                    <button type="button" id="manualUploadClearBtn" class="btn btn-sm" style="flex: 1;">× Clear</button>
+                                  <div class="manual-upload-actions">
+                                    <button type="button" id="manualUploadRefreshBtn" class="btn btn-sm">↻ Refresh</button>
+                                    <button type="button" id="manualUploadClearBtn" class="btn btn-sm">× Clear</button>
                                   </div>
-                                  <div id="manualUploadSummary" class="manual-upload-summary" style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-muted); display: none;"></div>
+                                  <div id="manualUploadSummary" class="manual-upload-summary"></div>
                                 </div>
                                 
                                 <div id="uploadsFolderPanel" class="folder-panel" data-root="uploads" aria-live="polite"></div>
@@ -145,6 +137,14 @@
           <nav class="navbar-modern">
             <div class="navbar-content">
               <h1 class="navbar-title">🗳️ Smart Elections Parser</h1>
+              <div class="navbar-links">
+                <a href="/" class="nav-link" title="Home">Home</a>
+                <a href="/run_parser" class="nav-link active" title="Run Parser">Run Parser</a>
+                <a href="/quality_dashboard" class="nav-link" title="Quality Dashboard">Quality</a>
+                <a href="/azure_health" class="nav-link" title="Health & Monitoring">Health</a>
+                <a href="/data_framework" class="nav-link" title="Data Framework">Data Framework</a>
+                <a href="/history" class="nav-link" title="Run History">History</a>
+              </div>
               <div class="navbar-actions">
                 <button class="btn-icon" id="btnCommandPalette" title="Command Palette (Ctrl+Shift+P)">⌘</button>
                 <button class="btn-icon" id="btnNotifications" title="Notifications">🔔</button>
@@ -338,7 +338,7 @@
           <!-- TOAST NOTIFICATIONS -->
           <div class="toast-container" id="toastContainer"></div>
         </div>
-    </div>
+        <!-- End modern-layout -->
     <!-- SheetJS for CSV/XLSX preview -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     

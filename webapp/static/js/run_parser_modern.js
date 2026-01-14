@@ -150,22 +150,8 @@ const ErrorBoundary = (() => {
   function showErrorNotification(error, context) {
     const message = `Error in ${context}: ${error?.message || 'Unknown error'}`;
     const toast = document.createElement('div');
-    toast.className = 'error-toast';
+    toast.className = 'error-toast notification-toast';
     toast.textContent = message;
-    toast.style.cssText = `
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
-      background: #fee;
-      border: 2px solid #f44;
-      color: #c00;
-      padding: 12px 16px;
-      border-radius: 4px;
-      font-size: 14px;
-      z-index: 10001;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-      max-width: 400px;
-    `;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 5000);
   }
@@ -486,12 +472,13 @@ const LogColorCoding = (() => {
   };
   
   function applyColorToElement(element, level) {
-    const colors = levelColors[level] || levelColors['INFO'];
-    element.style.backgroundColor = colors.bg;
-    element.style.borderLeftColor = colors.border;
-    element.style.borderLeftWidth = '3px';
-    element.style.borderLeftStyle = 'solid';
-    element.style.color = colors.text;
+    // Remove all level classes first
+    Object.keys(levelColors).forEach(lvl => {
+      element.classList.remove(`log-level-${lvl.toLowerCase()}`);
+    });
+    // Add the appropriate level class
+    const levelClass = `log-level-${level.toLowerCase()}`;
+    element.classList.add(levelClass);
   }
   
   function getLevelColor(level) {
@@ -1437,13 +1424,21 @@ if (drawerHandle) {
     if (overlay) overlay.classList.add('visible');
   }
 
-  // Legacy left sidebar toggle
+  // Legacy left sidebar toggle - only toggle left sidebar, not other panels
   if (toggleLeftBtn) {
     toggleLeftBtn.addEventListener('click', (e) => {
       e.preventDefault();
       if (!legacySidebar) return;
       const isOpen = legacySidebar.classList.contains('sidebar-open');
-      if (isOpen) closeAll(); else openLeft();
+      if (isOpen) {
+        // Close left sidebar only (not others)
+        legacySidebar.classList.remove('sidebar-open');
+        if (sidebarBackdrop) sidebarBackdrop.classList.remove('visible');
+      } else {
+        // Open left sidebar only
+        legacySidebar.classList.add('sidebar-open');
+        if (sidebarBackdrop) sidebarBackdrop.classList.add('visible');
+      }
     });
   }
 
@@ -1832,45 +1827,10 @@ function renderPromptOptions(filterText = '') {
 
     promptOptionsEl.innerHTML = '';
 
-    // Enable virtual scrolling for large lists (P2.2)
-    const groupsArray = Array.from(groups.values());
-    const useVirtualScroll = VirtualScroll.enable(groupsArray, promptOptionsEl.parentElement);
-    
-    if (useVirtualScroll) {
-      // Create spacer for total height
-      const spacer = document.createElement('div');
-      spacer.style.height = `${VirtualScroll.getTotalHeight()}px`;
-      spacer.style.position = 'relative';
-      
-      const content = document.createElement('div');
-      content.style.position = 'absolute';
-      content.style.top = `${VirtualScroll.getOffsetY()}px`;
-      content.style.width = '100%';
-      
-      const visibleGroups = VirtualScroll.getVisibleItems();
-      visibleGroups.forEach((group) => {
-        const elem = renderGroupElement(group, key);
-        content.appendChild(elem);
-      });
-      
-      spacer.appendChild(content);
-      promptOptionsEl.appendChild(spacer);
-      
-      // Add scroll listener for virtual scroll updates
-      const container = promptOptionsEl.parentElement;
-      if (container && !container.dataset.scrollListenerAdded) {
-        container.dataset.scrollListenerAdded = 'true';
-        container.addEventListener('scroll', debounce((e) => {
-          VirtualScroll.updateScroll(e.target.scrollTop);
-          renderPromptOptions(promptSearchEl?.value || '');
-        }, 100));
-      }
-    } else {
-      // Standard rendering for smaller lists
-      for (const [key, group] of groups) {
-        const elem = renderGroupElement(group, key);
-        promptOptionsEl.appendChild(elem);
-      }
+    // Standard rendering (virtual scroll removed to avoid inline style mutations under CSP)
+    for (const [key, group] of groups) {
+      const elem = renderGroupElement(group, key);
+      promptOptionsEl.appendChild(elem);
     }
   
   updateSelectionSummary();
@@ -2968,8 +2928,8 @@ function loadSampleData() {
 const ThemeManager = (() => {
   const THEME_KEY = 'parser_theme';
   const THEME_ICONS = {
-    light: '🌙', // Moon when in light mode (click to go dark)
-    dark: '☀️'   // Sun when in dark mode (click to go light)
+    light: '☀️',  // Sun when in light mode (click to go dark)
+    dark: '🌙'   // Moon when in dark mode (click to go light)
   };
   
   function getCurrentTheme() {
@@ -3370,6 +3330,8 @@ const UrlListManager = (() => {
   function init() {
     const searchBox = $('.url-search-box');
     const refreshBtn = $('#refreshUrlListBtn');
+    const collapseBtn = $('#btnCollapseUrls');
+    const urlsContainer = $('.urls-container');
     
     if (searchBox) {
       searchBox.addEventListener('input', (e) => {
@@ -3380,6 +3342,22 @@ const UrlListManager = (() => {
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => {
         fetchUrls();
+      });
+    }
+    
+    // URL section collapse toggle (default to collapsed)
+    if (collapseBtn && urlsContainer) {
+      const urlsCollapsed = localStorage.getItem('urlsCollapsed') !== 'false'; // Default to collapsed
+      if (urlsCollapsed) {
+        urlsContainer.classList.add('collapsed');
+        collapseBtn.classList.add('collapsed');
+      }
+      
+      collapseBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const isCollapsed = urlsContainer.classList.toggle('collapsed');
+        collapseBtn.classList.toggle('collapsed');
+        localStorage.setItem('urlsCollapsed', isCollapsed);
       });
     }
     
@@ -3989,6 +3967,34 @@ document.addEventListener('DOMContentLoaded', () => {
       TablePreviewManager.record(log.session_id, log);
     }
   });
+
+  // ============================================
+  // Footer Session List Toggle
+  // ============================================
+  const sessionFooter = $('#sessionFooter');
+  const footerPreview = $('#footerPreview');
+  
+  if (sessionFooter && footerPreview) {
+    // Toggle expanded state on click
+    footerPreview.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sessionFooter.classList.toggle('expanded');
+      localStorage.setItem('footerExpanded', sessionFooter.classList.contains('expanded'));
+    });
+    
+    // Restore previously expanded state
+    const wasExpanded = localStorage.getItem('footerExpanded') === 'true';
+    if (wasExpanded) {
+      sessionFooter.classList.add('expanded');
+    }
+    
+    // Close footer when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!sessionFooter.contains(e.target) && sessionFooter.classList.contains('expanded')) {
+        sessionFooter.classList.remove('expanded');
+      }
+    });
+  }
   
   updateSessionsList();
   

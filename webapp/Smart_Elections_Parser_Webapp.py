@@ -11,9 +11,10 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 
 def _should_skip_eventlet_patch() -> tuple[bool, str | None]:
-    if _env_flag("SMART_ELECTIONS_SKIP_EVENTLET_PATCH", False):
-        return True, "env_skip"
-    # During pytest runs we prefer real threading primitives unless explicitly forced.
+    # Default to threading mode (no eventlet) for stability and better compatibility
+    # eventlet has deprecation warnings and greenlet/async issues
+    if _env_flag("SMART_ELECTIONS_SKIP_EVENTLET_PATCH", True):  # Default: True (skip eventlet)
+        return True, "disabled_for_stability"
     if "PYTEST_CURRENT_TEST" in os.environ and not _env_flag("SMART_ELECTIONS_FORCE_EVENTLET_PATCH", False):
         return True, "pytest"
     return False, None
