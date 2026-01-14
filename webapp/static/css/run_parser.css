@@ -2733,6 +2733,19 @@
 }
 
 /* -------------------------------------------------- */
+/* Sidebar Spacing Helpers                            */
+/* -------------------------------------------------- */
+@layer components {
+  .spaced-divider { margin: 1.5em 0; }
+  .files-section { margin-top: 1.5em; }
+  .files-section .files-header { margin-bottom: 1em; }
+  .folder-item.spaced-item { margin-bottom: 1em; }
+  .folder-item:last-child { margin-bottom: 0; }
+  .folder-summary { cursor: pointer; font-weight: 500; padding: 0.5em 0; }
+  .folder-content { margin-top: 0.75em; padding-left: 1em; }
+}
+
+/* -------------------------------------------------- */
 /* 8. Media / Preference Queries                      */
 /* -------------------------------------------------- */
 @layer preferences {

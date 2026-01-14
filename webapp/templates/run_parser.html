@@ -32,7 +32,7 @@
   <!-- Single consolidated app stylesheet (bootstrap_overrides merged) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser.css') }}">
   <!-- Modern dashboard interface -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser_modern.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser_modern.css') }}?v={{ static_version }}">
 </head>
 <body data-page="run-parser" data-allow-style="1">
     <nav class="navbar">
@@ -44,11 +44,12 @@
            target="_blank"
            rel="noopener noreferrer"
            class="ext-link">About</a>
+      <a href="{{ url_for('quick_reference_page') }}">Quick Reference</a>
     </nav>
     <button id="sidebarToggleBtn" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="false">☰ Menu</button>
     <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
     <div class="layout-flex">
-        <!-- Sidebar: File Management & URL Hint Manager -->
+        <!-- Sidebar: Unified File Management & URL Manager -->
         <aside id="sidebar" class="sidebar">
             <div class="sidebar-content">
                 {% with messages = get_flashed_messages(with_categories=true) %}
@@ -58,63 +59,70 @@
                     {% endfor %}
                 {% endif %}
                 {% endwith %}
-                <div id="urlSidebarBlock" class="section" data-step-target="prepare">
-                    <input type="search" class="url-search-box" placeholder="Search state, county, or URL...">
-                    <h2>
-                        urls.txt
-                        </span>
-                    </h2>
+                
+                <!-- URLs Section -->
+                <section class="sidebar-section">
+                    <h3 class="sidebar-header"><span>📋 URLs</span> <button class="btn-icon-small" id="btnAddUrl">+</button></h3>
+                    <input type="search" class="url-search-box" placeholder="Search state, county, or URL..." aria-label="Search URLs">
                     <div class="url-lines" id="urlLinesBox"></div>
                     <form id="addUrlForm" class="flex-wrap-row mb-1em mt-1em">
                         <input type="url" id="newUrl" class="url-add-input" placeholder="Paste new election results URL here" required aria-label="New URL">
                         <button type="submit" class="btn btn-success url-add-btn">Add URL</button>
                         <button type="button" class="btn btn-primary ms-1em" id="refreshUrlListBtn" title="Refresh URL list">⟳</button>
                     </form>
-                </div>
-                <!-- Input Folder Section -->
-                <div class="section" data-step-target="prepare">
-                    <button type="button" class="collapsible-btn" data-target="inputSection">
-                    Input Folder Files
-                    </button>
-                    <div id="inputSection" class="collapsible hidden" data-input-folder>
-                        <form method="POST" action="{{ url_for('upload_to_input') }}" enctype="multipart/form-data" class="mb-1em">
-                            <label for="inputFile" class="visually-hidden">Choose file for input folder</label>
-                            <input type="file" id="inputFile" name="file" required aria-label="Choose file for input folder">
-                            <button type="submit" class="btn btn-upload">Upload</button>
-                        </form>
-                        <div id="inputFolderPanel" class="folder-panel" data-root="input" aria-live="polite"></div>
-                    </div>
-                </div>
+                </section>
+                
+                <hr class="sidebar-divider spaced-divider">
 
-                <!-- Output Folder Section -->
-                <div class="section" data-step-target="review">
-                    <button type="button" class="collapsible-btn" data-target="outputSection">
-                    Output Folder Files
-                    </button>
-                    <div id="outputSection" class="collapsible hidden" data-output-folder>
-                        <form method="POST" action="{{ url_for('upload_to_output') }}" enctype="multipart/form-data" class="mb-1em">
-                            <label for="outputFile" class="visually-hidden">Choose file for output folder</label>
-                            <input type="file" id="outputFile" name="file" required aria-label="Choose file for output folder">
-                            <button type="submit" class="btn btn-upload">Upload</button>
-                        </form>
-                        <div id="outputFolderPanel" class="folder-panel" data-root="output" aria-live="polite"></div>
+                <!-- Files Section -->
+                <section class="sidebar-section files-section">
+                  <h3 class="sidebar-header files-header">📁 Files</h3>
+                    
+                  <!-- Input Folder -->
+                  <div class="folder-item spaced-item">
+                    <details open>
+                      <summary class="folder-summary">📂 Input Folder</summary>
+                      <div class="collapsible-content folder-content">
+                                <form method="POST" action="{{ url_for('upload_to_input') }}" enctype="multipart/form-data" class="mb-1em">
+                                    <label for="inputFile" class="visually-hidden">Choose file for input folder</label>
+                                    <input type="file" id="inputFile" name="file" required aria-label="Choose file for input folder">
+                                    <button type="submit" class="btn btn-upload">Upload</button>
+                                </form>
+                                <div id="inputFolderPanel" class="folder-panel" data-root="input" aria-live="polite"></div>
+                            </div>
+                        </details>
                     </div>
-                </div>
-
-                <!-- Uploads Folder Section -->
-                <div class="section" data-step-target="prepare">
-                    <button type="button" class="collapsible-btn" data-target="uploadsSection">
-                    Uploads Folder Files
-                    </button>
-                    <div id="uploadsSection" class="collapsible hidden">
-                        <form method="POST" action="{{ url_for('upload_to_uploads') }}" enctype="multipart/form-data" class="mb-1em">
-                            <label for="uploadsFile" class="visually-hidden">Choose file for uploads folder</label>
-                            <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">
-                            <button type="submit" class="btn btn-upload">Upload to Uploads</button>
-                        </form>
-                        <div id="uploadsFolderPanel" class="folder-panel" data-root="uploads" aria-live="polite"></div>
+                    
+                    <!-- Uploads Folder -->
+                    <div class="folder-item spaced-item">
+                      <details open>
+                        <summary class="folder-summary">📤 Uploads</summary>
+                        <div class="collapsible-content folder-content">
+                                <form method="POST" action="{{ url_for('upload_to_uploads') }}" enctype="multipart/form-data" class="mb-1em">
+                                    <label for="uploadsFile" class="visually-hidden">Choose file for uploads folder</label>
+                                    <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">
+                                    <button type="submit" class="btn btn-upload">Upload</button>
+                                </form>
+                                <div id="uploadsFolderPanel" class="folder-panel" data-root="uploads" aria-live="polite"></div>
+                            </div>
+                        </details>
                     </div>
-                </div>
+                    
+                    <!-- Output Folder -->
+                    <div class="folder-item">
+                      <details>
+                        <summary class="folder-summary">📥 Output</summary>
+                        <div class="collapsible-content folder-content">
+                                <form method="POST" action="{{ url_for('upload_to_output') }}" enctype="multipart/form-data" class="mb-1em">
+                                    <label for="outputFile" class="visually-hidden">Choose file for output folder</label>
+                                    <input type="file" id="outputFile" name="file" required aria-label="Choose file for output folder">
+                                    <button type="submit" class="btn btn-upload">Upload</button>
+                                </form>
+                                <div id="outputFolderPanel" class="folder-panel" data-root="output" aria-live="polite"></div>
+                            </div>
+                        </details>
+                    </div>
+                </section>
             </div>
         </aside>
 
@@ -127,35 +135,12 @@
                 <button class="btn-icon" id="btnCommandPalette" title="Command Palette (Ctrl+Shift+P)">⌘</button>
                 <button class="btn-icon" id="btnNotifications" title="Notifications">🔔</button>
                 <button class="btn-icon" id="btnTheme" title="Toggle Theme">🌙</button>
+                <button class="btn-icon" id="btnToggleRightSidebar" title="Controls (mobile)">⚙️</button>
               </div>
             </div>
           </nav>
 
           <div class="dashboard-grid">
-            <!-- LEFT SIDEBAR -->
-            <aside class="sidebar-left">
-              <section class="sidebar-section">
-                <h3 class="sidebar-header"><span>📋 URLs</span> <button class="btn-icon-small" id="btnAddUrl">+</button></h3>
-                <div class="url-list" id="urlList"></div>
-              </section>
-              <hr class="sidebar-divider">
-              <section class="sidebar-section">
-                <h3 class="sidebar-header">📁 Files</h3>
-                <div class="folder-item">
-                  <details open><summary>📂 Input Folder</summary>
-                  <div class="file-list" id="inputFiles"></div></details>
-                </div>
-                <div class="folder-item">
-                  <details open><summary>📤 Uploads</summary>
-                  <div class="file-list" id="uploadFiles"></div></details>
-                </div>
-                <div class="folder-item">
-                  <details><summary>📥 Output</summary>
-                  <div class="file-list" id="outputFiles"></div></details>
-                </div>
-              </section>
-            </aside>
-
             <!-- MAIN CONTENT -->
             <main class="main-content">
               <div class="results-header">
@@ -185,11 +170,22 @@
                   <div class="radio-group">
                     <label class="radio-label"><input type="radio" name="fileSource" value="input" checked>Input Folder</label>
                     <label class="radio-label"><input type="radio" name="fileSource" value="uploads">Manual Upload</label>
+                    <label class="radio-label"><input type="radio" name="fileSource" value="direct">Direct URLs</label>
                   </div>
+                </div>
+                <div class="control-group advanced-option" data-source="direct">
+                  <label for="directUrlTextarea">URLs (one per line, max 20)</label>
+                  <textarea id="directUrlTextarea" class="form-control" rows="4" placeholder="https://example.com/results1&#10;https://example.com/results2" aria-label="Direct URLs"></textarea>
+                  <small id="directUrlFeedback" class="text-muted">Enter one URL per line.</small>
+                  <button type="button" class="btn-sm btn-ghost" id="directUrlClearBtn" title="Clear URLs">Clear</button>
                 </div>
                 <div class="control-group">
                   <label class="checkbox-label"><input type="checkbox" id="outputBypass"> Bypass Output Files</label>
                   <small>Don't save CSV to disk</small>
+                </div>
+                <div class="control-group">
+                  <label class="checkbox-label"><input type="checkbox" id="batchMode"> Batch Mode</label>
+                  <small>Process multiple contests automatically</small>
                 </div>
                 <button class="btn-primary btn-large" id="btnRunParser2">▶ Run Parser</button>
                 <button class="btn-danger btn-large" id="btnCancel" disabled>⏹ Cancel</button>
@@ -215,9 +211,30 @@
                     <option value="INFO">Info</option>
                   </select>
                 </div>
+                <div class="control-group">
+                  <label>Filter Presets</label>
+                  <select id="filterPresetSelect" class="form-control-sm">
+                    <option value="">— Save new preset —</option>
+                  </select>
+                  <div class="btn-group-sm">
+                    <button type="button" class="btn-sm btn-ghost" id="saveFiltersBtn" title="Save current filters">Save</button>
+                    <button type="button" class="btn-sm btn-ghost" id="deletePresetBtn" title="Delete preset">Delete</button>
+                  </div>
+                </div>
+              </section>
+              <hr class="sidebar-divider">
+              <section class="sidebar-section">
+                <h3 class="sidebar-header">📋 Session Actions</h3>
+                <div class="btn-group-vertical">
+                  <button type="button" class="btn-sm" id="btnCloneSession" title="Clone current session (Ctrl+Shift+C)">🔄 Clone Session</button>
+                  <button type="button" class="btn-sm" id="btnExportSession" title="Export session data">📤 Export Data</button>
+                  <button type="button" class="btn-sm" id="btnClearSession" title="Clear session logs">🗑️ Clear Logs</button>
+                </div>
               </section>
             </aside>
           </div>
+
+          <div id="mobileSidebarOverlay" class="mobile-sidebar-overlay" aria-hidden="true"></div>
 
           <!-- LOG DRAWER -->
           <div class="log-drawer minimized" id="logDrawer">
@@ -233,14 +250,30 @@
             <div class="drawer-content">
               <div class="drawer-toolbar">
                 <h4>Debug Console</h4>
-                <div><button class="btn-sm" id="btnClearLogs">Clear</button></div>
+                  <div class="drawer-actions">
+                    <button class="btn-sm" id="btnExportJSON" title="Export logs as JSON (Ctrl+E)">📄 JSON</button>
+                    <button class="btn-sm" id="btnExportCSV" title="Export logs as CSV (Ctrl+Shift+E)">📊 CSV</button>
+                    <button class="btn-sm" id="btnExportMarkdown" title="Export logs as Markdown">📝 MD</button>
+                    <button class="btn-sm" id="btnShowKeyboardShortcuts" title="Show keyboard shortcuts (Ctrl+/)">⌨️</button>
+                    <button class="btn-sm" id="btnCopyLogs" title="Copy all logs to clipboard">Copy</button>
+                    <button class="btn-sm" id="btnToggleScroll" title="Toggle auto-scroll">Pin</button>
+                    <button class="btn-sm" id="btnClearLogs" title="Clear console (Ctrl+L)">Clear</button>
+                  </div>
+              </div>
+              <div class="log-filter-controls">
+                <label for="logFilterPresetSelect">Presets:</label>
+                <select id="logFilterPresetSelect" class="form-select form-select-sm">
+                  <option value="">— Save new preset —</option>
+                </select>
+                <button id="btnSaveFilterPreset" class="btn btn-sm btn-outline-secondary" title="Save current filters">Save</button>
+                <button id="btnDeleteFilterPreset" class="btn btn-sm btn-outline-danger" title="Delete selected preset">Delete</button>
               </div>
               <div class="log-output" id="logOutput"></div>
             </div>
           </div>
 
           <!-- FILE PREVIEW MODAL -->
-          <div class="modal" id="previewModal" style="display: none;">
+          <div class="modal hidden" id="previewModal">
             <div class="modal-content modal-large">
               <div class="modal-header">
                 <h3 id="previewTitle">File Preview</h3>
@@ -260,10 +293,31 @@
           </div>
 
           <!-- COMMAND PALETTE -->
-          <div class="command-palette" id="commandPalette" style="display: none;">
+          <div class="command-palette hidden" id="commandPalette">
             <div class="command-palette-content">
               <input type="text" class="command-input" id="commandInput" placeholder="Type a command... (ESC to close)">
               <div class="command-results" id="commandResults"></div>
+            </div>
+          </div>
+
+          <!-- PROMPT MODAL -->
+          <div class="modal hidden" id="promptModal">
+            <div class="modal-content modal-small">
+              <div class="modal-header">
+                <h3 id="promptTitle">Action required</h3>
+                <button class="btn-close" id="btnClosePrompt" aria-label="Close prompt">&times;</button>
+              </div>
+              <div class="modal-body">
+                <p id="promptMessage" class="prompt-message"></p>
+                <input type="search" id="promptSearch" class="form-control" placeholder="Filter or type to search options..." aria-label="Filter prompt options">
+                <div id="promptSelectionSummary" class="hidden"></div>
+                <div id="promptOptions" class="prompt-options"></div>
+                <input type="text" id="promptInput" class="form-control" placeholder="Enter response..." aria-label="Manual response">
+                <div class="modal-footer">
+                  <button class="btn-primary" id="btnSubmitPrompt">Submit</button>
+                  <button class="btn" id="btnCancelPrompt">Cancel</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -280,8 +334,27 @@
     <script nonce="{{ g.csp_nonce }}">
         // Extract config from data attribute to avoid Jinja2 in script content
         const configEl = document.querySelector('script[data-socketio-config]');
+        const defaultConfig = {transports: ['polling'], pollingOnly: true, pingInterval: 10000, pingTimeout: 60000};
         if (configEl) {
-            window.__SOCKETIO_CONFIG__ = JSON.parse(configEl.getAttribute('data-socketio-config'));
+            try {
+                const configData = configEl.getAttribute('data-socketio-config');
+                if (configData && typeof configData === 'string' && configData.trim().length > 2) {
+                    const trimmed = configData.trim();
+                    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                        const parsed = JSON.parse(trimmed);
+                        window.__SOCKETIO_CONFIG__ = Object.keys(parsed).length > 0 ? parsed : defaultConfig;
+                    } else {
+                        window.__SOCKETIO_CONFIG__ = defaultConfig;
+                    }
+                } else {
+                    window.__SOCKETIO_CONFIG__ = defaultConfig;
+                }
+            } catch (e) {
+                console.warn('Failed to parse Socket.IO config, using defaults:', e);
+                window.__SOCKETIO_CONFIG__ = defaultConfig;
+            }
+        } else {
+            window.__SOCKETIO_CONFIG__ = defaultConfig;
         }
     </script>
     <!-- htmllint-enable -->

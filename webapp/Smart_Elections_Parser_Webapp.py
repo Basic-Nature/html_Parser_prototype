@@ -1762,6 +1762,12 @@ def quality_dashboard():
     """Quality metrics visualization dashboard."""
     return render_template("quality_dashboard.html")
 
+@app.route("/quick-reference")
+@app.route("/quick_reference")
+def quick_reference_page():
+    """Serve the Quick Reference guide with CSP-friendly headers and static CSS."""
+    return render_template("quick_reference.html")
+
 @app.route("/api/quality_metrics", methods=["GET"])
 def api_quality_metrics():
     """API endpoint for quality metrics data."""

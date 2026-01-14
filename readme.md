@@ -98,11 +98,11 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
 
 **The Smart Elections Parser can be used in two ways:**
 
-1. **Standalone Python Script:**  
+1. **Standalone Python Script:**
    - Run `html_election_parser.py` directly from your IDE or terminal for full CLI control.
    - No web server required.
 
-2. **Web UI (Optional):**  
+2. **Web UI (Optional):**
    - A modern Flask-based web interface is included for users who prefer a graphical experience or are new to coding.
    - **Key Features of the Web UI:**
      - **Dashboard:** Overview of the parser and quick access to all tools.
@@ -117,8 +117,8 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
         `pip install -r requirements.txt`
         - Python 3.12 (Windows) tested combo: `pip install -r requirements.txt -c constraints/local-py312.txt`
         `python -m spacy download en_core_web_sm`
-     2. **Set up your `.env` file** (or set environment variables in your shell or IDE launch configuration):  
-        - Required variables include:  
+     2. **Set up your `.env` file** (or set environment variables in your shell or IDE launch configuration):
+        - Required variables include:
           - `FLASK_SECRET_KEY`
           - `POSTGRES_USER`
           - `POSTGRES_PASSWORD`
@@ -128,7 +128,7 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
           - `DATA_API_URL`
           - `CSP_MODE`
         - You can copy `.env.template` to `.env` and fill in your values.
-        - **For local development:**  
+        - **For local development:**
           - Install [python-dotenv](https://pypi.org/project/python-dotenv/) to automatically load variables from `.env`:
 
             ```sh
@@ -204,19 +204,19 @@ Alternatively, you can set these variables in your IDE launch configuration.
 
 ## How to Add a New State/County Handler, or Format
 
-1. **State/County Handler:**  
+1. **State/County Handler:**
    - Create a new handler in `handlers/states/` or `handlers/counties/`.
    - Implement a `parse(page, html_context)` function.
    - Register your handler in `state_router.py`.
 
-2. **Custom Noisy Labels/Patterns:**  
+2. **Custom Noisy Labels/Patterns:**
    - In your handler, pass `noisy_labels` and `noisy_label_patterns` to `select_contest()` for contest filtering.
 
-3. **Format Handler:**  
+3. **Format Handler:**
    - Add your handler to `utils/format_router.py` and register it in `route_format_handler`.
 
-4. **User Prompts:**  
-   - Use `prompt_user_input()` for all user input to allow easy web UI integration later.  
+4. **User Prompts:**
+   - Use `prompt_user_input()` for all user input to allow easy web UI integration later.
    - Example:
 
      ``python

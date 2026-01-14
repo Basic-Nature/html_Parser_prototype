@@ -4093,9 +4093,9 @@
   }
 
   function initFolderPanels() {
-    const inputPanel   = document.querySelector('#inputSection  #inputFolderPanel');
-    const outputPanel  = document.querySelector('#outputSection #outputFolderPanel');
-    const uploadsPanel = document.querySelector('#uploadsSection #uploadsFolderPanel');
+    const inputPanel   = document.querySelector('#inputFolderPanel');
+    const outputPanel  = document.querySelector('#outputFolderPanel');
+    const uploadsPanel = document.querySelector('#uploadsFolderPanel');
     if (inputPanel)  mountFolderPanel('input', inputPanel);
     if (outputPanel) mountFolderPanel('output', outputPanel);
     if (uploadsPanel) mountFolderPanel('uploads', uploadsPanel);
