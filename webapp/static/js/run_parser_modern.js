@@ -2424,6 +2424,208 @@ function initDirectUrlControl() {
 }
 
 // ============================================
+// Manual Upload File Selection (from classic)
+// ============================================
+
+const ManualUploadManager = (() => {
+  let inventory = [];
+  let currentSelection = null;
+  
+  function parseManualUploadPath(pathStr) {
+    if (!pathStr || typeof pathStr !== 'string') return null;
+    const normalized = pathStr.replace(/\\/g, '/').trim().replace(/^\/+|\/+$/g, '');
+    if (!normalized) return null;
+    const parts = normalized.split('/');
+    return {
+      relPath: normalized,
+      name: parts[parts.length - 1],
+      dir: parts.slice(0, -1).join('/') || ''
+    };
+  }
+  
+  async function refreshInventory(options = {}) {
+    const { preserveSelection = true, silent = false } = options;
+    
+    if (!silent) {
+      showToast('Refreshing uploads...', 'info', 1500);
+    }
+    
+    try {
+      const response = await fetch('/api/fs/list?root=uploads&path=');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      
+      const data = await response.json();
+      if (!Array.isArray(data.entries)) {
+        throw new Error('Invalid response format');
+      }
+      
+      inventory = data.entries
+        .filter(e => e.type === 'file')
+        .map(e => ({
+          name: e.name,
+          relPath: e.name,
+          size: e.size || 0,
+          modified: e.modified || Date.now()
+        }))
+        .sort((a, b) => b.modified - a.modified);
+      
+      updateManualUploadUI();
+      
+      if (!silent) {
+        showToast(`Found ${inventory.length} file(s) in uploads`, 'success', 2000);
+      }
+      
+      // Try to restore selection
+      if (preserveSelection && currentSelection) {
+        const found = inventory.find(f => f.relPath === currentSelection.relPath);
+        if (found) {
+          applySelection(found, { updateSource: false });
+        } else {
+          currentSelection = null;
+        }
+      }
+      
+      return inventory;
+    } catch (err) {
+      console.error('[ManualUpload] Refresh failed:', err);
+      if (!silent) {
+        showToast(`Failed to refresh uploads: ${err.message}`, 'error');
+      }
+      return [];
+    }
+  }
+  
+  function updateManualUploadUI() {
+    const select = document.getElementById('manualUploadSelect');
+    const summary = document.getElementById('manualUploadSummary');
+    
+    if (!select) return;
+    
+    // Clear and rebuild options
+    select.innerHTML = '<option value="">— Choose a file —</option>';
+    
+    inventory.forEach((file, idx) => {
+      const option = document.createElement('option');
+      option.value = file.relPath;
+      option.textContent = file.name;
+      option.dataset.size = file.size || 0;
+      option.dataset.modified = file.modified || 0;
+      select.appendChild(option);
+    });
+    
+    // Restore selection
+    if (currentSelection) {
+      select.value = currentSelection.relPath;
+    }
+    
+    // Update summary
+    if (summary) {
+      if (currentSelection) {
+        const sizeKB = ((currentSelection.size || 0) / 1024).toFixed(1);
+        summary.textContent = `Selected: ${currentSelection.name} (${sizeKB} KB)`;
+        summary.className = 'text-success small';
+      } else {
+        summary.textContent = inventory.length > 0 ? `${inventory.length} file(s) available` : 'No files uploaded';
+        summary.className = 'text-muted small';
+      }
+    }
+  }
+  
+  function applySelection(file, options = {}) {
+    const { updateSource = true } = options;
+    
+    if (!file || !file.relPath) {
+      currentSelection = null;
+      updateManualUploadUI();
+      return;
+    }
+    
+    currentSelection = { ...file };
+    updateManualUploadUI();
+    
+    // Emit to server
+    if (updateSource && currentSessionId) {
+      socket.emit('set_manual_source', {
+        session_id: currentSessionId,
+        file_source: 'uploads',
+        origin: 'user'
+      });
+    }
+    
+    // Update pipeline phase
+    if (PipelineManager && PipelineManager.getPhase() === 'prepare') {
+      PipelineManager.setPhase('source');
+    }
+    
+    showToast(`Selected: ${file.name}`, 'success', 2000);
+  }
+  
+  function clearSelection() {
+    currentSelection = null;
+    const select = document.getElementById('manualUploadSelect');
+    if (select) select.value = '';
+    updateManualUploadUI();
+    showToast('Selection cleared', 'info', 1500);
+  }
+  
+  function init() {
+    const select = document.getElementById('manualUploadSelect');
+    const refreshBtn = document.getElementById('manualUploadRefreshBtn');
+    const clearBtn = document.getElementById('manualUploadClearBtn');
+    const uploadRadio = document.querySelector('input[name="fileSource"][value="uploads"]');
+    
+    if (!select) return;
+    
+    // Selection change handler
+    select.addEventListener('change', (e) => {
+      const value = e.target.value;
+      if (!value) {
+        clearSelection();
+        return;
+      }
+      
+      const file = inventory.find(f => f.relPath === value);
+      if (file) {
+        applySelection(file);
+      }
+    });
+    
+    // Refresh button
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', () => {
+        refreshInventory({ preserveSelection: true, silent: false });
+      });
+    }
+    
+    // Clear button
+    if (clearBtn) {
+      clearBtn.addEventListener('click', clearSelection);
+    }
+    
+    // Auto-refresh when uploads radio is selected
+    if (uploadRadio) {
+      uploadRadio.addEventListener('change', () => {
+        if (uploadRadio.checked) {
+          refreshInventory({ preserveSelection: true, silent: true });
+        }
+      });
+    }
+    
+    // Initial load
+    refreshInventory({ preserveSelection: false, silent: true });
+  }
+  
+  return {
+    init,
+    refreshInventory,
+    applySelection,
+    clearSelection,
+    getInventory: () => [...inventory],
+    getCurrentSelection: () => currentSelection ? { ...currentSelection } : null
+  };
+})();
+
+// ============================================
 // Advanced Features: Filter Presets
 // ============================================
 
@@ -2760,11 +2962,985 @@ function loadSampleData() {
 }
 
 // ============================================
+// Theme Management
+// ============================================
+
+const ThemeManager = (() => {
+  const THEME_KEY = 'parser_theme';
+  const THEME_ICONS = {
+    light: '🌙', // Moon when in light mode (click to go dark)
+    dark: '☀️'   // Sun when in dark mode (click to go light)
+  };
+  
+  function getCurrentTheme() {
+    return localStorage.getItem(THEME_KEY) || 'dark';
+  }
+  
+  function setTheme(theme) {
+    const validTheme = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', validTheme);
+    localStorage.setItem(THEME_KEY, validTheme);
+    updateThemeIcon(validTheme);
+  }
+  
+  function updateThemeIcon(theme) {
+    const btn = document.getElementById('btnTheme');
+    if (btn) {
+      btn.textContent = THEME_ICONS[theme];
+      btn.title = `Switch to ${theme === 'light' ? 'dark' : 'light'} theme`;
+    }
+  }
+  
+  function toggleTheme() {
+    const current = getCurrentTheme();
+    const next = current === 'light' ? 'dark' : 'light';
+    setTheme(next);
+    showToast(`Switched to ${next} theme`, 'info', 2000);
+  }
+  
+  function init() {
+    const savedTheme = getCurrentTheme();
+    setTheme(savedTheme);
+    
+    const btn = document.getElementById('btnTheme');
+    if (btn) {
+      btn.addEventListener('click', toggleTheme);
+    }
+  }
+  
+  return {
+    init,
+    toggleTheme,
+    getCurrentTheme,
+    setTheme
+  };
+})();
+
+// ============================================
+// Pipeline Phase System (from classic)
+// ============================================
+
+const PipelineManager = (() => {
+  const PHASES = ['prepare', 'source', 'run', 'resolve', 'review'];
+  let currentPhase = 'prepare';
+  let pipelineHintEl = null;
+  
+  function getPhaseIndex(phase) {
+    return PHASES.indexOf(phase);
+  }
+  
+  function setPhase(phase, options = {}) {
+    if (!PHASES.includes(phase)) return;
+    
+    currentPhase = phase;
+    const phaseEvent = new CustomEvent('pipeline:phase-change', {
+      detail: { phase, options }
+    });
+    document.dispatchEvent(phaseEvent);
+    
+    updatePhaseHint();
+    
+    if (options.focus) {
+      // Focus relevant UI element based on phase
+      focusPhaseElement(phase);
+    }
+  }
+  
+  function updatePhaseHint(customMessage = null) {
+    if (!pipelineHintEl) {
+      pipelineHintEl = document.querySelector('.pipeline-hint');
+      if (!pipelineHintEl) return;
+    }
+    
+    let message = '';
+    let level = 'info';
+    
+    if (customMessage) {
+      if (typeof customMessage === 'object') {
+        message = customMessage.text || '';
+        level = customMessage.level || 'info';
+      } else {
+        message = String(customMessage);
+      }
+    } else {
+      const hints = {
+        prepare: 'Review inputs and choose your data source. Press Run when ready.',
+        source: 'Source selected. Verify your selection and press Run to begin parsing.',
+        run: 'Parser is running. Monitor the log for progress and warnings.',
+        resolve: 'Action required. Respond to the prompt to continue processing.',
+        review: 'Parsing complete. Download outputs or run again with different settings.'
+      };
+      message = hints[currentPhase] || '';
+    }
+    
+    pipelineHintEl.textContent = message;
+    pipelineHintEl.dataset.level = level;
+    pipelineHintEl.classList.toggle('hidden', !message);
+  }
+  
+  function focusPhaseElement(phase) {
+    const focusMap = {
+      prepare: '#urlLinesBox',
+      source: '#manualUploadSelect',
+      run: '#logContainer',
+      resolve: '#promptInput',
+      review: '#outputFolderPanel'
+    };
+    
+    const selector = focusMap[phase];
+    if (selector) {
+      const el = document.querySelector(selector);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+  
+  function init() {
+    // Create pipeline hint element if it doesn't exist
+    const navbar = document.querySelector('.navbar-modern');
+    if (navbar && !pipelineHintEl) {
+      pipelineHintEl = document.createElement('div');
+      pipelineHintEl.className = 'pipeline-hint';
+      pipelineHintEl.dataset.level = 'info';
+      navbar.appendChild(pipelineHintEl);
+    }
+    
+    setPhase('prepare');
+  }
+  
+  return {
+    init,
+    setPhase,
+    updatePhaseHint,
+    getPhase: () => currentPhase,
+    PHASES
+  };
+})();
+
+// ============================================
+// Modal Utility
+// ============================================
+
+const Modal = (() => {
+  let modalEl = null;
+  let refs = null;
+  
+  function ensureModal() {
+    if (modalEl) return;
+    
+    modalEl = document.createElement('div');
+    modalEl.id = 'genericModal';
+    modalEl.className = 'modal fade';
+    modalEl.setAttribute('role', 'dialog');
+    modalEl.setAttribute('aria-modal', 'true');
+    modalEl.setAttribute('aria-labelledby', 'genericModalTitle');
+    
+    modalEl.innerHTML = `
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="genericModalTitle">Modal</h5>
+            <button type="button" class="btn-close" id="closeGenericModal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <input type="search" id="genericModalSearch" class="form-control mb-2" placeholder="Filter...">
+            <div id="genericModalSummary" class="mb-2"></div>
+            <div id="genericModalOptions"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="cancelGenericModal">Cancel</button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modalEl);
+    
+    refs = {
+      modal: modalEl,
+      titleEl: modalEl.querySelector('.modal-title'),
+      searchEl: $('#genericModalSearch'),
+      optionsDiv: $('#genericModalOptions'),
+      summaryDiv: $('#genericModalSummary'),
+      closeBtn: $('#closeGenericModal'),
+      cancelBtn: $('#cancelGenericModal')
+    };
+  }
+  
+  function get() {
+    ensureModal();
+    return refs;
+  }
+  
+  function open() {
+    ensureModal();
+    const inst = window.bootstrap?.Modal.getOrCreateInstance(modalEl, { keyboard: true, backdrop: true });
+    inst?.show();
+  }
+  
+  function close() {
+    if (!modalEl) return;
+    const inst = window.bootstrap?.Modal.getOrCreateInstance(modalEl);
+    inst?.hide();
+  }
+  
+  return {
+    get,
+    open,
+    close
+  };
+})();
+
+// ============================================
+// Modal Restore Banner (from classic)
+// ============================================
+
+const ModalRestoreBanner = (() => {
+  let bannerEl = null;
+  let contexts = new Map(); // key -> { sessionId, message, title, detail, buttonLabel, onRestore }
+  let activeBannerKey = null;
+  
+  function createBanner() {
+    if (bannerEl) return bannerEl;
+    
+    bannerEl = document.createElement('div');
+    bannerEl.id = 'modalRestoreBanner';
+    bannerEl.className = 'modal-restore-banner hidden';
+    bannerEl.setAttribute('role', 'status');
+    bannerEl.setAttribute('aria-live', 'polite');
+    
+    const container = document.querySelector('.modern-layout') || document.body;
+    container.appendChild(bannerEl);
+    
+    return bannerEl;
+  }
+  
+  function show(key, context) {
+    if (!key || !context) return;
+    
+    contexts.set(key, context);
+    activeBannerKey = key;
+    
+    const banner = createBanner();
+    const { message, title, detail, buttonLabel, onRestore } = context;
+    
+    banner.innerHTML = `
+      <div class="restore-content">
+        <div class="restore-icon">↺</div>
+        <div class="restore-text">
+          <div class="restore-title">${escapeHtml(title || 'Dialog paused')}</div>
+          <div class="restore-detail">${escapeHtml(detail || message || 'Reopen to continue')}</div>
+        </div>
+        <button type="button" class="btn-sm btn-primary restore-btn">${escapeHtml(buttonLabel || 'Reopen')}</button>
+        <button type="button" class="btn-icon-sm restore-dismiss" aria-label="Dismiss">×</button>
+      </div>
+    `;
+    
+    const reopenBtn = banner.querySelector('.restore-btn');
+    const dismissBtn = banner.querySelector('.restore-dismiss');
+    
+    if (reopenBtn && typeof onRestore === 'function') {
+      reopenBtn.addEventListener('click', () => {
+        hide();
+        onRestore();
+      });
+    }
+    
+    if (dismissBtn) {
+      dismissBtn.addEventListener('click', () => {
+        contexts.delete(key);
+        hide();
+      });
+    }
+    
+    banner.classList.remove('hidden');
+    
+    // Position at bottom of main content (above drawer)
+    setTimeout(() => {
+      const mainContent = document.querySelector('.main-content');
+      if (mainContent) {
+        const rect = mainContent.getBoundingClientRect();
+        banner.style.bottom = 'calc(var(--drawer-left-offset, 300px) + 60px)';
+        banner.style.left = `${rect.left + 16}px`;
+        banner.style.right = `${window.innerWidth - rect.right + 16}px`;
+      }
+    }, 50);
+  }
+  
+  function hide() {
+    if (bannerEl) {
+      bannerEl.classList.add('hidden');
+    }
+    activeBannerKey = null;
+  }
+  
+  function clear(key) {
+    if (key) {
+      contexts.delete(key);
+      if (activeBannerKey === key) {
+        hide();
+      }
+    } else {
+      contexts.clear();
+      hide();
+    }
+  }
+  
+  return {
+    show,
+    hide,
+    clear,
+    isActive: () => activeBannerKey !== null
+  };
+})();
+
+// ============================================
+// URL List Manager
+// ============================================
+
+const UrlListManager = (() => {
+  let cachedUrls = [];
+  
+  function renderUrlList(urls, filter = '') {
+    const listBox = $('#urlLinesBox');
+    if (!listBox) return;
+    
+    let filtered = urls;
+    const q = filter.trim().toLowerCase();
+    
+    if (q) {
+      if (q.startsWith('state:')) {
+        const stateQuery = q.slice(6).trim();
+        filtered = urls.filter(u => u.toLowerCase().includes(stateQuery));
+      } else if (q.startsWith('county:')) {
+        const countyQuery = q.slice(7).trim();
+        filtered = urls.filter(u => u.toLowerCase().includes(countyQuery));
+      } else {
+        filtered = urls.filter(u => u.toLowerCase().includes(q));
+      }
+    }
+    
+    const maxDisplay = 40;
+    const items = filtered.slice(0, maxDisplay).map((url, index) => {
+      const short = url.length > 60 ? url.slice(0, 57) + '…' : url;
+      return `<div class="url-sidebar-item" title="${escapeHtml(url)}" data-url="${encodeURIComponent(url)}" role="button" tabindex="0">[${index + 1}] ${escapeHtml(short)}</div>`;
+    }).join('');
+    
+    const more = filtered.length > maxDisplay 
+      ? `<div class="url-sidebar-more">...and ${filtered.length - maxDisplay} more URLs</div>` 
+      : '';
+    
+    listBox.innerHTML = items + more;
+    
+    // Attach click handlers
+    listBox.querySelectorAll('.url-sidebar-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const url = decodeURIComponent(el.getAttribute('data-url'));
+        // Use direct URL field if available
+        const directUrlField = $('#directUrlField');
+        if (directUrlField) {
+          directUrlField.value = url;
+          directUrlField.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
+      
+      // Keyboard accessibility
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          el.click();
+        }
+      });
+    });
+  }
+  
+  async function fetchUrls() {
+    try {
+      const response = await fetch('/api/urls');
+      const data = await response.json();
+      cachedUrls = data.urls || [];
+      renderUrlList(cachedUrls);
+      return cachedUrls;
+    } catch (error) {
+      console.error('[UrlListManager] Failed to fetch URLs:', error);
+      renderUrlList([]);
+      return [];
+    }
+  }
+  
+  function init() {
+    const searchBox = $('.url-search-box');
+    const refreshBtn = $('#refreshUrlListBtn');
+    
+    if (searchBox) {
+      searchBox.addEventListener('input', (e) => {
+        renderUrlList(cachedUrls, e.target.value);
+      });
+    }
+    
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', () => {
+        fetchUrls();
+      });
+    }
+    
+    // Initial load
+    fetchUrls();
+  }
+  
+  return {
+    init,
+    fetchUrls,
+    refresh: fetchUrls,
+    getUrls: () => [...cachedUrls]
+  };
+})();
+
+// ============================================
+// Session Mirror (cross-tab synchronization)
+// ============================================
+
+const SessionMirror = (() => {
+  const store = new Map();
+  const subscribers = new Set();
+  
+  function notify(sessionId) {
+    const meta = store.get(sessionId) || null;
+    subscribers.forEach(fn => {
+      try {
+        fn(sessionId, meta);
+      } catch (err) {
+        console.error('[SessionMirror] Subscriber error:', err);
+      }
+    });
+  }
+  
+  function upsert(meta) {
+    if (!meta || typeof meta !== 'object') return;
+    const sid = meta.session_id;
+    if (!sid) return;
+    
+    const existing = store.get(sid) || {};
+    const merged = { ...existing, ...meta };
+    store.set(sid, merged);
+    notify(sid);
+  }
+  
+  function remove(sessionId) {
+    if (!sessionId) return;
+    store.delete(sessionId);
+    notify(sessionId);
+  }
+  
+  function replace(list) {
+    store.clear();
+    if (Array.isArray(list)) {
+      list.forEach(item => upsert(item));
+    }
+  }
+  
+  function get(sessionId) {
+    return store.get(sessionId) || null;
+  }
+  
+  function list() {
+    return Array.from(store.values());
+  }
+  
+  function subscribe(fn) {
+    if (typeof fn !== 'function') return () => {};
+    subscribers.add(fn);
+    return () => subscribers.delete(fn);
+  }
+  
+  return {
+    upsert,
+    remove,
+    replace,
+    get,
+    list,
+    subscribe
+  };
+})();
+
+// ============================================
+// Table Structure Preview
+// ============================================
+
+const TablePreviewManager = (() => {
+  const previewsBySession = new Map();
+  
+  function cloneEntry(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    return {
+      index: Number(entry.index) || 0,
+      total: Number(entry.total) || 0,
+      confidence: typeof entry.confidence === 'number' ? entry.confidence : null,
+      headers: Array.isArray(entry.headers) ? entry.headers.map(h => String(h)) : [],
+      rows: Array.isArray(entry.rows) ? entry.rows.map(row => ({ ...row })) : [],
+      contest: entry.contest || '',
+      receivedAt: Number(entry.receivedAt) || Date.now(),
+    };
+  }
+  
+  function cloneState(state) {
+    if (!state || typeof state !== 'object') {
+      return { contest: '', entries: [] };
+    }
+    return {
+      contest: state.contest || '',
+      entries: Array.isArray(state.entries)
+        ? state.entries.map(cloneEntry).filter(Boolean)
+        : [],
+    };
+  }
+  
+  function getState(sessionId) {
+    return cloneState(previewsBySession.get(sessionId));
+  }
+  
+  function record(sessionId, raw) {
+    if (!sessionId || !raw || typeof raw !== 'object') return;
+    const preview = raw.preview;
+    if (!preview || typeof preview !== 'object') return;
+    
+    const entry = {
+      index: Number(raw.candidate_index || raw.preview_index || 1) || 1,
+      total: Number(raw.candidates_total || raw.total_candidates || preview.candidates_total) || 0,
+      confidence: typeof raw.ml_avg_confidence === 'number' ? raw.ml_avg_confidence : null,
+      headers: Array.isArray(preview.headers) ? preview.headers.map(h => String(h)) : [],
+      rows: Array.isArray(preview.rows_preview)
+        ? preview.rows_preview.map(row => ({ ...row }))
+        : [],
+      contest: raw.contest || preview.contest || '',
+      receivedAt: raw.timestamp || Date.now(),
+    };
+    
+    const state = previewsBySession.get(sessionId) || { contest: entry.contest || '', entries: [] };
+    if (entry.contest) state.contest = entry.contest;
+    
+    const existingIdx = state.entries.findIndex(e => Number(e.index) === Number(entry.index));
+    if (existingIdx >= 0) {
+      state.entries[existingIdx] = entry;
+    } else {
+      state.entries.push(entry);
+    }
+    
+    state.entries.sort((a, b) => Number(a.index) - Number(b.index));
+    
+    // Limit to most recent 12 entries
+    if (state.entries.length > 12) {
+      state.entries = state.entries.slice(-12);
+    }
+    
+    previewsBySession.set(sessionId, state);
+    
+    document.dispatchEvent(new CustomEvent('table-preview:updated', {
+      detail: { sessionId }
+    }));
+  }
+  
+  function showPreview(sessionId) {
+    const state = getState(sessionId);
+    if (!state.entries || state.entries.length === 0) {
+      console.warn('[TablePreview] No preview data available for session:', sessionId);
+      return;
+    }
+    
+    const modal = Modal.get();
+    if (!modal) return;
+    
+    const { titleEl, optionsDiv, summaryDiv } = modal;
+    titleEl.textContent = `Table Preview: ${state.contest || 'Contest'}`;
+    summaryDiv.textContent = `${state.entries.length} preview(s) available`;
+    
+    optionsDiv.innerHTML = '';
+    optionsDiv.classList.add('table-preview-container');
+    
+    state.entries.forEach(entry => {
+      const previewDiv = document.createElement('div');
+      previewDiv.className = 'table-preview-entry';
+      
+      const header = document.createElement('div');
+      header.className = 'preview-header';
+      header.innerHTML = `
+        <strong>Candidate ${entry.index}/${entry.total}</strong>
+        ${entry.confidence !== null ? `<span class="badge bg-info ms-2">${(entry.confidence * 100).toFixed(1)}% confidence</span>` : ''}
+      `;
+      previewDiv.appendChild(header);
+      
+      if (entry.headers.length > 0) {
+        const table = document.createElement('table');
+        table.className = 'table table-sm table-preview';
+        
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        entry.headers.forEach(h => {
+          const th = document.createElement('th');
+          th.textContent = h;
+          headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+        
+        const tbody = document.createElement('tbody');
+        entry.rows.slice(0, 5).forEach(row => {
+          const tr = document.createElement('tr');
+          entry.headers.forEach(h => {
+            const td = document.createElement('td');
+            td.textContent = row[h] || '';
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        
+        previewDiv.appendChild(table);
+        
+        if (entry.rows.length > 5) {
+          const more = document.createElement('div');
+          more.className = 'preview-more';
+          more.textContent = `...and ${entry.rows.length - 5} more rows`;
+          previewDiv.appendChild(more);
+        }
+      }
+      
+      optionsDiv.appendChild(previewDiv);
+    });
+    
+    Modal.open();
+  }
+  
+  return {
+    record,
+    getState,
+    showPreview
+  };
+})();
+
+// ============================================
+// Enhanced Folder Browser
+// ============================================
+
+const FolderBrowser = (() => {
+  const ROOT_LABELS = {
+    input: 'Input Files',
+    uploads: 'Uploads',
+    output: 'Output'
+  };
+  
+  async function fetchDirectory(root, path = '') {
+    try {
+      const response = await fetch(`/api/fs/list?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`);
+      const data = await response.json();
+      return data.entries || [];
+    } catch (error) {
+      console.error('[FolderBrowser] Failed to fetch directory:', error);
+      return [];
+    }
+  }
+  
+  async function createFolder(root, path, name) {
+    try {
+      const response = await fetch('/api/fs/mkdir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ root, path, name })
+      });
+      const data = await response.json();
+      return data.success;
+    } catch (error) {
+      console.error('[FolderBrowser] Failed to create folder:', error);
+      return false;
+    }
+  }
+  
+  function show(root, initialPath = '', onSelect, options = {}) {
+    const modal = Modal.get();
+    if (!modal) {
+      onSelect?.(null);
+      return;
+    }
+    
+    const { titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = modal;
+    const label = ROOT_LABELS[root] || root;
+    
+    let cwd = initialPath || '';
+    let allEntries = [];
+    let submitted = false;
+    
+    const finish = (selected) => {
+      if (submitted) return;
+      submitted = true;
+      Modal.close();
+      onSelect?.(selected);
+    };
+    
+    function renderBreadcrumb() {
+      const parts = cwd.split('/').filter(Boolean);
+      const crumbs = [];
+      
+      const rootCrumb = document.createElement('span');
+      rootCrumb.className = 'crumb';
+      rootCrumb.textContent = label;
+      rootCrumb.onclick = () => { cwd = ''; refresh(); };
+      crumbs.push(rootCrumb);
+      
+      let acc = '';
+      parts.forEach((part, i) => {
+        const sep = document.createElement('span');
+        sep.textContent = ' / ';
+        crumbs.push(sep);
+        
+        acc += (acc ? '/' : '') + part;
+        const partCrumb = document.createElement('span');
+        partCrumb.className = 'crumb';
+        partCrumb.textContent = part;
+        const currentPath = acc;
+        partCrumb.onclick = () => { cwd = currentPath; refresh(); };
+        crumbs.push(partCrumb);
+      });
+      
+      const breadcrumb = document.createElement('div');
+      breadcrumb.className = 'folder-breadcrumb';
+      crumbs.forEach(c => breadcrumb.appendChild(c));
+      return breadcrumb;
+    }
+    
+    function renderList(filter = '') {
+      const q = filter.trim().toLowerCase();
+      let entries = allEntries.slice();
+      
+      if (q) {
+        entries = entries.filter(e =>
+          e.name.toLowerCase().includes(q) ||
+          (e.type || '').toLowerCase().includes(q)
+        );
+      }
+      
+      entries.sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      
+      optionsDiv.innerHTML = '';
+      optionsDiv.appendChild(renderBreadcrumb());
+      
+      // Toolbar
+      const toolbar = document.createElement('div');
+      toolbar.className = 'folder-actions-bar';
+      
+      const newFolderBtn = document.createElement('button');
+      newFolderBtn.type = 'button';
+      newFolderBtn.className = 'btn btn-sm';
+      newFolderBtn.textContent = '+ New Folder';
+      newFolderBtn.onclick = async () => {
+        const name = prompt('Enter folder name:');
+        if (name) {
+          const success = await createFolder(root, cwd, name);
+          if (success) {
+            await refresh();
+          } else {
+            alert('Failed to create folder.');
+          }
+        }
+      };
+      toolbar.appendChild(newFolderBtn);
+      optionsDiv.appendChild(toolbar);
+      
+      // Parent directory link
+      if (cwd) {
+        const upLink = document.createElement('div');
+        upLink.className = 'download-option';
+        upLink.innerHTML = '⬆️ <b>[..]</b> <small>Up one level</small>';
+        upLink.onclick = () => {
+          const parts = cwd.split('/').filter(Boolean);
+          parts.pop();
+          cwd = parts.join('/');
+          refresh();
+        };
+        optionsDiv.appendChild(upLink);
+      }
+      
+      // Directory entries
+      entries.forEach(entry => {
+        const item = document.createElement('div');
+        item.className = 'download-option';
+        item.tabIndex = 0;
+        
+        const icon = entry.type === 'dir' ? '📁' : '📄';
+        const sizeText = entry.size !== null && entry.type === 'file'
+          ? `<small class="text-muted ms-2">${formatBytes(entry.size)}</small>`
+          : '';
+        
+        item.innerHTML = `${icon} <b>${escapeHtml(entry.name)}</b>${sizeText}`;
+        
+        item.onclick = () => {
+          if (entry.type === 'dir') {
+            cwd = cwd ? `${cwd}/${entry.name}` : entry.name;
+            refresh();
+          } else {
+            finish({ root, path: cwd, name: entry.name, fullPath: cwd ? `${cwd}/${entry.name}` : entry.name });
+          }
+        };
+        
+        item.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+            item.onclick();
+          }
+        };
+        
+        optionsDiv.appendChild(item);
+      });
+      
+      if (entries.length === 0 && !cwd) {
+        const empty = document.createElement('div');
+        empty.className = 'text-muted text-center p-3';
+        empty.textContent = 'No files or folders found.';
+        optionsDiv.appendChild(empty);
+      }
+    }
+    
+    async function refresh() {
+      allEntries = await fetchDirectory(root, cwd);
+      renderList(searchEl.value || '');
+    }
+    
+    titleEl.textContent = `Browse ${label}`;
+    summaryDiv.textContent = '';
+    searchEl.value = '';
+    searchEl.oninput = (e) => renderList(e.target.value);
+    closeBtn.onclick = cancelBtn.onclick = () => finish(null);
+    
+    Modal.open();
+    refresh();
+  }
+  
+  function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 10) / 10 + ' ' + sizes[i];
+  }
+  
+  return {
+    show
+  };
+})();
+
+// ============================================
+// Download Modal
+// ============================================
+
+const DownloadModal = (() => {
+  function show(options, summary, callback) {
+    const modal = Modal.get();
+    if (!modal) {
+      callback?.(null);
+      return;
+    }
+    
+    const { titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = modal;
+    titleEl.textContent = 'Select Download';
+    summaryDiv.textContent = summary || '';
+    
+    let submitted = false;
+    
+    const finish = (value) => {
+      if (submitted) return;
+      submitted = true;
+      Modal.close();
+      callback?.(value);
+    };
+    
+    function renderList(filter = '') {
+      const q = filter.trim().toLowerCase();
+      const filtered = options.filter(opt =>
+        opt.format.toLowerCase().includes(q) ||
+        opt.filename.toLowerCase().includes(q) ||
+        opt.contest.toLowerCase().includes(q)
+      );
+      
+      // Group by contest
+      const groups = {};
+      filtered.forEach(opt => {
+        const key = opt.contest || 'Other';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(opt);
+      });
+      
+      optionsDiv.innerHTML = '';
+      optionsDiv.classList.add('table-preview-container');
+      
+      Object.keys(groups).sort().forEach(groupName => {
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'download-group';
+        
+        const header = document.createElement('div');
+        header.className = 'download-group-header';
+        header.innerHTML = `<b>${escapeHtml(groupName)}</b> (${groups[groupName].length})`;
+        groupDiv.appendChild(header);
+        
+        groups[groupName].forEach(opt => {
+          const item = document.createElement('div');
+          item.className = 'download-option';
+          item.tabIndex = 0;
+          item.innerHTML = `
+            <span class="badge bg-primary me-2">${escapeHtml(opt.format.toUpperCase())}</span>
+            <span class="download-filename">${highlight(opt.filename, q)}</span>
+            <span class="download-type ms-2">${highlight(opt.contest, q)}</span>
+          `;
+          
+          item.onclick = () => finish(opt.index);
+          item.onkeydown = (e) => {
+            if (e.key === 'Enter') finish(opt.index);
+          };
+          
+          groupDiv.appendChild(item);
+        });
+        
+        optionsDiv.appendChild(groupDiv);
+      });
+    }
+    
+    function highlight(text, query) {
+      if (!query) return escapeHtml(text);
+      const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      return escapeHtml(text).replace(regex, match => `<mark>${match}</mark>`);
+    }
+    
+    searchEl.value = '';
+    searchEl.oninput = (e) => renderList(e.target.value);
+    closeBtn.onclick = cancelBtn.onclick = () => finish(null);
+    
+    renderList();
+    Modal.open();
+    searchEl.focus();
+  }
+  
+  return {
+    show
+  };
+})();
+
+// ============================================
 // Initialization
 // ============================================
 
 document.addEventListener('DOMContentLoaded', () => {
   console.log('[Parser UI] Initializing modern interface...');
+  
+  // Initialize theme manager
+  ThemeManager.init();
+  
+  // Initialize pipeline phase system
+  PipelineManager.init();
+  
+  // Initialize manual upload file selection
+  ManualUploadManager.init();
+  
+  // Initialize URL list
+  UrlListManager.init();
   
   // Load real data from warehouse API (with fallback to sample data)
   loadRealData();
@@ -2786,6 +3962,32 @@ document.addEventListener('DOMContentLoaded', () => {
   // Request initial session ID
   socket.emit('join', {
     username: localStorage.getItem('username') || 'anonymous',
+  });
+  
+  // Socket.IO handlers for Session Mirror
+  socket.on('session_list', (data) => {
+    if (data && Array.isArray(data.sessions)) {
+      SessionMirror.replace(data.sessions);
+    }
+  });
+  
+  socket.on('session_state', (data) => {
+    if (data && data.metadata) {
+      SessionMirror.upsert(data.metadata);
+    }
+  });
+  
+  socket.on('session_deleted', (data) => {
+    if (data && data.session_id) {
+      SessionMirror.remove(data.session_id);
+    }
+  });
+  
+  // Socket.IO handler for Table Preview
+  socket.on('parser_output', (log) => {
+    if (log && log.type === 'table_preview' && log.session_id) {
+      TablePreviewManager.record(log.session_id, log);
+    }
   });
   
   updateSessionsList();

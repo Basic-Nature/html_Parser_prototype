@@ -29,8 +29,6 @@
   <!-- Vendor Bootstrap -->
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-5.3.0.min.css') }}">
 
-  <!-- Single consolidated app stylesheet (bootstrap_overrides merged) -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser.css') }}">
   <!-- Modern dashboard interface -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser_modern.css') }}?v={{ static_version }}">
 </head>
@@ -80,7 +78,7 @@
                     
                   <!-- Input Folder -->
                   <div class="folder-item spaced-item">
-                    <details open>
+                    <details>
                       <summary class="folder-summary">📂 Input Folder</summary>
                       <div class="collapsible-content folder-content">
                                 <form method="POST" action="{{ url_for('upload_to_input') }}" enctype="multipart/form-data" class="mb-1em">
@@ -95,7 +93,7 @@
                     
                     <!-- Uploads Folder -->
                     <div class="folder-item spaced-item">
-                      <details open>
+                      <details>
                         <summary class="folder-summary">📤 Uploads</summary>
                         <div class="collapsible-content folder-content">
                                 <form method="POST" action="{{ url_for('upload_to_uploads') }}" enctype="multipart/form-data" class="mb-1em">
@@ -103,6 +101,22 @@
                                     <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">
                                     <button type="submit" class="btn btn-upload">Upload</button>
                                 </form>
+                                
+                                <!-- Manual Upload File Selection -->
+                                <div class="manual-upload-controls" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+                                  <label for="manualUploadSelect" class="form-label" style="font-size: 0.75rem; font-weight: 600; margin-bottom: 0.375rem; display: block; color: var(--text-muted);">
+                                    Select File to Parse
+                                  </label>
+                                  <select id="manualUploadSelect" class="form-control" style="font-size: 0.813rem; padding: 0.375rem;">
+                                    <option value="">-- Choose a file --</option>
+                                  </select>
+                                  <div style="display: flex; gap: 0.375rem; margin-top: 0.5rem;">
+                                    <button type="button" id="manualUploadRefreshBtn" class="btn btn-sm" style="flex: 1;">↻ Refresh</button>
+                                    <button type="button" id="manualUploadClearBtn" class="btn btn-sm" style="flex: 1;">× Clear</button>
+                                  </div>
+                                  <div id="manualUploadSummary" class="manual-upload-summary" style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-muted); display: none;"></div>
+                                </div>
+                                
                                 <div id="uploadsFolderPanel" class="folder-panel" data-root="uploads" aria-live="polite"></div>
                             </div>
                         </details>
@@ -361,8 +375,6 @@
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/nav_guard.js') }}?v={{ static_version }}" defer></script>
     <!-- Modern dashboard interface (includes all features) -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/run_parser_modern.js') }}?v={{ static_version }}" defer></script>
-    <!-- Fallback classic script for backward compatibility -->
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/run_parser.js') }}?v={{ static_version }}" defer></script>
 
     <footer id="sessionFooter" class="minimized">
         <div class="footer-preview" id="footerPreview">
