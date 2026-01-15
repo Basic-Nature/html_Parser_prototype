@@ -512,7 +512,9 @@ const LogTypeBadges = (() => {
   
   function createBadge(type) {
     const config = typeConfig[type] || { icon: '📌', color: '#6b7280', label: type };
-    return `<span class="log-type-badge" style="background: ${config.color}22; color: ${config.color}; border: 1px solid ${config.color}44;">${config.icon} ${config.label}</span>`;
+    // Use CSS classes instead of inline styles for CSP compliance
+    const typeClass = `log-type-${(type || 'info').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+    return `<span class="log-type-badge ${typeClass}">${config.icon} ${config.label}</span>`;
   }
   
   function getTypeConfig(type) {
@@ -686,6 +688,46 @@ let activePromptOptions = [];
 let bundleExpandedState = new Map(); // Track which bundles are expanded
 let selectedPromptOptions = new Set(); // Multi-select tracking
 
+// ===== DIAGNOSTIC: Log all Socket.IO events =====
+const allEventsReceivedBySocket = [];
+const oneventOrig = socket.onevent;
+socket.onevent = function(packet) {
+  const eventName = packet.data[0];
+  const eventData = packet.data[1];
+  
+  // Log to console for debugging
+  console.debug(`[Socket.IO:${eventName}]`, eventData);
+  
+  // Store in array for inspection
+  allEventsReceivedBySocket.push({
+    timestamp: new Date().toISOString(),
+    event: eventName,
+    data: JSON.parse(JSON.stringify(eventData)) // deep clone for safety
+  });
+  
+  // Keep only last 100 events to avoid memory leak
+  if (allEventsReceivedBySocket.length > 100) {
+    allEventsReceivedBySocket.shift();
+  }
+  
+  // Call original handler
+  return oneventOrig.call(this, packet);
+};
+
+// Export for debugging in browser console
+window.debugSocketIO = {
+  getAllEvents: () => allEventsReceivedBySocket,
+  getLastEvent: () => allEventsReceivedBySocket[allEventsReceivedBySocket.length - 1],
+  getEventsByName: (name) => allEventsReceivedBySocket.filter(e => e.event === name),
+  getCurrentSession: () => currentSessionId,
+  getModalState: () => ({
+    promptTitle: document.getElementById('promptTitle')?.textContent,
+    promptMessage: document.getElementById('promptMessage')?.textContent,
+    optionsCount: document.getElementById('promptOptions')?.querySelectorAll('.prompt-option').length,
+    modalHidden: document.getElementById('promptModal')?.classList.contains('hidden')
+  })
+};
+
 socket.on('connect', () => {
   console.log('[Socket.IO] Connected:', socket.id);
 });
@@ -707,6 +749,15 @@ socket.on('session_id', (data) => {
 
 socket.on('parser_output', (data) => {
   ErrorBoundary.safeAsync(async () => {
+    // DEBUG: Log all incoming parser_output events
+    console.debug('[Socket.IO parser_output]', {
+      type: data?.type,
+      messagePreview: typeof data?.message === 'string' ? data.message.substring(0, 80) : data?.message,
+      hasContext: !!data?.context,
+      contextKeys: data?.context ? Object.keys(data.context) : [],
+      fullData: data
+    });
+
     addLog(data);
     handlePromptLog(data);
     SessionRestore.saveState(data); // P2.4: Save state for recovery
@@ -719,6 +770,12 @@ socket.on('parser_output', (data) => {
 
 socket.on('contest_options', (data) => {
   ErrorBoundary.safeExecute(() => {
+    console.debug('[Socket.IO contest_options]', {
+      optionsCount: data?.options?.length,
+      optionsSample: data?.options?.slice(0, 3),
+      context: data?.context,
+      fullData: data
+    });
     handleContestOptions(data);
   }, 'socket:contest_options');
 });
@@ -1006,18 +1063,20 @@ function renderLogs() {
   
   const logOutput = $('#logOutput');
   logOutput.innerHTML = filtered.map(log => {
-    const colors = LogColorCoding.getLevelColor(log.level);
     const typeBadge = LogTypeBadges.createBadge(log.type);
     const highlightedMsg = state.filters.search 
       ? SearchHighlighter.highlightText(log.message, state.filters.search)
       : escapeHtml(log.message);
     
+    // Use CSS classes instead of inline styles for CSP compliance
+    const levelClass = `log-level-${(log.level || 'INFO').toLowerCase()}`;
+    
     return `
-      <div class="log-line" style="background: ${colors.bg}; border-left: 3px solid ${colors.border};">
+      <div class="log-line ${levelClass}">
         <span class="log-timestamp">${new Date(log.timestamp).toLocaleTimeString()}</span>
-        <span class="log-level" style="color: ${colors.text};">${log.level}</span>
+        <span class="log-level">${log.level}</span>
         ${typeBadge}
-        <div class="log-message" style="color: ${colors.text};">${highlightedMsg}</div>
+        <div class="log-message">${highlightedMsg}</div>
       </div>
     `;
   }).join('');
@@ -1721,8 +1780,17 @@ function handlePromptLog(data) {
     const ctx = data?.context || {};
     let options = [];
 
+    // DEBUG: Log what we're receiving
+    console.debug('[handlePromptLog] Received data:', {
+      messagePreview: message.substring(0, 100),
+      hasContext: !!ctx,
+      contextKeys: Object.keys(ctx),
+      contextData: ctx
+    });
+
     // URL selection prompt
     if (Array.isArray(ctx.urls) && ctx.urls.length) {
+      console.debug('[handlePromptLog] Found URLs in context:', ctx.urls.length);
       options = ctx.urls.map((u, idx) => ({
         index: idx + 1,
         label: u,
@@ -1732,6 +1800,7 @@ function handlePromptLog(data) {
 
     // Contest/options style prompt
     if (!options.length && Array.isArray(ctx.options) && ctx.options.length) {
+      console.debug('[handlePromptLog] Found options in context:', ctx.options.length);
       options = ctx.options.map((opt, idx) => {
         if (typeof opt === 'string') {
           const m = opt.match(/^\s*\[(\d+)\]\s+(.+?)(?:\s+\(([^)]+)\))?\s*$/);
@@ -1750,12 +1819,15 @@ function handlePromptLog(data) {
     }
 
     if (isPrompt && message) {
+      console.debug('[handlePromptLog] Displaying prompt with', options.length, 'options');
       showPrompt({
         title: ctx.title || 'Action required',
         message,
         options,
         placeholder: ctx.placeholder,
       });
+    } else {
+      console.warn('[handlePromptLog] Not a prompt or empty message. isPrompt:', isPrompt, 'message:', message.substring(0, 50));
     }
   }, 'handlePromptLog');
 }
@@ -2063,8 +2135,22 @@ function showPrompt({ title = 'Action required', message = '', options = [], pla
     activePromptMessage = message;
     activePromptOptions = Array.isArray(options) ? options : [];
 
-    if (promptTitleEl) promptTitleEl.textContent = title;
-    if (promptMessageEl) promptMessageEl.textContent = message || 'Please choose an option';
+    console.debug('[showPrompt] Displaying:', {
+      title,
+      messagePreview: message.substring(0, 100),
+      optionsCount: activePromptOptions.length,
+      optionsSample: activePromptOptions.slice(0, 3),
+      placeholder
+    });
+
+    if (promptTitleEl) {
+      promptTitleEl.textContent = title;
+      console.debug('[showPrompt] Set title to:', title);
+    }
+    if (promptMessageEl) {
+      promptMessageEl.textContent = message || 'Please choose an option';
+      console.debug('[showPrompt] Set message');
+    }
     if (promptInputEl) {
       promptInputEl.value = '';
       if (placeholder) promptInputEl.placeholder = placeholder;
@@ -2076,7 +2162,10 @@ function showPrompt({ title = 'Action required', message = '', options = [], pla
     renderPromptOptions('');
 
     const promptModal = $('#promptModal');
-    if (promptModal) promptModal.classList.remove('hidden');
+    if (promptModal) {
+      promptModal.classList.remove('hidden');
+      console.debug('[showPrompt] Modal made visible');
+    }
     if (promptSearchEl) {
       promptSearchEl.focus();
     } else if (promptInputEl) {

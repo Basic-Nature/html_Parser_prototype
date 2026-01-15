@@ -1331,6 +1331,79 @@ def select_contest_noninteractive(
     return [asdict(r) for r in reps]
 
 # -------------------------
+# Web-specific emission
+# -------------------------
+def _emit_contest_options_to_webapp(
+    candidates: list[ContestRecord],
+    state: str | None,
+    county: str | None,
+    year: int | None,
+    session_id: str | None,
+    context: dict | None
+) -> None:
+    """
+    Emit structured contest options to webapp via logger.
+    The webapp's socketio_emit_func will intercept this and route to frontend.
+    """
+    if not session_id or not (getattr(prompt, "mode", None) == "webapp"):
+        return  # Only emit in webapp mode
+
+    structured_options = []
+    for idx, c in enumerate(candidates):
+        meta_parts = []
+        variant = safe_get(c.metadata, "variant_label")
+        scope_label = safe_get(c.metadata, "scope_label")
+        if variant:
+            meta_parts.append(str(variant))
+        elif scope_label:
+            meta_parts.append(str(scope_label))
+        detail_list = _extract_display_details(c.metadata) if hasattr(c, "metadata") else []
+        if detail_list:
+            meta_parts.append(" | ".join(detail_list))
+        if c.year:
+            meta_parts.append(str(c.year))
+        if c.confidence is not None:
+            meta_parts.append(f"conf={c.confidence:.2f}")
+        bundle_size = None
+        if c.metadata:
+            bundle_size = safe_get(c.metadata, "bundle_size")
+        if bundle_size and (c.metadata or {}).get("bundle_mode") == "aggregate":
+            meta_parts.append(f"{int(bundle_size)} sections")
+        meta_text = ", ".join(meta_parts) if meta_parts else ""
+        
+        option_meta = dict(c.metadata or {})
+        if c.confidence is not None and "confidence" not in option_meta:
+            option_meta["confidence"] = float(c.confidence)
+        if c.year is not None and "year" not in option_meta:
+            option_meta["year"] = c.year
+        
+        structured_options.append({
+            "index": idx,
+            "label": c.title,
+            "meta": meta_text,
+            "metadata": option_meta
+        })
+
+    # Emit via logger with type='contest_options' so webapp recognizes it
+    logger.info({
+        "level": "INFO",
+        "type": "contest_options",
+        "message": f"Emitting {len(structured_options)} contest options for selection",
+        "session_id": session_id,
+        "options": structured_options,
+        "total_count": len(structured_options),
+        "context": {
+            "state": state,
+            "county": county,
+            "year": year,
+            "source": safe_get(context, "source") or safe_get(context, "input_file"),
+            "handler": safe_get(context, "handler"),
+            "url": safe_get(context, "url"),
+            "input_file": safe_get(context, "input_file")
+        }
+    })
+
+# -------------------------
 # Core selection
 # -------------------------
 def select_contest(
@@ -1550,6 +1623,16 @@ def select_contest(
 
     selected: list[ContestRecord] = []
     prompted_once = False
+
+    # Emit contest options to webapp if in web mode
+    _emit_contest_options_to_webapp(
+        candidates=candidates,
+        state=state,
+        county=county,
+        year=year,
+        session_id=session_id,
+        context=context
+    )
 
     while True:
         page_options, total_pages = build_page_options(page)

@@ -1629,12 +1629,13 @@ code {
   display: none;
   padding: var(--spacing-lg);
   height: calc(100% - 48px);
-  overflow-y: auto;
+  overflow: hidden;
   flex-direction: column;
 }
 
 .log-drawer.expanded .drawer-content {
   display: flex;
+  overflow-y: auto;
 }
 
 .drawer-toolbar {
@@ -1665,9 +1666,11 @@ code {
 .log-output {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   font-family: 'Courier New', monospace;
   font-size: 0.75rem;
   line-height: 1.5;
+  min-height: 0;
 }
 
 .log-line {
@@ -1741,6 +1744,124 @@ code {
   background: #2a1a3d;
   border-left: 3px solid #8b5cf6;
   color: #c4b5fd;
+}
+
+/* Log Type Badge Color Classes (CSP-compliant, no inline styles) */
+.log-type-badge {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.log-type-status {
+  background: #1e3a8a33;
+  color: #3b82f6;
+  border: 1px solid #3b82f644;
+}
+
+.log-type-input {
+  background: #5b21b633;
+  color: #d946ef;
+  border: 1px solid #d946ef44;
+}
+
+.log-type-output {
+  background: #16a34a33;
+  color: #10b981;
+  border: 1px solid #10b98144;
+}
+
+.log-type-manual-override {
+  background: #dc263633;
+  color: #ef4444;
+  border: 1px solid #ef444444;
+}
+
+.log-type-ai-analysis {
+  background: #0891b233;
+  color: #06b6d4;
+  border: 1px solid #06b6d444;
+}
+
+.log-type-stream {
+  background: #059669 33;
+  color: #10b981;
+  border: 1px solid #10b98144;
+}
+
+.log-type-router {
+  background: #4f46e533;
+  color: #6366f1;
+  border: 1px solid #6366f144;
+}
+
+.log-type-handler {
+  background: #0ea5e933;
+  color: #0ea5e9;
+  border: 1px solid #0ea5e944;
+}
+
+.log-type-download {
+  background: #06b6d233;
+  color: #14b8a6;
+  border: 1px solid #14b8a644;
+}
+
+.log-type-browser {
+  background: #3b82f633;
+  color: #3b82f6;
+  border: 1px solid #3b82f644;
+}
+
+.log-type-batch {
+  background: #8b5cf633;
+  color: #8b5cf6;
+  border: 1px solid #8b5cf644;
+}
+
+.log-type-cancel {
+  background: #dc262633;
+  color: #dc2626;
+  border: 1px solid #dc262644;
+}
+
+.log-type-summary {
+  background: #10b98133;
+  color: #10b981;
+  border: 1px solid #10b98144;
+}
+
+.log-type-heartbeat {
+  background: #6b728033;
+  color: #9ca3af;
+  border: 1px solid #9ca3af44;
+}
+
+.log-type-prompt {
+  background: #06b6d233;
+  color: #06b6d4;
+  border: 1px solid #06b6d444;
+}
+
+.log-type-exception {
+  background: #dc262633;
+  color: #ef4444;
+  border: 1px solid #ef444444;
+}
+
+.log-type-validation {
+  background: #f5991633;
+  color: #f59e0b;
+  border: 1px solid #f59e0b44;
+}
+
+.log-type-info {
+  background: #3b82f633;
+  color: #3b82f6;
+  border: 1px solid #3b82f644;
 }
 
 /* ============================================

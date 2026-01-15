@@ -858,6 +858,19 @@ def socketio_emit_func(line):
                     sid = m.group(1)
                     obj["session_id"] = sid
 
+        # --- Special handling for contest_options: emit as dedicated event instead of parser_output ---
+        if obj.get("type") == "contest_options" and sid:
+            contest_payload = {
+                "session_id": sid,
+                "context": obj.get("context", {}),
+                "total_count": obj.get("total_count", 0),
+                "options": obj.get("options", [])
+            }
+            store_log(sid, obj)
+            socketio.emit('contest_options', contest_payload, room=sid)
+            session_manager.set_last_contest_options(sid, contest_payload)
+            return
+
         # --- Store and emit ---
         if sid:
             store_log(sid, obj)
@@ -2150,7 +2163,16 @@ def handle_disconnect(arg=None) -> None:
         req_sid = getattr(request, 'sid', None)
         if not isinstance(req_sid, str):
             req_sid = None
-    logical = session_manager.unbind_socket(req_sid) if req_sid else None
+    
+    # Get session ID before unbinding
+    logical = None
+    if req_sid:
+        logical = session_manager.resolve_socket(req_sid)
+    
+    # Unbind socket
+    unbound_session = session_manager.unbind_socket(req_sid) if req_sid else None
+    logical = logical or unbound_session
+    
     logger.info({
         "level": "INFO",
         "type": "status",

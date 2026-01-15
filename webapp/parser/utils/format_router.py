@@ -490,7 +490,12 @@ def prompt_and_handle_download(
                 prompt_message,
                 validator=validator,
                 session_id=session_id,
-                context={"files": files}
+                context={
+                    "title": "Select a File from Uploads",
+                    "urls": files,  # Changed from "files" to "urls" to match frontend expectations
+                    "options": files,  # Also provide as "options" for compatibility
+                    "placeholder": "Enter index or filename"
+                }
             )
             if not isinstance(selection, str):
                 raise ValueError("Non-string selection")
