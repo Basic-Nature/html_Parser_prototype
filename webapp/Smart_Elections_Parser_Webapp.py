@@ -2,107 +2,27 @@ from __future__ import annotations
 
 import os
 
+# ============================================
+# SocketIO Configuration: Threading Framework
+# ============================================
+# Using Python's native threading framework for reliable, maintainable async support.
+# This avoids eventlet (deprecated) and provides stable, predictable behavior.
+# ============================================
 
-def _env_flag(name: str, default: bool = False) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "y"}
-
-
-def _should_skip_eventlet_patch() -> tuple[bool, str | None]:
-    # Default to threading mode (no eventlet) for stability and better compatibility
-    # eventlet has deprecation warnings and greenlet/async issues
-    if _env_flag("SMART_ELECTIONS_SKIP_EVENTLET_PATCH", True):  # Default: True (skip eventlet)
-        return True, "disabled_for_stability"
-    if "PYTEST_CURRENT_TEST" in os.environ and not _env_flag("SMART_ELECTIONS_FORCE_EVENTLET_PATCH", False):
-        return True, "pytest"
-    return False, None
-
-
-_SKIP_EVENTLET_PATCH, _EVENTLET_SKIP_REASON = _should_skip_eventlet_patch()
-_EVENTLET_BOOT_NOTES: list[str] = []
-
-try:
-    import eventlet  # type: ignore[import-not-found]
-except Exception as exc:  # pragma: no cover - environment specific
-    eventlet = None  # type: ignore[assignment]
-    _EVENTLET_BOOT_NOTES.append(f"eventlet_import_failed:{exc}")
-    _SKIP_EVENTLET_PATCH = True
-    if _EVENTLET_SKIP_REASON is None:
-        _EVENTLET_SKIP_REASON = "eventlet_import_failed"
-
-
-_EVENTLET_PATCH_THREAD_ENABLED = _env_flag("SMART_ELECTIONS_EVENTLET_PATCH_THREAD", False)
-_EVENTLET_PATCH_OS_ENABLED = _env_flag("SMART_ELECTIONS_EVENTLET_PATCH_OS", False)
-_EVENTLET_PATCH_SOCKET_ENABLED = _env_flag("SMART_ELECTIONS_EVENTLET_PATCH_SOCKET", True)
-_EVENTLET_PATCH_SELECT_ENABLED = _env_flag("SMART_ELECTIONS_EVENTLET_PATCH_SELECT", True)
-_EVENTLET_PATCH_TIME_ENABLED = _env_flag("SMART_ELECTIONS_EVENTLET_PATCH_TIME", True)
-_EVENTLET_PATCH_PSYCO_ENABLED = _env_flag("SMART_ELECTIONS_EVENTLET_PATCH_PSYCOPG", False)
-_EVENTLET_PATCH_AGGR_ENABLED = _env_flag("SMART_ELECTIONS_EVENTLET_PATCH_AGGRESSIVE", False)
-_EVENTLET_PATCH_DNS_ENABLED = _env_flag("SMART_ELECTIONS_EVENTLET_PATCH_DNS", False)
-
-_EVENTLET_PATCH_CONFIG = {
-    "os": _EVENTLET_PATCH_OS_ENABLED,
-    "select": _EVENTLET_PATCH_SELECT_ENABLED,
-    "socket": _EVENTLET_PATCH_SOCKET_ENABLED,
-    "thread": _EVENTLET_PATCH_THREAD_ENABLED,
-    "time": _EVENTLET_PATCH_TIME_ENABLED,
-    "psycopg": _EVENTLET_PATCH_PSYCO_ENABLED,
-    "aggressive": _EVENTLET_PATCH_AGGR_ENABLED,
-    "dns": _EVENTLET_PATCH_DNS_ENABLED,
-}
-
-_EVENTLET_PATCHED_MODULES: list[str] = []
-_EVENTLET_PATCH_APPLIED = False
-
-if eventlet and not _SKIP_EVENTLET_PATCH:
-    try:
-        eventlet.monkey_patch(**_EVENTLET_PATCH_CONFIG)
-        _EVENTLET_PATCH_APPLIED = True
-        _EVENTLET_PATCHED_MODULES = [name for name, enabled in _EVENTLET_PATCH_CONFIG.items() if enabled]
-    except Exception as exc:  # pragma: no cover - runtime safeguard
-        _EVENTLET_BOOT_NOTES.append(f"eventlet_patch_failed:{exc}")
-        _EVENTLET_PATCH_APPLIED = False
-        _SKIP_EVENTLET_PATCH = True
-        if _EVENTLET_SKIP_REASON is None:
-            _EVENTLET_SKIP_REASON = "eventlet_patch_failed"
-
-
-_FORCE_THREADING_ASYNC = _env_flag("SMART_ELECTIONS_FORCE_THREADING", False)
-if eventlet and not _SKIP_EVENTLET_PATCH and not _FORCE_THREADING_ASYNC:
-    _SOCKETIO_ASYNC_MODE = "eventlet"
-else:
-    _SOCKETIO_ASYNC_MODE = "threading"
-
-_EVENTLET_AVAILABLE = bool(eventlet)
-EVENTLET_STATUS = {
-    "available": _EVENTLET_AVAILABLE,
-    "patched": _EVENTLET_PATCH_APPLIED,
-    "patched_modules": list(_EVENTLET_PATCHED_MODULES),
-    "patch_config": dict(_EVENTLET_PATCH_CONFIG),
-    "skip": bool(_SKIP_EVENTLET_PATCH),
-    "skip_reason": _EVENTLET_SKIP_REASON,
-    "async_mode": _SOCKETIO_ASYNC_MODE,
-    "notes": list(_EVENTLET_BOOT_NOTES),
-}
+_SOCKETIO_ASYNC_MODE = "threading"
 
 _SOCKETIO_ENGINE_OPTIONS = {
     "ping_interval": 10,
     "ping_timeout": 60,
+    "allow_upgrades": False,
+    "transports": ["polling"],
 }
-if _SOCKETIO_ASYNC_MODE == "threading":
-    _SOCKETIO_ENGINE_OPTIONS.update({
-        "allow_upgrades": False,
-        "transports": ["polling"],
-    })
-    _SOCKETIO_CLIENT_TRANSPORTS = ["polling"]
-else:
-    _SOCKETIO_CLIENT_TRANSPORTS = ["websocket", "polling"]
+
+_SOCKETIO_CLIENT_TRANSPORTS = ["polling"]
 
 SOCKETIO_CLIENT_CONFIG = {
     "transports": _SOCKETIO_CLIENT_TRANSPORTS,
-    "pollingOnly": _SOCKETIO_ASYNC_MODE == "threading",
+    "pollingOnly": True,
     "pingInterval": int(_SOCKETIO_ENGINE_OPTIONS["ping_interval"] * 1000),
     "pingTimeout": int(_SOCKETIO_ENGINE_OPTIONS["ping_timeout"] * 1000),
 }
@@ -166,10 +86,8 @@ logger.info({
     "type": "infra",
     "message": f"SocketIO async mode: {_SOCKETIO_ASYNC_MODE}",
     "details": {
-        "eventlet_available": EVENTLET_STATUS["available"],
-        "eventlet_patched": EVENTLET_STATUS["patched"],
-        "patched_modules": EVENTLET_STATUS["patched_modules"],
-        "skip_reason": EVENTLET_STATUS["skip_reason"],
+        "async_framework": "threading (native Python)",
+        "eventlet_deprecated": "disabled",
         "socket_transports": _SOCKETIO_CLIENT_TRANSPORTS,
         "polling_only": SOCKETIO_CLIENT_CONFIG["pollingOnly"],
     }
@@ -1312,8 +1230,8 @@ def data_framework():
 def azure_health_page():
     runtime_hints = {
         "async_mode": _SOCKETIO_ASYNC_MODE,
-        "eventlet_patched": EVENTLET_STATUS["patched"],
-        "patched_modules": EVENTLET_STATUS["patched_modules"],
+        "async_framework": "threading (native Python)",
+        "eventlet_deprecated": "disabled",
         "transports": _SOCKETIO_CLIENT_TRANSPORTS,
         "deploy_env": DEPLOY_ENV or "local",
     }
@@ -2744,7 +2662,7 @@ cleanup_old_log_files(LOG_DIR, session_manager.list_active_session_ids(), keep_d
 if __name__ == "__main__":
     try:
         port = int(os.environ.get("PORT", 5000))
-        allow_unsafe = _env_flag("SMART_ELECTIONS_ALLOW_UNSAFE_WERKZEUG", False)
+        allow_unsafe = os.environ.get("SMART_ELECTIONS_ALLOW_UNSAFE_WERKZEUG", "").lower() in {"1", "true", "yes"}
         socketio.run(
             app,
             host="0.0.0.0",

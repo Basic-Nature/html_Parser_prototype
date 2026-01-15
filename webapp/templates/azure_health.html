@@ -104,12 +104,8 @@
                         <h2 class="h5">Runtime Signals</h2>
                         <ul class="list-unstyled small mb-0">
                             <li><strong>Deploy Mode:</strong> {{ runtime_hints.deploy_env|upper }}</li>
-                            <li><strong>Async Engine:</strong> {{ runtime_hints.async_mode }}</li>
-                            <li><strong>Eventlet Patched:</strong> {{ 'Yes' if runtime_hints.eventlet_patched else 'No' }}</li>
+                            <li><strong>Async Engine:</strong> {{ runtime_hints.async_framework }}</li>
                             <li><strong>Socket Transports:</strong> {{ runtime_hints.transports | join(', ') }}</li>
-                            {% if runtime_hints.patched_modules %}
-                                <li><strong>Patched Modules:</strong> {{ runtime_hints.patched_modules | join(', ') }}</li>
-                            {% endif %}
                             <li><strong>Client Ping:</strong> {{ socketio_client_config.pingInterval }} ms / {{ socketio_client_config.pingTimeout }} ms timeout</li>
                         </ul>
                     </div>

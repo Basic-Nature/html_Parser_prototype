@@ -139,8 +139,7 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
 
           - **Note:** `python-dotenv` is not included in `requirements.txt` and is not needed in production or on Azure.
      3. Start the web server:  
-        `python -m webapp.Smart_Elections_Parser_Webapp`  
-        *(or use the VS Code launch configuration "Python Debugger: Eventlet Entrypoint")*
+        `python -m webapp.Smart_Elections_Parser_Webapp`
      4. Open your browser to `http://localhost:5000`
    - **Note:**  
      If you run `python -m webapp.Smart_Elections_Parser_Webapp` directly, you must ensure all required environment variables are set, or the app will not start.
@@ -176,7 +175,7 @@ set POSTGRES_HOST=localhost
 set POSTGRES_PORT=5432
 set DATA_API_URL=/api/warehouse_election_results
 set CSP_MODE=STRICT
-python webapp/run_eventlet.py
+python -m webapp.Smart_Elections_Parser_Webapp
 ```
 
 **Or, on Linux/macOS:**
@@ -190,7 +189,7 @@ export POSTGRES_HOST=localhost
 export POSTGRES_PORT=5432
 export DATA_API_URL=/api/warehouse_election_results
 export CSP_MODE=STRICT
-python webapp/run_eventlet.py
+python -m webapp.Smart_Elections_Parser_Webapp
 ```
 
 Alternatively, you can set these variables in your IDE launch configuration.

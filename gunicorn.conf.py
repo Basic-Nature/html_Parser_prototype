@@ -4,8 +4,9 @@ import os
 port = os.environ.get("PORT", "8000")
 bind = f"0.0.0.0:{port}"
 
-# Eventlet handles WebSocket support for Flask-SocketIO
-worker_class = "eventlet"
+# Use sync worker (simple, stable) or gevent for better concurrency
+# For WebSocket support, Flask-SocketIO now uses threading (native Python async mode)
+worker_class = "sync"
 
 # Leave a single worker by default; Azure load-balances instances externally.
 workers = int(os.environ.get("GUNICORN_WORKERS", "1"))
