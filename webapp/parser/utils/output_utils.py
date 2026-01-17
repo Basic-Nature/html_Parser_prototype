@@ -511,6 +511,39 @@ def finalize_election_output(
     if not _write_csv(csv_path, headers_final, safe_rows):
         return {"csv_path": "", "metadata_path": ""}
 
+    # Build a simple row->byte-offset index for the CSV to support jump-to-row.
+    def _build_csv_index(csv_path: str, max_rows: int = 200000) -> Optional[str]:
+        try:
+            idx_path = csv_path + '.idx'
+            offsets = []
+            with open(csv_path, 'rb') as fh:
+                # read header
+                header = fh.readline()
+                pos = fh.tell()
+                count = 0
+                while True:
+                    line = fh.readline()
+                    if not line:
+                        break
+                    offsets.append(pos)
+                    count += 1
+                    if count >= max_rows:
+                        break
+                    pos = fh.tell()
+            with open(idx_path, 'wb') as fidx:
+                for off in offsets:
+                    fidx.write(f"{off}\n".encode('ascii'))
+            return idx_path
+        except Exception:
+            return None
+
+    try:
+        idxp = _build_csv_index(csv_path)
+        if idxp:
+            meta['csv_index_path'] = idxp
+    except Exception:
+        pass
+
     # ------------------------------------------------------------------
     # Enrichment: build summary + hierarchical header export (if present)
     # ------------------------------------------------------------------

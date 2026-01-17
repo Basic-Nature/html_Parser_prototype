@@ -50,7 +50,38 @@ def extract_entities(text: str) -> List[Tuple[str, str]]:
         return []
     nlp = _get_nlp()
     if nlp is None:
-        return []
+        # Fallback heuristic when spaCy or model is unavailable: detect known states/counties
+        try:
+            text_low = text.lower()
+            matches = []
+            # Known states (normalize underscore keys to spaces)
+            for st in KNOWN_STATE_TO_COUNTY_MAP.keys():
+                if not st:
+                    continue
+                st_norm = st.replace("_", " ").lower()
+                if st_norm in text_low:
+                    # present as readable name
+                    matches.append((st_norm.title(), "GPE"))
+            # Known counties
+            for st, counties in KNOWN_STATE_TO_COUNTY_MAP.items():
+                for c in (counties or []):
+                    if not c:
+                        continue
+                    # match with and without 'county' suffix
+                    if c.lower() in text_low or (c + " county").lower() in text_low:
+                        matches.append((c, "GPE"))
+            # dedupe while preserving order
+            seen = set()
+            out = []
+            for ent, lbl in matches:
+                key = ent.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append((ent, lbl))
+            return out
+        except Exception:
+            return []
     try:
         doc = nlp(text)
         return [(ent.text, ent.label_) for ent in doc.ents]

@@ -263,4 +263,4 @@ A: Yes, disconnect only closes the socket. Session data is preserved server-side
 
 **Summary**: This is expected behavior for Socket.IO polling. The recent fix improves logging to make this visible. For typical use, just respond to prompts within 60 seconds.
 
-See **RECENT_FIXES.md** for details on the disconnect logging improvement.
+See **FINAL_STATUS_SUMMARY.md** for details on the disconnect logging improvement.

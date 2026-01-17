@@ -18,15 +18,13 @@
 
 ### 🛠️ "I need to understand what was fixed"
 
-**Read**: [RECENT_FIXES.md](RECENT_FIXES.md) (8 min)
+**Read**: [CONTEST_INTEGRATION_CODE_REFERENCE.md](CONTEST_INTEGRATION_CODE_REFERENCE.md) (10 min)
 
-- Details all 3 fixes:
+- Code diffs and implementation details for the fixes:
   - Debug console scrolling
   - Session logging
   - Documentation cleanup
-- Technical implementation
-- Testing procedures
-- Verification status
+- Testing procedures and verification notes
 
 ### 🚀 "I need to deploy this"
 
@@ -61,7 +59,7 @@
 
 | Priority | Document | Purpose | Time |
 | ---------- | ---------- | --------- | ------ |
-| **NEW** 🔴 | [RECENT_FIXES.md](RECENT_FIXES.md) | What was fixed | 8 min |
+| **NEW** 🔴 | [CONTEST_INTEGRATION_CODE_REFERENCE.md](CONTEST_INTEGRATION_CODE_REFERENCE.md) | What was fixed | 10 min |
 | **NEW** 🔴 | [DEBUG_SOCKET_DISCONNECT.md](DEBUG_SOCKET_DISCONNECT.md) | Socket timeout explained | 5 min |
 | 1️⃣ | [START_HERE.md](START_HERE.md) | Navigation guide | 2 min |
 | 2️⃣ | [FINAL_DELIVERY_REPORT.md](FINAL_DELIVERY_REPORT.md) | Executive summary | 5 min |
@@ -77,7 +75,7 @@
 ## 🎯 The 5-Minute Priority List
 
 1. **Just saw the disconnect?** → Read [DEBUG_SOCKET_DISCONNECT.md](DEBUG_SOCKET_DISCONNECT.md)
-2. **Want to know what was fixed?** → Read [RECENT_FIXES.md](RECENT_FIXES.md)
+2. **Want to know what was fixed?** → Read [CONTEST_INTEGRATION_CODE_REFERENCE.md](CONTEST_INTEGRATION_CODE_REFERENCE.md)
 3. **Ready to deploy?** → Read [START_HERE.md](START_HERE.md)
 4. **Need to test?** → Read [CONTEST_DEPLOYMENT_CHECKLIST.md](CONTEST_DEPLOYMENT_CHECKLIST.md)
 
@@ -132,7 +130,7 @@ Removed redundant files:
 ### For Everyone
 
 1. This file (you're reading it now!)
-2. [RECENT_FIXES.md](RECENT_FIXES.md) - See what was fixed
+2. [FINAL_STATUS_SUMMARY.md](FINAL_STATUS_SUMMARY.md) - See what was fixed
 
 ### For Deployment
 
@@ -166,7 +164,7 @@ Removed redundant files:
 
 ## 🚀 Next Steps
 
-1. **Read** RECENT_FIXES.md or DEBUG_SOCKET_DISCONNECT.md (based on your need)
+1. **Read** FINAL_STATUS_SUMMARY.md or DEBUG_SOCKET_DISCONNECT.md (based on your need)
 2. **Review** START_HERE.md for your role
 3. **Follow** the guidance for deployment/testing/code review
 4. **Deploy** when ready
@@ -176,7 +174,7 @@ Removed redundant files:
 ## 📞 Questions?
 
 - **About the socket disconnect?** → [DEBUG_SOCKET_DISCONNECT.md](DEBUG_SOCKET_DISCONNECT.md)
-- **About what was fixed?** → [RECENT_FIXES.md](RECENT_FIXES.md)
+- **About what was fixed?** → [FINAL_STATUS_SUMMARY.md](FINAL_STATUS_SUMMARY.md)
 - **About deployment?** → [CONTEST_INTEGRATION_DEPLOYMENT_REPORT.md](CONTEST_INTEGRATION_DEPLOYMENT_REPORT.md)
 - **About code changes?** → [CONTEST_INTEGRATION_CODE_REFERENCE.md](CONTEST_INTEGRATION_CODE_REFERENCE.md)
 - **About testing?** → [CONTEST_DEPLOYMENT_CHECKLIST.md](CONTEST_DEPLOYMENT_CHECKLIST.md)
@@ -184,7 +182,7 @@ Removed redundant files:
 
 ---
 
-**👉 Start with either [RECENT_FIXES.md](RECENT_FIXES.md) or [DEBUG_SOCKET_DISCONNECT.md](DEBUG_SOCKET_DISCONNECT.md) based on your immediate need.**
+**👉 Start with either [FINAL_STATUS_SUMMARY.md](FINAL_STATUS_SUMMARY.md) or [DEBUG_SOCKET_DISCONNECT.md](DEBUG_SOCKET_DISCONNECT.md) based on your immediate need.**
 
 **Then follow the appropriate path for your role.**
 

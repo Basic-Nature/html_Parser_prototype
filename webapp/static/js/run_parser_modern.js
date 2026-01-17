@@ -400,6 +400,374 @@ function enhanceAccessibility() {
   console.log('[Accessibility] Enhanced with keyboard nav and ARIA labels');
 }
 
+// Mobile sidebar toggle and touch-to-close support
+function initSidebarMobile() {
+  try {
+    const toggle = document.querySelector('.sidebar-toggle');
+    const sidebar = document.getElementById('sidebar');
+    const backdrop = document.querySelector('.sidebar-backdrop') || document.querySelector('.mobile-sidebar-overlay');
+    if (!sidebar) return;
+
+    function openSidebar() {
+      sidebar.classList.add('sidebar-open');
+      if (backdrop) backdrop.classList.add('visible');
+      document.body.style.overflow = 'hidden';
+    }
+    function closeSidebar() {
+      sidebar.classList.remove('sidebar-open');
+      if (backdrop) backdrop.classList.remove('visible');
+      document.body.style.overflow = '';
+    }
+
+    if (toggle) toggle.addEventListener('click', (e) => {
+      if (sidebar.classList.contains('sidebar-open')) closeSidebar(); else openSidebar();
+    });
+
+    if (backdrop) backdrop.addEventListener('click', closeSidebar);
+
+    // Touch swipe to close (when sidebar open)
+    let touchStartX = 0;
+    let touchCurrentX = 0;
+    let tracking = false;
+    sidebar.addEventListener('touchstart', (ev) => {
+      if (!sidebar.classList.contains('sidebar-open')) return;
+      const t = ev.touches && ev.touches[0];
+      if (!t) return;
+      touchStartX = t.clientX;
+      tracking = true;
+    }, { passive: true });
+
+    sidebar.addEventListener('touchmove', (ev) => {
+      if (!tracking) return;
+      const t = ev.touches && ev.touches[0];
+      if (!t) return;
+      touchCurrentX = t.clientX;
+      const dx = touchCurrentX - touchStartX;
+      // allow slight drag but do not move DOM; threshold handled on end
+    }, { passive: true });
+
+    sidebar.addEventListener('touchend', (ev) => {
+      if (!tracking) return;
+      tracking = false;
+      const dx = touchCurrentX - touchStartX;
+      // swipe left to close (threshold 60px)
+      if (dx < -60) closeSidebar();
+      touchStartX = touchCurrentX = 0;
+    });
+
+    // init state based on viewport
+    if (window.innerWidth <= 768) {
+      // ensure sidebar is hidden initially
+      sidebar.classList.remove('sidebar-open');
+      if (backdrop) backdrop.classList.remove('visible');
+    }
+  } catch (e) {
+    ErrorBoundary.logError(e, 'initSidebarMobile');
+  }
+}
+
+// Initialize mobile sidebar handlers on DOMContentLoaded
+document.addEventListener('DOMContentLoaded', () => {
+  initSidebarMobile();
+});
+
+// Show flagged details in a dedicated modal with simple filters
+function showFlaggedModal(flagged, report_path) {
+  try {
+    const existing = document.getElementById('flaggedModal');
+    if (existing) existing.remove();
+
+    // Persistent sort state per report
+    const persistedKey = reportName ? `flagged_sort_${reportName}` : 'flagged_sort_global';
+    let currentSort = { key: '', dir: 1 };
+    try {
+      const p = localStorage.getItem(persistedKey);
+      if (p) {
+        const parsed = JSON.parse(p);
+        if (parsed && parsed.key) currentSort = parsed;
+      }
+    } catch (e) {
+      /* ignore */
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'flaggedModal';
+    modal.className = 'flagged-modal';
+    const reportName = report_path ? report_path.replace(/\\/g, '/').split('/').pop() : '';
+    modal.innerHTML = `
+      <div class="flagged-modal-content">
+        <div class="flagged-modal-header">
+          <h3>Flagged Details (${flagged.length})</h3>
+          <div class="flagged-controls">
+            <input id="flaggedFilter" placeholder="Filter by URL or reason" class="input-sm" />
+            <input id="flaggedMinConf" type="number" min="0" max="1" step="0.01" placeholder="Min confidence" class="input-sm" style="width:110px;" />
+            <button id="flaggedExportCSV" class="btn btn-sm">Export CSV</button>
+            <button id="flaggedExportJSON" class="btn btn-sm">Export JSON</button>
+            ${reportName ? `<a class="btn btn-sm btn-outline" id="flaggedDownload" href="/download_fs?root=output&path=reports&name=${encodeURIComponent(reportName)}" target="_blank" rel="noopener">Download report</a>` : ''}
+            <button id="flaggedClose" class="btn btn-sm">Close</button>
+          </div>
+        </div>
+        <div class="flagged-modal-body">
+          <table class="flagged-table"><thead><tr><th data-key="url">URL</th><th data-key="status">Status</th><th data-key="reasons">Reasons</th><th data-key="confidence">Confidence</th><th data-key="metadata">Metadata</th></tr></thead><tbody id="flaggedTableBody"></tbody></table>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    // close on ESC
+    const escHandler = (ev) => { if (ev.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', escHandler); } };
+    document.addEventListener('keydown', escHandler);
+
+    const tbody = modal.querySelector('#flaggedTableBody');
+
+    function getSortValue(item, key) {
+      if (key === 'url') return (item.url || '').toLowerCase();
+      if (key === 'status') return (item.status || '').toLowerCase();
+      if (key === 'reasons') return (Array.isArray(item.reasons) ? item.reasons.join(' ') : (item.reasons || '')).toLowerCase();
+      if (key === 'confidence') {
+        const m = item.metadata_excerpt || {};
+        return Number(m.extraction_confidence ?? m.quality_metrics?.extraction_confidence ?? NaN) || 0;
+      }
+      if (key === 'metadata') return JSON.stringify(item.metadata_excerpt || {}).toLowerCase();
+      return '';
+    }
+
+    function renderRows(list) {
+      tbody.innerHTML = '';
+      // apply sort
+      const rowsList = Array.isArray(list) ? [...list] : [];
+      if (currentSort.key) {
+        rowsList.sort((a,b) => {
+          const va = getSortValue(a, currentSort.key);
+          const vb = getSortValue(b, currentSort.key);
+          if (va < vb) return -1 * currentSort.dir;
+          if (va > vb) return 1 * currentSort.dir;
+          return 0;
+        });
+      }
+
+      for (const f of rowsList) {
+        const reasons = Array.isArray(f.reasons) ? f.reasons.join(', ') : (f.reasons || '');
+        const metaObj = f.metadata_excerpt || {};
+        const confVal = (metaObj && (metaObj.extraction_confidence || metaObj.quality_metrics?.extraction_confidence || metaObj.extraction_confidence === 0)) ? (Number(metaObj.extraction_confidence ?? metaObj.quality_metrics?.extraction_confidence) ) : '';
+        const metaStrJson = JSON.stringify(metaObj || {});
+        const metaEsc = escapeHtml(metaStrJson);
+        const metaDataAttr = encodeURIComponent(metaStrJson);
+        const urlText = escapeHtml(f.url || f['url'] || '');
+        const status = escapeHtml(f.status || '');
+        const tr = document.createElement('tr');
+        // build per-row extra actions (Open output / Jump to CSV row) when metadata provides paths/indexes
+        const rowMeta = f.metadata_excerpt || {};
+        let openLinkHtml = '';
+        const possibleFile = rowMeta.output_file || rowMeta.output_file_path || rowMeta.output_path || rowMeta.output_filename || '';
+        if (possibleFile) {
+          const base = String(possibleFile).split(/[\\\\\/]/).pop();
+          openLinkHtml = `<a class="btn btn-xs" href="/download_fs?root=output&path=&name=${encodeURIComponent(base)}" target="_blank" rel="noopener">Open output</a>`;
+        }
+        let jumpBtnHtml = '';
+        const rowIndex = rowMeta.output_row || rowMeta.output_row_index || rowMeta.row_index || '';
+        if (rowIndex !== '' && rowIndex !== undefined && rowIndex !== null) {
+          jumpBtnHtml = `<button class="btn btn-xs jump-row" data-row="${escapeHtml(String(rowIndex))}">Jump to CSV row ${escapeHtml(String(rowIndex))}</button>`;
+        }
+
+        tr.innerHTML = `
+          <td><a href="${escapeHtml(f.url || '')}" target="_blank" rel="noopener">${urlText}</a></td>
+          <td>${status}</td>
+          <td>${escapeHtml(reasons)}</td>
+          <td>${confVal !== '' ? Number(confVal).toFixed(2) : ''}</td>
+          <td><div style="display:flex;gap:8px;flex-direction:column;align-items:flex-start;">
+            <div style="display:flex;gap:8px;align-items:center;">${openLinkHtml}${jumpBtnHtml}<button class="copy-meta btn btn-xs" data-meta="${metaDataAttr}">Copy</button></div>
+            <pre class="small muted" style="white-space:pre-wrap;margin:0;">${metaEsc}</pre>
+          </div></td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      // attach copy handlers
+      tbody.querySelectorAll('.copy-meta').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const meta = decodeURIComponent(btn.dataset.meta || '');
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(meta).then(() => showToast('Metadata copied', 'success'), () => showToast('Copy failed', 'error'));
+          } else {
+            const ta = document.createElement('textarea');
+            ta.value = meta;
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); showToast('Metadata copied', 'success'); } catch (e) { showToast('Copy failed', 'error'); }
+            ta.remove();
+          }
+        });
+      });
+    }
+
+    // delegated handlers for copy and jump actions
+    tbody.addEventListener('click', (ev) => {
+      const target = ev.target;
+      if (!target) return;
+      if (target.classList && target.classList.contains('copy-meta')) {
+        const metaRaw = target.getAttribute('data-meta');
+        try {
+          const obj = JSON.parse(metaRaw);
+          const text = JSON.stringify(obj, null, 2);
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(()=>{
+              target.textContent = 'Copied';
+              setTimeout(()=> target.textContent = 'Copy', 1200);
+            }).catch(()=>{ promptCopyFallback(text, target); });
+          } else {
+            promptCopyFallback(text, target);
+          }
+        } catch (e) {
+          // noop
+        }
+      }
+      if (target.classList && target.classList.contains('jump-row')) {
+        const rowIdx = target.getAttribute('data-row');
+        // try to find associated metadata for output file
+        const tr = target.closest('tr');
+        const copyBtn = tr && tr.querySelector('.copy-meta');
+        let meta = null;
+        if (copyBtn) {
+          try { meta = JSON.parse(copyBtn.getAttribute('data-meta')); } catch (e) { meta = null; }
+        }
+        if (meta && (meta.output_file || meta.output_file_path || meta.output_filename)) {
+          const possibleFile = meta.output_file || meta.output_file_path || meta.output_filename || '';
+          const base = String(possibleFile).split(/[\\\/]/).pop();
+          // call server to locate viewer page (build index if needed)
+          fetch(`/csv_locate?root=output&path=&name=${encodeURIComponent(base)}&row=${encodeURIComponent(rowIdx)}`)
+            .then(r => r.json())
+            .then(j => {
+              if (j && j.viewer) {
+                window.open(j.viewer, '_blank');
+              } else {
+                // fallback: open the CSV normally
+                const dl = `/download_fs?root=output&path=&name=${encodeURIComponent(base)}`;
+                window.open(dl, '_blank');
+                setTimeout(()=> alert(`Opened output file. Search for row ${rowIdx} in the downloaded CSV.`), 200);
+              }
+            }).catch(()=>{
+              const dl = `/download_fs?root=output&path=&name=${encodeURIComponent(base)}`;
+              window.open(dl, '_blank');
+              setTimeout(()=> alert(`Opened output file. Search for row ${rowIdx} in the downloaded CSV.`), 200);
+            });
+        } else if (reportName) {
+          const rpt = `/download_fs?root=output&path=reports&name=${encodeURIComponent(reportName)}`;
+          window.open(rpt, '_blank');
+          setTimeout(()=> alert(`Report opened. If an output CSV exists, open it and search for row ${rowIdx}.`), 200);
+        } else {
+          alert(`Row: ${rowIdx}. Open the output CSV and search for this row index.`);
+        }
+      }
+    });
+
+    function promptCopyFallback(text, targetBtn) {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); targetBtn.textContent = 'Copied'; setTimeout(()=> targetBtn.textContent = 'Copy', 1200); } catch (e) { alert('Copy failed — open the metadata and copy manually.'); }
+      ta.remove();
+    }
+
+    // initial render
+    renderRows(flagged);
+
+    // filtering
+    const filterInput = modal.querySelector('#flaggedFilter');
+    const confInput = modal.querySelector('#flaggedMinConf');
+    function applyFilter() {
+      const q = (filterInput.value || '').toLowerCase().trim();
+      const minConf = parseFloat(confInput.value);
+      const filtered = flagged.filter(f => {
+        let ok = true;
+        if (q) {
+          const hay = `${f.url || ''} ${Array.isArray(f.reasons) ? f.reasons.join(' ') : (f.reasons || '')} ${JSON.stringify(f.metadata_excerpt || {})}`.toLowerCase();
+          ok = hay.indexOf(q) !== -1;
+        }
+        if (ok && !isNaN(minConf)) {
+          const meta = f.metadata_excerpt || {};
+          const confVal = Number(meta.extraction_confidence ?? meta.quality_metrics?.extraction_confidence ?? NaN);
+          if (!isNaN(confVal)) ok = confVal >= minConf;
+          else ok = false;
+        }
+        return ok;
+      });
+      renderRows(filtered);
+    }
+    filterInput.addEventListener('input', debounce(applyFilter, 150));
+    confInput.addEventListener('input', debounce(applyFilter, 150));
+
+    // header sort handlers + UI indicators
+    function updateHeaderIndicators() {
+      modal.querySelectorAll('.flagged-table thead th').forEach(th => {
+        const k = th.dataset.key || '';
+        if (k && currentSort.key === k) {
+          th.classList.add('active');
+          th.setAttribute('data-sort-dir', String(currentSort.dir));
+        } else {
+          th.classList.remove('active');
+          th.removeAttribute('data-sort-dir');
+        }
+        th.style.cursor = k ? 'pointer' : '';
+      });
+    }
+
+    modal.querySelectorAll('.flagged-table thead th').forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.key;
+        if (!key) return;
+        if (currentSort.key === key) currentSort.dir *= -1; else { currentSort.key = key; currentSort.dir = 1; }
+        // persist
+        try { localStorage.setItem(persistedKey, JSON.stringify(currentSort)); } catch (e) {}
+        updateHeaderIndicators();
+        applyFilter();
+      });
+    });
+    updateHeaderIndicators();
+
+    // export handlers
+    function exportJSON() {
+      const payload = JSON.stringify(flagged, null, 2);
+      const blob = new Blob([payload], { type: 'application/json' });
+      const name = reportName ? `${reportName.replace(/\.json$/,'')}_flagged.json` : `flagged_${Date.now()}.json`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+
+    function exportCSV() {
+      const keys = new Set();
+      flagged.forEach(f => { Object.keys(f.metadata_excerpt || {}).forEach(k=>keys.add(k)); });
+      const metaKeys = Array.from(keys);
+      const header = ['url','status','reasons','timestamp',...metaKeys];
+      const rows = flagged.map(f => {
+        const meta = f.metadata_excerpt || {};
+        const row = [f.url || '', f.status || '', Array.isArray(f.reasons)?f.reasons.join('; '):(f.reasons||''), f.timestamp || ''];
+        metaKeys.forEach(k => row.push(meta[k] ?? ''));
+        return row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',');
+      });
+      const csv = [header.join(','), ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const name = reportName ? `${reportName.replace(/\.json$/,'')}_flagged.csv` : `flagged_${Date.now()}.csv`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+
+    const exCSV = modal.querySelector('#flaggedExportCSV');
+    if (exCSV) exCSV.addEventListener('click', exportCSV);
+    const exJSON = modal.querySelector('#flaggedExportJSON');
+    if (exJSON) exJSON.addEventListener('click', exportJSON);
+
+    // close handler
+    const closeBtn = modal.querySelector('#flaggedClose');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => { document.removeEventListener('keydown', escHandler); modal.remove(); });
+    }
+  } catch (e) {
+    ErrorBoundary.logError(e, 'showFlaggedModal');
+  }
+}
+
 // ============================================
 // PHASE 2: Integration Tests (P2.6)
 // ============================================
@@ -792,6 +1160,121 @@ socket.on('session_list', (data) => {
   ErrorBoundary.safeExecute(() => {
     updateSessionsList(data.sessions);
   }, 'socket:session_list');
+});
+
+// Run lifecycle events: started / progress / summary
+socket.on('run_started', (data) => {
+  ErrorBoundary.safeExecute(() => {
+    console.info('[Run] started', data);
+    showToast(`Run started (${data.session_id})`, 'info');
+    let panel = document.getElementById('runSummaryPanel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'runSummaryPanel';
+      panel.className = 'run-summary-panel';
+      const container = document.getElementById('runControls') || document.body;
+      container.prepend(panel);
+    }
+    panel.innerHTML = `<strong>Run:</strong> ${escapeHtml(data.session_id)} — <em>started</em> <span class="small muted">(${new Date(data.timestamp*1000).toLocaleString()})</span>`;
+  }, 'socket:run_started');
+});
+
+socket.on('run_progress', (data) => {
+  ErrorBoundary.safeExecute(() => {
+    // data: { session_id, total_entries, processed, status_counts }
+    let panel = document.getElementById('runSummaryPanel');
+    if (!panel) return;
+    const pct = data.total_entries ? Math.round((data.processed / data.total_entries) * 100) : 0;
+    panel.innerHTML = `<strong>Run:</strong> ${escapeHtml(data.session_id)} — ${pct}% (${data.processed}/${data.total_entries})`;
+  }, 'socket:run_progress');
+});
+
+socket.on('run_summary', (data) => {
+  ErrorBoundary.safeExecute(() => {
+    console.info('[Run] summary', data);
+    showToast('Run completed', 'success');
+    let panel = document.getElementById('runSummaryPanel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'runSummaryPanel';
+      panel.className = 'run-summary-panel';
+      const container = document.getElementById('runControls') || document.body;
+      container.prepend(panel);
+    }
+    const summary = data.summary || {};
+    const counts = summary.status_counts || {};
+    const total = summary.total_entries || 0;
+    let html = `<strong>Run:</strong> ${escapeHtml(data.session_id)} — <em>completed</em> <span class="small muted">(${new Date(data.timestamp*1000).toLocaleString()})</span>`;
+    html += `<div class="mt-2">Total: ${total} — `;
+    html += Object.entries(counts).map(([k,v])=>`${escapeHtml(k)}: ${v}`).join(' · ');
+    html += `</div>`;
+    // flagged count
+    if (typeof summary.flagged_count !== 'undefined') {
+      html += `<div class="mt-1">Flagged for review: ${Number(summary.flagged_count)}</div>`;
+    }
+    // confidence metrics
+    const conf = summary.confidence_metrics || {};
+    if (conf && conf.count) {
+      html += `<div class="mt-1">Confidence — avg: ${Number(conf.avg).toFixed(2)} min: ${Number(conf.min).toFixed(2)} max: ${Number(conf.max).toFixed(2)} median: ${Number(conf.median).toFixed(2)} (n=${conf.count})</div>`;
+    }
+    // errors list (collapsible)
+    const errors = summary.errors || [];
+    if (Array.isArray(errors) && errors.length) {
+      html += `<div class="mt-2"><details><summary>Errors (${errors.length})</summary><ul class="small">`;
+      for (const e of errors.slice(0, 20)) {
+        const msg = e.error ? ` — ${escapeHtml(e.error)}` : '';
+        html += `<li>${escapeHtml(e.url || e['url'] || String(e))} (${escapeHtml(e.status || '')})${msg}</li>`;
+      }
+      if (errors.length > 20) html += `<li class="muted small">...and ${errors.length-20} more</li>`;
+      html += `</ul></details></div>`;
+    }
+    // flagged_details (expanded, limited view)
+    const flagged = summary.flagged_details || [];
+    if (Array.isArray(flagged) && flagged.length) {
+      // store last flagged set for modal access
+      window.__lastRunFlagged = flagged;
+      window.__lastRunReportPath = data.report_path || '';
+      html += `<div class="mt-2"><details><summary>Flagged Details (${flagged.length})</summary><ul class="small flagged-list">`;
+      for (const f of flagged.slice(0, 20)) {
+        const reasons = Array.isArray(f.reasons) ? f.reasons.join(', ') : (f.reasons || '');
+        const meta = f.metadata_excerpt ? escapeHtml(JSON.stringify(f.metadata_excerpt)) : '';
+        const when = f.timestamp ? ` (${escapeHtml(f.timestamp)})` : '';
+        const urlText = escapeHtml(f.url || f["url"] || '');
+        // link to report if available
+        let reportLink = '';
+        if (data.report_path) {
+          const parts = data.report_path.replace(/\\/g, '/').split('/');
+          const name = parts[parts.length-1] || data.report_path;
+          const href = `/download_fs?root=output&path=reports&name=${encodeURIComponent(name)}`;
+          reportLink = ` <a href="${href}" target="_blank" rel="noopener">View report</a>`;
+        }
+        html += `<li><strong>${urlText}</strong>${when} — ${escapeHtml(f.status || '')} — ${escapeHtml(reasons)}${reportLink}<pre class="muted small" style="white-space:pre-wrap;margin-top:6px;">${meta}</pre></li>`;
+      }
+      if (flagged.length > 20) html += `<li class="muted small">...and ${flagged.length-20} more</li>`;
+      html += `</ul></details></div>`;
+      html += `<div class="mt-1"><button id="btnViewFlagged" class="btn btn-sm btn-primary">View flagged details</button></div>`;
+    }
+    if (data.report_path) {
+      const parts = data.report_path.replace(/\\/g, '/').split('/');
+      const name = parts[parts.length-1] || data.report_path;
+      const href = `/download_fs?root=output&path=reports&name=${encodeURIComponent(name)}`;
+      html += `<div class="mt-2"><a href="${href}" target="_blank" rel="noopener">Download report</a></div>`;
+    }
+    panel.innerHTML = html;
+    // attach listener for modal open if present
+    try {
+      const btn = document.getElementById('btnViewFlagged');
+      if (btn) {
+        btn.addEventListener('click', () => {
+          const flagged = window.__lastRunFlagged || [];
+          const rp = window.__lastRunReportPath || '';
+          showFlaggedModal(flagged, rp);
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to attach flagged modal handler', e);
+    }
+  }, 'socket:run_summary');
 });
 
 socket.on('session_cloned', (data) => {

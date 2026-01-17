@@ -42,6 +42,8 @@ from urllib.parse import urlparse
 
 import orjson
 import psycopg2
+from psycopg2 import errors as pg_errors
+from sqlalchemy.exc import OperationalError
 from flask import (
     Flask,
     Response,
@@ -53,76 +55,86 @@ from flask import (
     request,
     send_file,
     send_from_directory,
-    session,
     url_for,
+    session,
 )
-from flask_socketio import SocketIO, emit, join_room
-from psycopg2 import errors as pg_errors
 from werkzeug.exceptions import NotFound
-
-from webapp.parser.config import (
-    DATA_API_URL,
-    DEPLOY_ENV,
-    INPUT_DIR,
-    LOG_DIR,
-    OUTPUT_DIR,
-    POSTGRES_AUTH,
-    POSTGRES_DB,
-    POSTGRES_HOST,
-    POSTGRES_PASSWORD_RAW,
-    POSTGRES_PORT,
-    POSTGRES_USER_RAW,
-    PROJECT_ROOT,
-    RUN_HISTORY_FILE,
-    SUPPORTED_EXTENSION_SET,
-    UPLOADS_DIR,
-    URL_LIST_FILE,
-)
-from webapp.parser.health.session_manager import SessionManager
-from webapp.parser.utils.logger_singleton import logger, prompt
-
-logger.info({
-    "level": "INFO",
-    "type": "infra",
-    "message": f"SocketIO async mode: {_SOCKETIO_ASYNC_MODE}",
-    "details": {
-        "async_framework": "threading (native Python)",
-        "eventlet_deprecated": "disabled",
-        "socket_transports": _SOCKETIO_CLIENT_TRANSPORTS,
-        "polling_only": SOCKETIO_CLIENT_CONFIG["pollingOnly"],
-    }
-})
-from webapp.parser.utils.session_state import (
-    DEFAULT_PHASE_BY_STATE,
-    PipelinePhase,
-    SessionState,
-    export_session_enums,
-)
-from webapp.parser.utils.shared_logic import (
-    safe_get,
-    safe_is_set,
-    safe_lower,
-    safe_rsplit,
-    safe_sid,
-    safe_split,
-    safe_strip,
-)
-from webapp.parser.web_pipeline import (
-    cancel_processing,
-    cancellation_manager,
-    process_urls_for_web,
-)
-# Lazy DB table init flag
-_tables_initialized = False
+# Socket.IO imports
+try:
+    from flask_socketio import SocketIO, emit, join_room
+except Exception:
+    # If flask_socketio is missing at runtime, let the import fail later when starting the server
+    # but avoid NameError during static analysis.
+    SocketIO = None
+    def emit(*a, **k):
+        raise RuntimeError('SocketIO not available')
+    def join_room(*a, **k):
+        raise RuntimeError('SocketIO not available')
 
 # Global storage for last contest options for re-emission on reconnect
 last_contest_options = {}
+
+# DB tables init flag
+_tables_initialized = False
+
+# Local health/session utilities
+from webapp.parser.health.session_manager import SessionManager
+from webapp.parser.utils.logger_singleton import logger, prompt
+from webapp.parser.utils.session_state import (
+    SessionState,
+    PipelinePhase,
+    DEFAULT_PHASE_BY_STATE,
+    export_session_enums,
+)
 
 try:
     import dotenv
     dotenv.load_dotenv()
 except ImportError:
     # python-dotenv not installed (e.g., on Azure), skip loading .env
+    pass
+
+# Import shared config constants and helper utilities used by many routes
+from webapp.parser.config import (
+    PROJECT_ROOT,
+    INPUT_DIR,
+    OUTPUT_DIR,
+    UPLOADS_DIR,
+    URL_LIST_FILE,
+    PROCESSED_URLS_FILE,
+    LOG_DIR,
+    RUN_HISTORY_FILE,
+    DATA_API_URL,
+    DEPLOY_ENV,
+    POSTGRES_DB,
+    POSTGRES_USER_RAW,
+    POSTGRES_PASSWORD_RAW,
+    POSTGRES_HOST,
+    POSTGRES_PORT,
+    SUPPORTED_EXTENSION_SET,
+)
+
+from webapp.parser.utils.shared_logic import (
+    safe_split,
+    safe_get,
+    safe_lower,
+    safe_strip,
+    safe_rsplit,
+    safe_sid,
+    safe_is_set,
+)
+
+from webapp.parser.web_pipeline import (
+    cancellation_manager,
+    process_urls_for_web,
+    cancel_processing,
+)
+
+# Local, non-DB monitoring log for DB usage/events
+DB_MONITOR_FILE = LOG_DIR / "db_monitor.jsonl"
+try:
+    DB_MONITOR_FILE.touch(exist_ok=True)
+except Exception:
     pass
 
 # 2. Flask App & SocketIO Initialization
@@ -1208,6 +1220,34 @@ def log_run_event(event: dict):
     except Exception:
         pass
 
+_SAFE_FILTER_PATTERN = re.compile(r"^[\w\s\-\.,&()/']+$", re.UNICODE)
+
+def _validate_filter_value(name: str, value: str | None, max_len: int = 120) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a string")
+    cleaned = safe_strip(value)
+    if not cleaned:
+        return None
+    if len(cleaned) > max_len:
+        raise ValueError(f"{name} too long")
+    lowered = cleaned.lower()
+    if any(token in lowered for token in (";", "--", "/*", "*/")):
+        raise ValueError(f"{name} contains invalid characters")
+    if not _SAFE_FILTER_PATTERN.fullmatch(cleaned):
+        raise ValueError(f"{name} contains invalid characters")
+    return cleaned
+
+def log_db_monitor_event(event: dict) -> None:
+    payload = dict(event or {})
+    payload.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+    try:
+        with open(DB_MONITOR_FILE, "ab") as f:
+            f.write(orjson.dumps(payload) + b"\n")
+    except Exception:
+        pass
+
 # Routes
 @app.route("/")
 def index() -> str:
@@ -1415,6 +1455,287 @@ def download_fs():
         raise NotFound()
     return send_file(fpath, as_attachment=True)
 
+
+@app.route("/view_csv")
+def view_csv():
+    import csv
+    import html as _html
+
+    # pagination and search parameters
+    page = max(1, int(request.args.get('page') or 1))
+    page_size = max(10, min(2000, int(request.args.get('page_size') or 200)))
+    q = (request.args.get('q') or '').strip().lower()
+    highlight = request.args.get('highlight')
+
+    root = (request.args.get("root") or "").lower().strip()
+    subpath = (request.args.get("path") or "").strip().replace("\\", "/")
+    name = (request.args.get("name") or "")
+    roots = {"input": INPUT_DIR, "output": OUTPUT_DIR, "uploads": UPLOADS_DIR}
+    base = roots.get(root)
+    if not base or not name:
+        raise NotFound()
+
+    abs_base = os.path.abspath(base)
+    want_dir = os.path.normpath(os.path.join(abs_base, subpath))
+    if not want_dir.startswith(abs_base):
+        raise NotFound()
+    fpath = os.path.normpath(os.path.join(want_dir, name))
+    if not fpath.startswith(abs_base) or not os.path.isfile(fpath):
+        raise NotFound()
+
+    def esc(s):
+        return _html.escape(str(s))
+
+    try:
+        header = None
+        rows_out = []
+        total_matches = 0
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+
+        with open(fpath, 'r', encoding='utf-8', errors='replace') as fh:
+            reader = csv.reader(fh)
+            header = next(reader, [])
+            idx = 0  # 0-based index for data rows
+            if q:
+                # search mode: collect matching rows, compute total_matches
+                for row in reader:
+                    idx += 1
+                    row_text = ' '.join([str(c).lower() for c in row])
+                    if q in row_text:
+                        if total_matches >= start_idx and len(rows_out) < page_size:
+                            rows_out.append(row)
+                        total_matches += 1
+                        # guard: if we've collected enough and beyond some cap, continue counting but avoid heavy work
+                        if total_matches > 20000 and len(rows_out) >= page_size:
+                            # keep counting but skip storing
+                            continue
+            else:
+                # pagination without search: skip until start_idx, then capture page_size rows
+                for row in reader:
+                    if idx >= start_idx and idx < end_idx:
+                        rows_out.append(row)
+                    idx += 1
+                    # early stop when collected enough
+                    if idx >= end_idx:
+                        # continue to count total rows roughly by fast file iteration
+                        break
+                # count remaining to compute total_rows
+                total_rows = idx
+                for _ in reader:
+                    total_rows += 1
+                total_matches = total_rows
+
+        # parse highlight as int if provided
+        try:
+            h = int(highlight) if highlight is not None else None
+        except Exception:
+            h = None
+
+        # build HTML with search and pagination controls
+        parts = ["<html><head><meta charset='utf-8'><title>CSV Viewer</title>",
+                 "<style>body{font-family:Inter,Segoe UI,Arial,monospace;margin:12px}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:6px;font-size:12px;text-align:left}tr.highlight{background:#fff3cd}thead th{position:sticky;top:0;background:#f9fafb;z-index:2}.pv{margin-bottom:8px}</style>",
+                 "</head><body>"]
+        parts.append(f"<h2>{esc(name)}</h2>")
+        parts.append(f"<div class=\"pv\"><a href=\"/download_fs?root={esc(root)}&path={esc(subpath)}&name={esc(name)}\" target=\"_blank\">Download CSV</a>")
+        parts.append(f" &nbsp; <form style=\"display:inline;margin-left:12px;\" method=\"get\" action=\"/view_csv\">\n<input type=\"hidden\" name=\"root\" value=\"{esc(root)}\">\n<input type=\"hidden\" name=\"path\" value=\"{esc(subpath)}\">\n<input type=\"hidden\" name=\"name\" value=\"{esc(name)}\">\nSearch: <input name=\"q\" value=\"{esc(q)}\"> <input type=\"submit\" value=\"Find\">\n</form>")
+        parts.append(f" &nbsp; <span style='margin-left:12px'>Filter page: <input id=\"inview-search\" placeholder=\"Filter visible rows...\" style=\"padding:4px 6px;border:1px solid #ccc;border-radius:4px\"></span></div>")
+
+        # pagination summary & controls
+        total = total_matches
+        total_pages = max(1, (total + page_size - 1) // page_size) if page_size > 0 else 1
+        parts.append(f"<div style=\"margin-bottom:8px\">Page {page} of {total_pages} ({total} rows)")
+        if page > 1:
+            prev_q = f"/view_csv?root={esc(root)}&path={esc(subpath)}&name={esc(name)}&page={page-1}&page_size={page_size}"
+            if q:
+                prev_q += f"&q={esc(q)}"
+            parts.append(f" <a href=\"{prev_q}\">Prev</a> ")
+        if page < total_pages:
+            next_q = f"/view_csv?root={esc(root)}&path={esc(subpath)}&name={esc(name)}&page={page+1}&page_size={page_size}"
+            if q:
+                next_q += f"&q={esc(q)}"
+            parts.append(f" <a href=\"{next_q}\">Next</a>")
+        parts.append("</div>")
+
+        parts.append("<table>")
+        if header:
+            parts.append("<thead><tr>")
+            for c in header:
+                parts.append(f"<th>{esc(c)}</th>")
+            parts.append("</tr></thead><tbody>")
+            # render rows_out; compute displayed index
+            base_index = (page - 1) * page_size
+            for offset, row in enumerate(rows_out):
+                idx_abs = base_index + offset + 1
+                is_high = False
+                if h is not None:
+                    if h == idx_abs or h == idx_abs - 1:
+                        is_high = True
+                trclass = ' class="highlight"' if is_high else ''
+                parts.append(f"<tr{trclass}>")
+                for cell in row:
+                    cell_text = str(cell)
+                    if q:
+                        # case-insensitive highlight, escape segments
+                        try:
+                            pattern = re.compile(re.escape(q), re.I)
+                            def _hl(m):
+                                return f"<mark>{esc(m.group(0))}</mark>"
+                            # escape full cell and then re-apply highlight on original pieces
+                            # safer approach: iterate matches and build escaped pieces
+                            out = ''
+                            last = 0
+                            for m in pattern.finditer(cell_text):
+                                out += esc(cell_text[last:m.start()])
+                                out += f"<mark>{esc(cell_text[m.start():m.end()])}</mark>"
+                                last = m.end()
+                            out += esc(cell_text[last:])
+                            parts.append(f"<td>{out}</td>")
+                            continue
+                        except Exception:
+                            pass
+                    parts.append(f"<td>{esc(cell_text)}</td>")
+                parts.append("</tr>")
+            parts.append("</tbody>")
+        else:
+            parts.append("<tr><td>(empty)</td></tr>")
+        parts.append("</table>")
+        # Client-side enhancements: smooth scroll to highlighted row and in-view search/filter
+        parts.append(r"""
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    try {
+        // Smooth-scroll to the highlighted row if present
+        var highlighted = document.querySelector('tr.highlight');
+        if (highlighted) {
+            try { highlighted.scrollIntoView({behavior:'smooth', block:'center'}); } catch(e) { highlighted.scrollIntoView(); }
+        }
+
+        // In-view filter (client-side) for visible rows on the current page
+        var filterInput = document.getElementById('inview-search');
+        if (filterInput) {
+            var tbody = document.querySelector('table tbody');
+            var rows = tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
+            var timer = null;
+            var applyFilter = function() {
+                var q = filterInput.value.trim().toLowerCase();
+                if (!q) {
+                    rows.forEach(function(r){ r.style.display = ''; });
+                    return;
+                }
+                rows.forEach(function(r){
+                    var text = r.textContent.toLowerCase();
+                    r.style.display = text.indexOf(q) !== -1 ? '' : 'none';
+                });
+            };
+            filterInput.addEventListener('input', function(){
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(applyFilter, 150);
+            });
+            // quick focus for convenience
+            filterInput.addEventListener('keydown', function(e){ if (e.key === 'Escape') { filterInput.value=''; applyFilter(); } });
+        }
+    } catch (err) {
+        console && console.debug && console.debug('viewer enhancements failed', err);
+    }
+});
+</script>
+</body></html>
+""")
+        return Response(''.join(parts), mimetype='text/html; charset=utf-8')
+    except Exception:
+        raise NotFound()
+
+
+def _build_or_load_csv_index(csv_path: str, max_rows: int = 200000) -> tuple[int, str] | None:
+    """
+    Build or load a simple CSV row-to-byte-offset index (data rows, excluding header).
+    Writes an index file next to the CSV with suffix `.idx` containing newline-separated offsets.
+    Returns (count, index_path) on success, or None on failure.
+    """
+    try:
+        idx_path = csv_path + '.idx'
+        if os.path.exists(idx_path):
+            # quick validation: try reading first line
+            try:
+                with open(idx_path, 'rb') as f:
+                    lines = f.readline()
+                # assume present
+                # count entries
+                with open(idx_path, 'rb') as f:
+                    cnt = sum(1 for _ in f)
+                return cnt, idx_path
+            except Exception:
+                # fallthrough to rebuild
+                pass
+
+        offsets = []
+        with open(csv_path, 'rb') as fh:
+            # read header line
+            header = fh.readline()
+            pos = fh.tell()
+            idx = 0
+            while True:
+                line = fh.readline()
+                if not line:
+                    break
+                offsets.append(pos)
+                idx += 1
+                if idx >= max_rows:
+                    break
+                pos = fh.tell()
+
+        # write index
+        with open(idx_path, 'wb') as f:
+            for off in offsets:
+                f.write(f"{off}\n".encode('ascii'))
+        return len(offsets), idx_path
+    except Exception:
+        return None
+
+
+@app.route('/csv_locate')
+def csv_locate():
+    """Return a viewer URL for a requested CSV row using an index (build on demand).
+    Params: root, path, name, row (1-based data row index), page_size (optional)
+    """
+    root = (request.args.get('root') or '').lower().strip()
+    subpath = (request.args.get('path') or '').strip().replace('\\', '/')
+    name = (request.args.get('name') or '')
+    row = request.args.get('row')
+    try:
+        row_i = int(row) if row is not None else None
+    except Exception:
+        row_i = None
+    page_size = max(10, min(2000, int(request.args.get('page_size') or 200)))
+    roots = {'input': INPUT_DIR, 'output': OUTPUT_DIR, 'uploads': UPLOADS_DIR}
+    base = roots.get(root)
+    if not base or not name or not row_i or row_i < 1:
+        return jsonify({'error': 'invalid parameters'}), 400
+
+    abs_base = os.path.abspath(base)
+    want_dir = os.path.normpath(os.path.join(abs_base, subpath))
+    if not want_dir.startswith(abs_base):
+        return jsonify({'error': 'path escape blocked'}), 400
+    fpath = os.path.normpath(os.path.join(want_dir, name))
+    if not fpath.startswith(abs_base) or not os.path.isfile(fpath):
+        return jsonify({'error': 'not found'}), 404
+
+    idx_info = _build_or_load_csv_index(fpath)
+    if idx_info:
+        count, idx_path = idx_info
+        # ensure requested row exists
+        if row_i > count:
+            # fallback: compute page using count
+            page = (row_i - 1) // page_size + 1
+        else:
+            page = (row_i - 1) // page_size + 1
+    else:
+        page = (row_i - 1) // page_size + 1
+
+    viewer = f"/view_csv?root={root}&path={subpath}&name={name}&page={page}&page_size={page_size}&highlight={row_i}"
+    return jsonify({'viewer': viewer, 'page': page})
+
 @app.route("/favicon.ico")
 def favicon():
     static_root = app.static_folder or "static"
@@ -1484,6 +1805,34 @@ def api_warehouse_election_results():
     state = request.args.get("state")
     county = request.args.get("county")
     contest = request.args.get("contest")
+    limit = request.args.get("limit", type=int)
+    limit = max(1, min(1000, limit or 500))
+    if os.environ.get("AUTO_INIT_DB", "true").lower() not in ("1", "true", "yes"):
+        log_db_monitor_event({
+            "type": "warehouse_query",
+            "status": "db_disabled",
+            "state": state,
+            "county": county,
+            "contest": contest,
+            "limit": limit,
+        })
+        return jsonify({
+            "items": [],
+            "count": 0,
+            "unavailable": True,
+            "error": "Database disabled (AUTO_INIT_DB=false).",
+        })
+    try:
+        state = _validate_filter_value("state", state, max_len=64)
+        county = _validate_filter_value("county", county, max_len=64)
+        contest = _validate_filter_value("contest", contest, max_len=140)
+    except ValueError as exc:
+        log_db_monitor_event({
+            "type": "warehouse_query",
+            "status": "invalid_filter",
+            "error": str(exc),
+        })
+        return jsonify({"error": str(exc)}), 400
     where = []
     params = []
     if state:
@@ -1496,6 +1845,8 @@ def api_warehouse_election_results():
         where.append("contest ILIKE %s")
         params.append(f"%{contest}%")
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    limit_sql = "LIMIT %s"
+    params.append(limit)
     ensure_db_tables()  # attempt upfront (idempotent)
     try:
         conn = psycopg2.connect(
@@ -1518,14 +1869,46 @@ def api_warehouse_election_results():
                 FROM warehouse_election_results
                 {where_sql}
                 ORDER BY 1 DESC
+                {limit_sql}
                 """,
                 params
             )
             cols = [d[0] for d in cur.description]
             rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        log_db_monitor_event({
+            "type": "warehouse_query",
+            "status": "ok",
+            "state": state,
+            "county": county,
+            "contest": contest,
+            "limit": limit,
+            "count": len(rows),
+        })
         return jsonify({"items": rows, "count": len(rows)})
     except Exception as e:
         msg = str(e)
+        if isinstance(e, (psycopg2.OperationalError, OperationalError)):
+            logger.warning({
+                "level": "WARNING",
+                "type": "db",
+                "message": f"DB unavailable: {e}",
+                "session_id": None
+            })
+            log_db_monitor_event({
+                "type": "warehouse_query",
+                "status": "db_unavailable",
+                "error": str(e),
+                "state": state,
+                "county": county,
+                "contest": contest,
+                "limit": limit,
+            })
+            return jsonify({
+                "items": [],
+                "count": 0,
+                "unavailable": True,
+                "error": f"Database unavailable: {e}",
+            })
         missing = ("does not exist" in msg.lower()) or isinstance(e, getattr(pg_errors, "UndefinedTable", tuple()))
         if missing:
             logger.warning({
@@ -1552,11 +1935,21 @@ def api_warehouse_election_results():
                         FROM warehouse_election_results
                         {where_sql}
                         ORDER BY 1 DESC
+                        {limit_sql}
                         """,
                         params
                     )
                     cols = [d[0] for d in cur.description]
                     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+                log_db_monitor_event({
+                    "type": "warehouse_query",
+                    "status": "ok_after_create",
+                    "state": state,
+                    "county": county,
+                    "contest": contest,
+                    "limit": limit,
+                    "count": len(rows),
+                })
                 return jsonify({"items": rows, "count": len(rows), "auto_created": True})
             except Exception as e2:
                 logger.error({
@@ -1565,12 +1958,30 @@ def api_warehouse_election_results():
                     "message": f"DB error after retry: {e2}",
                     "session_id": None
                 })
+                log_db_monitor_event({
+                    "type": "warehouse_query",
+                    "status": "error_after_create",
+                    "error": str(e2),
+                    "state": state,
+                    "county": county,
+                    "contest": contest,
+                    "limit": limit,
+                })
                 return jsonify({"error": f"Data API error after init attempt: {e2}"}), 500
         logger.error({
             "level": "ERROR",
             "type": "db",
             "message": f"DB error: {e}",
             "session_id": None
+        })
+        log_db_monitor_event({
+            "type": "warehouse_query",
+            "status": "error",
+            "error": str(e),
+            "state": state,
+            "county": county,
+            "contest": contest,
+            "limit": limit,
         })
         return jsonify({"error": f"Data API error: {e}"}), 500
 
@@ -2675,10 +3086,18 @@ if 'heartbeat_thread' not in globals() or not isinstance(globals().get('heartbea
         heartbeat_thread.start()
 
 # Proactively ensure tables at startup (non-fatal if fails)
-ensure_db_tables()
+try:
+    ensure_db_tables()
+except Exception:
+    # Best-effort only during import; avoid failing import when DB unavailable
+    pass
 
 # Clean up old session log files on startup (keep only active or recent)
-cleanup_old_log_files(LOG_DIR, session_manager.list_active_session_ids(), keep_days=7)
+try:
+    cleanup_old_log_files(LOG_DIR, session_manager.list_active_session_ids(), keep_days=7)
+except Exception:
+    # LOG_DIR or session_manager may not be initialized in some import contexts
+    pass
         
 # 7. Main Entrypoint
 if __name__ == "__main__":

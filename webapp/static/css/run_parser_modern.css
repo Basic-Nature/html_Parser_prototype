@@ -460,6 +460,61 @@ hr {
   border: 1px solid var(--border-color);
 }
 
+/* Flagged modal styles */
+.flagged-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.45);
+  z-index: calc(var(--z-modal) + 10);
+}
+.flagged-modal-content {
+  width: min(1100px, 95%);
+  max-height: 85vh;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.flagged-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+.flagged-controls { display: flex; gap: 8px; align-items: center; }
+.flagged-modal-body { overflow: auto; padding: 12px; }
+.flagged-table { width: 100%; border-collapse: collapse; }
+.flagged-table th, .flagged-table td { padding: 8px; border-bottom: 1px solid var(--border-color); text-align: left; vertical-align: top; }
+.flagged-table thead th { position: sticky; top: 0; background: var(--bg-secondary); z-index: 2; }
+.flagged-table pre { margin: 0; font-family: inherit; }
+
+@media (max-width: 640px) {
+  .flagged-modal-content { width: 98%; padding: 0; }
+  .flagged-controls { flex-wrap: wrap; }
+  .flagged-table th, .flagged-table td { font-size: 12px; }
+}
+
+/* Mobile compatibility tweaks */
+@media (max-width: 768px) {
+  .dashboard-grid { grid-template-columns: 1fr !important; padding: 0 0.75rem 48px 0.75rem; }
+  .sidebar-right { display: none !important; }
+  .sidebar-toggle { display: block !important; }
+  body { overflow: auto; height: auto; }
+  /* Ensure modals fit in viewport */
+  .flagged-modal-content { max-height: 92vh; }
+}
+
+/* Ensure sidebars/backdrop stack properly on mobile */
+.sidebar-backdrop, .mobile-sidebar-overlay { z-index: 60; }
+.sidebar-toggle { z-index: 70; }
+
 .table-preview th {
   background: var(--bg-tertiary);
   font-weight: 600;
@@ -476,7 +531,7 @@ hr {
 
 /* ============================================
    Folder Browser Styles
-   ============================================ */
+============================================ */
 
 .folder-breadcrumb {
   display: flex;
@@ -1452,7 +1507,7 @@ code {
   position: fixed;
   bottom: 0;
   left: 0;
-  right: 0;
+  right: calc(var(--sidebar-right-max) + 40px); /* No change */
   background: var(--bg-secondary);
   border-top: 1px solid var(--border-color);
   z-index: 50;
