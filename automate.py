@@ -133,12 +133,42 @@ def validate_webapp_startup():
         return False
 
 
+def run_self_check():
+    """Run the headless CI self-check script and return True on success."""
+    logger.info("[AUTOMATE] Running headless self-check (tools/ci_headless_check.py)...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "tools/ci_headless_check.py"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=180
+        )
+        logger.debug(f"[AUTOMATE] Self-check stdout: {result.stdout}")
+        logger.debug(f"[AUTOMATE] Self-check stderr: {result.stderr}")
+        if result.returncode == 0:
+            logger.info("[AUTOMATE] Self-check passed.")
+            return True
+        else:
+            logger.error(f"[AUTOMATE] Self-check failed with code {result.returncode}")
+            print(result.stdout)
+            print(result.stderr)
+            return False
+    except subprocess.TimeoutExpired:
+        logger.error("[AUTOMATE] Self-check timed out.")
+        return False
+    except Exception as e:
+        logger.error(f"[AUTOMATE] Self-check failed: {e}")
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run all automated scripts for Smart Elections Parser.")
     parser.add_argument("--skip-web", action="store_true", help="Skip web asset checks")
     parser.add_argument("--skip-health", action="store_true", help="Skip health bots")
     parser.add_argument("--skip-tests", action="store_true", help="Skip automated tests")
     parser.add_argument("--skip-webapp-check", action="store_true", help="Skip webapp startup validation")
+    parser.add_argument("--self-check", action="store_true", help="Run headless self-check (tools/ci_headless_check.py) after other checks")
 
     args = parser.parse_args()
 
@@ -174,6 +204,12 @@ def main():
         logger.info("[AUTOMATE] Skipping automated tests.")
         results["tests"] = None
 
+    # Optional headless self-check
+    if args.self_check:
+        results['self_check'] = run_self_check()
+    else:
+        results['self_check'] = None
+
     # Validate webapp unless skipped
     if not args.skip_webapp_check:
         results["webapp_validation"] = validate_webapp_startup()
@@ -192,6 +228,11 @@ def main():
 
     # Exit with failure if any critical task failed
     critical_failures = [k for k, v in results.items() if v is False and k in ["pipeline_audit", "web_checks"]]
+    # Optional self-check failure handling: if --self-check was requested, treat it as critical
+    if args.self_check:
+        sc = results.get('self_check')
+        if sc is False:
+            critical_failures.append('self_check')
     if critical_failures:
         print(f"[AUTOMATE] Critical failures in: {', '.join(critical_failures)}")
         logger.error(f"[AUTOMATE] Critical failures in: {', '.join(critical_failures)}")
