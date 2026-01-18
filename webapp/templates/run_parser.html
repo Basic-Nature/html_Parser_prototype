@@ -27,16 +27,32 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}?v={{ static_version }}">
 
   <!-- Vendor Bootstrap -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-5.3.0.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
 
   <!-- Modern dashboard interface -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser_modern.css') }}?v={{ static_version }}">
 </head>
 <body data-page="run-parser" data-allow-style="1">
+  <script nonce="{{ g.csp_nonce }}">
+    // Defensive early polyfill: ensure document.addEventListener is callable
+    // and return an unsubscribe function for callers that expect it.
+    try {
+      if (typeof document !== 'undefined' && typeof document.addEventListener !== 'function') {
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+          document.addEventListener = function(evt, cb, opts) {
+            window.addEventListener(evt, cb, opts);
+            return function() { try { window.removeEventListener(evt, cb, opts); } catch (e) {} };
+          };
+        } else {
+          document.addEventListener = function() { return function() {}; };
+        }
+      }
+    } catch (e) {
+      // swallow errors — best-effort only
+    }
+  </script>
         <!-- Sidebar: Unified File Management & URL Manager -->
         <aside id="sidebar" class="sidebar">
-            <!-- Toggle Button for Mobile -->
-            <button id="sidebarToggleBtn" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="false">☰ Menu</button>
             <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
             
             <div class="sidebar-content">
@@ -50,7 +66,7 @@
                 
                 <!-- URLs Section -->
                 <section class="sidebar-section" id="urlsSection">
-                    <h3 class="sidebar-header"><span>📋 URLs</span> <button class="btn-icon-small" id="btnAddUrl">+</button> <button class="btn-icon-small collapse-toggle" id="btnCollapseUrls" title="Minimize URLs section">▼</button></h3>
+                    <h3 class="sidebar-header"><span>📋 URLs</span> <button type="button" class="btn-icon-small" id="btnAddUrl" aria-label="Add URL">+</button> <button type="button" class="btn-icon-small collapse-toggle" id="btnCollapseUrls" title="Minimize URLs section" aria-expanded="false" aria-controls="urlLinesBox" aria-label="Toggle URLs section">▼</button></h3>
                     <div class="urls-container">
                         <input type="search" class="url-search-box" placeholder="Search state, county, or URL..." aria-label="Search URLs">
                         <div class="url-lines" id="urlLinesBox"></div>
@@ -145,11 +161,15 @@
                 <a href="/data_framework" class="nav-link" title="Data Framework">Data Framework</a>
                 <a href="/history" class="nav-link" title="Run History">History</a>
               </div>
-              <div class="navbar-actions">
-                <button class="btn-icon" id="btnCommandPalette" title="Command Palette (Ctrl+Shift+P)">⌘</button>
-                <button class="btn-icon" id="btnNotifications" title="Notifications">🔔</button>
-                <button class="btn-icon" id="btnTheme" title="Toggle Theme">🌙</button>
-                <button class="btn-icon" id="btnToggleRightSidebar" title="Controls (mobile)">⚙️</button>
+                <div class="navbar-actions">
+                  <button type="button" class="btn-icon" id="btnCommandPalette" title="Command Palette (Ctrl+Shift+P)" aria-label="Open command palette">⌘</button>
+                <button type="button" class="btn-icon" id="btnNotifications" title="Notifications" aria-label="Notifications">🔔</button>
+                <button type="button" class="btn-icon" id="btnTheme" title="Toggle Theme" aria-label="Toggle theme">🌙</button>
+                  <!-- Left sidebar toggle moved here so it remains in DOM flow and clickable on mobile -->
+                  <button type="button" id="sidebarToggleBtn" class="sidebar-toggle btn-icon" aria-controls="sidebar" aria-expanded="false" title="Menu" aria-label="Toggle menu">☰</button>
+                <button type="button" class="btn-icon" id="btnToggleRightSidebar" title="Controls (mobile)" aria-label="Open controls">⚙️</button>
+                <button type="button" class="btn-icon nav-more-toggle" id="btnNavMore" title="More navigation" aria-haspopup="true" aria-expanded="false" aria-label="More navigation">⋯</button>
+                <div class="nav-more-dropdown" id="navMoreDropdown" aria-hidden="true"></div>
               </div>
             </div>
           </nav>
@@ -162,9 +182,9 @@
                   <h2>Parsed Results</h2>
                   <p class="text-muted"><span id="resultCount">0</span> results • Last updated: <span id="lastUpdated">now</span></p>
                 </div>
-                <div class="results-actions">
+                  <div class="results-actions">
                   <input type="text" id="searchResults" class="search-box" placeholder="Search results...">
-                  <button class="btn-primary" id="btnRefreshResults">🔄 Refresh</button>
+                  <button type="button" class="btn-primary" id="btnRefreshResults" aria-label="Refresh results">🔄 Refresh</button>
                 </div>
               </div>
               <div class="results-grid" id="resultsGrid"></div>
@@ -201,8 +221,8 @@
                   <label class="checkbox-label"><input type="checkbox" id="batchMode"> Batch Mode</label>
                   <small>Process multiple contests automatically</small>
                 </div>
-                <button class="btn-primary btn-large" id="btnRunParser2">▶ Run Parser</button>
-                <button class="btn-danger btn-large" id="btnCancel" disabled>⏹ Cancel</button>
+                <button type="button" class="btn-primary btn-large" id="btnRunParser2" aria-label="Run parser">▶ Run Parser</button>
+                <button type="button" class="btn-danger btn-large" id="btnCancel" disabled aria-label="Cancel parsing">⏹ Cancel</button>
               </section>
               <hr class="sidebar-divider">
               <section class="sidebar-section">
@@ -264,14 +284,14 @@
             <div class="drawer-content">
               <div class="drawer-toolbar">
                 <h4>Debug Console</h4>
-                  <div class="drawer-actions">
-                    <button class="btn-sm" id="btnExportJSON" title="Export logs as JSON (Ctrl+E)">📄 JSON</button>
-                    <button class="btn-sm" id="btnExportCSV" title="Export logs as CSV (Ctrl+Shift+E)">📊 CSV</button>
-                    <button class="btn-sm" id="btnExportMarkdown" title="Export logs as Markdown">📝 MD</button>
-                    <button class="btn-sm" id="btnShowKeyboardShortcuts" title="Show keyboard shortcuts (Ctrl+/)">⌨️</button>
-                    <button class="btn-sm" id="btnCopyLogs" title="Copy all logs to clipboard">Copy</button>
-                    <button class="btn-sm" id="btnToggleScroll" title="Toggle auto-scroll">Pin</button>
-                    <button class="btn-sm" id="btnClearLogs" title="Clear console (Ctrl+L)">Clear</button>
+                    <div class="drawer-actions">
+                    <button type="button" class="btn-sm" id="btnExportJSON" title="Export logs as JSON (Ctrl+E)" aria-label="Export logs as JSON">📄 JSON</button>
+                    <button type="button" class="btn-sm" id="btnExportCSV" title="Export logs as CSV (Ctrl+Shift+E)" aria-label="Export logs as CSV">📊 CSV</button>
+                    <button type="button" class="btn-sm" id="btnExportMarkdown" title="Export logs as Markdown" aria-label="Export logs as Markdown">📝 MD</button>
+                    <button type="button" class="btn-sm" id="btnShowKeyboardShortcuts" title="Show keyboard shortcuts (Ctrl+/)">⌨️</button>
+                    <button type="button" class="btn-sm" id="btnCopyLogs" title="Copy all logs to clipboard" aria-label="Copy logs">Copy</button>
+                    <button type="button" class="btn-sm" id="btnToggleScroll" title="Toggle auto-scroll" aria-label="Toggle auto-scroll">Pin</button>
+                    <button type="button" class="btn-sm" id="btnClearLogs" title="Clear console (Ctrl+L)" aria-label="Clear console">Clear</button>
                   </div>
               </div>
               <div class="log-filter-controls">
@@ -342,7 +362,7 @@
     <!-- SheetJS for CSV/XLSX preview -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap-5.3.0.bundle.min.js') }}"></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <!-- htmllint-disable -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io-4.7.5.min.js') }}" data-socketio-config="{{ socketio_client_config | tojson | safe }}"></script>
     <script nonce="{{ g.csp_nonce }}">

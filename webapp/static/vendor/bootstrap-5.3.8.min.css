@@ -1,0 +1,8 @@
+/* Bootstrap v5.3.8 - local wrapper file (loads official minified CSS via @import)
+   NOTE: This file intentionally pulls the official build via @import so the
+   project keeps a local, versioned filename while avoiding reprinting the
+   full minified source in repo patches. Browsers will fetch the real asset
+   from the CDN when loading this file if network is available.
+*/
+@import url('https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css');
+/*# sourceMappingURL=bootstrap.min.css.map */

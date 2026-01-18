@@ -5,7 +5,7 @@
     <title>Smart Elections Parser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- Bootstrap first so main.css can override -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-5.3.0.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
@@ -104,7 +104,7 @@
     <div id="popup" class="popup-hidden"></div>
 
     <!-- Bootstrap bundle for tooltips/popovers -->
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap-5.3.0.bundle.min.js') }}"></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/main.js') }}" defer></script>
 </body>
 </html>

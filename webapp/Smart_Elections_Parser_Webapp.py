@@ -1017,6 +1017,9 @@ def build_csp(relaxed: bool, nonce: str) -> str:
         if allow_jsdelivr:
             scripts_extra.append("https://cdn.jsdelivr.net")
             styles_elem_extra.append("https://cdn.jsdelivr.net")
+            # Allow jsDelivr for connect-src as well so browser may fetch source-maps
+            # (source-map requests are benign but can be blocked by strict CSP).
+            connect_extra.append("https://cdn.jsdelivr.net")
         if allow_socketio_cdn:
             scripts_extra.append("https://cdn.socket.io")
             connect_extra.append("https://cdn.socket.io")
@@ -1799,6 +1802,17 @@ def favicon():
 @app.route("/robots.txt")
 def robots_txt():
     return "User-agent: *\nDisallow: /", 200, {"Content-Type": "text/plain"}
+
+
+# Serve a small set of well-known app-specific files that some browsers/devtools request
+@app.route('/.well-known/appspecific/<path:filename>')
+def serve_well_known_appspecific(filename):
+    try:
+        # Serve from the static folder under .well-known/appspecific if present
+        well_known_dir = os.path.join(app.static_folder or 'static', '.well-known', 'appspecific')
+        return send_from_directory(well_known_dir, filename, as_attachment=False)
+    except Exception:
+        raise NotFound()
 
 @app.route("/api/warehouse_election_results", methods=["GET"])
 def api_warehouse_election_results():

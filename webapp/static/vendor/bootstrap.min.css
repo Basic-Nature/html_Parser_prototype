@@ -1,0 +1,6 @@
+/* Wrapper: import existing local versioned bootstrap CSS
+   This keeps a stable, non-versioned filename while we prepare vendor upgrades.
+   It simply imports the local versioned bundle present in this folder.
+*/
+@import url('bootstrap-5.3.8.min.css');
+/*# sourceMappingURL=bootstrap.min.css.map */

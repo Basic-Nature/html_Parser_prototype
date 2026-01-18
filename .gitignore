@@ -57,6 +57,7 @@ htmlcov/
 .ruff_cache/
 pytestdebug.log
 hint-report/ 
+tools/debug_headless_output/
 
 # ----------------------------
 # Logs & transient debug
@@ -83,7 +84,8 @@ fine_tuned_table_headers_tmp/
 fine_tuned_spacy_ner_tmp/
 .lock
 cache/context_cache.json
-
+webapp/parser/Context_Integration/Context_Library/log/
+webapp/parser/Context_Integration/Context_Library/cache/
 # ----------------------------
 # Browser drivers & automation
 # ----------------------------
