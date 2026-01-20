@@ -1230,7 +1230,7 @@ footer#sessionFooter .footer-inner { width: 100%; max-width: var(--content-max-w
   overflow: visible;
   min-height: 100vh;
   min-width: 0;
-  max-width: calc(var(--content-max-width) + 2 * var(--content-padding));
+  max-width: var(--content-max-width);
   margin: 0 auto;
   padding: 0 var(--content-padding);
 }
