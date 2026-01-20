@@ -1245,7 +1245,7 @@ footer#sessionFooter .footer-inner { width: 100%; max-width: var(--content-max-w
   gap: 1rem;
   position: relative;
   max-width: 100%;
-  padding: 0 var(--content-padding) 48px var(--content-padding);
+  padding: 0 var(--content-padding) 48px;
 }
 
 /* ============================================
