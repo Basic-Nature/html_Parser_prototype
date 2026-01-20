@@ -1,6 +1,6 @@
 from playwright.sync_api import sync_playwright
 
-URL='http://127.0.0.1:5000/ballot-lens'
+URL='http://127.0.0.1:5000/ballot_lens'
 with sync_playwright() as p:
     b=p.chromium.launch(headless=True)
     c=b.new_context(viewport={"width":360,"height":800})

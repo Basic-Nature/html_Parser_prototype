@@ -1,4 +1,4 @@
-<!-- filepath: webapp/templates/ballot-lens.html -->
+<!-- filepath: webapp/templates/ballot_lens.html -->
 <!DOCTYPE html>
 <html lang="en" data-page="run-parser">
 <head>
@@ -30,7 +30,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
 
   <!-- Modern dashboard interface -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/ballot-lens_modern.css') }}?v={{ static_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/ballot_lens_modern.css') }}?v={{ static_version }}">
 </head>
 <body data-page="run-parser" data-allow-style="1">
   <script nonce="{{ g.csp_nonce }}">
@@ -156,7 +156,7 @@
               <h1 class="navbar-title">🗳️ Ballot Lens</h1>
               <div class="navbar-links">
                 <a href="/" class="nav-link" title="Home">Home</a>
-                <a href="/ballot-lens" class="nav-link active" title="BallotLens">Ballot Lens</a>
+                <a href="/ballot_lens" class="nav-link active" title="BallotLens">Ballot Lens</a>
                 <a href="/quality_dashboard" class="nav-link" title="Quality Dashboard">Quality</a>
                 <a href="/azure_health" class="nav-link" title="Health & Monitoring">Health</a>
                 <a href="/data_framework" class="nav-link" title="Data Framework">Data Framework</a>
@@ -411,7 +411,7 @@
     <!-- htmllint-enable -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/nav_guard.js') }}?v={{ static_version }}" defer></script>
     <!-- Modern dashboard interface (includes all features) -->
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot-lens_modern.js') }}?v={{ static_version }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot_lens_modern.js') }}?v={{ static_version }}" defer></script>
 
     <footer id="sessionFooter" class="minimized">
         <div class="footer-preview" id="footerPreview">

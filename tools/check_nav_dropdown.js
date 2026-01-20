@@ -11,7 +11,7 @@ const puppeteer = require('puppeteer');
   page.setDefaultNavigationTimeout(60000);
 
   try {
-    const url = 'http://127.0.0.1:5000/ballot-lens';
+    const url = 'http://127.0.0.1:5000/ballot_lens';
     console.log('Navigating to', url);
     await page.goto(url, { waitUntil: 'networkidle2' });
 

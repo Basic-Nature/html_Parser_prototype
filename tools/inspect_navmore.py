@@ -1,7 +1,7 @@
 from playwright.sync_api import sync_playwright
 import json
 
-URL = 'http://127.0.0.1:5000/ballot-lens'
+URL = 'http://127.0.0.1:5000/ballot_lens'
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)

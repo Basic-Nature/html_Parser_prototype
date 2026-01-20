@@ -3053,7 +3053,7 @@ $$('#btnRunParser, #btnRunParser2').forEach(btn => {
       payload.batch_mode = true;
     }
     
-    socket.emit('ballot-lens', payload);
+    socket.emit('ballot_lens', payload);
     (/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.setDisabled($('#btnRunParser2'), true);
     (/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.setDisabled($('#btnCancel'), false);
     
@@ -4576,14 +4576,7 @@ const ManualUploadManager = (() => {
          * @property {number|null|undefined} [modified]
          */
 
-        /**
-         * Normalized upload object used in UI lists.
-         * @typedef {Object} NormalizedUpload
-         * @property {string} relPath - Normalized relative path (forward-slash separated)
-         * @property {string} name - File name (last segment)
-         * @property {number} size - File size in bytes
-         * @property {number} modified - Unix ms timestamp of last modification
-         */
+        /* NormalizedUpload typedef defined earlier; reuse canonical typedef. */
 
         /** Ensure inventory is treated as NormalizedUpload[] for tooling/type hints */
         /** @type {NormalizedUpload[]} */
@@ -4615,13 +4608,7 @@ const ManualUploadManager = (() => {
     // Clear and rebuild options
     selectEl.innerHTML = '<option value="">— Choose a file —</option>';
     
-    /**
-     * @typedef {Object} NormalizedUpload
-     * @property {string} relPath - Normalized relative path (forward-slash separated)
-     * @property {string} name - File name (last segment)
-     * @property {number} size - File size in bytes
-     * @property {number} modified - Unix ms timestamp of last modification
-     */
+    /* NormalizedUpload typedef defined earlier; reuse canonical typedef. */
 
     inventory.forEach((/** @type {NormalizedUpload} */ file, /** @type {number} */ idx) => {
       /** @type {HTMLOptionElement} */
@@ -4653,13 +4640,7 @@ const ManualUploadManager = (() => {
     }
   }
   
-  /**
-   * @typedef {Object} NormalizedUpload
-   * @property {string} relPath - Normalized relative path (forward-slash separated)
-   * @property {string} name - File name (last segment)
-   * @property {number} [size] - File size in bytes
-   * @property {number} [modified] - Unix ms timestamp of last modification
-   */
+  /* NormalizedUpload typedef defined earlier; reuse canonical typedef. */
   /**
    * @typedef {Object} ApplySelectionOptions
    * @property {boolean} [updateSource]
@@ -4917,6 +4898,15 @@ function initSessionActions() {
     });
   }
 }
+
+/**
+ * Canonical typedef for NormalizedUpload used by the manual uploads UI.
+ * @typedef {Object} NormalizedUpload
+ * @property {string} relPath - Normalized relative path (forward-slash separated)
+ * @property {string} name - File name (last segment)
+ * @property {number} [size] - File size in bytes
+ * @property {number} [modified] - Unix ms timestamp of last modification
+ */
 
 // ============================================
 // Advanced Features: Keyboard Shortcuts

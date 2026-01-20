@@ -47,7 +47,7 @@ def main():
     # ==========================================
     # Step 1: Flask Route Verification
     # ==========================================
-    print(f"{YELLOW}STEP 1: Flask Route (/ballot-lens_modern){RESET}")
+    print(f"{YELLOW}STEP 1: Flask Route (/ballot_lens_modern){RESET}")
     
     flask_file = Path("webapp/Smart_Elections_Parser_Webapp.py")
     
@@ -61,28 +61,28 @@ def main():
         # Check for route decorator
         found, _ = check_pattern_in_file(
             flask_file,
-            r'@app\.route\("/ballot-lens_modern"',
-            "Flask route decorator @app.route(/ballot-lens_modern)"
+            r'@app\.route\("/ballot_lens_modern"',
+            "Flask route decorator @app.route(/ballot_lens_modern)"
         )
-        print_check(found, "Route decorator present", f"Pattern: @app.route('/ballot-lens_modern')")
+        print_check(found, "Route decorator present", f"Pattern: @app.route('/ballot_lens_modern')")
         checks.append(found)
         
         # Check for function definition
         found, _ = check_pattern_in_file(
             flask_file,
-            r'def ballot-lens_modern\(\):',
-            "Function ballot-lens_modern() defined"
+            r'def ballot_lens_modern\(\):',
+            "Function ballot_lens_modern() defined"
         )
-        print_check(found, "Function definition present", "def ballot-lens_modern():")
+        print_check(found, "Function definition present", "def ballot_lens_modern():")
         checks.append(found)
         
         # Check for render_template call
         found, _ = check_pattern_in_file(
             flask_file,
-            r'render_template\(\s*"ballot-lens_modern\.html"',
+            r'render_template\(\s*"ballot_lens_modern\.html"',
             "Template rendering"
         )
-        print_check(found, "Template rendering present", 'render_template("ballot-lens_modern.html")')
+        print_check(found, "Template rendering present", 'render_template("ballot_lens_modern.html")')
         checks.append(found)
         
         # Check for error handling
@@ -120,10 +120,10 @@ def main():
         # Check for URL helper
         found, _ = check_pattern_in_file(
             html_file,
-            r'url_for\([\'"]ballot-lens_modern[\'"]\)',
+            r'url_for\([\'"]ballot_lens_modern[\'"]\)',
             "URL helper function"
         )
-        print_check(found, "URL helper present", "{{ url_for('ballot-lens_modern') }}")
+        print_check(found, "URL helper present", "{{ url_for('ballot_lens_modern') }}")
         checks.append(found)
         
         # Check for description
@@ -138,9 +138,9 @@ def main():
     # ==========================================
     # Step 3: JavaScript Data Integration
     # ==========================================
-    print(f"\n{YELLOW}STEP 3: Real Data Integration (ballot-lens_modern.js){RESET}")
+    print(f"\n{YELLOW}STEP 3: Real Data Integration (ballot_lens_modern.js){RESET}")
     
-    js_file = Path("webapp/static/js/ballot-lens_modern.js")
+    js_file = Path("webapp/static/js/ballot_lens_modern.js")
     
     if not check_file_exists(js_file):
         print_check(False, "JavaScript file exists", f"Not found: {js_file}")
@@ -199,13 +199,13 @@ def main():
     # ==========================================
     print(f"\n{YELLOW}Supporting Files{RESET}")
     
-    modern_html = Path("webapp/templates/ballot-lens_modern.html")
-    modern_css = Path("webapp/static/css/ballot-lens_modern.css")
+    modern_html = Path("webapp/templates/ballot_lens_modern.html")
+    modern_css = Path("webapp/static/css/ballot_lens_modern.css")
     
-    print_check(check_file_exists(modern_html), "ballot-lens_modern.html exists", str(modern_html))
+    print_check(check_file_exists(modern_html), "ballot_lens_modern.html exists", str(modern_html))
     checks.append(check_file_exists(modern_html))
     
-    print_check(check_file_exists(modern_css), "ballot-lens_modern.css exists", str(modern_css))
+    print_check(check_file_exists(modern_css), "ballot_lens_modern.css exists", str(modern_css))
     checks.append(check_file_exists(modern_css))
     
     # ==========================================
@@ -228,7 +228,7 @@ def main():
         print(f"{GREEN}✓ All checks passed! Implementation is complete.{RESET}\n")
         print(f"Next steps:")
         print(f"  1. Start Flask app: python -m flask run")
-        print(f"  2. Visit http://localhost:5000/ballot-lens_modern")
+        print(f"  2. Visit http://localhost:5000/ballot_lens_modern")
         print(f"  3. Follow MODERN_UI_ROLLOUT_TESTING.md for full test suite\n")
         return 0
     else:

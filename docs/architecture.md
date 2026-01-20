@@ -674,7 +674,7 @@ Notes:
 - `webapp/static/css/data_framework.css` (loc: 654)
 - `webapp/static/css/history.css` (loc: 314)
 - `webapp/static/css/main.css` (loc: 608)
-- `webapp/static/css/ballot-lens_modern.css` (loc: 1722)
+- `webapp/static/css/ballot_lens_modern.css` (loc: 1722)
 - `webapp/static/favicon.ico` (loc: 0)
 - `webapp/static/icons/apple-touch-icon.png` (loc: 596)
 - `webapp/static/icons/favicon-32.png` (loc: 66)
@@ -691,14 +691,14 @@ Notes:
 - `webapp/static/js/history.js` (loc: 277)
 - `webapp/static/js/main.js` (loc: 701)
 - `webapp/static/js/nav_guard.js` (loc: 84)
-- `webapp/static/js/ballot-lens_modern.js` (loc: 2469)
+- `webapp/static/js/ballot_lens_modern.js` (loc: 2469)
 - `webapp/static/vendor/bootstrap-5.3.8.bundle.min.js` (loc: 7)
 - `webapp/static/vendor/bootstrap-5.3.8.min.css` (loc: 6)
 - `webapp/static/vendor/socket.io-4.7.5.min.js` (loc: 7)
 - `webapp/templates/data_framework.html` (loc: 117)
 - `webapp/templates/history.html` (loc: 254)
 - `webapp/templates/index.html` (loc: 97)
-- `webapp/templates/ballot-lens.html` (loc: 305)
+- `webapp/templates/ballot_lens.html` (loc: 305)
 
 ### Tests
 

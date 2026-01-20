@@ -7,7 +7,7 @@
 */
 document.addEventListener('DOMContentLoaded', () => {
   const DANGER = /^(javascript|data|vbscript|file|ws|wss|mailto):/i;
-  const ALLOW_PREFIXES = ['/', '/history', '/ballot-lens', '/data_framework', '/api/'];
+  const ALLOW_PREFIXES = ['/', '/history', '/ballot_lens', '/data_framework', '/api/'];
   const MAX_LEN = 512;
 
   const strip = s => s.replace(/[\u0000-\u001F\u007F]+/g,'').trim();

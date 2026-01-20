@@ -7,11 +7,11 @@ title: "TODO/FIXME Index"
 
 The following items were generated from a Lighthouse run (`tools/lh-report.json`) and are tracked here as concise, actionable todos. Each item is tagged with a priority (HIGH / MEDIUM / LOW).
 
-- TODO (HIGH): Defer non-critical scripts — add `defer`/`async` or lazy-load non-essential scripts in `webapp/templates/ballot-lens.html` to improve FCP/LCP.
-- TODO (HIGH): Eliminate render-blocking CSS — inline critical CSS and load remaining CSS with `rel="preload" as="style" onload="this.rel='stylesheet'"` for `webapp/static/css/ballot-lens_modern.css`.
+- TODO (HIGH): Defer non-critical scripts — add `defer`/`async` or lazy-load non-essential scripts in `webapp/templates/ballot_lens.html` to improve FCP/LCP.
+- TODO (HIGH): Eliminate render-blocking CSS — inline critical CSS and load remaining CSS with `rel="preload" as="style" onload="this.rel='stylesheet'"` for `webapp/static/css/ballot_lens_modern.css`.
 - TODO (HIGH): Optimize LCP (images & fonts) — compress/resize LCP images, add explicit `width`/`height`, and use `font-display: swap` for web fonts.
-- TODO (HIGH): Fix accessibility color-contrast failures — update color tokens in `webapp/static/css/ballot-lens_modern.css` (nav links, buttons, `.drawer-hint`).
-- TODO (MEDIUM): Add missing accessible names/labels — ensure `filterConfidence`, `filterState`, `filterLevel`, `filterPresetSelect`, and `urlSearchBox` have an associated `<label>` or `aria-label` in `webapp/templates/ballot-lens.html`.
+- TODO (HIGH): Fix accessibility color-contrast failures — update color tokens in `webapp/static/css/ballot_lens_modern.css` (nav links, buttons, `.drawer-hint`).
+- TODO (MEDIUM): Add missing accessible names/labels — ensure `filterConfidence`, `filterState`, `filterLevel`, `filterPresetSelect`, and `urlSearchBox` have an associated `<label>` or `aria-label` in `webapp/templates/ballot_lens.html`.
 - TODO (MEDIUM): Ensure all `<button>` elements include a `type` attribute (`type="button"` or `type="submit"`) across templates and JS.
 - TODO (MEDIUM): Reduce unused JS/CSS — audit and remove unused vendor code; consider PurgeCSS and code-splitting for `webapp/static/` bundles.
 - TODO (MEDIUM): Serve compressed static assets and set long cache headers — enable gzip/br and add cache-busting to static file URLs.

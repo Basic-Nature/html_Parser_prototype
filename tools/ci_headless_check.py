@@ -19,7 +19,7 @@ class CheckFail(Exception):
 OUT_DIR = os.path.join("tools", "debug_headless_output")
 os.makedirs(OUT_DIR, exist_ok=True)
 
-URL = os.environ.get("PARSER_URL", "http://127.0.0.1:5000/ballot-lens")
+URL = os.environ.get("PARSER_URL", "http://127.0.0.1:5000/ballot_lens")
 
 def try_selector(page, sel):
     try:

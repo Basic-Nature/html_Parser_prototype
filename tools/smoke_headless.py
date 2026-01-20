@@ -2,7 +2,7 @@ from playwright.sync_api import sync_playwright
 import sys, json, time
 
 BASE = 'http://127.0.0.1:5000'
-URL = BASE + '/ballot-lens'
+URL = BASE + '/ballot_lens'
 
 def first_selector(page, selectors):
     for s in selectors:

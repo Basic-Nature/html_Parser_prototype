@@ -29,7 +29,7 @@ Generated from `tools/lh-report.json`, `tools/webhint-report.json`, and `tools/a
 
 6. Inline critical CSS & preload fonts
    - Impact: Medium (improves LCP & render stability).
-   - Suggested fix: Inline critical styles for /ballot-lens, add `<link rel="preload" as="font">` and `font-display: swap`.
+   - Suggested fix: Inline critical styles for /ballot_lens, add `<link rel="preload" as="font">` and `font-display: swap`.
    - Rough effort: Medium (1–2 days).
 
 7. Add SRI + crossorigin and tighten CDN caching

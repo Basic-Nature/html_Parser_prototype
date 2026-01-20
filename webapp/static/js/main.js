@@ -194,7 +194,7 @@
     function apply(el) {
       clear(el);
       const href = el.getAttribute('href') || '';
-      if (href.includes('ballot-lens')) el.classList.add('is-hovered-run');
+      if (href.includes('ballot_lens')) el.classList.add('is-hovered-run');
       else if (href.includes('history')) el.classList.add('is-hovered-history');
       else if (href.includes('data_framework')) el.classList.add('is-hovered-data');
       else el.classList.add('is-hovered-none');

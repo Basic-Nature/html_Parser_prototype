@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const INTERNAL_ROUTE_PREFIXES = Object.freeze([
     '/',               // root
     '/history',
-    '/ballot-lens',
+    '/ballot_lens',
     '/data_framework',
     '/api/',
   ]);
