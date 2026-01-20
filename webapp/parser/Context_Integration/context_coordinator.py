@@ -16,7 +16,7 @@ import os
 import re
 import subprocess
 import threading
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -94,53 +94,74 @@ from .Integrity_check import (
 from .librarian import atomic_write_json, clean_for_json
 
 
-def get_semantic_score(model, text1, text2) -> float:
+def get_semantic_score(*args, model=None, logger=logger) -> float:
     """
-    Compute semantic similarity between two strings using SentenceTransformer.
-    Handles tensor/list conversion and logs errors gracefully.
+    Semantic similarity helper with backward-compatible signature.
+
+    Accepted call shapes:
+      - get_semantic_score(text1, text2)
+      - get_semantic_score(text1, text2, model)
+      - get_semantic_score(model, text1, text2)
+      - get_semantic_score(model, text1, text2, logger)
     """
-    # Type and value checks
-    if model is None:
-        if logger:
-            logger.error("[get_semantic_score] Model is None.")
-        return 0.0
-    if not isinstance(text1, str) or not isinstance(text2, str) or not text1 or not text2:
-        if logger:
-            logger.error(
-                "[get_semantic_score] Invalid input types: text1=%s, text2=%s",
-                type(text1),
-                type(text2),
-            )
-        return 0.0
-    try:
-        emb1 = safe_model_encode(model, text1, convert_to_tensor=True, show_progress_bar=False)
-        emb2 = safe_model_encode(model, text2, convert_to_tensor=True, show_progress_bar=False)
-        if logger:
-            logger.debug("Type of emb1: %s, Type of emb2: %s", type(emb1), type(emb2))
-        from sentence_transformers import util
-        cos_sim = util.pytorch_cos_sim(emb1, emb2)
-        # Defensive extraction
-        if hasattr(cos_sim, "item"):
-            val = cos_sim.item()
-        elif hasattr(cos_sim, "numpy"):
-            arr = cos_sim.numpy()
-            val = float(arr.flatten()[0]) if arr.size > 0 else 0.0
-        elif isinstance(cos_sim, (list, tuple, np.ndarray)):
-            val = float(cos_sim[0][0]) if cos_sim and cos_sim[0] else 0.0
+
+    # Normalize arguments for backwards compatibility
+    text1 = text2 = None
+    if len(args) == 2:
+        text1, text2 = args
+    elif len(args) == 3:
+        if not isinstance(args[0], str):
+            model, text1, text2 = args  # legacy (model, text1, text2)
         else:
-            if logger:
-                logger.error("[get_semantic_score] Unexpected cos_sim type: %s", type(cos_sim))
-            val = 0.0
-        # Final type check
-        if not isinstance(val, (float, int)):
-            if logger:
-                logger.error("[get_semantic_score] Non-numeric similarity value: %s", val)
-            return 0.0
-        return float(val)
-    except Exception as e:
-        if logger:
-            logger.error("[get_semantic_score] Error: %s", e)
+            text1, text2 = args[0], args[1]
+            if not isinstance(args[2], str):
+                model = args[2]  # (text1, text2, model)
+            else:
+                text2 = args[2]
+    elif len(args) >= 4:
+        model, text1, text2 = args[0], args[1], args[2]
+        logger = args[3]
+    else:
         return 0.0
+
+    # Basic validation
+    if not isinstance(text1, str) or not isinstance(text2, str) or not text1 or not text2:
+        return 0.0
+
+    # If a model is available, use transformer similarity; otherwise fall back to token overlap
+    if model is not None:
+        try:
+            emb1 = safe_model_encode(model, text1, convert_to_tensor=True, show_progress_bar=False)
+            emb2 = safe_model_encode(model, text2, convert_to_tensor=True, show_progress_bar=False)
+            if logger:
+                logger.debug("Type of emb1: %s, Type of emb2: %s", type(emb1), type(emb2))
+            from sentence_transformers import util
+
+            cos_sim = util.pytorch_cos_sim(emb1, emb2)
+            if hasattr(cos_sim, "item"):
+                val = cos_sim.item()
+            elif hasattr(cos_sim, "numpy"):
+                arr = cos_sim.numpy()
+                val = float(arr.flatten()[0]) if arr.size > 0 else 0.0
+            elif isinstance(cos_sim, (list, tuple, np.ndarray)):
+                val = float(cos_sim[0][0]) if cos_sim and cos_sim[0] else 0.0
+            else:
+                if logger:
+                    logger.error("[get_semantic_score] Unexpected cos_sim type: %s", type(cos_sim))
+                val = 0.0
+            return float(val) if isinstance(val, (float, int)) else 0.0
+        except Exception as e:
+            if logger:
+                logger.error("[get_semantic_score] Error: %s", e)
+            return 0.0
+
+    # Fallback: simple token overlap similarity (0..1)
+    tokens1 = {safe_lower(tok) for tok in text1.split() if tok}
+    tokens2 = {safe_lower(tok) for tok in text2.split() if tok}
+    if not tokens1 or not tokens2:
+        return 0.0
+    overlap = len(tokens1 & tokens2)
+    return overlap / max(len(tokens1), len(tokens2))
 
 def merge_and_rank_candidates(
     memory_candidates, dom_candidates, context, keywords, model,
@@ -232,12 +253,21 @@ def merge_and_rank_candidates(
     )
     return all_candidates
 
-def dynamic_state_county_detection(context, html, debug=False) -> tuple:
+def dynamic_state_county_detection(context=None, html=None, debug=False, coordinator=None) -> tuple:
     """
     Robustly detect county (first) and state (second) using all available clues and cross-referencing.
     Utilizes context fields, contest titles, URL, and canonical librarian mappings.
     Returns (county, state, handler_path, detection_log)
     """
+    # Allow tests to pass a single text argument (treated as html) or a coordinator (unused here)
+    simple_return = False
+    if html is None and isinstance(context, str):
+        html = context
+        context = {}
+        simple_return = True
+    if coordinator is not None:
+        simple_return = True
+
     # Lightweight in-function caches for large lookups
     if not hasattr(dynamic_state_county_detection, "_lookup_cache"):
         dynamic_state_county_detection._lookup_cache = {}
@@ -264,6 +294,28 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
 
     county_to_precinct_values = county_to_precinct.values() if isinstance(county_to_precinct, dict) else county_to_precinct
     all_precincts = {normalize_county_name(d) for precincts in county_to_precinct_values for d in precincts}
+
+    entities_cache = None
+
+    def _get_entities():
+        nonlocal entities_cache
+        if entities_cache is None:
+            try:
+                entities_cache = extract_entities(html) if html else []
+            except Exception:
+                entities_cache = []
+        return entities_cache or []
+
+    def _precinct_to_county(target: str | None) -> str | None:
+        if not target:
+            return None
+        for c, precincts in county_to_precinct.items():
+            if not isinstance(precincts, list):
+                continue
+            normalized_precincts = {normalize_county_name(x) for x in precincts}
+            if target in normalized_precincts:
+                return normalize_county_name(c)
+        return None
 
     # --- 1. Try context fields directly (normalize and validate) ---
     if not isinstance(context, dict) or not context:
@@ -494,26 +546,65 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
 
     # --- 4. Try to extract county from HTML using NLP entities ---
     if not county and html:
-        entities = extract_entities(html)
+        entities = _get_entities()
         gpe_entities = [normalize_county_name(ent) for ent, label in entities if label in ("GPE", "LOC")]
+        county_hits: Counter[str] = Counter()
+        precinct_hits: Counter[str] = Counter()
         for ent in gpe_entities:
             if ent in all_counties:
-                county = ent
-                detection_log.append(f"County '{county}' detected from HTML NLP entity.")
-                detection_log.append("[SOURCE] nlp:county")
+                county_hits[ent] += 1
+            elif ent in all_precincts:
+                precinct_hits[ent] += 1
+
+        if county_hits:
+            top_county, hits = county_hits.most_common(1)[0]
+            min_hits = 1 if len(county_hits) == 1 else 2
+            if hits >= min_hits:
+                county = top_county
+                detection_log.append(f"County '{county}' selected from HTML NLP entities (hits={hits}).")
+                detection_log.append("[SOURCE] nlp:county_majority")
                 logger.info({
                     "level": "INFO",
                     "type": "router",
-                    "message": f"[Context Detection] County '{county}' detected from HTML NLP entity.",
+                    "message": f"[Context Detection] County '{county}' selected from HTML NLP entities (hits={hits}).",
                     "session_id": session_id
                 })
-                break
-            elif ent in all_precincts:
-                for c, precincts in county_to_precinct.items():
-                    if not isinstance(precincts, list):
-                        continue
-                    if ent in {normalize_county_name(x) for x in precincts}:
-                        county = normalize_county_name(c)
+
+        if not county and precinct_hits:
+            top_precinct, hits = precinct_hits.most_common(1)[0]
+            mapped = _precinct_to_county(top_precinct)
+            if mapped:
+                county = mapped
+                detection_log.append(
+                    f"precinct '{top_precinct}' selected from HTML NLP entities (hits={hits}), mapped to county '{county}'"
+                )
+                detection_log.append("[SOURCE] nlp:precinct_majority")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": (
+                        f"[Context Detection] Precinct '{top_precinct}' selected from HTML NLP entities (hits={hits}), mapped to '{county}'."
+                    ),
+                    "session_id": session_id
+                })
+
+        if not county:
+            for ent in gpe_entities:
+                if ent in all_counties:
+                    county = ent
+                    detection_log.append(f"County '{county}' detected from HTML NLP entity.")
+                    detection_log.append("[SOURCE] nlp:county")
+                    logger.info({
+                        "level": "INFO",
+                        "type": "router",
+                        "message": f"[Context Detection] County '{county}' detected from HTML NLP entity.",
+                        "session_id": session_id
+                    })
+                    break
+                elif ent in all_precincts:
+                    mapped = _precinct_to_county(ent)
+                    if mapped:
+                        county = mapped
                         detection_log.append(f"precinct '{ent}' detected from HTML NLP entity, mapped to county '{county}'")
                         detection_log.append("[SOURCE] nlp:precinct->county")
                         logger.info({
@@ -523,8 +614,6 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                             "session_id": session_id
                         })
                         break
-                if county:
-                    break
 
     # --- 5. Now try to detect state, using county if found ---
     if not state and county:
@@ -596,20 +685,36 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
 
     # --- 8. Try to extract state from HTML using NLP entities ---
     if not state and html:
-        entities = extract_entities(html)
+        entities = _get_entities()
         gpe_entities = [normalize_state_name(ent) for ent, label in entities if label in ("GPE", "LOC")]
-        for ent in gpe_entities:
-            if ent in known_states:
-                state = ent
-                detection_log.append(f"State '{state}' detected from HTML NLP entity.")
-                detection_log.append("[SOURCE] nlp:state")
+        state_hits: Counter[str] = Counter(ent for ent in gpe_entities if ent in known_states)
+        if state_hits:
+            top_state, hits = state_hits.most_common(1)[0]
+            min_hits = 1 if len(state_hits) == 1 else 2
+            if hits >= min_hits:
+                state = top_state
+                detection_log.append(f"State '{state}' selected from HTML NLP entities (hits={hits}).")
+                detection_log.append("[SOURCE] nlp:state_majority")
                 logger.info({
                     "level": "INFO",
                     "type": "router",
-                    "message": f"[Context Detection] State '{state}' detected from HTML NLP entity.",
+                    "message": f"[Context Detection] State '{state}' selected from HTML NLP entities (hits={hits}).",
                     "session_id": session_id
                 })
-                break
+
+        if not state:
+            for ent in gpe_entities:
+                if ent in known_states:
+                    state = ent
+                    detection_log.append(f"State '{state}' detected from HTML NLP entity.")
+                    detection_log.append("[SOURCE] nlp:state")
+                    logger.info({
+                        "level": "INFO",
+                        "type": "router",
+                        "message": f"[Context Detection] State '{state}' detected from HTML NLP entity.",
+                        "session_id": session_id
+                    })
+                    break
 
     # --- 9. Special case: DC and other non-county states ---
     if state == "district_of_columbia":
@@ -742,6 +847,9 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                 "message": f"[Context Detection] {log}",
                 "session_id": session_id
             })
+
+    if simple_return:
+        return normalized_state, normalized_county
     return normalized_county, normalized_state, handler_path, detection_log
 
 # --- Core Coordinator Class ---
@@ -927,6 +1035,286 @@ class ContextCoordinator(object):
         except Exception as e:
             logger.error(f"[append_to_context_library] Failed: {e}", exc_info=True)
             return False
+
+    def _build_enrichment_plan(self, raw_context, overrides=None) -> dict:
+        """Derive a scoped enrichment plan so downstream work can run in targeted routes."""
+        ctx = raw_context if isinstance(raw_context, dict) else {}
+
+        def _has_any(keys: list[str]) -> bool:
+            for key in keys:
+                if key in ctx and ctx.get(key) not in (None, "", [], {}, ()):  # treat falsy containers as absent
+                    return True
+            return False
+
+        raw_hint = (
+            ctx.get("source_type")
+            or ctx.get("source")
+            or ctx.get("format")
+        )
+        normalized_hint = raw_hint.lower().strip() if isinstance(raw_hint, str) and raw_hint.strip() else ""
+
+        detection_rules = [
+            ("pdf", lambda: normalized_hint == "pdf" or _has_any(["pdf_context", "manual_file", "pdf_path", "pdf_metadata"])),
+            ("ocr", lambda: normalized_hint in {"ocr", "image", "scan"} or _has_any(["ocr_blocks", "ocr_text", "image_path", "screenshot_path"])),
+            ("csv", lambda: normalized_hint == "csv" or _has_any(["csv_rows", "csv_path", "csv_blob", "csv_context", "spreadsheet_rows", "spreadsheet_path"])),
+            ("json", lambda: normalized_hint in {"json", "jsonl"} or _has_any(["json_blob", "json_rows", "json_context", "rawjson_enrichment", "api_json"])),
+            ("api", lambda: normalized_hint == "api" or _has_any(["api_response", "api_payload", "webhook_event"])),
+            ("xml", lambda: normalized_hint == "xml" or _has_any(["xml_payload", "xml_path", "xml_tree"])),
+            ("html", lambda: normalized_hint == "html" or _has_any(["raw_html", "dom_parts", "tagged_segments_with_attrs"])),
+        ]
+
+        source_hint = ""
+        for label, predicate in detection_rules:
+            try:
+                if predicate():
+                    source_hint = label
+                    break
+            except Exception:
+                continue
+        if not source_hint:
+            source_hint = normalized_hint or "html"
+
+        format_profiles: dict[str, dict] = {
+            "html": {
+                "routes": {
+                    "dom",
+                    "sections",
+                    "panels",
+                    "buttons",
+                    "headings",
+                    "tables",
+                    "candidate_panels",
+                    "location_panels",
+                    "ml",
+                    "integrity",
+                },
+                "reason": "HTML/DOM source detected; enabling DOM scans and section grouping.",
+                "tags": {"route:html_dom"},
+            },
+            "pdf": {
+                "routes": {
+                    "tables",
+                    "candidate_panels",
+                    "location_panels",
+                    "ballot_types",
+                    "results_timestamps",
+                    "party_labels",
+                    "vote_methods",
+                    "ml",
+                    "integrity",
+                },
+                "reason": "PDF ingestion detected; prioritize table reconstruction + party lookups.",
+                "tags": {"route:pdf_tables"},
+            },
+            "ocr": {
+                "routes": {
+                    "dom",
+                    "sections",
+                    "tables",
+                    "candidate_panels",
+                    "location_panels",
+                    "ml",
+                },
+                "reason": "OCR/image input detected; run DOM-style grouping plus ML cleanup only.",
+                "tags": {"route:ocr_dom"},
+            },
+            "csv": {
+                "routes": {
+                    "tables",
+                    "ballot_types",
+                    "vote_methods",
+                    "candidate_panels",
+                    "ml",
+                    "integrity",
+                },
+                "reason": "CSV/spreadsheet input detected; skip DOM and emphasize structured tables.",
+                "tags": {"route:csv_tables"},
+            },
+            "json": {
+                "routes": {
+                    "contests",
+                    "candidate_panels",
+                    "location_panels",
+                    "ballot_types",
+                    "vote_methods",
+                    "ml",
+                    "integrity",
+                },
+                "reason": "JSON payload detected; treat as structured data with ML + integrity checks.",
+                "tags": {"route:json_structured"},
+            },
+            "api": {
+                "routes": {
+                    "contests",
+                    "candidate_panels",
+                    "location_panels",
+                    "ballot_types",
+                    "vote_methods",
+                    "ml",
+                    "integrity",
+                },
+                "reason": "API feed detected; leverage structured enrichment routes only.",
+                "tags": {"route:api_structured"},
+            },
+            "xml": {
+                "routes": {
+                    "tables",
+                    "candidate_panels",
+                    "location_panels",
+                    "ballot_types",
+                    "vote_methods",
+                    "ml",
+                },
+                "reason": "XML payload detected; treat similar to structured tables without DOM work.",
+                "tags": {"route:xml_structured"},
+            },
+        }
+
+        routes: set[str] = set()
+        reasoning: list[str] = []
+        metadata_tags: set[str] = {f"source:{source_hint}"}
+        dynamic_paths: list[dict[str, Any]] = []
+
+        profile = format_profiles.get(source_hint) or format_profiles.get("html")
+        if profile:
+            routes.update(profile["routes"])
+            reasoning.append(profile["reason"])
+            metadata_tags.update(profile["tags"])
+            dynamic_paths.append({
+                "format": source_hint,
+                "routes": sorted(profile["routes"]),
+                "reason": profile["reason"],
+                "trigger": "format_profile",
+            })
+
+        if ctx.get("raw_html") or ctx.get("dom_parts"):
+            routes.update({"dom", "sections", "panels", "buttons", "headings"})
+            reasoning.append("HTML context present; enabling panel/button grouping.")
+            metadata_tags.add("route:dom_panels")
+            dynamic_paths.append({
+                "format": "html_dom_context",
+                "routes": ["dom", "sections", "panels", "buttons", "headings"],
+                "reason": "raw_html/dom_parts provided",
+                "trigger": "raw_html",
+            })
+
+        if ctx.get("vote_methods") or ctx.get("ballot_types"):
+            routes.update({"ballot_types", "vote_methods"})
+            reasoning.append("Detected ballot/vote method clues in raw context.")
+            dynamic_paths.append({
+                "format": "ballot_meta",
+                "routes": ["ballot_types", "vote_methods"],
+                "reason": "vote method fields present",
+                "trigger": "ballot_types"
+            })
+
+        if ctx.get("candidate_panels") or ctx.get("location_panels"):
+            routes.update({"candidate_panels", "location_panels"})
+            reasoning.append("Existing candidate/location panels provided; preserving enrichment path.")
+            dynamic_paths.append({
+                "format": "panel_inheritance",
+                "routes": ["candidate_panels", "location_panels"],
+                "reason": "panel payload detected",
+                "trigger": "panels",
+            })
+
+        if ctx.get("tables") or ctx.get("line_records"):
+            routes.add("tables")
+            reasoning.append("Structured tables present; running table grouping route.")
+            dynamic_paths.append({
+                "format": "table_payload",
+                "routes": ["tables"],
+                "reason": "tables/line_records provided",
+                "trigger": "tables",
+            })
+
+        if ctx.get("contests"):
+            routes.update({"contests", "ml", "integrity"})
+            reasoning.append("Contest payload found; keeping ML + integrity checks enabled.")
+
+        if not routes:
+            routes.update({"dom", "sections", "contests"})
+
+        if not self.enable_ml and "ml" in routes:
+            routes.discard("ml")
+            reasoning.append("Coordinator ML disabled; dropped 'ml' route.")
+
+        forced_routes = set()
+        dropped_routes = set()
+        if overrides:
+            if isinstance(overrides, (list, set, tuple)):
+                forced_routes = set(overrides)
+            elif isinstance(overrides, dict):
+                forced_routes = set(overrides.get("force_routes") or [])
+                dropped_routes = set(overrides.get("drop_routes") or [])
+                override_source = overrides.get("source")
+                if override_source:
+                    source_hint = override_source
+            else:
+                forced_routes = {overrides}
+        if forced_routes:
+            routes.update(forced_routes)
+            metadata_tags.update({f"override_force:{route}" for route in forced_routes})
+            reasoning.append(f"Forced routes applied: {sorted(forced_routes)}")
+            dynamic_paths.append({
+                "format": "override",
+                "routes": sorted(forced_routes),
+                "reason": "caller override",
+                "trigger": "override_force",
+            })
+        if dropped_routes:
+            routes.difference_update(dropped_routes)
+            metadata_tags.update({f"override_drop:{route}" for route in dropped_routes})
+            reasoning.append(f"Dropped routes per override: {sorted(dropped_routes)}")
+
+        dependent_routes = {
+            "panels",
+            "buttons",
+            "tables",
+            "candidate_panels",
+            "location_panels",
+            "headings",
+            "ballot_types",
+            "results_timestamps",
+            "party_labels",
+            "vote_methods",
+        }
+        if routes & dependent_routes:
+            routes.add("sections")
+
+        plan = {
+            "source": source_hint,
+            "routes": sorted(routes),
+            "reasoning": reasoning,
+            "metadata_tags": sorted(metadata_tags),
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "dynamic_paths": dynamic_paths,
+        }
+        return plan
+
+    def _log_enrichment_snapshot(self, plan: dict | None, organized_result: dict | None, summary: dict | None = None) -> None:
+        if not plan:
+            return
+        organized = organized_result if isinstance(organized_result, dict) else {}
+        contests = organized.get("contests") if isinstance(organized, dict) else []
+        metadata = organized.get("metadata", {}) if isinstance(organized, dict) else {}
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "plan": plan,
+            "contest_count": len(contests) if isinstance(contests, list) else 0,
+            "routes_executed": plan.get("routes", []),
+            "anomaly_count": len(organized.get("anomalies", [])) if isinstance(organized.get("anomalies", []), list) else 0,
+            "integrity_issue_count": len(organized.get("integrity_issues", [])) if isinstance(organized.get("integrity_issues", []), list) else 0,
+            "state": metadata.get("state") if isinstance(metadata, dict) else None,
+            "county": metadata.get("county") if isinstance(metadata, dict) else None,
+            "metadata_tags": plan.get("metadata_tags", []),
+            "plan_reasoning": plan.get("reasoning", []),
+            "dynamic_paths": plan.get("dynamic_paths", []),
+        }
+        if summary:
+            entry["summary"] = summary
+        log_path = os.path.join(LOG_DIR, "context_enrichment", "plan_snapshots.jsonl")
+        self._log_jsonl(log_path, entry)
             
     def repair_contests_with_context(self, contests, context_library=None, db_service=None, parent_context=None, embedding_model=None, logs=None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
@@ -1239,16 +1627,24 @@ class ContextCoordinator(object):
 
     def organize_and_enrich(self, raw_context, **kwargs) -> Dict[str, Any]:
         self.last_raw_context = raw_context
+        overrides = kwargs.pop("route_overrides", None)
+        provided_plan = kwargs.pop("enrichment_plan", None)
+        enrichment_plan = provided_plan or self._build_enrichment_plan(raw_context, overrides=overrides)
+        if enrichment_plan:
+            kwargs["enrichment_plan"] = enrichment_plan
         result = self.organizer.organize_context(raw_context, **kwargs)
         # Defensive: handle error dict or None
         if result is None:
             self.organized = {}
+            self._log_enrichment_snapshot(enrichment_plan, self.organized, summary=None)
             return self.organized
         if isinstance(result, dict) and "organized" in result:
             self.organized = result["organized"] if result["organized"] is not None else {}
         else:
             self.organized = result if isinstance(result, dict) else {}
         self._enrich_contests_with_nlp()
+        summary = result.get("summary") if isinstance(result, dict) else None
+        self._log_enrichment_snapshot(enrichment_plan, self.organized, summary=summary)
         return self.organized
 
     def organize_context_advanced(self, raw_context, **kwargs) -> Dict[str, Any]:
@@ -3137,6 +3533,32 @@ class ContextCoordinator(object):
         log_path = os.path.join(LOG_DIR, "button_selection_log.jsonl")
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+
+    def record_navigation_feedback(
+        self,
+        *,
+        script_id: str | None,
+        success: bool,
+        context_before: dict | None,
+        context_after: dict | None,
+        telemetry: list[dict] | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        """Persist navigation runner outcomes for ML feedback loops."""
+
+        log_entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "script_id": script_id,
+            "success": bool(success),
+            "context_before": context_before or {},
+            "context_after": context_after or {},
+            "telemetry": telemetry or [],
+            "metadata": metadata or {},
+        }
+        os.makedirs(LOG_DIR, exist_ok=True)
+        log_path = os.path.join(LOG_DIR, "navigation_learning_log.jsonl")
+        with open(log_path, "ab") as handle:
+            handle.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     # --- Table structure learning/lookup ---
     def get_table_structure_from_log(

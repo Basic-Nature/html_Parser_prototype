@@ -220,6 +220,8 @@ def detect_candidate_column(
             return header
 
     for header in headers:
+        if str(header).lower().startswith("column"):
+            continue
         hits = 0
         count = 0
         for row in samples:
@@ -471,6 +473,8 @@ def normalize_header(h: Any) -> str:
     # synonyms (Candidate, Precinct, Party, etc.)
     if low in HEADER_SYNONYM_MAP:
         return HEADER_SYNONYM_MAP[low]
+    if low in {"candidate name", "candidate_names", "candidate"}:
+        return "Candidate"
 
     # totals normalization
     if any(t in low for t in ("grand total",)):

@@ -7,7 +7,7 @@
 */
 document.addEventListener('DOMContentLoaded', () => {
   const DANGER = /^(javascript|data|vbscript|file|ws|wss|mailto):/i;
-  const ALLOW_PREFIXES = ['/', '/history', '/run_parser', '/data_framework', '/api/'];
+  const ALLOW_PREFIXES = ['/', '/history', '/ballot_lens', '/data_framework', '/api/'];
   const MAX_LEN = 512;
 
   const strip = s => s.replace(/[\u0000-\u001F\u007F]+/g,'').trim();
@@ -64,7 +64,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   document.addEventListener('click', e => {
-    const a = e.target.closest('a[data-safe-nav]');
+    const tgt = e.target;
+    const a = (tgt instanceof Element) ? tgt.closest('a[data-safe-nav]') : null;
     if (!a) return;
     const target = a.getAttribute('data-safe-nav') || a.getAttribute('href');
     if (!target) return;

@@ -10,10 +10,10 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
 
 ### Major Additions
 
-- **Important Change**
-
-- Must download postgresql from website directly
-- <https://www.postgresql.org/download/windows/>
+- **Adaptive Navigation for Election Pages**
+  - Autoscroll now tracks tables seen and stops when no new tables load, logging telemetry to tune timeouts.
+  - Navigator consumes `navigation_keyword_bias.jsonl` plus new precinct/county recipes to open election tabs before scrolling.
+  - HTML fallback prefers in-DOM table extraction before prompting for downloads when both are present.
 
 - **Dynamic Table Extraction & Structure Learning**
   - Centralized in `table_core.py` and `dynamic_table_extractor.py`
@@ -21,6 +21,12 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
   - Table structure learning, harmonization, and feedback are now fully centralized
   - ML/NER-powered entity annotation and structure verification
   - Dynamic scoring and patching: extraction methods are scored and can "fill in the blanks" using information from other strategies
+- **Navigation Feedback Loop → Manual Correction**
+  - Every navigation run logs per-step telemetry to `log/navigation_learning_log.jsonl` via `ContextCoordinator.record_navigation_feedback()`.
+  - `webapp/parser/health/navigation_feedback_ingest.py` converts the log into `navigation_feedback_selection_log.jsonl`, so the manual correction bot can auto-review successes/failures, feed ML retraining, or fast-track new recipes without extra tooling.
+- **Azure Health Control Center**
+  - `/azure_health` now surfaces a “Election Pulse” operations console: launch manual correction, log/cache cleanup, misalignment scans, retraining, or the entire health router directly from the web UI.
+  - Each job streams stdout to the browser so you can supervise Azure deployments even when shell access is limited.
 
 - **Context-Aware Orchestration**
   - `context_coordinator.py` and `context_organizer.py` orchestrate advanced context analysis, NLP, and ML integrity checks
@@ -31,6 +37,7 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
   - Flask-based web interface for managing URLs, running the parser, and reviewing output
   - Real-time log streaming via SocketIO
   - Data management dashboard for uploads, downloads, and URL hint management
+  - Azure Health console for launching health scripts with live log streaming
 
 - **Handler Architecture**
   - Modular state/county/format handlers in `handlers/`
@@ -91,11 +98,11 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
 
 **The Smart Elections Parser can be used in two ways:**
 
-1. **Standalone Python Script:**  
+1. **Standalone Python Script:**
    - Run `html_election_parser.py` directly from your IDE or terminal for full CLI control.
    - No web server required.
 
-2. **Web UI (Optional):**  
+2. **Web UI (Optional):**
    - A modern Flask-based web interface is included for users who prefer a graphical experience or are new to coding.
    - **Key Features of the Web UI:**
      - **Dashboard:** Overview of the parser and quick access to all tools.
@@ -103,13 +110,15 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
      - **Change History:** View and restore previous configurations for transparency and auditability.
      - **Run Parser:** Trigger the parser from the browser and view real-time output in a styled terminal-like area.
      - **Live Feedback:** See parser logs as they happen (via WebSockets).
+     - **Azure Health Control Center:** Queue manual correction, retraining, and log-cleanup scripts with live stdout streaming.
      - **Accessible:** Designed for both technical and non-technical users, making it ideal for teams, researchers, and those learning to code.
    - **How to Use the Web UI:**
      1. Install requirements:  
-        `pip install -r requirements.txt`  
+        `pip install -r requirements.txt`
+        - Python 3.12 (Windows) tested combo: `pip install -r requirements.txt -c constraints/local-py312.txt`
         `python -m spacy download en_core_web_sm`
-     2. **Set up your `.env` file** (or set environment variables in your shell or IDE launch configuration):  
-        - Required variables include:  
+     2. **Set up your `.env` file** (or set environment variables in your shell or IDE launch configuration):
+        - Required variables include:
           - `FLASK_SECRET_KEY`
           - `POSTGRES_USER`
           - `POSTGRES_PASSWORD`
@@ -119,7 +128,7 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
           - `DATA_API_URL`
           - `CSP_MODE`
         - You can copy `.env.template` to `.env` and fill in your values.
-        - **For local development:**  
+        - **For local development:**
           - Install [python-dotenv](https://pypi.org/project/python-dotenv/) to automatically load variables from `.env`:
 
             ```sh
@@ -130,8 +139,7 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
 
           - **Note:** `python-dotenv` is not included in `requirements.txt` and is not needed in production or on Azure.
      3. Start the web server:  
-        `python -m webapp.Smart_Elections_Parser_Webapp`  
-        *(or use the VS Code launch configuration "Python Debugger: Eventlet Entrypoint")*
+        `python -m webapp.Smart_Elections_Parser_Webapp`
      4. Open your browser to `http://localhost:5000`
    - **Note:**  
      If you run `python -m webapp.Smart_Elections_Parser_Webapp` directly, you must ensure all required environment variables are set, or the app will not start.
@@ -167,7 +175,7 @@ set POSTGRES_HOST=localhost
 set POSTGRES_PORT=5432
 set DATA_API_URL=/api/warehouse_election_results
 set CSP_MODE=STRICT
-python webapp/run_eventlet.py
+python -m webapp.Smart_Elections_Parser_Webapp
 ```
 
 **Or, on Linux/macOS:**
@@ -181,7 +189,7 @@ export POSTGRES_HOST=localhost
 export POSTGRES_PORT=5432
 export DATA_API_URL=/api/warehouse_election_results
 export CSP_MODE=STRICT
-python webapp/run_eventlet.py
+python -m webapp.Smart_Elections_Parser_Webapp
 ```
 
 Alternatively, you can set these variables in your IDE launch configuration.
@@ -195,19 +203,19 @@ Alternatively, you can set these variables in your IDE launch configuration.
 
 ## How to Add a New State/County Handler, or Format
 
-1. **State/County Handler:**  
+1. **State/County Handler:**
    - Create a new handler in `handlers/states/` or `handlers/counties/`.
    - Implement a `parse(page, html_context)` function.
    - Register your handler in `state_router.py`.
 
-2. **Custom Noisy Labels/Patterns:**  
+2. **Custom Noisy Labels/Patterns:**
    - In your handler, pass `noisy_labels` and `noisy_label_patterns` to `select_contest()` for contest filtering.
 
-3. **Format Handler:**  
+3. **Format Handler:**
    - Add your handler to `utils/format_router.py` and register it in `route_format_handler`.
 
-4. **User Prompts:**  
-   - Use `prompt_user_input()` for all user input to allow easy web UI integration later.  
+4. **User Prompts:**
+   - Use `prompt_user_input()` for all user input to allow easy web UI integration later.
    - Example:
 
      ``python

@@ -1,0 +1,31 @@
+# Local constraints for Python 3.12 (Windows) to keep native wheels aligned
+# Use with: pip install -r requirements.txt -c constraints/local-py312.txt
+
+numpy==2.2.6
+pandas==2.2.3
+scikit-learn==1.4.2
+scipy==1.16.3
+opencv-python==4.12.0.88
+opencv-python-headless==4.12.0.88
+psycopg2==2.9.11
+orjson==3.11.5
+greenlet==3.3.0
+selectolax==0.4.6
+matplotlib==3.10.8
+torch==2.9.1+cpu
+
+spacy==3.8.11
+spacy-lookups-data==1.0.5
+# Small English model (same as requirements entry)
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+
+thinc==8.3.10
+srsly==2.5.2
+pydantic==2.12.5
+pydantic-core==2.41.5
+
+# Keep camelot dependencies stable
+camelot-py[cv]==1.0.10
+
+# Optional: align transformers stack
+sentence-transformers==5.1.0

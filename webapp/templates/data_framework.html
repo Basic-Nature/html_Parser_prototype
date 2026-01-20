@@ -7,14 +7,14 @@
     <!-- Config (replaces inline script) -->
     <meta id="dataFrameworkConfig" data-api-url="{{ url_for('api_warehouse_election_results') }}">
     <!-- Bootstrap -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-5.3.0.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css') }}">
 </head>
 <body>
     <nav class="navbar">
         <a href="{{ url_for('index') }}">Dashboard</a>
         <a href="{{ url_for('data_framework') }}" class="active">Data Framework</a>
-        <a href="{{ url_for('run_parser') }}">Run Parser</a>
+        <a href="{{ url_for('ballot_lens') }}">Run Parser</a>
         <a href="{{ url_for('history') }}">History</a>
         <a href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer">About</a>
     </nav>
@@ -118,7 +118,7 @@
       </div>
     </div>
 
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap-5.3.0.bundle.min.js') }}"></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js') }}" defer></script>
 </body>
 </html>

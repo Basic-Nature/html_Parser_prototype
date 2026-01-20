@@ -11,10 +11,11 @@
   'use strict';
 
   /* ---------- Asset Hydration (CSP-safe) ---------- */
+  const W = /** @type {any} */ (window);
   (function hydrateStaticAssets() {
     const el = document.getElementById('assetPaths');
     if (!el) return;
-    window.STATIC_ASSETS = {
+    W.STATIC_ASSETS = {
       sunSvg:  el.dataset.sunSvg,
       sunPng:  el.dataset.sunPng,
       moonSvg: el.dataset.moonSvg,
@@ -25,20 +26,23 @@
 
   /* ---------- Bootstrap Enhancements ---------- */
   function initBootstrap() {
-    if (!window.bootstrap) return;
+    if (!W.bootstrap) return;
     document.querySelectorAll('[data-bs-toggle="tooltip"]')
-      .forEach(el => bootstrap.Tooltip.getOrCreateInstance(el));
+      .forEach(el => W.bootstrap.Tooltip.getOrCreateInstance(el));
     document.querySelectorAll('[data-bs-toggle="popover"]')
-      .forEach(el => bootstrap.Popover.getOrCreateInstance(el));
+      .forEach(el => W.bootstrap.Popover.getOrCreateInstance(el));
   }
 
   /* ---------- Mission Rim Tracer Animation ---------- */
   function initRimTracer() {
-    const canvas = document.getElementById('rimTracer');
-    const panel = document.getElementById('missionPanel');
+    /** @type {HTMLCanvasElement|null} */
+    const canvas = /** @type {HTMLCanvasElement|null} */ (document.getElementById('rimTracer'));
+    /** @type {HTMLElement|null} */
+    const panel = /** @type {HTMLElement|null} */ (document.getElementById('missionPanel'));
     if (!canvas || !panel) return;
 
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
     const SPEED_DIVISOR = 3;
     const R = 3;
     const TRAIL_STEPS = 8;
@@ -190,7 +194,7 @@
     function apply(el) {
       clear(el);
       const href = el.getAttribute('href') || '';
-      if (href.includes('run_parser')) el.classList.add('is-hovered-run');
+      if (href.includes('ballot_lens')) el.classList.add('is-hovered-run');
       else if (href.includes('history')) el.classList.add('is-hovered-history');
       else if (href.includes('data_framework')) el.classList.add('is-hovered-data');
       else el.classList.add('is-hovered-none');
@@ -220,9 +224,9 @@
       const first = nodes[0];
       const last = nodes[nodes.length - 1];
       if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault(); last.focus();
+        e.preventDefault(); if (last instanceof HTMLElement) last.focus();
       } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault(); first.focus();
+        e.preventDefault(); if (first instanceof HTMLElement) first.focus();
       }
     }
 
@@ -238,8 +242,8 @@
       popup.classList.add('is-open');
       popup.addEventListener('keydown', trapFocus);
       const btn = popup.querySelector('[data-popup-close]');
-      btn?.focus();
-      btn?.addEventListener('click', close, { once: true });
+      if (btn instanceof HTMLElement) btn.focus();
+      if (btn) btn.addEventListener('click', close, { once: true });
       popup.addEventListener('click', backdropClose);
       document.addEventListener('keydown', escClose);
     }
@@ -260,13 +264,14 @@
       if (e.key === 'Escape') close();
     }
 
-    window.showPopup = (msg) => open(msg);
-    window.closePopup = () => close();
+    W.showPopup = (msg) => open(msg);
+    W.closePopup = () => close();
   }
 
   /* ---------- Solar System Canvas ---------- */
   function initSolarSystem() {
-    const canvas = document.getElementById('container');
+    /** @type {HTMLCanvasElement|null} */
+    const canvas = /** @type {HTMLCanvasElement|null} */ (document.getElementById('container'));
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -285,7 +290,7 @@
     window.addEventListener('resize', size);
 
     /* Assets */
-    const { sunSvg, sunPng, moonSvg, moonPng, earth } = window.STATIC_ASSETS || {};
+    const { sunSvg, sunPng, moonSvg, moonPng, earth } = W.STATIC_ASSETS || {};
     const imgSun = new Image();
     const imgMoon = new Image();
     const imgEarth = new Image();
@@ -743,7 +748,7 @@
     if (!prefersReduce) requestAnimationFrame(draw);
 
     canvas.addEventListener('click', () => {
-      window.showPopup?.(
+      W.showPopup?.(
         '🌞 You clicked the solar system!<br>' +
         '<span class="popup-highlight">Keep exploring the universe of transparent data!</span>'
       );

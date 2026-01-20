@@ -11,11 +11,40 @@ import platform
 import shutil
 import importlib
 import hashlib
+import atexit
+import gc
+import tempfile
+from typing import Any
 from collections import Counter, OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image, ImageOps, ImageFilter, ImageEnhance
+from ...Context_Integration.location_inference import infer_county_from_lines
 from ...config import (
-    ENABLE_OCR, OUTPUT_DIR
+    ENABLE_OCR,
+    ENABLE_PARALLEL,
+    OUTPUT_DIR,
+    # OCR Tuning Parameters (centralized in config.py)
+    OCR_CONFIDENCE_THRESHOLD,
+    OCR_MIN_ALPHA_SIGNAL,
+    OCR_AVG_CONF_ACCEPT,
+    OCR_DPI_MIN,
+    OCR_DPI_MAX,
+    OCR_DPI_STEP,
+    OCR_PSM_LIST,
+    OCR_OEM_LIST,
+    OCR_PREPROCESS_VARIANTS,
+    OCR_SAMPLE_BUDGET,
+    OCR_MAX_RUNS,
+    OCR_ORIENTATION_THRESHOLD,
+    OCR_DENSE_LINE_THRESHOLD,
+    OCR_TABLE_SIGNAL_MIN_COLS,
+    OCR_TABLE_SIGNAL_MIN_ROWS,
+    OCR_MARKUP_HTML_TAG_RATIO,
+    OCR_DEBUG_SAVE_IMAGES,
+    OCR_FAST_MODE_DPI_LIMIT,
+    OCR_FAST_MODE_SAMPLE_LIMIT,
+    PDF_FAST_MODE,
+    PDF_PROBE_MAX_PAGES,
 )
 import html
 # Optional flags/paths; provide safe defaults if missing
@@ -92,6 +121,8 @@ from ...Context_Integration.Context_Library.constants import (
     CONTEST_TITLE_SKIP_PHRASES,
     CONTEST_HEADER_KEYWORDS,
     CONTEST_HEADER_PREFERENCE,
+    KNOWN_STATE_TO_COUNTY_MAP,
+    normalize_party_label,
 )
 from ...utils.table_core import harmonize_headers_and_data, robust_table_extraction
 from ...utils.location_helpers import (
@@ -100,12 +131,25 @@ from ...utils.location_helpers import (
     is_strict_location_header,
 )
 from ...Context_Integration.librarian import parse_filename_for_location
-from ...utils.contest_selector import select_contest_auto_first
+from ...utils.contest_detection import (
+    CONTEST_PATTERN as _CONTEST_RX,
+    detect_contest_titles_from_text,
+)
+from ...utils.contest_selector import select_contest_auto_first, select_contest_noninteractive
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.output_utils import finalize_election_output
-from ...utils.shared_logic import format_county_label, format_state_label, safe_get, safe_slug
+from ...utils.shared_logic import (
+    format_county_label,
+    format_state_label,
+    normalize_county_name,
+    normalize_state_name,
+    safe_get,
+    safe_is_set,
+    safe_slug,
+)
 from ...utils.pivot import expand_single_rawjson_row, transform_wide_to_smart_standard
 from ...Context_Integration.context_coordinator import dynamic_state_county_detection
+from ...Context_Integration.location_inference import infer_county_from_lines
 from ...utils.header_utils import normalize_table_headers
 
 # Added optional tuning flags (safe defaults if not in config)
@@ -137,6 +181,91 @@ _PAGE_ORIENTATION_CACHE: dict[str, dict[int, int]] = {}
 _PAGE_ORIENTATION_DEFAULT: dict[str, int] = {}
 _PAGE_ORIENTATION_LOGGED: set[str] = set()
 _PAGE_ORIENTATION_APPLIED: set[tuple[str, int, int]] = set()
+
+# PDF resource cleanup tracking (prevent Windows file lock errors)
+_PDF_IMAGE_REFS: list[Image.Image] = []
+_PDF_TEMP_DIRS: set[str] = set()
+_PDF_CLEANUP_REGISTERED = False
+
+
+def _env_truthy(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+_CONTEST_PROMPTS_ENABLED = _env_truthy(os.getenv("SMART_ELECTIONS_ENABLE_CONTEST_PROMPTS"), False)
+
+# OCR/runtime guardrails — tuned for typical 5-150 page statements.
+_OCR_FOCUS_WINDOW_EXPAND = 2
+_OCR_SAMPLE_PAGE_TARGET = 6
+_OCR_CONTEST_PROBE_MIN_PAGES = 12
+_OCR_CONTEST_PROBE_MAX_PAGES = 90
+_OCR_CONTEST_PROBE_STRIDE = 5
+_OCR_CONTEST_PROBE_DPI = 220
+_OCR_CONTEST_PROBE_MAX_HITS = 6
+_OCR_FULLDOC_BATCH_PAGES = 8
+_OCR_FULLDOC_MAX_PAGES = 240
+_LAYOUT_SCAN_PAGE_LIMIT = 28
+_STATEMENT_SCAN_PAGE_LIMIT = 20
+
+
+class PDFParseCancelled(RuntimeError):
+    """Raised when a cooperative cancel flag requests early exit."""
+
+
+def _cleanup_pdf_resources() -> None:
+    """
+    Safe cleanup of PDF resources before exit.
+    Closes PIL Image objects and removes temp directories to prevent Windows file locks.
+    """
+    global _PDF_IMAGE_REFS, _PDF_TEMP_DIRS
+    
+    # Close all PIL Image objects (releases pdfium handles)
+    for img in _PDF_IMAGE_REFS:
+        try:
+            if hasattr(img, 'close'):
+                img.close()
+        except Exception:
+            pass
+    _PDF_IMAGE_REFS.clear()
+    
+    # Force garbage collection to release file handles
+    gc.collect()
+    
+    # Small delay for Windows file system to release locks
+    time.sleep(0.1)
+    
+    # Clean up temp directories with retry logic
+    for temp_dir in list(_PDF_TEMP_DIRS):
+        if not os.path.exists(temp_dir):
+            continue
+        for attempt in range(3):
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=False)
+                break
+            except PermissionError:
+                if attempt < 2:
+                    time.sleep(0.2)
+                    gc.collect()
+                else:
+                    # Last resort: mark for deletion on reboot (Windows only)
+                    try:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                    except Exception:
+                        pass
+            except Exception:
+                break
+    _PDF_TEMP_DIRS.clear()
+
+
+def _register_pdf_cleanup() -> None:
+    """Register PDF cleanup handler (once only)."""
+    global _PDF_CLEANUP_REGISTERED
+    if not _PDF_CLEANUP_REGISTERED:
+        atexit.register(_cleanup_pdf_resources)
+        _PDF_CLEANUP_REGISTERED = True
+
 
 
 def _sanitize_cache_get(key: str) -> str | None:
@@ -182,10 +311,19 @@ def _quantize_angle(angle: float) -> int:
 def _collect_page_orientation(page) -> tuple[int | None, float, int]:
     try:
         raw = page.get_text("rawdict") or {}
+        page_rect = getattr(page, "rect", None) or getattr(page, "bound", lambda: None)()
+        page_height = float(getattr(page_rect, "height", 0.0) or 0.0)
     except Exception:
         return None, 0.0, 0
+
     blocks = raw.get("blocks", [])
-    votes: list[int] = []
+    body_weights: Counter[int] = Counter()
+    header_weights: Counter[int] = Counter()
+    total_weight = 0.0
+    sample_votes = 0
+
+    header_cutoff = page_height * 0.22 if page_height else None
+
     for block in blocks:
         if not isinstance(block, dict):
             continue
@@ -205,29 +343,74 @@ def _collect_page_orientation(page) -> tuple[int | None, float, int]:
                 dx, dy = direction
                 if dx == 0 and dy == 0:
                     continue
+                bbox = span.get("bbox")
+                if not (isinstance(bbox, (list, tuple)) and len(bbox) == 4):
+                    continue
+                x0, y0, x1, y1 = bbox
+                span_width = abs(float(x1) - float(x0))
+                span_height = abs(float(y1) - float(y0))
+                if span_width <= 0 and span_height <= 0:
+                    continue
                 try:
                     angle = math.degrees(math.atan2(dy, dx))
                 except Exception:
                     continue
-                angle = _normalize_angle(angle)
-                votes.append(_quantize_angle(angle))
-    if not votes:
-        return None, 0.0, 0
-    counts: Counter[int] = Counter(votes)
-    dominant, count = counts.most_common(1)[0]
-    coverage = count / max(1, len(votes))
-    return dominant, coverage, len(votes)
+                angle = _quantize_angle(angle)
+                region_is_header = bool(header_cutoff and min(y0, y1) <= header_cutoff)
+                # Ignore narrow header glyphs (vertical titles) to avoid mis-rotations.
+                if region_is_header and span_width < span_height * 0.6:
+                    continue
+                weight = max(1.0, min(2000.0, (span_width * 0.6) + (span_height * 0.4)))
+                sample_votes += 1
+                total_weight += weight
+                if region_is_header:
+                    header_weights[angle] += weight
+                else:
+                    body_weights[angle] += weight
+
+    if not (body_weights or header_weights):
+        return None, 0.0, sample_votes
+
+    def _dominant(counter: Counter[int]) -> tuple[int | None, float]:
+        if not counter:
+            return None, 0.0
+        angle, weight = counter.most_common(1)[0]
+        coverage = weight / max(1.0, total_weight)
+        return angle, coverage
+
+    body_angle, body_cov = _dominant(body_weights)
+    header_angle, header_cov = _dominant(header_weights)
+
+    if body_angle is not None and (body_cov >= 0.45 or body_cov >= header_cov):
+        return body_angle, body_cov, sample_votes
+    if header_angle is not None:
+        return header_angle, max(body_cov, header_cov), sample_votes
+    return None, 0.0, sample_votes
 
 
 def _get_page_orientation_map(pdf_path: str, session_id=None) -> tuple[dict[int, int], int]:
+    """Analyze up to 120 pages to infer per-page and default rotations."""
     abs_path = os.path.abspath(pdf_path)
     cached = _PAGE_ORIENTATION_CACHE.get(abs_path)
     if cached is not None:
         return cached, _PAGE_ORIENTATION_DEFAULT.get(abs_path, 0)
+
     orientation_map: dict[int, int] = {}
     orientation_counts: Counter[int] = Counter()
     try:
         doc = fitz.open(pdf_path)
+    except Exception as exc:
+        logger.debug({
+            "level": "DEBUG",
+            "type": "handler",
+            "message": f"[DEBUG] Page orientation analysis skipped: {exc}",
+            "session_id": session_id,
+        })
+        _PAGE_ORIENTATION_CACHE[abs_path] = orientation_map
+        _PAGE_ORIENTATION_DEFAULT[abs_path] = 0
+        return orientation_map, 0
+
+    try:
         total_pages = len(doc)
         max_pages = min(total_pages, 120)
         for page_index in range(max_pages):
@@ -241,20 +424,19 @@ def _get_page_orientation_map(pdf_path: str, session_id=None) -> tuple[dict[int,
                 continue
             orientation_map[page_index] = angle
             orientation_counts[angle] += 1
-        doc.close()
-    except Exception as exc:
-        logger.debug({
-            "level": "DEBUG",
-            "type": "handler",
-            "message": f"[DEBUG] Page orientation analysis skipped: {exc}",
-            "session_id": session_id
-        })
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
+
     default_angle = 0
     if orientation_counts:
         dominant_angle, count = orientation_counts.most_common(1)[0]
         total_votes = sum(orientation_counts.values())
         if count / max(1, total_votes) >= 0.6:
             default_angle = dominant_angle
+
     _PAGE_ORIENTATION_CACHE[abs_path] = orientation_map
     _PAGE_ORIENTATION_DEFAULT[abs_path] = default_angle
     if abs_path not in _PAGE_ORIENTATION_LOGGED:
@@ -263,8 +445,8 @@ def _get_page_orientation_map(pdf_path: str, session_id=None) -> tuple[dict[int,
             logger.info({
                 "level": "INFO",
                 "type": "handler",
-                "message": f"[INFO] Page orientation hints detected: {logged_angles} degrees (default={default_angle})",
-                "session_id": session_id
+                "message": f"[INFO] Page orientation hints detected: {logged_angles} (default={default_angle})",
+                "session_id": session_id,
             })
         _PAGE_ORIENTATION_LOGGED.add(abs_path)
     return orientation_map, default_angle
@@ -278,11 +460,559 @@ def _log_orientation_application(pdf_path: str, page_index: int, angle: int, ses
     logger.info({
         "level": "INFO",
         "type": "handler",
-        "message": f"[INFO] Applied rotation={angle}° for page={page_index}",
-        "session_id": session_id
+        "message": f"[INFO] Applied rotation={angle}deg for page={page_index}",
+        "session_id": session_id,
     })
 
 
+def _apply_page_orientation(
+    image: Image.Image,
+    page_index: int,
+    pdf_path: str,
+    orientation_map: dict[int, int] | None,
+    default_angle: int,
+    *,
+    session_id=None,
+):
+    angle = 0
+    if orientation_map and page_index in orientation_map:
+        angle = orientation_map.get(page_index, 0) or 0
+    elif default_angle:
+        angle = default_angle
+    angle = _quantize_angle(angle)
+    if angle in {0, 360, -360}:
+        return image
+    try:
+        rotated = image.rotate(-angle, expand=True)
+    except Exception as exc:
+        logger.debug({
+            "level": "DEBUG",
+            "type": "handler",
+            "message": f"[DEBUG] Failed to apply rotation={angle}deg on page={page_index}: {exc}",
+            "session_id": session_id,
+        })
+        return image
+    _log_orientation_application(pdf_path, page_index, angle, session_id=session_id)
+    return rotated
+
+
+def _expand_focus_windows(
+    page_hits: list[int] | None,
+    page_count: int | None,
+    *,
+    expand: int | None = None,
+) -> list[tuple[int, int]]:
+    if not page_hits or not page_count:
+        return []
+    expand = expand if expand is not None else _OCR_FOCUS_WINDOW_EXPAND
+    normalized = []
+    for hit in sorted({idx for idx in page_hits if isinstance(idx, int)}):
+        start = max(0, hit - expand)
+        end = min(page_count, hit + expand + 1)
+        if start < end:
+            normalized.append((start, end))
+    if not normalized:
+        return []
+    merged: list[list[int]] = []
+    for start, end in normalized:
+        if not merged or start > merged[-1][1]:
+            merged.append([start, end])
+        else:
+            merged[-1][1] = max(merged[-1][1], end)
+    return [(start, end) for start, end in merged]
+
+
+def _normalize_contest_key(value: str | None) -> str:
+    if not value:
+        return ""
+    lowered = re.sub(r"[^a-z0-9 ]+", " ", value.lower())
+    return re.sub(r"\s+", " ", lowered).strip()
+
+
+def _contest_title_tokens(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {tok for tok in re.findall(r"[a-z0-9]+", value.lower()) if len(tok) >= 2}
+
+
+def _ensure_not_cancelled(cancel_flag, session_id, stage: str) -> None:
+    """Raise PDFParseCancelled if the cooperative flag indicates an abort."""
+    if cancel_flag is None:
+        return
+
+    cancelled = False
+    reason = None
+
+    if isinstance(cancel_flag, bool):
+        cancelled = cancel_flag
+    elif safe_is_set(cancel_flag):
+        cancelled = True
+    elif callable(cancel_flag):
+        try:
+            cancelled = bool(cancel_flag())
+        except Exception:
+            cancelled = False
+    elif isinstance(cancel_flag, dict):
+        for key in ("cancelled", "is_cancelled", "value", "flag"):
+            if bool(cancel_flag.get(key)):
+                cancelled = True
+                break
+        reason = cancel_flag.get("reason") or cancel_flag.get("message")
+    else:
+        for attr in ("cancelled", "is_cancelled", "value"):
+            try:
+                attr_value = getattr(cancel_flag, attr)
+            except Exception:
+                continue
+            if callable(attr_value):
+                try:
+                    attr_value = attr_value()
+                except Exception:
+                    continue
+            if isinstance(attr_value, bool):
+                cancelled = attr_value
+            else:
+                cancelled = bool(attr_value)
+            if cancelled:
+                break
+        if not reason and hasattr(cancel_flag, "reason"):
+            try:
+                reason = getattr(cancel_flag, "reason")
+            except Exception:
+                reason = None
+
+    if not cancelled:
+        return
+
+    message = str(stage or "pdf_handler")
+    if reason:
+        message = f"{message} :: {reason}"
+    logger.info({
+        "level": "INFO",
+        "type": "handler",
+        "message": f"[INFO] PDF parsing cancelled at {stage}: {reason or 'user-request'}",
+        "session_id": session_id,
+    })
+    raise PDFParseCancelled(message)
+
+
+def _cancelled_result(
+    pdf_path: str | None,
+    metadata_seed: dict | None,
+    reason: str | None,
+    *,
+    session_id=None,
+):
+    metadata = {
+        "handler": "pdf_handler",
+        "cancelled": True,
+        "cancel_reason": reason or "User cancelled",
+    }
+    if pdf_path:
+        metadata.setdefault("input_file", os.path.basename(pdf_path))
+    if isinstance(metadata_seed, dict):
+        metadata.update(metadata_seed)
+    logger.info({
+        "level": "INFO",
+        "type": "handler",
+        "message": f"[INFO] Returning cancel result for {metadata.get('input_file')} ({metadata.get('cancel_reason')})",
+        "session_id": session_id,
+    })
+    return None, None, None, metadata
+
+
+def _estimate_ocr_time_budgets(page_total: int | None) -> tuple[int, int]:
+    """Return (sample_budget_seconds, stream_budget_seconds) based on page count."""
+    effective_pages = 1
+    if isinstance(page_total, int) and page_total > 0:
+        effective_pages = min(page_total, _OCR_FULLDOC_MAX_PAGES)
+
+    sample_budget = int(min(210, max(45, 25 + math.sqrt(effective_pages) * 18)))
+    stream_budget = int(min(900, max(180, 60 + effective_pages * 4)))
+    return sample_budget, stream_budget
+
+
+def _refine_focus_windows_for_contest(
+    selected_title: str | None,
+    contest_probe_info: dict[str, Any] | None,
+    page_count: int | None,
+    *,
+    expand: int | None = None,
+    min_score: float = 0.35,
+) -> list[tuple[int, int]] | None:
+    if not selected_title or not contest_probe_info or not page_count:
+        return None
+    probe_pages = contest_probe_info.get("pages") or []
+    if not isinstance(probe_pages, list):
+        return None
+    target_tokens = _contest_title_tokens(selected_title)
+    if not target_tokens:
+        target_norm = _normalize_contest_key(selected_title)
+    else:
+        target_norm = ""
+    focused_hits: list[int] = []
+    for entry in probe_pages:
+        page_idx = safe_get(entry, "page")
+        if not isinstance(page_idx, int):
+            continue
+        entry_titles = safe_get(entry, "titles") or []
+        entry_lines = safe_get(entry, "lines") or []
+        combined_text = " ".join([*entry_titles, *entry_lines])
+        tokens = _contest_title_tokens(combined_text)
+        score = 0.0
+        if target_tokens and tokens:
+            intersection = len(target_tokens & tokens)
+            union = len(target_tokens | tokens) or 1
+            score = intersection / union
+        elif target_norm:
+            combined_norm = _normalize_contest_key(combined_text)
+            if combined_norm and target_norm:
+                score = 1.0 if target_norm in combined_norm else 0.0
+        if score >= min_score:
+            focused_hits.append(page_idx)
+    if not focused_hits:
+        return None
+    return _expand_focus_windows(focused_hits, page_count, expand=expand)
+
+
+def _focus_windows_from_line_records(
+    line_records: list[dict],
+    candidate_titles: list[str],
+    page_count: int | None,
+    *,
+    expand: int | None = None,
+    limit_windows: int = 12,
+    min_score: float = 0.55,
+) -> list[tuple[int, int]] | None:
+    """Derive focus windows by locating contest titles in sanitized line records."""
+    if not line_records or not candidate_titles or not isinstance(page_count, int) or page_count <= 0:
+        return None
+
+    title_tokens_map: list[tuple[str, set[str], str]] = []
+    for title in candidate_titles:
+        if not title:
+            continue
+        tokens = _contest_title_tokens(title)
+        normalized = _normalize_contest_key(title)
+        if not tokens and not normalized:
+            continue
+        title_tokens_map.append((title, tokens, normalized))
+    if not title_tokens_map:
+        return None
+
+    hits: list[int] = []
+    for record in line_records:
+        page = record.get("page")
+        if not isinstance(page, int) or page < 0:
+            continue
+        text = record.get("text") or ""
+        if not text:
+            continue
+        text_tokens = _contest_title_tokens(text)
+        text_norm = "" if text_tokens else _normalize_contest_key(text)
+        for _title, tokens, norm in title_tokens_map:
+            score = 0.0
+            if tokens and text_tokens:
+                intersection = len(tokens & text_tokens)
+                union = len(tokens | text_tokens) or 1
+                score = intersection / union
+            elif norm and text_norm:
+                score = 1.0 if norm and norm in text_norm else 0.0
+            if score >= min_score:
+                hits.append(page)
+                break
+
+    if not hits:
+        return None
+
+    windows = _expand_focus_windows(hits, page_count, expand=expand)
+    if not windows:
+        return None
+
+    windows = windows[:limit_windows]
+    return windows
+
+
+def _merge_focus_windows(
+    existing: list[tuple[int, int]] | None,
+    extra: list[tuple[int, int]] | None,
+) -> list[tuple[int, int]] | None:
+    if not existing and not extra:
+        return None
+    combined = []
+    for bucket in (existing, extra):
+        for window in bucket or []:
+            if not isinstance(window, tuple) or len(window) != 2:
+                continue
+            start, end = window
+            if start is None or end is None:
+                continue
+            combined.append((int(start), int(end)))
+    if not combined:
+        return None
+    combined.sort()
+    merged: list[list[int]] = []
+    for start, end in combined:
+        if not merged or start > merged[-1][1]:
+            merged.append([start, end])
+        else:
+            merged[-1][1] = max(merged[-1][1], end)
+    return [(start, end) for start, end in merged]
+
+
+def _autopick_contest_from_probe(
+    pdf_path: str,
+    contest_probe_info: dict[str, Any] | None,
+    *,
+    coordinator=None,
+    session_id=None,
+) -> dict | None:
+    if not contest_probe_info:
+        return None
+    titles = contest_probe_info.get("titles") or []
+    if not titles:
+        return None
+    selector_context = {
+        "selector_data": {
+            "contests": [{"title": t, "source": "contest_probe"} for t in titles if t],
+            "noisy_patterns": [s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())],
+        },
+        "input_file": os.path.basename(pdf_path),
+        "contest_probe": {
+            "hits": contest_probe_info.get("hits"),
+            "sample_lines": contest_probe_info.get("sample_lines"),
+        },
+    }
+    auto = select_contest_noninteractive(
+        coordinator=coordinator,
+        context=selector_context,
+        session_id=session_id,
+        prefer_year_match=False,
+        return_mode="objects",
+    )
+    auto_list = auto if isinstance(auto, list) else []
+    if not auto_list:
+        return None
+    top = auto_list[0]
+    picked_title = safe_get(top, "title") or safe_get(top, "metadata", {}).get("display_title")
+    if not picked_title:
+        return None
+    confidence = None
+    try:
+        confidence = float(safe_get(top, "confidence") or 0.0)
+    except Exception:
+        confidence = None
+    return {
+        "title": picked_title,
+        "confidence": confidence,
+        "source": "contest_probe",
+    }
+
+
+def _compute_sample_page_indices(
+    page_count: int | None,
+    *,
+    page_windows: list[tuple[int, int]] | None = None,
+    max_samples: int | None = None,
+) -> list[int]:
+    if not page_count or page_count <= 0:
+        return [0]
+    max_samples = max_samples or _OCR_SAMPLE_PAGE_TARGET
+    candidates: list[int] = []
+    if page_windows:
+        for start, end in page_windows:
+            start = max(0, min(page_count - 1, start))
+            end = max(start + 1, min(page_count, end))
+            midpoint = (start + end - 1) // 2
+            candidates.extend([start, midpoint, end - 1])
+    else:
+        candidates.extend([0, page_count - 1])
+        if page_count > 1:
+            candidates.append(page_count // 2)
+        if page_count > 6:
+            candidates.extend([page_count // 4, (3 * page_count) // 4])
+    deduped = sorted({max(0, min(page_count - 1, idx)) for idx in candidates})
+    if not deduped:
+        return [0]
+    if len(deduped) <= max_samples:
+        return deduped
+    step = max(1, len(deduped) // max_samples)
+    sampled = deduped[::step][:max_samples]
+    return sampled or [deduped[0]]
+
+
+def _contest_probe_scan(
+    pdf_path: str,
+    *,
+    session_id=None,
+    max_pages: int | None = None,
+    stride: int | None = None,
+    dpi: int | None = None,
+    max_hits: int | None = None,
+    cancel_flag=None,
+) -> dict:
+    if not pytesseract or not ENABLE_OCR:
+        return {}
+    stride = stride or _OCR_CONTEST_PROBE_STRIDE
+    dpi = dpi or _OCR_CONTEST_PROBE_DPI
+    max_hits = max_hits or _OCR_CONTEST_PROBE_MAX_HITS
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception as exc:
+        logger.debug({
+            "level": "DEBUG",
+            "type": "handler",
+            "message": f"[DEBUG] Contest probe skipped: {exc}",
+            "session_id": session_id,
+        })
+        return {}
+
+    total_pages = len(doc)
+    limit = min(total_pages, max_pages or total_pages)
+    if limit <= 0:
+        doc.close()
+        return {}
+    if limit <= stride * 2:
+        stride = max(1, stride // 2)
+    if limit <= stride:
+        stride = 1
+    orientation_map, default_angle = _get_page_orientation_map(pdf_path, session_id=session_id)
+    hits: list[int] = []
+    titles: list[str] = []
+    sample_lines: dict[int, list[str]] = {}
+    page_summaries: list[dict[str, Any]] = []
+
+    probe_indices = list(range(0, limit, stride))
+    if probe_indices[-1] != limit - 1:
+        probe_indices.append(limit - 1)
+
+    for page_index in probe_indices:
+        _ensure_not_cancelled(cancel_flag, session_id, f"pdf:contest_probe_page:{page_index}")
+        try:
+            page = doc[page_index]
+            pix = page.get_pixmap(dpi=dpi)
+            mode = "RGBA" if pix.alpha else "RGB"
+            img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+            oriented = _apply_page_orientation(
+                img,
+                page_index,
+                pdf_path,
+                orientation_map,
+                default_angle,
+                session_id=session_id,
+            )
+            gray = ImageOps.grayscale(oriented)
+            text = pytesseract.image_to_string(gray, config="--oem 1 --psm 6")
+        except Exception as exc:
+            logger.debug({
+                "level": "DEBUG",
+                "type": "handler",
+                "message": f"[DEBUG] Contest probe OCR failed for page {page_index}: {exc}",
+                "session_id": session_id,
+            })
+            continue
+
+        lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+        if not lines:
+            continue
+        detected = _dedupe_contest_titles(detect_contest_titles_from_text(lines, pdf_path))
+        if detected:
+            hits.append(page_index)
+            titles.extend(detected)
+            sample_lines[page_index] = lines[:8]
+            page_summaries.append({
+                "page": page_index,
+                "titles": detected,
+                "lines": lines[:15],
+            })
+            if len(hits) >= max_hits:
+                break
+
+    doc.close()
+    if not hits and not titles:
+        return {}
+    return {
+        "hits": hits,
+        "titles": _dedupe_contest_titles(titles),
+        "sample_lines": sample_lines,
+        "pages": page_summaries,
+        "probe_stride": stride,
+        "probe_dpi": dpi,
+    }
+
+
+def _yield_full_pass_batches(
+    pdf_path: str,
+    *,
+    dpi: int,
+    session_id=None,
+    batch_pages: int = 8,
+    max_pages: int | None = None,
+    page_windows: list[tuple[int, int]] | None = None,
+    cancel_flag=None,
+):
+    orientation_map, default_angle = _get_page_orientation_map(pdf_path, session_id=session_id)
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": "handler",
+            "message": f"[ERROR] Unable to open PDF for full-pass OCR: {exc}",
+            "session_id": session_id,
+        })
+        return
+
+    limit = len(doc)
+    if max_pages and max_pages > 0:
+        limit = min(limit, max_pages)
+    batch_pages = max(1, batch_pages)
+
+    ranges: list[tuple[int, int]]
+    if page_windows:
+        ranges = []
+        for start, end in page_windows:
+            start = max(0, min(limit, start))
+            end = max(start + 1, min(limit, end))
+            ranges.append((start, end))
+    else:
+        ranges = [(0, limit)]
+
+    try:
+        for window_start, window_end in ranges:
+            start_index = window_start
+            while start_index < window_end:
+                end_index = min(window_end, start_index + batch_pages)
+                _ensure_not_cancelled(cancel_flag, session_id, f"ocr:stream_window:{window_start}-{window_end}")
+                images: list[Image.Image] = []
+                for page_index in range(start_index, end_index):
+                    try:
+                        _ensure_not_cancelled(cancel_flag, session_id, f"ocr:stream_page:{page_index}")
+                        page = doc[page_index]
+                        pix = page.get_pixmap(dpi=dpi)
+                        mode = "RGBA" if pix.alpha else "RGB"
+                        img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+                        oriented = _apply_page_orientation(
+                            img,
+                            page_index,
+                            pdf_path,
+                            orientation_map,
+                            default_angle,
+                            session_id=session_id,
+                        )
+                        images.append(oriented)
+                    except Exception as exc:
+                        logger.warning({
+                            "level": "WARNING",
+                            "type": "handler",
+                            "message": f"[WARN] Skipping page {page_index} during OCR batch render: {exc}",
+                            "session_id": session_id,
+                        })
+                if images:
+                    yield start_index, images
+                start_index = end_index
+    finally:
+        doc.close()
 def _camelot_signal_sets() -> tuple[set[str], set[str]]:
     """Return the Camelot signal and noise keyword sets used for scoring tables."""
     signal: set[str] = set()
@@ -357,6 +1087,16 @@ def _find_header_line(lines: list[str], hints: set[str]) -> tuple[list[str], int
 
 def _extract_table_by_whitespace(lines: list[str], start_idx: int, headers: list[str]) -> list[dict]:
     return utils_extract_table_by_whitespace(lines, start_idx, headers)
+
+
+def _record_table_stage(metadata: dict, stage: str, details: dict | None = None) -> None:
+    if not metadata:
+        return
+    if metadata.get("table_failure_stage"):
+        return
+    metadata["table_failure_stage"] = stage
+    if details:
+        metadata["table_failure_details"] = details
 
 try:
     import pandas as pd  # type: ignore
@@ -816,24 +1556,108 @@ def _coerce_vote_value_for_reconstruction(value):
     return utils_coerce_vote_value_for_reconstruction(value)
 
 
-def _normalize_party_display(label: str | None) -> str:
-    """Return a short, reader-friendly party label for output columns."""
-    if label is None:
-        return ""
-    text = str(label).strip()
-    if not text:
-        return ""
-    lowered = text.lower()
-    if lowered in {"democrat", "democratic", "democratic party"}:
-        return "Democrat"
-    if lowered == "republican party":
-        return "Republican"
-    if lowered.endswith(" party"):
-        core = text[: -len(" party")].strip()
-        if core.lower() == "democratic":
-            return "Democrat"
-        return core or text
-    return text
+
+_DENSE_PRECINCT_LINE = re.compile(r"\b\d{3,4}\s*-\s*[a-z0-9]", re.IGNORECASE)
+
+
+_PRECINCT_INLINE_ANCHOR = re.compile(r"^\s*precincts?\b", re.IGNORECASE)
+
+
+def _split_dense_precinct_segments(line: str) -> list[str]:
+    """Split a single dense line containing many precinct rows into separate segments."""
+    matches = list(_DENSE_PRECINCT_LINE.finditer(line))
+    if len(matches) <= 1:
+        return [line]
+    segments: list[str] = []
+    first_start = matches[0].start()
+    prefix = line[:first_start].strip()
+    if prefix:
+        segments.append(prefix)
+    for idx, match in enumerate(matches):
+        start = match.start()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(line)
+        chunk = line[start:end].strip()
+        if chunk:
+            segments.append(chunk)
+    return segments or [line]
+
+
+def _expand_dense_precinct_block(block: list[str]) -> tuple[list[str], dict]:
+    """Detect and expand dense precinct listings into individual lines."""
+    if not block:
+        return block, {"expanded": False}
+    expanded: list[str] = []
+    expanded_any = False
+    for line in block:
+        if len(line) >= 400 and _DENSE_PRECINCT_LINE.search(line):
+            pieces = _split_dense_precinct_segments(line)
+            if len(pieces) > 1:
+                expanded.extend(pieces)
+                expanded_any = True
+                continue
+        expanded.append(line)
+    if not expanded_any:
+        return block, {"expanded": False}
+    meta = {
+        "expanded": True,
+        "original_lines": len(block),
+        "expanded_lines": len(expanded),
+    }
+    return expanded, meta
+
+
+def _normalize_precinct_inline_rows(block: list[str]) -> tuple[list[str], dict]:
+    """Split lines where the precinct anchor and first rows were jammed together by OCR."""
+    if not block:
+        return block, {}
+    normalized: list[str] = []
+    stats = {
+        "inline_headers_normalized": 0,
+        "inline_rows_injected": 0,
+    }
+    for raw in block:
+        text = (raw or "").strip()
+        anchor_match = _PRECINCT_INLINE_ANCHOR.match(text)
+        if anchor_match:
+            row_match = _DENSE_PRECINCT_LINE.search(text, anchor_match.end())
+            if row_match:
+                anchor_token = text[anchor_match.start():anchor_match.end()].strip()
+                anchor_label = anchor_token.title() or "Precinct"
+                header_segment = text[anchor_match.end():row_match.start()].strip()
+                data_segment = text[row_match.start():].strip()
+                if anchor_label:
+                    normalized.append(anchor_label)
+                else:
+                    normalized.append("Precinct")
+                if header_segment:
+                    header_clean = re.sub(r"[\|\[\]{}<>]+", " ", header_segment)
+                    header_clean = re.sub(r"\s{2,}", " ", header_clean).strip()
+                    if header_clean:
+                        normalized.append(header_clean)
+                split_rows = [seg for seg in _split_dense_precinct_segments(data_segment) if seg and seg.strip()]
+                if split_rows:
+                    normalized.extend(split_rows)
+                    stats["inline_rows_injected"] += max(0, len(split_rows) - 1)
+                elif data_segment:
+                    normalized.append(data_segment)
+                stats["inline_headers_normalized"] += 1
+                continue
+        normalized.append(raw)
+    return normalized, stats
+
+
+def _prepare_dense_precinct_lines(block: list[str]) -> tuple[list[str], dict]:
+    """Normalize inline precinct headers and expand dense lines before reconstruction."""
+    if not block:
+        return block, {}
+    inline_normalized, inline_meta = _normalize_precinct_inline_rows(block)
+    expanded_block, expand_meta = _expand_dense_precinct_block(inline_normalized)
+    meta: dict[str, Any] = {}
+    if inline_meta.get("inline_headers_normalized"):
+        meta.update(inline_meta)
+    if expand_meta.get("expanded"):
+        meta.setdefault("dense_line_expansion", expand_meta)
+    return expanded_block, meta
 
 
 def _try_columnar_reconstruction(
@@ -847,7 +1671,32 @@ def _try_columnar_reconstruction(
     coordinator,
     session_id: str | None,
 ):
+    if metadata is None:
+        metadata = {}
+
+    debug_events: list[dict] = []
+    recon_attempts: list[dict[str, Any]] = []
+
+    def _commit_attempts(extra_failure: dict | None = None) -> None:
+        metadata["columnar_reconstruction_attempts"] = recon_attempts
+        if debug_events:
+            metadata["reconstruction_debug_events"] = debug_events
+        else:
+            metadata["reconstruction_debug_events"] = []
+        if extra_failure:
+            failure_detail = {
+                "reason": extra_failure.get("reason", "unknown"),
+                "contest": selected_contest_title,
+                "state": state,
+                "county": county,
+                "attempts": len(recon_attempts),
+                "scopes_tried": [entry.get("scope") for entry in recon_attempts],
+            }
+            failure_detail.update({k: v for k, v in extra_failure.items() if k != "reason"})
+            metadata["columnar_reconstruction_failure"] = failure_detail
+
     if not lines:
+        _commit_attempts({"reason": "no_lines_available"})
         return None
 
     contest_block: list[str] = []
@@ -884,20 +1733,40 @@ def _try_columnar_reconstruction(
     recon_headers: list[str] = []
     recon_rows: list[dict] = []
     contest_scope: str | None = None
-    debug_events: list[dict] = []
 
     for scope, candidate_lines in search_spaces:
-        headers, rows = _reconstruct_columnar_block(candidate_lines)
+        prepared_lines, prep_meta = _prepare_dense_precinct_lines(candidate_lines or [])
+        attempt_entry: dict[str, Any] = {
+            "scope": scope,
+            "line_count": len(candidate_lines or []),
+            "prepared_line_count": len(prepared_lines),
+        }
+        if prep_meta:
+            metadata.setdefault("dense_line_normalization", []).append({
+                "scope": scope,
+                **prep_meta,
+            })
+            attempt_entry["normalization"] = prep_meta
+        headers, rows = _reconstruct_columnar_block(prepared_lines)
         scope_events = utils_consume_reconstruction_debug_events()
         if scope_events:
             for event in scope_events:
                 event.setdefault("scope", scope)
             debug_events.extend(scope_events)
+        attempt_entry.update({
+            "headers_detected": len(headers or []),
+            "rows_detected": len(rows or []),
+            "debug_event_count": len(scope_events or []),
+        })
         if headers and rows:
+            attempt_entry["success"] = True
+            recon_attempts.append(attempt_entry)
             recon_headers = headers
             recon_rows = rows
             contest_scope = scope
             break
+        attempt_entry["success"] = False
+        recon_attempts.append(attempt_entry)
 
     if contest_block_meta and contest_scope:
         contest_block_meta = metadata.get("contest_segments", {}).get(selected_contest_title, {})
@@ -905,6 +1774,7 @@ def _try_columnar_reconstruction(
             contest_block_meta.setdefault("reconstruction_scope", contest_scope)
 
     if not recon_headers or not recon_rows:
+        _commit_attempts({"reason": "no_columnar_table_detected"})
         return None
 
     party_lookup: dict[str, str] = {}
@@ -922,7 +1792,7 @@ def _try_columnar_reconstruction(
     for cand_header in candidate_headers:
         candidate_label, party_label, info = _parse_candidate_header_with_party(cand_header, party_lookup)
         info["candidate_label"] = candidate_label
-        info["party_label"] = _normalize_party_display(party_label)
+        info["party_label"] = normalize_party_label(party_label) if party_label else ""
         candidate_infos.append(info)
 
     grouped: dict[str, list[dict]] = defaultdict(list)
@@ -951,7 +1821,8 @@ def _try_columnar_reconstruction(
         info["total_key"] = total_key
         info["party_key"] = party_key
         normalized_headers.extend([total_key, party_key])
-        info["party_label"] = _normalize_party_display(info.get("party_label", "")) or ""
+        raw_party = info.get("party_label", "")
+        info["party_label"] = normalize_party_label(raw_party) if raw_party else ""
 
     def _normalize_candidate_row(row: dict) -> dict:
         normalized = {location_header: row.get(location_header, "")}
@@ -1065,6 +1936,7 @@ def _try_columnar_reconstruction(
             "wide_headers": normalized_headers,
             "final_headers": final_headers,
             "smart_standard_applied": bool(smart_applied),
+            "attempts": recon_attempts,
         })
         if debug_events:
             columnar_meta["debug_events"] = debug_events
@@ -1086,6 +1958,8 @@ def _try_columnar_reconstruction(
             "metadata_path": result_paths.get("metadata_path"),
             "columnar_reconstruction": columnar_meta,
         })
+        metadata.pop("columnar_reconstruction_failure", None)
+        _commit_attempts(None)
         logger.info({
             "level": "INFO",
             "type": "output",
@@ -1130,6 +2004,7 @@ def _try_columnar_reconstruction(
             "wide_headers": normalized_headers,
             "final_headers": final_headers,
             "smart_standard_applied": bool(smart_applied),
+            "attempts": recon_attempts,
         })
         if debug_events:
             columnar_meta["debug_events"] = debug_events
@@ -1151,6 +2026,8 @@ def _try_columnar_reconstruction(
             "metadata_path": result_paths.get("metadata_path"),
             "columnar_reconstruction": columnar_meta,
         })
+        metadata.pop("columnar_reconstruction_failure", None)
+        _commit_attempts(None)
         logger.info({
             "level": "INFO",
             "type": "output",
@@ -1317,6 +2194,7 @@ def _try_columnar_reconstruction(
             "number": selected_segment.get("number"),
             "contest": selected_segment.get("contest_title"),
         },
+        "attempts": recon_attempts,
     })
     if debug_events:
         columnar_meta["debug_events"] = debug_events
@@ -1347,6 +2225,8 @@ def _try_columnar_reconstruction(
         "sub_contest_number": selected_segment.get("number"),
         "contest": selected_segment.get("contest_title"),
     })
+    metadata.pop("columnar_reconstruction_failure", None)
+    _commit_attempts(None)
 
     logger.info({
         "level": "INFO",
@@ -1415,63 +2295,6 @@ def _detect_poppler_path() -> str | None:
             return None
         return None
 
-# Build tolerant contest regex (same logic as JSON handler)
-def _build_contest_regex(keywords) -> re.Pattern:
-    parts = []
-    for phrase in (keywords or []):
-        if not isinstance(phrase, str) or not phrase.strip():
-            continue
-        toks = re.split(r"\s+", phrase.strip().lower())
-        xtoks = []
-        for t in toks:
-            t = re.escape(t)
-            t = t.replace(r"\.", r"\.?")
-            t = t.replace(r"\-", r"[-\s]?")
-            xtoks.append(t)
-        pat = r"(?:[\s\-_\/]*?)".join(xtoks)
-        pat = rf"(?<![A-Za-z0-9]){pat}(?![A-Za-z0-9])"
-        parts.append(pat)
-    return re.compile("|".join(parts), re.I) if parts else re.compile(r"(?!x)x", re.I)
-
-_CONTEST_RX = _build_contest_regex(CONTEST_KEYWORDS)
-
-_CONTEST_NAME_REGEX = re.compile(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:\s*\([^)]*\))?)\b')
-
-def _detect_contest_titles_from_text(lines: list[str], pdf_path: str | None = None) -> list[str]:
-    """Detect contest titles from text lines using regex patterns."""
-    titles = []
-    filename_title = None
-    if pdf_path:
-        filename_line = os.path.basename(pdf_path).replace(".pdf", "")
-        if _CONTEST_RX.search(filename_line):
-            matches = _CONTEST_NAME_REGEX.findall(filename_line)
-            for match in matches:
-                # Parse filename like "Democratic District Attorney New York 2025" -> "Democratic District Attorney (New York)"
-                parts = match.split()
-                if len(parts) >= 3 and parts[-1].isdigit():
-                    # Last part is year, second last is location
-                    year = parts[-1]
-                    location = parts[-2]
-                    contest = " ".join(parts[:-2])
-                    formatted = f"{contest} ({location})"
-                    filename_title = formatted
-                else:
-                    filename_title = match
-        lines = lines + [filename_line]
-    for line in lines:
-        text = line.strip()
-        if not text:
-            continue
-        if _CONTEST_RX.search(text):
-            # Extract specific contest names
-            matches = _CONTEST_NAME_REGEX.findall(text)
-            titles.extend(matches)
-    # Put filename title first if available
-    if filename_title:
-        titles.insert(0, filename_title)
-    return titles
-
-
 def _detect_contest_positions(line_records: list[dict]) -> list[dict]:
     """Detect contest titles and their positions by page from line records."""
     contest_positions = []
@@ -1518,19 +2341,39 @@ def _associate_tables_with_contests(contest_positions: list[dict], tables: list[
 
 def _is_mostly_markup(text: str) -> bool:
     """
-    Return True if the extracted 'text' is actually markup-wrappers (e.g., <img> tags) with little real text.
+    Return True if the extracted 'text' is actually markup-wrappers (e.g., <img> tags)
+    with little real text. This function intentionally strips base64 image payloads
+    and common HTML wrappers before estimating remaining alphabetic signal to avoid
+    misclassifying large data:image blobs as textual content.
     """
     if not isinstance(text, str):
         return False
-    s = text.strip().lower()
+    s = text.strip()
     if not s:
         return False
-    # Heuristics: presence of HTML tags + low alphabetic character count
-    has_tags = any(tok in s for tok in ("<img", "<div", "<span", "<html", "<svg", "<p", "<table", "data:image/"))
+
+    s_lower = s.lower()
+    # Fast path: if no obvious markup tokens, bail out early
+    has_tags = any(tok in s_lower for tok in ("<img", "<div", "<span", "<html", "<svg", "<p", "<table", "data:image/"))
     if not has_tags:
         return False
-    alpha = sum(1 for ch in s[:8000] if ch.isalpha())
-    return alpha < 200
+
+    # Strip data:image payloads and very long base64-like runs (noise)
+    try:
+        s_wo_b64 = re.sub(r'src\s*=\s*"data:image/[^\"]+"', 'src="[image]"', s, flags=re.IGNORECASE)
+        s_wo_b64 = re.sub(r'[A-Za-z0-9+/=]{200,}', ' ', s_wo_b64)
+    except Exception:
+        s_wo_b64 = s
+
+    # Remove tags to evaluate remaining plain text signal
+    try:
+        s_plain = re.sub(r'<[^>]+>', ' ', s_wo_b64)
+    except Exception:
+        s_plain = s_wo_b64
+
+    # Compute alphabetic characters in a limited window to keep it cheap
+    alpha = sum(1 for ch in s_plain[:8000] if ch.isalpha())
+    return alpha < OCR_MIN_ALPHA_SIGNAL
 
 def _sanitize_extracted_text(text: str) -> str:
     """
@@ -1655,12 +2498,127 @@ def _sanitize_extracted_text(text: str) -> str:
         pass
 
     result = "\n".join(neat)
+    # Fallback: if sanitization collapsed almost everything, prefer a gentler pass
+    # to keep textual signal for downstream contest/title detection.
+    if len(result) < 200 and len(text) > 5000:
+        try:
+            gentle_lines = []
+            for raw in raw_lines:
+                collapsed = re.sub(r'\s+', ' ', raw).strip()
+                if collapsed:
+                    gentle_lines.append(collapsed)
+            fallback_result = "\n".join(gentle_lines)
+            if len(fallback_result) > len(result):
+                logger.info({
+                    "level": "INFO",
+                    "type": "handler",
+                    "message": "[INFO] sanitize fallback engaged; returning gentle cleaned text.",
+                })
+                result = fallback_result
+        except Exception:
+            pass
     try:
         if cache_key:
             _sanitize_cache_set(cache_key, result, confidence)
     except Exception:
         pass
     return result
+
+
+_PRECINCT_ROW_SPLIT_PATTERN = re.compile(r"\b\d{3,4}\s*-\s*[0-9A-Z]{1,3}\b")
+_DENSE_LINE_MIN_LENGTH = 320
+
+
+def _split_dense_precinct_line(line: str) -> list[str]:
+    """Split extremely long OCR lines that contain multiple precinct blocks."""
+    if not line:
+        return []
+    if len(line) < _DENSE_LINE_MIN_LENGTH:
+        return [line]
+    matches = list(_PRECINCT_ROW_SPLIT_PATTERN.finditer(line))
+    if len(matches) <= 1:
+        return [line]
+
+    segments: list[str] = []
+    first_start = matches[0].start()
+    if first_start > 0:
+        prefix = line[:first_start].strip()
+        if prefix:
+            segments.append(prefix)
+
+    for idx, match in enumerate(matches):
+        start = match.start()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(line)
+        chunk = line[start:end].strip()
+        if chunk:
+            segments.append(chunk)
+
+    return segments or [line]
+
+
+def _explode_dense_ocr_lines(
+    lines: list[str],
+    line_records: list[dict] | None,
+) -> tuple[list[str], list[dict] | None, bool]:
+    """Expand long OCR lines into multiple entries for downstream parsing."""
+    if not lines:
+        return lines, line_records, False
+
+    changed = False
+    new_lines: list[str] = []
+    new_records: list[dict] = []
+    for idx, line in enumerate(lines):
+        fragments = _split_dense_precinct_line(line)
+        if len(fragments) > 1:
+            changed = True
+        record = line_records[idx] if line_records and idx < len(line_records) else None
+        for frag_idx, fragment in enumerate(fragments):
+            new_lines.append(fragment)
+            if record is None:
+                new_records.append({
+                    "page": None,
+                    "page_line_index": None,
+                    "global_line_index": None,
+                    "text": fragment,
+                    "fragment_index": frag_idx if len(fragments) > 1 else None,
+                })
+            else:
+                frag_record = dict(record)
+                frag_record["text"] = fragment
+                if len(fragments) > 1:
+                    frag_record["fragment_index"] = frag_idx
+                new_records.append(frag_record)
+
+    if not changed:
+        return lines, line_records, False
+
+    for new_idx, rec in enumerate(new_records):
+        rec["global_line_index"] = new_idx
+    return new_lines, new_records, True
+
+
+def _summarize_pages_from_records(
+    line_records: list[dict] | None,
+    raw_char_lookup: dict | None = None,
+) -> list[dict]:
+    if not line_records:
+        return []
+    raw_char_lookup = raw_char_lookup or {}
+    summary_order: "OrderedDict[int | None, dict]" = OrderedDict()
+    for idx, record in enumerate(line_records):
+        page = record.get("page") if isinstance(record, dict) else None
+        entry = summary_order.setdefault(page, {
+            "page": page,
+            "lines": 0,
+            "start_index": None,
+            "end_index": None,
+            "raw_chars": raw_char_lookup.get(page),
+        })
+        entry["lines"] += 1
+        if entry["start_index"] is None:
+            entry["start_index"] = idx
+        entry["end_index"] = idx
+    return list(summary_order.values())
 
 
 def _assemble_page_line_records(
@@ -1726,27 +2684,38 @@ def _assemble_page_line_records(
     clean_text = "\n".join(aggregated_lines)
     return clean_text, aggregated_lines, line_records, page_summaries, used_fallback
 
-def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices: list[int] | None = None, max_pages: int | None = None):
+def _pdf_to_images(
+    pdf_path: str,
+    session_id=None,
+    *,
+    dpi: int = 200,
+    page_indices: list[int] | None = None,
+    max_pages: int | None = None,
+    cancel_flag=None,
+    return_indices: bool = False,
+):
     """
     Convert PDF pages to PIL Images.
     - If page_indices or max_pages provided, render only that subset (via PyMuPDF to avoid full-doc raster).
     - Else, try pdf2image (Poppler) then fallback to PyMuPDF for all pages.
     """
-    images = []
     orientation_map, default_angle = _get_page_orientation_map(pdf_path, session_id=session_id)
+    results: list = []
 
-    def _apply_orientation(img: Image.Image, page_index: int) -> Image.Image:
-        angle = orientation_map.get(page_index)
-        if angle is None:
-            angle = default_angle
-        if not angle:
-            return img
-        rotation = _quantize_angle(-angle)
-        if not rotation:
-            return img
-        rotated = img.rotate(rotation, expand=True)
-        _log_orientation_application(pdf_path, page_index, rotation, session_id=session_id)
-        return rotated
+    def _store(page_idx: int, pil_img: Image.Image) -> None:
+        oriented = _apply_page_orientation(
+            pil_img,
+            page_idx,
+            pdf_path,
+            orientation_map,
+            default_angle,
+            session_id=session_id,
+        )
+        if return_indices:
+            results.append((page_idx, oriented))
+        else:
+            results.append(oriented)
+
     # Try pdf2image first if available
     # If specific pages requested, use PyMuPDF directly (efficient random-page render)
     if page_indices is not None or max_pages is not None:
@@ -1760,13 +2729,14 @@ def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices:
             else:
                 idxs = sorted({i for i in page_indices if isinstance(i, int) and 0 <= i < count})
             for i in idxs:
+                _ensure_not_cancelled(cancel_flag, session_id, f"render:target_page:{i}")
                 page = doc[i]
                 pix = page.get_pixmap(dpi=dpi)
                 mode = "RGBA" if pix.alpha else "RGB"
                 pil_img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
-                images.append(_apply_orientation(pil_img, i))
+                _store(i, pil_img)
             doc.close()
-            return images
+            return results
         except Exception as e:
             logger.error({
                 "level": "ERROR",
@@ -1774,7 +2744,7 @@ def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices:
                 "message": f"[ERROR] Targeted page render failed: {e}",
                 "session_id": session_id
             })
-            images = []
+            results.clear()
 
     global _POPPLER_WARNING_SHOWN, _PDF2IMAGE_DISABLED_REASON
     # Try full-document pdf2image first if available and not previously disabled
@@ -1793,12 +2763,34 @@ def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices:
                     _POPPLER_WARNING_SHOWN = True
                 _PDF2IMAGE_DISABLED_REASON = "poppler_not_found"
             else:
-                kwargs = {"dpi": dpi}
+                # Register cleanup handler for temp files
+                _register_pdf_cleanup()
+                
+                # Track temp directory created by pdf2image
+                temp_dir = tempfile.mkdtemp(prefix="pdf2image_")
+                _PDF_TEMP_DIRS.add(temp_dir)
+                
+                kwargs = {"dpi": dpi, "output_folder": temp_dir}
                 if poppler_path and is_windows:
                     kwargs["poppler_path"] = poppler_path
-                images = pdf2image.convert_from_path(pdf_path, **kwargs)
-                if images:
-                    return [_apply_orientation(img, idx) for idx, img in enumerate(images)]
+                
+                images_raw = []
+                try:
+                    images_raw = pdf2image.convert_from_path(pdf_path, **kwargs)
+                    if images_raw:
+                        for idx, img in enumerate(images_raw):
+                            # Track image refs for cleanup
+                            _PDF_IMAGE_REFS.append(img)
+                            _store(idx, img)
+                        return results
+                finally:
+                    # Explicitly close images after use
+                    for img in images_raw:
+                        try:
+                            if hasattr(img, 'close'):
+                                img.close()
+                        except Exception:
+                            pass
         except Exception as e:
             reason = (str(e) or "pdf2image_failed").strip()
             reason_lower = reason.lower()
@@ -1816,9 +2808,11 @@ def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices:
                 ),
                 "session_id": session_id
             })
-            images = []
+            results.clear()
 
     # Fallback: render via PyMuPDF (no Poppler needed)
+    _register_pdf_cleanup()
+    doc = None
     try:
         doc = fitz.open(pdf_path)
         total = len(doc)
@@ -1826,13 +2820,20 @@ def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices:
         if max_pages is not None:
             rng = range(min(max_pages, total))
         for i in rng:
+            _ensure_not_cancelled(cancel_flag, session_id, f"render:full_pass_page:{i}")
             page = doc[i]
             # Render to pixmap at requested DPI for OCR
             pix = page.get_pixmap(dpi=dpi)
             mode = "RGBA" if pix.alpha else "RGB"
             pil_img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
-            images.append(_apply_orientation(pil_img, i))
-        doc.close()
+            # Track for cleanup
+            _PDF_IMAGE_REFS.append(pil_img)
+            _store(i, pil_img)
+            # Explicitly release pixmap memory
+            pix = None
+        if doc:
+            doc.close()
+            doc = None
     except Exception as e:
         logger.error({
             "level": "ERROR",
@@ -1840,26 +2841,44 @@ def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices:
             "message": f"[ERROR] PyMuPDF render fallback failed: {e}",
             "session_id": session_id
         })
-        images = []
-    return images
+        results.clear()
+    finally:
+        # Ensure doc is closed even on exception
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
+        # Force cleanup of any partial results
+        gc.collect()
+    return results
 
 def _prep_variants(images):
     """
     Yield (name, images_variant) for multiple preprocessing paths.
     """
-    variants = []
-    # identity
-    variants.append(("none", images))
-    # grayscale
+    yield "none", images
     gray = [ImageOps.grayscale(img) for img in images]
-    variants.append(("gray", gray))
-    # adaptive threshold (simple)
-    thresh = [ImageOps.autocontrast(ImageOps.grayscale(img)).point(lambda p: 255 if p > 180 else 0, mode='1') for img in images]
-    variants.append(("thresh", thresh))
-    # sharpen + contrast
-    sharp = [ImageEnhance.Contrast(img.filter(ImageFilter.SHARPEN)).enhance(1.5) for img in gray]
-    variants.append(("sharp_contrast", sharp))
-    return variants
+    try:
+        yield "gray", gray
+        thresh = [
+            ImageOps.autocontrast(ImageOps.grayscale(img)).point(
+                lambda p: 255 if p > 180 else 0,
+                mode='1'
+            )
+            for img in images
+        ]
+        try:
+            yield "thresh", thresh
+        finally:
+            del thresh
+        sharp = [ImageEnhance.Contrast(img.filter(ImageFilter.SHARPEN)).enhance(1.5) for img in gray]
+        try:
+            yield "sharp_contrast", sharp
+        finally:
+            del sharp
+    finally:
+        del gray
 
 def _dedupe_contest_titles(titles: list[str]) -> list[str]:
     """
@@ -1893,10 +2912,12 @@ def _dedupe_contest_titles(titles: list[str]) -> list[str]:
             out.append(t)
     return out
 
-def _ocr_images(images, tesseract_config: str, confidence_threshold=30):
+def _ocr_images(images, tesseract_config: str, confidence_threshold=None):
     """
     Run pytesseract on a list of PIL images and return combined text and avg confidence.
     """
+    if confidence_threshold is None:
+        confidence_threshold = OCR_CONFIDENCE_THRESHOLD
     if not pytesseract:
         return "", 0.0, []
 
@@ -1953,7 +2974,20 @@ def _ocr_images(images, tesseract_config: str, confidence_threshold=30):
     avg_conf = sum(confs_all) / len(confs_all) if confs_all else 0.0
     return "\n".join(page_texts), avg_conf, per_page
 
-def adaptive_ocr_pipeline(pdf_path, session_id=None, target_conf=70.0, max_seconds=120, max_runs=20):
+def adaptive_ocr_pipeline(
+    pdf_path,
+    session_id=None,
+    target_conf=None,
+    max_seconds: int | None = None,
+    max_runs=None,
+    *,
+    doc_page_count: int | None = None,
+    page_focus_windows: list[tuple[int, int]] | None = None,
+    cancel_flag=None,
+    stream_time_budget: int | None = None,
+    metadata_bucket: dict | None = None,
+    shared_raster_cache: dict | None = None,
+):
     """
     Adaptive OCR loop:
     - Try different DPIs, preprocessors, and Tesseract configs (psm/oem)
@@ -1961,48 +2995,92 @@ def adaptive_ocr_pipeline(pdf_path, session_id=None, target_conf=70.0, max_secon
     - Early stop on reaching target_conf or exceeding budgets
     Returns: best_text, best_conf, runs_summary(list of dict)
     """
+    if target_conf is None:
+        target_conf = OCR_AVG_CONF_ACCEPT
+    if max_runs is None:
+        max_runs = OCR_MAX_RUNS
+    
     start = time.time()
+    sample_budget = max_seconds if (isinstance(max_seconds, (int, float)) and max_seconds > 0) else None
+    sample_deadline = (start + sample_budget) if sample_budget else None
+    sample_timeout = False
+    stream_timeout = False
+    timeout_phase: str | None = None
     runs_summary = []
     best = {"text": "", "conf": 0.0, "params": {}}
 
-    dpi_list = [200, 250, 300, 350]
-    # Favor structured page mode first, then single-block variants
-    psm_list = [6, 4, 3, 11, 12, 1, 13]
-    # Try LSTM-only first, then default, then combo, then legacy-only
-    # 1=LSTM only, 3=Default, 2=Legacy+LSTM, 0=Legacy only
-    oem_list = [1, 3, 2, 0]
-    conf_threshold_word = 30
-    # Precompute sample page indices (first/middle/last up to 5 pages)
-    try:
-        doc = fitz.open(pdf_path)
-        page_count = len(doc)
-        doc.close()
-    except Exception:
-        page_count = None
-    if page_count and page_count > 0:
-        pts = {0, max(0, page_count // 2), max(0, page_count - 1)}
-        if page_count > 6:
-            pts |= {page_count // 4, (3 * page_count) // 4}
-        sample_indices = sorted({int(min(max(0, i), page_count - 1)) for i in pts})
+    _ensure_not_cancelled(cancel_flag, session_id, "ocr:init")
+
+    page_count = doc_page_count
+    if page_count is None:
+        try:
+            _ensure_not_cancelled(cancel_flag, session_id, "ocr:page_probe")
+            doc = fitz.open(pdf_path)
+            page_count = len(doc)
+            doc.close()
+        except Exception:
+            page_count = None
+
+    fast_mode = os.environ.get("PDF_FAST_MODE", "0").lower() in {"1", "true", "yes"}
+    if fast_mode:
+        dpi_max_fast = OCR_FAST_MODE_DPI_LIMIT
+        dpi_list = [d for d in range(OCR_DPI_MIN, dpi_max_fast + 1, OCR_DPI_STEP)]
+        if not dpi_list:
+            dpi_list = [250]
+        psm_list = OCR_PSM_LIST[:3]
+    elif page_count and page_count >= 180:
+        # Very long docs: reduce DPI to avoid exhaustion
+        dpi_list = [d for d in range(OCR_DPI_MIN, 301, OCR_DPI_STEP)]
+        if not dpi_list:
+            dpi_list = [250, 300]
+        psm_list = OCR_PSM_LIST[:3]
     else:
-        sample_indices = [0]
+        dpi_list = list(range(OCR_DPI_MIN, OCR_DPI_MAX + 1, OCR_DPI_STEP))
+        if not dpi_list:
+            dpi_list = [200, 250, 300, 350]
+        psm_list = OCR_PSM_LIST
+    oem_list = OCR_OEM_LIST
+    conf_threshold_word = OCR_CONFIDENCE_THRESHOLD
+    # Precompute sample page indices (first/middle/last up to 5 pages)
+    sample_indices = _compute_sample_page_indices(
+        page_count,
+        page_windows=page_focus_windows,
+        max_samples=_OCR_SAMPLE_PAGE_TARGET,
+    )
     # Caches to avoid rerendering
     cache_sample = {}  # dpi -> [PIL.Image]
-    cache_full = {}    # dpi -> [PIL.Image]
     logger.info({
         "level": "INFO",
         "type": "handler",
-        "message": f"[INFO] OCR param search on sample pages {sample_indices}; final pass on full document.",
-        "session_id": session_id
+        "message": (
+            "[INFO] OCR param search on sample pages "
+            f"{sample_indices}; focus_windows={page_focus_windows or 'all'}; final pass on full document."
+        ),
+        "session_id": session_id,
     })
 
+    exit_param_search = False
     for dpi in dpi_list:
-        if time.time() - start > max_seconds or len(runs_summary) >= max_runs:
+        if (sample_deadline and time.time() > sample_deadline) or len(runs_summary) >= max_runs:
+            sample_timeout = True
+            timeout_phase = timeout_phase or "sample_param_search"
             break
 
         # Get sample images for trials (fast)
         if dpi not in cache_sample:
-            cache_sample[dpi] = _pdf_to_images(pdf_path, session_id=session_id, dpi=dpi, page_indices=sample_indices)
+            rendered = list(_pdf_to_images(
+                pdf_path,
+                session_id=session_id,
+                dpi=dpi,
+                page_indices=sample_indices,
+                cancel_flag=cancel_flag,
+                return_indices=True,
+            ))
+            cache_sample[dpi] = [img for _, img in rendered]
+            if shared_raster_cache is not None:
+                sample_bucket = shared_raster_cache.setdefault("sample_images", {})
+                sample_bucket[dpi] = list(rendered)
+                shared_raster_cache.setdefault("sample_page_indices", list(sample_indices))
         images = cache_sample[dpi]
         if not images:
             continue
@@ -2014,12 +3092,20 @@ def adaptive_ocr_pipeline(pdf_path, session_id=None, target_conf=70.0, max_secon
         })
 
         for prep_name, prep_imgs in _prep_variants(images):
-            if time.time() - start > max_seconds or len(runs_summary) >= max_runs:
+            _ensure_not_cancelled(cancel_flag, session_id, f"ocr:prep:{prep_name}@{dpi}")
+            if (sample_deadline and time.time() > sample_deadline) or len(runs_summary) >= max_runs:
+                sample_timeout = True
+                timeout_phase = timeout_phase or "sample_param_search"
+                exit_param_search = True
                 break
 
             for oem in oem_list:
                 for psm in psm_list:
-                    if time.time() - start > max_seconds or len(runs_summary) >= max_runs:
+                    _ensure_not_cancelled(cancel_flag, session_id, f"ocr:trial:dpi{dpi}")
+                    if (sample_deadline and time.time() > sample_deadline) or len(runs_summary) >= max_runs:
+                        sample_timeout = True
+                        timeout_phase = timeout_phase or "sample_param_search"
+                        exit_param_search = True
                         break
                     config = f"--oem {oem} --psm {psm}"
                     text, avg_conf, per_page = _ocr_images(prep_imgs, config, confidence_threshold=conf_threshold_word)
@@ -2047,12 +3133,13 @@ def adaptive_ocr_pipeline(pdf_path, session_id=None, target_conf=70.0, max_secon
 
                     # Early stop when good enough
                     if avg_conf >= target_conf:
+                        exit_param_search = True
                         break
-                else:
-                    continue
+                if exit_param_search:
+                    break
+            if exit_param_search:
                 break
-            else:
-                continue
+        if exit_param_search:
             break
 
     # Combine high-confidence lines across top runs to improve recall
@@ -2062,9 +3149,21 @@ def adaptive_ocr_pipeline(pdf_path, session_id=None, target_conf=70.0, max_secon
         # Re-run OCR quickly for those top settings to collect lines
         line_sets = []
         for r in top:
+            _ensure_not_cancelled(cancel_flag, session_id, "ocr:topline")
             # Use sample images for quick combination
             if r["dpi"] not in cache_sample:
-                cache_sample[r["dpi"]] = _pdf_to_images(pdf_path, session_id=session_id, dpi=r["dpi"], page_indices=sample_indices)
+                rendered = list(_pdf_to_images(
+                    pdf_path,
+                    session_id=session_id,
+                    dpi=r["dpi"],
+                    page_indices=sample_indices,
+                    cancel_flag=cancel_flag,
+                    return_indices=True,
+                ))
+                cache_sample[r["dpi"]] = [img for _, img in rendered]
+                if shared_raster_cache is not None:
+                    sample_bucket = shared_raster_cache.setdefault("sample_images", {})
+                    sample_bucket[r["dpi"]] = list(rendered)
             imgs = cache_sample.get(r["dpi"]) or []
             if not imgs:
                 continue
@@ -2080,34 +3179,126 @@ def adaptive_ocr_pipeline(pdf_path, session_id=None, target_conf=70.0, max_secon
             if len(combined_text) > len(best["text"]):
                 best["text"] = combined_text
 
-    # Final assurance: run a full-document pass with the best params (covers all pages explicitly)
+    # Final assurance: run a streaming full-document pass with the best params (covers all pages without loading entire PDF)
     try:
         params = best.get("params") or {}
+        if params and sample_deadline and time.time() > sample_deadline and not stream_time_budget:
+            sample_timeout = True
+            timeout_phase = timeout_phase or "sample_param_search"
+            logger.warning({
+                "level": "WARNING",
+                "type": "handler",
+                "message": "[WARN] Skipping full-document OCR pass due to expired sample budget.",
+                "session_id": session_id,
+            })
+            params = {}
         if params:
             dpi = params.get("dpi", 300)
-            if dpi not in cache_full:
-                cache_full[dpi] = _pdf_to_images(pdf_path, session_id=session_id, dpi=dpi)
-            imgs = cache_full.get(dpi) or []
-            prep_variants = dict(_prep_variants(imgs))
-            imgs2 = prep_variants.get(params.get("prep", "none"), imgs)
             cfg = f"--oem {params.get('oem', 3)} --psm {params.get('psm', 6)}"
-            # Use same confidence threshold variable as above
-            text_full, _, _ = _ocr_images(imgs2, cfg, confidence_threshold=conf_threshold_word)
-            # Prefer the longer of full pass vs. previously combined
+            chunk_pages = _OCR_FULLDOC_BATCH_PAGES
+            max_pages = _OCR_FULLDOC_MAX_PAGES if _OCR_FULLDOC_MAX_PAGES > 0 else None
+            text_fragments: list[str] = []
+            total_pages_rendered = 0
+            chunk_counter = 0
+            stream_start = time.time()
+            stream_deadline = (stream_start + stream_time_budget) if stream_time_budget else None
+
+            for batch_start, images in _yield_full_pass_batches(
+                pdf_path,
+                dpi=dpi,
+                session_id=session_id,
+                batch_pages=chunk_pages,
+                max_pages=max_pages,
+                page_windows=page_focus_windows if page_focus_windows else None,
+                cancel_flag=cancel_flag,
+            ):
+                if not images:
+                    continue
+                prep_variants = dict(_prep_variants(images))
+                imgs2 = prep_variants.get(params.get("prep", "none"), images)
+                chunk_text, _, _ = _ocr_images(imgs2, cfg, confidence_threshold=conf_threshold_word)
+                if chunk_text:
+                    text_fragments.append(chunk_text)
+                total_pages_rendered += len(images)
+                chunk_counter += 1
+
+                if chunk_counter % 5 == 0 or len(images) >= chunk_pages:
+                    logger.info({
+                        "level": "INFO",
+                        "type": "handler",
+                        "message": (
+                            "[INFO] OCR full-pass progress: "
+                            f"chunks={chunk_counter}, pages_rendered={total_pages_rendered}"
+                        ),
+                        "session_id": session_id,
+                    })
+
+                if stream_deadline and time.time() > stream_deadline:
+                    stream_timeout = True
+                    timeout_phase = timeout_phase or "stream_full_pass"
+                    logger.warning({
+                        "level": "WARNING",
+                        "type": "handler",
+                        "message": "[WARN] Aborting full-document OCR pass due to timeout budget.",
+                        "session_id": session_id,
+                    })
+                    break
+
+                _ensure_not_cancelled(
+                    cancel_flag,
+                    session_id,
+                    f"ocr:stream:dpi{dpi}:chunk{chunk_counter}",
+                )
+
+            text_full = "\n".join(fragment for fragment in text_fragments if fragment)
             if text_full and len(text_full) > len(best["text"] or ""):
                 best["text"] = text_full
-            try:
-                page_count = len(imgs2)
-                logger.info({
-                    "level": "INFO",
+
+            logger.info({
+                "level": "INFO",
+                "type": "handler",
+                "message": (
+                    "[INFO] Streaming OCR full-document pass complete "
+                    f"(pages_rendered={total_pages_rendered}, chunks={chunk_counter}, dpi={params.get('dpi')}, "
+                    f"prep={params.get('prep')}, oem={params.get('oem')}, psm={params.get('psm')})."
+                ),
+                "session_id": session_id,
+            })
+
+            if max_pages and total_pages_rendered >= max_pages:
+                logger.warning({
+                    "level": "WARNING",
                     "type": "handler",
-                    "message": f"[INFO] Final OCR full-document pass completed (pages={page_count}, dpi={params.get('dpi')}, prep={params.get('prep')}, oem={params.get('oem')}, psm={params.get('psm')}).",
-                    "session_id": session_id
+                    "message": (
+                        "[WARN] Full-document OCR pass truncated due to OCR_FULLDOC_MAX_PAGES limit. "
+                        f"Processed {total_pages_rendered} / {max_pages} pages."
+                    ),
+                    "session_id": session_id,
                 })
-            except Exception:
-                pass
     except Exception:
-        pass
+        logger.debug({
+            "level": "DEBUG",
+            "type": "handler",
+            "message": "[DEBUG] Streaming OCR full-document pass failed; continuing with best partial text.",
+            "session_id": session_id,
+        })
+    total_runtime = time.time() - start
+    diag_entry = {
+        "sample_budget_seconds": sample_budget,
+        "stream_budget_seconds": stream_time_budget,
+        "sample_timeout": sample_timeout,
+        "stream_timeout": stream_timeout,
+        "timeout_phase": timeout_phase,
+        "total_seconds": round(total_runtime, 2),
+        "runs_attempted": len(runs_summary),
+    }
+    if metadata_bucket is not None:
+        attempts = metadata_bucket.setdefault("ocr_attempts", [])
+        attempts.append(diag_entry)
+        metadata_bucket["ocr_timeout_triggered"] = metadata_bucket.get("ocr_timeout_triggered", False) or bool(timeout_phase)
+        if timeout_phase:
+            metadata_bucket["ocr_timeout_phase"] = timeout_phase
+        metadata_bucket["ocr_time_spent_seconds"] = diag_entry["total_seconds"]
     return best["text"], best["conf"], runs_summary, best.get("params", {})
 
 def ocr_multi_pass(images, passes=3, confidence_threshold=30, session_id=None):
@@ -2157,29 +3348,9 @@ def ocr_multi_pass(images, passes=3, confidence_threshold=30, session_id=None):
     return all_text, overall_avg, ocr_runs
 
 def _extract_text_multi(pdf_path, session_id=None):
-    """
-    Try multiple PyMuPDF extract modes and pick the longest.
-    Only use modes that return strings.
-    """
+    """Try multiple PyMuPDF extract modes and return the richest text + per-page map."""
     try:
         doc = fitz.open(pdf_path)
-        texts = {}
-        # use string-returning modes only
-        modes = ["text", "raw", "html", "xhtml"]
-        for m in modes:
-            buf = []
-            for i in range(len(doc)):
-                try:
-                    t = doc[i].get_text(m)
-                    if not isinstance(t, str):
-                        t = ""
-                    buf.append(t)
-                except Exception:
-                    continue
-            texts[m] = "\n".join(buf)
-        doc.close()
-        best_mode = max(texts, key=lambda k: len(texts.get(k) or ""))
-        return texts.get(best_mode) or "", best_mode
     except Exception as e:
         logger.warning({
             "level": "WARNING",
@@ -2187,13 +3358,55 @@ def _extract_text_multi(pdf_path, session_id=None):
             "message": f"[WARN] Multi-mode text extraction failed: {e}",
             "session_id": session_id
         })
-        return "", "error"
+        return "", "error", []
 
-def _save_ocr_debug_images(pdf_path, session_id=None, dpi=300, limit=2):
+    modes = ["text", "raw", "html", "xhtml"]
+    best_text = ""
+    best_mode = None
+    best_page_map: list[dict] = []
     try:
+        page_total = len(doc)
+        for mode in modes:
+            buf: list[str] = []
+            page_entries: list[dict] = []
+            for page_index in range(page_total):
+                try:
+                    page_text = doc[page_index].get_text(mode)
+                except Exception:
+                    page_text = ""
+                if not isinstance(page_text, str):
+                    page_text = ""
+                buf.append(page_text)
+                page_entries.append({
+                    "page": page_index,
+                    "raw_text": page_text,
+                    "char_count": len(page_text),
+                })
+            combined = "\n".join(buf)
+            if len(combined) > len(best_text):
+                best_text = combined
+                best_mode = mode
+                best_page_map = page_entries
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
+
+    return best_text, best_mode or "text", best_page_map
+
+def _save_ocr_debug_images(pdf_path, session_id=None, dpi=300, limit=2, cancel_flag=None):
+    try:
+        _ensure_not_cancelled(cancel_flag, session_id, "ocr:debug_raster")
         # Render only first N pages instead of rasterizing the entire document
         idxs = list(range(max(0, limit)))
-        imgs = _pdf_to_images(pdf_path, session_id=session_id, dpi=dpi, page_indices=idxs)
+        imgs = _pdf_to_images(
+            pdf_path,
+            session_id=session_id,
+            dpi=dpi,
+            page_indices=idxs,
+            cancel_flag=cancel_flag,
+        )
         saved = []
         base = safe_slug(os.path.basename(pdf_path))
         for idx, img in enumerate(imgs):
@@ -2408,7 +3621,16 @@ def _merge_layout_tables(tables: list[dict]) -> list[dict]:
     return merged
 
 
-def _extract_tables_via_layout(pdf_path: str, session_id=None, ocr_params: dict | None = None, max_pages: int | None = None):
+def _extract_tables_via_layout(
+    pdf_path: str,
+    session_id=None,
+    ocr_params: dict | None = None,
+    max_pages: int | None = None,
+    page_indices: list[int] | None = None,
+    pre_rendered: list[tuple[int, Image.Image]] | None = None,
+    *,
+    cancel_flag=None,
+):
     if not pytesseract or not _PANDAS_AVAILABLE:
         return []
     try:
@@ -2421,10 +3643,47 @@ def _extract_tables_via_layout(pdf_path: str, session_id=None, ocr_params: dict 
     psm = (ocr_params or {}).get("psm", 6)
     config = f"--oem {oem} --psm {psm} -c preserve_interword_spaces=1"
 
-    images = _pdf_to_images(pdf_path, session_id=session_id, dpi=dpi, max_pages=max_pages)
     layout_tables: list[dict] = []
+    seen_pages: set[int] = set()
 
-    for page_index, image in enumerate(images):
+    reused_pages: list[tuple[int, Image.Image]] = []
+    if pre_rendered:
+        target = set(page_indices) if page_indices else None
+        for idx, image in pre_rendered:
+            if idx is None:
+                continue
+            if target is not None and idx not in target:
+                continue
+            if idx in seen_pages:
+                continue
+            seen_pages.add(idx)
+            reused_pages.append((idx, image))
+
+    def _iter_remaining():
+        remaining_indices = None
+        remaining_max = None
+        if page_indices:
+            remaining_indices = [i for i in page_indices if i not in seen_pages]
+            if not remaining_indices:
+                return
+        elif max_pages is not None:
+            remaining = max_pages - len(seen_pages)
+            if remaining <= 0:
+                return
+            remaining_max = remaining
+        yield from _pdf_to_images(
+            pdf_path,
+            session_id=session_id,
+            dpi=dpi,
+            max_pages=remaining_max,
+            page_indices=remaining_indices,
+            cancel_flag=cancel_flag,
+            return_indices=True,
+        )
+
+    def _process_page(actual_page, image):
+        page_index = actual_page if isinstance(actual_page, int) else 0
+        _ensure_not_cancelled(cancel_flag, session_id, f"layout:page:{page_index}")
         try:
             df = pytesseract.image_to_data(image, output_type=tess_output, config=config)
         except Exception as exc:
@@ -2434,18 +3693,18 @@ def _extract_tables_via_layout(pdf_path: str, session_id=None, ocr_params: dict 
                 "message": f"[DEBUG] Tesseract DATAFRAME extraction failed on page {page_index}: {exc}",
                 "session_id": session_id
             })
-            continue
+            return
 
         if df is None or df.empty:
-            continue
+            return
         try:
             df = df[df["conf"].fillna(-1) > -1]
             df["text"] = df["text"].fillna("").astype(str).str.strip()
             df = df[df["text"] != ""]
         except Exception:
-            continue
+            return
         if df.empty:
-            continue
+            return
 
         df["right"] = df["left"] + df["width"]
         df["center_x"] = df["left"] + (df["width"] / 2)
@@ -2456,7 +3715,7 @@ def _extract_tables_via_layout(pdf_path: str, session_id=None, ocr_params: dict 
         try:
             grouped = df.groupby(group_cols)
         except Exception:
-            continue
+            return
 
         for (_, _, _, line_num), group in grouped:
             if group.empty:
@@ -2565,6 +3824,12 @@ def _extract_tables_via_layout(pdf_path: str, session_id=None, ocr_params: dict 
                 "page": current_table.get("page"),
                 "score": len(rows)
             })
+
+    for actual_page, image in reused_pages:
+        _process_page(actual_page, image)
+
+    for actual_page, image in _iter_remaining() or []:
+        _process_page(actual_page, image)
 
     return _merge_layout_tables(layout_tables)
 
@@ -2778,7 +4043,16 @@ def _normalize_statement_candidate_results(
     return keep_headers, finalized_rows, diagnostics
 
 
-def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params: dict | None = None, max_pages: int | None = None):
+def _extract_statement_return_blocks(
+    pdf_path: str,
+    session_id=None,
+    ocr_params: dict | None = None,
+    max_pages: int | None = None,
+    page_indices: list[int] | None = None,
+    pre_rendered: list[tuple[int, Image.Image]] | None = None,
+    *,
+    cancel_flag=None,
+):
     """Parse statement & return style PDF pages into structured key/value rows."""
     if not pytesseract:
         return [], []
@@ -2787,9 +4061,55 @@ def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params:
     oem = (ocr_params or {}).get("oem", 3)
     config = f"--oem {oem} --psm 4 -c preserve_interword_spaces=1"
 
-    images = _pdf_to_images(pdf_path, session_id=session_id, dpi=dpi, max_pages=max_pages)
-    if not images:
-        return [], []
+    seen_pages: set[int] = set()
+
+    reused_pages: list[tuple[int, Image.Image]] = []
+    if pre_rendered:
+        target = set(page_indices) if page_indices else None
+        for idx, image in pre_rendered:
+            if idx is None:
+                continue
+            if target is not None and idx not in target:
+                continue
+            if idx in seen_pages:
+                continue
+            seen_pages.add(idx)
+            reused_pages.append((idx, image))
+
+    remaining_indices = None
+    remaining_max = None
+    images_iter = None
+    if page_indices:
+        remaining_indices = [i for i in page_indices if i not in seen_pages]
+        if remaining_indices:
+            images_iter = _pdf_to_images(
+                pdf_path,
+                session_id=session_id,
+                dpi=dpi,
+                page_indices=remaining_indices,
+                cancel_flag=cancel_flag,
+                return_indices=True,
+            )
+    else:
+        if max_pages is not None:
+            remaining_max = max_pages - len(reused_pages)
+            if remaining_max > 0:
+                images_iter = _pdf_to_images(
+                    pdf_path,
+                    session_id=session_id,
+                    dpi=dpi,
+                    max_pages=remaining_max,
+                    cancel_flag=cancel_flag,
+                    return_indices=True,
+                )
+        else:
+            images_iter = _pdf_to_images(
+                pdf_path,
+                session_id=session_id,
+                dpi=dpi,
+                cancel_flag=cancel_flag,
+                return_indices=True,
+            )
 
     records_map: dict[tuple[str, str, str], dict] = {}
     current_record: dict[str, object] | None = None
@@ -2843,7 +4163,10 @@ def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params:
             bucket[k] = v
         current_record = None
 
-    for page_index, image in enumerate(images):
+    def _process_statement_page(actual_page, image):
+        nonlocal current_ad, current_ed, current_record
+        page_index = actual_page if isinstance(actual_page, int) else 0
+        _ensure_not_cancelled(cancel_flag, session_id, f"statement_blocks:page:{page_index}")
         try:
             df = pytesseract.image_to_data(image, output_type=pytesseract.Output.DATAFRAME, config=config)
         except Exception as exc:
@@ -2853,22 +4176,22 @@ def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params:
                 "message": f"[DEBUG] Statement block OCR failed on page {page_index}: {exc}",
                 "session_id": session_id
             })
-            continue
+            return
 
         if df is None or df.empty:
-            continue
+            return
         df = df[df["text"].notna()]
         df["text"] = df["text"].astype(str).str.strip()
         df = df[df["text"] != ""]
         if df.empty:
-            continue
+            return
 
         df = df.assign(center_x=df["left"] + (df["width"] / 2))
         group_cols = ["page_num", "block_num", "par_num", "line_num"]
         try:
             grouped = df.groupby(group_cols)
         except Exception:
-            continue
+            return
 
         # Sort by layout ordering
         lines = []
@@ -2941,6 +4264,20 @@ def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params:
                 current_record[label] = parsed_value
 
         # Continue accumulating across pages; do not commit yet to allow multi-page sections
+
+    saw_page = False
+    if reused_pages:
+        for actual_page, image in reused_pages:
+            saw_page = True
+            _process_statement_page(actual_page, image)
+
+    if images_iter:
+        for actual_page, image in images_iter:
+            saw_page = True
+            _process_statement_page(actual_page, image)
+
+    if not saw_page:
+        return [], []
 
     commit_record()
 
@@ -3017,6 +4354,23 @@ def _attach_statement_precinct(
     )
 
     return updated_headers, updated_rows, added_any
+
+
+def _should_prefer_statement_blocks(
+    headers: list[str] | None,
+    rows: list[dict] | None,
+    *,
+    camelot_tables: list[dict] | None = None,
+    layout_tables: list[dict] | None = None,
+) -> bool:
+    if not rows:
+        return False
+    populated = sum(1 for row in rows if any(str(val).strip() for val in row.values()))
+    if len(rows) >= 5 and populated >= max(3, len(rows) // 3):
+        return True
+    if (not camelot_tables) and (not layout_tables) and populated:
+        return True
+    return False
 
 
 def _finalize_structured_table_output(
@@ -3219,56 +4573,131 @@ def _pick_representative_title(titles: list[str]) -> str:
 
 def _dedupe_contest_titles(titles):
     return list(dict.fromkeys(titles))
-
-def _detect_contest_titles_from_text(lines, pdf_path):
-    titles = []
-    if pdf_path:
-        filename_line = os.path.basename(pdf_path).replace(".pdf", "")
-        m = re.search(r'(\d{4})$', filename_line)
-        if m:
-            year = m.group(1)
-            before_year = filename_line[:m.start()].strip()
-            words = before_year.split()
-            if len(words) >= 2 and (words[-2].lower() in ['new', 'los', 'san', 'el', 'las', 'la', 'del', 'de', 'da', 'di', 'du', 'des', 'der', 'den', 'dem'] or words[-1].lower() in ['city', 'county', 'state', 'district', 'town', 'village']):
-                location = " ".join(words[-2:])
-                contest = " ".join(words[:-2])
-            else:
-                location = words[-1] if words else ""
-                contest = " ".join(words[:-1]) if len(words) > 1 else ""
-            if contest and location:
-                filename_title = f"{contest} ({location})"
-                titles.append(filename_title)
-    for line in lines:
-        text = line.strip()
-        if _CONTEST_RX.search(text):
-            matches = _CONTEST_NAME_REGEX.findall(text)
-            for match in matches:
-                parts = match.split()
-                if len(parts) >= 3 and parts[-1].isdigit():
-                    year = parts[-1]
-                    location = parts[-2]
-                    contest = " ".join(parts[:-2])
-                    title = f"{contest} ({location})"
-                else:
-                    title = match
-                titles.append(title)
-    return titles
-    
-def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> tuple[list[str], list[dict], str, dict]:
+   
+def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, cancel_flag=None) -> tuple[list[str], list[dict], str, dict]:
     """ Main PDF handler function."""
+    # Log active OCR tuning config at parse start for diagnostics
+    from ...config import log_ocr_config_summary, get_ocr_config_dict, log_extraction_quality
+    from ... import config as cfg_module
+    log_ocr_config_summary(cfg_module, logger, session_id=session_id)
+    
+    def _finalize_with_quality(headers, data, contest, metadata):
+        """Wrapper to add ML quality logging before returning results."""
+        # Add quality metrics to metadata
+        quality = log_extraction_quality(
+            headers, data, metadata, "pdf_handler", logger, session_id
+        )
+        metadata["quality_metrics"] = quality
+        return headers, data, contest, metadata
+    
     _log_ocr_environment(session_id=session_id)
     all_text = ""
     page_text_map: list[dict] = []
-    metadata = {}
+    metadata = {"ocr_config": get_ocr_config_dict(cfg_module)}
     tried_associated = False
     headers = []
     ocr_score = 0.0
     ocr_runs = []
+    pdf_page_total: int | None = None
+    contest_probe_info: dict[str, Any] = {}
+    page_focus_windows: list[tuple[int, int]] | None = None
+    probe_preselect: dict[str, Any] | None = None
+    shared_raster_cache: dict[str, Any] = {}
+
+    _ensure_not_cancelled(cancel_flag, session_id, "pdf:bootstrap")
+
+    def _ensure_contest_focus():
+        nonlocal contest_probe_info, page_focus_windows
+        # Fast mode: limit to first N pages to accelerate OCR/debug
+        fast_mode = str(os.environ.get("PDF_FAST_MODE", "")).lower() in {"1", "true", "yes"}
+        if fast_mode:
+            try:
+                n = int(os.environ.get("PDF_FAST_PAGES", "5"))
+            except Exception:
+                n = 5
+            total = pdf_page_total or n
+            end_page = max(1, min(n, int(total)))
+            page_focus_windows = [(1, end_page)]
+            return
+        if page_focus_windows is not None:
+            return
+        if not pdf_page_total or pdf_page_total < _OCR_CONTEST_PROBE_MIN_PAGES:
+            page_focus_windows = None
+            return
+        _ensure_not_cancelled(cancel_flag, session_id, "pdf:contest_probe_init")
+        if not contest_probe_info:
+            # Allow env override to cap probe workload
+            max_pages_override = os.environ.get("PDF_PROBE_MAX_PAGES")
+            try:
+                max_pages_override = int(max_pages_override) if max_pages_override else None
+            except Exception:
+                max_pages_override = None
+            contest_probe_info = _contest_probe_scan(
+                pdf_path,
+                session_id=session_id,
+                max_pages=max_pages_override or _OCR_CONTEST_PROBE_MAX_PAGES,
+                stride=_OCR_CONTEST_PROBE_STRIDE,
+                dpi=_OCR_CONTEST_PROBE_DPI,
+                max_hits=_OCR_CONTEST_PROBE_MAX_HITS,
+                cancel_flag=cancel_flag,
+            ) or {}
+            if contest_probe_info:
+                metadata["contest_probe"] = contest_probe_info
+        hits = contest_probe_info.get("hits") or []
+        if hits:
+            page_focus_windows = _expand_focus_windows(hits, pdf_page_total)
+        else:
+            page_focus_windows = []
+
+    def _apply_probe_preselection():
+        nonlocal page_focus_windows, probe_preselect
+        if probe_preselect is not None:
+            return
+        if not pdf_page_total or not contest_probe_info:
+            return
+        _ensure_not_cancelled(cancel_flag, session_id, "pdf:contest_probe_selection")
+        picked = _autopick_contest_from_probe(
+            pdf_path,
+            contest_probe_info,
+            coordinator=coordinator,
+            session_id=session_id,
+        )
+        if not picked:
+            return
+        probe_preselect = picked
+        metadata["contest_probe_autopick"] = picked
+        refined = _refine_focus_windows_for_contest(
+            picked.get("title"),
+            contest_probe_info,
+            pdf_page_total,
+            expand=_OCR_FOCUS_WINDOW_EXPAND,
+        )
+        if refined:
+            page_focus_windows = refined
+            metadata["ocr_focus_windows"] = refined
+
+    def _page_indices_from_windows(windows: list[tuple[int, int]] | None, limit: int | None = None) -> list[int]:
+        if not windows:
+            return []
+        indices: list[int] = []
+        for start, end in windows:
+            if start is None or end is None:
+                continue
+            cursor = max(0, int(start))
+            stop = max(cursor, int(end))
+            while cursor < stop:
+                if limit is not None and len(indices) >= limit:
+                    return indices
+                indices.append(cursor)
+                cursor += 1
+        return sorted(set(indices))
 
     # Try standard text first
     try:
         doc = fitz.open(pdf_path)
-        for i in range(len(doc)):
+        pdf_page_total = len(doc)
+        for i in range(pdf_page_total):
+            _ensure_not_cancelled(cancel_flag, session_id, f"pdf:text_extract:{i}")
             page_text = doc[i].get_text()
             if not isinstance(page_text, str):
                 page_text = str(page_text or "")
@@ -3291,10 +4720,12 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
 
     # If empty or forced, try alternative extract modes
     if (not all_text.strip()) or ENABLE_OCR_FORCE:
-        alt_text, mode_used = _extract_text_multi(pdf_path, session_id=session_id)
+        alt_text, mode_used, alt_page_map = _extract_text_multi(pdf_path, session_id=session_id)
         if len(alt_text) > len(all_text):
             all_text = alt_text
             metadata["fitz_mode_used"] = mode_used
+            if alt_page_map:
+                page_text_map = alt_page_map
 
     # If the "text" is markup-only, treat as empty to force OCR
     if _is_mostly_markup(all_text):
@@ -3305,6 +4736,14 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             "session_id": session_id
         })
         all_text = ""
+
+    metadata["pdf_page_total"] = pdf_page_total
+    ocr_sample_budget, ocr_stream_budget = _estimate_ocr_time_budgets(pdf_page_total)
+    metadata["ocr_time_budget"] = {
+        "sample_seconds": ocr_sample_budget,
+        "stream_seconds": ocr_stream_budget,
+        "pdf_pages": pdf_page_total,
+    }
 
     # OCR fallback (adaptive, cross‑platform)
     has_text = bool((all_text or "").strip())
@@ -3327,13 +4766,27 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 "message": "[INFO] Empty/forced OCR — attempting adaptive OCR fallback.",
                 "session_id": session_id
             })
-        _save_ocr_debug_images(pdf_path, session_id=session_id, dpi=300, limit=2)
+        _ensure_contest_focus()
+        _apply_probe_preselection()
+        _save_ocr_debug_images(
+            pdf_path,
+            session_id=session_id,
+            dpi=300,
+            limit=2,
+            cancel_flag=cancel_flag,
+        )
         best_text, best_conf, runs_summary, ocr_params = adaptive_ocr_pipeline(
             pdf_path,
             session_id=session_id,
             target_conf=70.0,
-            max_seconds=150,
-            max_runs=28
+            max_seconds=ocr_sample_budget,
+            max_runs=28,
+            doc_page_count=pdf_page_total,
+            page_focus_windows=page_focus_windows if page_focus_windows else None,
+            cancel_flag=cancel_flag,
+            stream_time_budget=ocr_stream_budget,
+            metadata_bucket=metadata,
+            shared_raster_cache=shared_raster_cache,
         )
         candidate_ocr_params = dict(ocr_params or {})
         if candidate_ocr_params:
@@ -3349,6 +4802,8 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             metadata["ocr_params"] = dict(ocr_params or {})
         else:
             metadata["ocr_used"] = False
+        if page_focus_windows:
+            metadata["ocr_focus_windows"] = page_focus_windows
 
     clean_text = _sanitize_extracted_text(all_text)
 
@@ -3376,13 +4831,27 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 "message": "[INFO] Low-signal text detected from fitz (markup-heavy). Forcing OCR.",
                 "session_id": session_id
             })
-            _save_ocr_debug_images(pdf_path, session_id=session_id, dpi=300, limit=2)
+            _save_ocr_debug_images(
+                pdf_path,
+                session_id=session_id,
+                dpi=300,
+                limit=2,
+                cancel_flag=cancel_flag,
+            )
+            _ensure_contest_focus()
+            _apply_probe_preselection()
             best_text, best_conf, runs_summary, ocr_params = adaptive_ocr_pipeline(
                 pdf_path,
                 session_id=session_id,
                 target_conf=70.0,
-                max_seconds=100,
-                max_runs=18
+                max_seconds=ocr_sample_budget,
+                max_runs=18,
+                doc_page_count=pdf_page_total,
+                page_focus_windows=page_focus_windows if page_focus_windows else None,
+                cancel_flag=cancel_flag,
+                stream_time_budget=ocr_stream_budget,
+                metadata_bucket=metadata,
+                shared_raster_cache=shared_raster_cache,
             )
             candidate_ocr_params = dict(ocr_params or {})
             if candidate_ocr_params:
@@ -3400,6 +4869,8 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             else:
                 metadata["ocr_used"] = False
                 metadata["ocr_reason"] = "low_signal_ocr_no_text"
+            if page_focus_windows:
+                metadata["ocr_focus_windows"] = page_focus_windows
         else:
             # OCR already performed earlier; do not run twice
             logger.info({
@@ -3432,6 +4903,17 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             "raw_chars": len(clean_text),
         }]
         page_lines_fallback = True
+
+    raw_char_lookup = {
+        entry.get("page"): entry.get("raw_chars")
+        for entry in page_summaries or []
+        if isinstance(entry, dict)
+    }
+    lines, line_records, dense_split_applied = _explode_dense_ocr_lines(lines, line_records)
+    if dense_split_applied:
+        clean_text = "\n".join(lines)
+        page_summaries = _summarize_pages_from_records(line_records, raw_char_lookup)
+        metadata["ocr_dense_lines_split"] = True
 
     metadata["page_line_total"] = len(line_records)
     metadata["page_line_source"] = "fallback" if page_lines_fallback else "page_map"
@@ -3469,21 +4951,72 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         "session_id": session_id
     })
 
+    ocr_params_raw = metadata.get("ocr_params")
+    ocr_params = ocr_params_raw if isinstance(ocr_params_raw, dict) else {}
+    layout_dpi = int(max(250, ocr_params.get("dpi", 300)))
+    sample_image_cache = {}
+    if isinstance(shared_raster_cache, dict):
+        cached_samples = shared_raster_cache.get("sample_images")
+        if isinstance(cached_samples, dict):
+            sample_image_cache = cached_samples
+
     table_hints = list(
         set(LOCATION_KEYWORDS) | set(CANDIDATE_KEYWORDS) | set(BALLOT_TYPES) |
         set(PARTY_KEYWORDS) | set(TOTAL_KEYWORDS) | set(MISC_FOOTER_KEYWORDS) | set(CONTEST_KEYWORDS)
     )
+    _ensure_not_cancelled(cancel_flag, session_id, "pdf:table_candidates")
     camelot_tables = attempt_camelot_extraction(pdf_path, session_id=session_id)
+    layout_tables: list[dict] = []
+    layout_focus_indices = _page_indices_from_windows(
+        page_focus_windows,
+        limit=_LAYOUT_SCAN_PAGE_LIMIT,
+    )
+    layout_max_pages = None
+    if layout_focus_indices:
+        metadata["layout_focus_pages"] = layout_focus_indices[:50]
+    elif pdf_page_total and pdf_page_total > _LAYOUT_SCAN_PAGE_LIMIT:
+        layout_max_pages = _LAYOUT_SCAN_PAGE_LIMIT
+        metadata["layout_scan_limited"] = {
+            "limit": _LAYOUT_SCAN_PAGE_LIMIT,
+            "total_pages": pdf_page_total,
+        }
     layout_tables = _extract_tables_via_layout(
         pdf_path,
         session_id=session_id,
-        ocr_params=metadata.get("ocr_params"),
+        ocr_params=ocr_params,
+        max_pages=layout_max_pages,
+        page_indices=layout_focus_indices or None,
+        pre_rendered=sample_image_cache.get(layout_dpi),
+        cancel_flag=cancel_flag,
     )
+
+    statement_headers: list[str] | None = None
+    statement_rows: list[dict] | None = None
+    statement_focus_indices = _page_indices_from_windows(
+        page_focus_windows,
+        limit=_STATEMENT_SCAN_PAGE_LIMIT,
+    )
+    statement_max_pages = None
+    if statement_focus_indices:
+        metadata["statement_focus_pages"] = statement_focus_indices[:50]
+    elif pdf_page_total and pdf_page_total > _STATEMENT_SCAN_PAGE_LIMIT:
+        statement_max_pages = _STATEMENT_SCAN_PAGE_LIMIT
+        metadata["statement_scan_limited"] = {
+            "limit": _STATEMENT_SCAN_PAGE_LIMIT,
+            "total_pages": pdf_page_total,
+        }
+    statement_dpi = int(max(360, ocr_params.get("dpi", 300)))
     statement_headers, statement_rows = _extract_statement_return_blocks(
         pdf_path,
         session_id=session_id,
-        ocr_params=metadata.get("ocr_params"),
+        ocr_params=ocr_params,
+        max_pages=statement_max_pages,
+        page_indices=statement_focus_indices or None,
+        pre_rendered=sample_image_cache.get(statement_dpi),
+        cancel_flag=cancel_flag,
     )
+    statement_headers = statement_headers or []
+    statement_rows = statement_rows or []
 
     statement_headers_raw = list(statement_headers or [])
     statement_rows_raw = [dict(row) for row in statement_rows] if statement_rows else []
@@ -3524,6 +5057,13 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             "raw_rows": len(statement_rows_raw)
         }
 
+    statement_priority = _should_prefer_statement_blocks(
+        statement_headers_copy,
+        statement_rows_copy,
+        camelot_tables=camelot_tables,
+        layout_tables=layout_tables,
+    )
+
     table_candidates = []
     for entry in camelot_tables or []:
         table_candidates.append({
@@ -3543,11 +5083,51 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
     headers, header_candidate = infer_headers_and_methods(lines, table_hints)
 
     # Detect potential contests from text as hints
-    detected_titles = _detect_contest_titles_from_text(lines, pdf_path)
+    contest_detection_diag: dict[str, Any] = {}
+    detected_titles = detect_contest_titles_from_text(
+        lines,
+        pdf_path,
+        diagnostics=contest_detection_diag,
+    )
     # Deduplicate aggressively – single-race PDFs often repeat the same heading
     detected_titles = _dedupe_contest_titles(detected_titles)
+    if contest_detection_diag:
+        contest_detection_diag["dedup_titles"] = detected_titles[:25]
+        contest_detection_diag["dedup_count"] = len(detected_titles)
+        metadata["contest_detection"] = contest_detection_diag
+    probe_titles = contest_probe_info.get("titles") if contest_probe_info else []
+    if probe_titles:
+        for title in probe_titles:
+            if title and title not in detected_titles:
+                detected_titles.append(title)
+    if probe_preselect and probe_preselect.get("title"):
+        preferred = probe_preselect["title"]
+        if preferred in detected_titles:
+            detected_titles = [preferred] + [t for t in detected_titles if t != preferred]
+        else:
+            detected_titles.insert(0, preferred)
     if not detected_titles:
         detected_titles = [os.path.basename(pdf_path).replace(".pdf", "")]
+
+    text_focus_windows = _focus_windows_from_line_records(
+        line_records,
+        detected_titles,
+        pdf_page_total,
+        expand=_OCR_FOCUS_WINDOW_EXPAND,
+        limit_windows=12,
+    )
+    if text_focus_windows:
+        combined_windows = _merge_focus_windows(page_focus_windows, text_focus_windows)
+        if combined_windows:
+            page_focus_windows = combined_windows
+            metadata["ocr_focus_windows"] = page_focus_windows[:50]
+        if probe_preselect is None and len(detected_titles) == 1:
+            probe_preselect = {
+                "title": detected_titles[0],
+                "confidence": None,
+                "source": "text_detection",
+            }
+            metadata["contest_text_autopick"] = probe_preselect
 
     # Derive light context from filename for better selection (before prompting)
     fname = os.path.basename(pdf_path).lower()
@@ -3555,6 +5135,8 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
     state = parsed_location.get("state", "Unknown")
     county = parsed_location.get("county", "Unknown")
     year = parsed_location.get("year")
+    state_normalized = None
+    county_normalized = None
 
     # Single contest fast-path or unified selector pass (no duplicate prompts)
     selector_context = {
@@ -3562,36 +5144,64 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             "contests": [{"title": t} for t in detected_titles],
             "noisy_patterns": [s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())]
         },
-        "input_file": os.path.basename(pdf_path)
+        "input_file": os.path.basename(pdf_path),
+        "selector_options": {
+            "allow_prompt": _CONTEST_PROMPTS_ENABLED,
+            "fallback_title": detected_titles[0] if detected_titles else None,
+        },
     }
+    if probe_preselect:
+        selector_context["probe_preselect"] = probe_preselect
     force_contest_prompt = bool(os.environ.get("SMART_ELECTIONS_FORCE_CONTEST_PROMPT"))
-    auto_kwargs = {
-        "coordinator": coordinator,
-        "context": selector_context,
-        "session_id": session_id,
-        "allow_multiple": False,
-        "force_interactive": force_contest_prompt,
-    }
-    if not force_contest_prompt:
-        auto_kwargs.update({
-            "prefer_year_match": False,
-        })
-        if _should_auto_select(detected_titles):
-            auto_kwargs["auto_confidence_threshold"] = 0.0
-        else:
-            auto_kwargs["auto_confidence_threshold"] = 0.82
-    auto_pick = select_contest_auto_first(**auto_kwargs)
-    metadata["contest_selection_mode"] = "auto" if (auto_pick and not force_contest_prompt) else "prompt"
-    if not auto_pick:
-        logger.warning({
-            "level": "WARNING",
-            "type": "handler",
-            "message": "[WARN] No contest selected. Using filename fallback.",
-            "session_id": session_id
-        })
-        selected_contest_title = os.path.basename(pdf_path).replace(".pdf", "")
+    single_contest_detected = len(detected_titles) == 1
+    selected_contest_title: str | None = None
+    shortcut_statement = (
+        statement_priority
+        and not force_contest_prompt
+        and single_contest_detected
+    )
+    if shortcut_statement:
+        selected_contest_title = detected_titles[0]
+        metadata["contest_selection_mode"] = "statement_priority"
+    elif single_contest_detected and not force_contest_prompt:
+        selected_contest_title = detected_titles[0]
+        metadata["contest_selection_mode"] = "single_detected"
     else:
-        selected_contest_title = safe_get(auto_pick[0], "title") or detected_titles[0]
+        allow_parallel_auto = ENABLE_PARALLEL and not force_contest_prompt
+        auto_kwargs = {
+            "coordinator": coordinator,
+            "context": selector_context,
+            "session_id": session_id,
+            "allow_multiple": False,
+            "force_interactive": force_contest_prompt,
+            "prefer_year_match": False,
+        }
+        if allow_parallel_auto:
+            if _should_auto_select(detected_titles):
+                auto_kwargs["auto_confidence_threshold"] = 0.0
+            else:
+                auto_kwargs["auto_confidence_threshold"] = 0.82
+        auto_pick = select_contest_auto_first(**auto_kwargs)
+        mode = "auto" if (allow_parallel_auto and auto_pick) else "prompt"
+        metadata["contest_selection_mode"] = mode
+        if not auto_pick:
+            if mode == "auto":
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "handler",
+                    "message": "[WARN] Auto contest selection failed in batch mode; falling back to filename.",
+                    "session_id": session_id
+                })
+            selected_contest_title = os.path.basename(pdf_path).replace(".pdf", "")
+        else:
+            selected_contest_title = safe_get(auto_pick[0], "title") or detected_titles[0]
+    if not selected_contest_title:
+        selected_contest_title = os.path.basename(pdf_path).replace(".pdf", "")
+    if probe_preselect and probe_preselect.get("title"):
+        metadata["contest_probe_autopick_match"] = (
+            probe_preselect["title"].strip().lower()
+            == (selected_contest_title or "").strip().lower()
+        )
     
     # Override with formatted filename if available and detected
     filename_formatted = None
@@ -3606,6 +5216,27 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
     if filename_formatted and filename_formatted in detected_titles:
         selected_contest_title = filename_formatted
     contest_slug = safe_slug(selected_contest_title, 80)
+
+    if statement_priority and statement_rows_copy:
+        metadata["statement_blocks_used"] = True
+        metadata["statement_blocks_rows"] = len(statement_rows_copy)
+        metadata["statement_blocks_reason"] = "priority_preempt"
+        metadata["table_source"] = "statement"
+        _record_table_stage(metadata, "statement_priority", {"rows": len(statement_rows_copy)})
+        headers_final, data_final, _ = _finalize_structured_table_output(
+            pdf_path,
+            list(statement_headers_copy),
+            [dict(row) for row in statement_rows_copy],
+            selected_contest_title,
+            state,
+            county,
+            year,
+            contest_slug,
+            metadata,
+            coordinator,
+            session_id=session_id,
+        )
+        return _finalize_with_quality(headers_final, data_final, selected_contest_title, metadata)
     
     # Special handling for New York location
     if location == "New York":
@@ -3620,12 +5251,20 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         "county_normalized": county_normalized,
     })
 
+    location_context = {
+        "state": state,
+        "county": county,
+        "contest": selected_contest_title,
+        "input_file": os.path.basename(pdf_path),
+    }
+
     try:
         det_county, det_state, _handler_path, det_log = dynamic_state_county_detection(
-            {"state": state, "county": county, "contest": selected_contest_title},
+            location_context,
             clean_text,
             debug=False
         )
+        location_log = metadata.setdefault("location_detection_log", [])
         if det_state:
             state_normalized = det_state
             formatted_state = format_state_label(det_state)
@@ -3637,9 +5276,35 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             if formatted_county:
                 county = formatted_county
         if det_log:
-            metadata["location_detection_log"] = det_log
+            location_log.extend(det_log)
     except Exception:
         pass
+
+    normalized_state_hint = state_normalized or normalize_state_name(state)
+    placeholder_county = (county or "").strip().lower()
+    county_missing = (not county) or placeholder_county in {"unknown", "n/a", "na", "unspecified"}
+    if county_missing and normalized_state_hint:
+        inferred_county_norm, county_hits = infer_county_from_lines(normalized_state_hint, lines)
+        if inferred_county_norm:
+            county_normalized = inferred_county_norm
+            formatted_county = format_county_label(
+                inferred_county_norm,
+                normalized_state_hint,
+            ) or inferred_county_norm.replace("_", " ").title()
+            county = formatted_county
+            log_entry = (
+                f"County '{formatted_county}' inferred from text scan for state '{normalized_state_hint}'"
+                f" (hits={county_hits})."
+            )
+            metadata.setdefault("location_detection_log", []).append(log_entry)
+            metadata["location_detection_source"] = "county_text_scan"
+
+    metadata.update({
+        "state": state,
+        "county": county,
+        "state_normalized": state_normalized,
+        "county_normalized": county_normalized,
+    })
 
     contest_column = None
     if headers:
@@ -3716,6 +5381,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             data = _extract_table_by_whitespace(lines, header_line_idx, headers)
         # Try semantic candidate totals extraction if still empty
         if not data:
+            _record_table_stage(metadata, "text_rows_empty", {"header_idx": header_line_idx})
             cand_headers, cand_rows = extract_candidate_totals_from_lines(lines, selected_contest_title)
             if cand_headers and cand_rows:
                 export_context = _prepare_output_context(
@@ -3746,6 +5412,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                     "metadata_path": result.get("metadata_path"),
                 })
                 metadata["table_source"] = "semantic_candidates"
+                _record_table_stage(metadata, "semantic_candidates_local", {"rows": len(cand_rows)})
                 logger.info({
                     "level": "INFO",
                     "type": "output",
@@ -3863,6 +5530,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
 
         # If we got some rows, but the table looks low-quality, switch to semantic extraction
         if data and _table_looks_bad(headers, data):
+            _record_table_stage(metadata, "text_rows_low_quality", {"rows": len(data), "headers": len(headers)})
             logger.info({
                 "level": "INFO",
                 "type": "handler",
@@ -3900,6 +5568,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                     "metadata_path": result.get("metadata_path"),
                 })
                 metadata["table_source"] = "semantic_candidates"
+                _record_table_stage(metadata, "semantic_candidates_local", {"rows": len(cand_rows)})
                 logger.info({
                     "level": "INFO",
                     "type": "output",
@@ -3965,6 +5634,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 table_source = "statement"
                 metadata["statement_blocks_used"] = True
                 metadata["statement_blocks_rows"] = len(statement_rows_copy)
+                _record_table_stage(metadata, "statement_promoted", {"pre_rows": pre_statement_rows})
             metadata["statement_blocks_decision"] = {
                 "pre_rows": pre_statement_rows,
                 "use_statement": use_statement,
@@ -4084,7 +5754,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                         coordinator,
                         session_id=session_id,
                     )
-            return headers_final, data_final, selected_contest_title, metadata
+            return _finalize_with_quality(headers_final, data_final, selected_contest_title, metadata)
 
         else:
             tried_associated = True
@@ -4130,7 +5800,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                     coordinator,
                     session_id=session_id,
                 )
-                return headers_final, data_final, selected_contest_title, metadata
+                return _finalize_with_quality(headers_final, data_final, selected_contest_title, metadata)
 
             unmatched_count = len(lines[header_line_idx + 1:])
             logger.warning({
@@ -4140,6 +5810,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 "session_id": session_id
             })
             fallback_rows = [{"raw_line": line} for line in lines[header_line_idx + 1:]]
+            _record_table_stage(metadata, "raw_line_fallback", {"unmatched_lines": unmatched_count})
             fallback_context = {
                 "contest": selected_contest_title,
                 "state": state,
@@ -4228,6 +5899,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 metadata["statement_blocks_used"] = True
                 metadata["statement_blocks_rows"] = len(statement_rows_copy)
                 metadata["table_source"] = "statement"
+                _record_table_stage(metadata, "statement_promoted", {"layout_rows": len(layout_rows)})
                 headers_final, data_final, _ = _finalize_structured_table_output(
                     pdf_path,
                     list(statement_headers_copy),
@@ -4241,7 +5913,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                     coordinator,
                     session_id=session_id,
                 )
-            return headers_final, data_final, selected_contest_title, metadata
+            return _finalize_with_quality(headers_final, data_final, selected_contest_title, metadata)
 
     if statement_rows and statement_headers:
         # Ensure contest metadata reflects statement extraction path
@@ -4252,6 +5924,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         metadata["statement_blocks_used"] = True
         metadata["statement_blocks_rows"] = len(statement_rows)
         metadata["table_source"] = "statement"
+        _record_table_stage(metadata, "statement_terminal", {"rows": len(statement_rows)})
         headers_final, data_final, _ = _finalize_structured_table_output(
             pdf_path,
             list(statement_headers),
@@ -4265,7 +5938,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             coordinator,
             session_id=session_id,
         )
-        return headers_final, data_final, selected_contest_title, metadata
+        return _finalize_with_quality(headers_final, data_final, selected_contest_title, metadata)
 
     if not tried_associated:
         # Try associated tables as fallback
@@ -4296,6 +5969,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
     # No headers at all: still try semantic candidate totals from entire text
     cand_headers, cand_rows = extract_candidate_totals_from_lines(lines, selected_contest_title)
     if cand_headers and cand_rows:
+        _record_table_stage(metadata, "semantic_totals", {"rows": len(cand_rows)})
         export_context = _prepare_output_context(
             None,
             {
@@ -4364,13 +6038,14 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         "csv_path": result.get("csv_path"),
         "metadata_path": result.get("metadata_path")
     })
+    _record_table_stage(metadata, "text_fallback", {"raw_len": len(all_text or "")})
     logger.warning({
         "level": "WARNING",
         "type": "output",
         "message": f"[OUTPUT] Wrote plain text to: {result.get('csv_path')}",
         "session_id": session_id
     })
-    return ["text"], [{"text": clean_text}], selected_contest_title, metadata
+    return _finalize_with_quality(["text"], [{"text": clean_text}], selected_contest_title, metadata)
 
 def parse(page=None, coordinator=None, html_context=None, manual_file=None, session_id=None, **kwargs):
     """
@@ -4457,7 +6132,15 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
                 "pdf2image_available": bool(pdf2image),
             },
         }
+        # Add quality metrics for provided_tables path
+        from ...config import log_extraction_quality
+        quality = log_extraction_quality(
+            headers_final, data_final, metadata, "pdf_handler", logger, session_id
+        )
+        metadata["quality_metrics"] = quality
         return headers_final, data_final, contest, metadata
+    cancel_flag = kwargs.get("cancel_flag")
+
     if html_context.get("skip_format") or html_context.get("manual_skip"):
         logger.info({
             "level": "INFO",
@@ -4476,7 +6159,18 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
         })
         return None, None, None, {"skipped": True}
 
-    result = parse_pdf_election_results(manual_file, session_id=session_id, coordinator=coordinator)
+    try:
+        result = parse_pdf_election_results(
+            manual_file,
+            session_id=session_id,
+            coordinator=coordinator,
+            cancel_flag=cancel_flag,
+        )
+    except PDFParseCancelled as exc:
+        meta_seed = {
+            "input_file": os.path.basename(manual_file) if manual_file else None,
+        }
+        return _cancelled_result(manual_file, meta_seed, str(exc), session_id=session_id)
 
     # Defensive: always return a 4-tuple, never a bool
     if not (isinstance(result, tuple) and len(result) == 4):

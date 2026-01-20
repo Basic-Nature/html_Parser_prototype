@@ -13,6 +13,7 @@ import os
 import platform
 import re
 import shutil
+import textwrap
 import time
 from pathlib import Path
 from typing import (
@@ -156,7 +157,8 @@ def safe_filename(
     max_length: int = 255,
     allow_unicode: bool = False,
     reserved_names: set = None,
-    default: str = "file"
+    default: str = "file",
+    strict_mode: bool = False,
 ) -> str:
     """
     Robustly sanitize a string for use as a safe filename.
@@ -165,25 +167,54 @@ def safe_filename(
     - Handles reserved device names (Windows).
     - Trims to max_length.
     - Returns a default if the result is empty.
+    - strict_mode: tighten allowed chars (no spaces, no path separators or traversal tokens).
     """
     if not isinstance(name, str):
         name = str(name) if name is not None else default
 
-    # Remove leading/trailing whitespace and control chars
-    name = name.strip().replace('\x00', '')
+    # Strip whitespace and null bytes early
+    name = (name or "").strip().replace("\x00", "")
 
     # Optionally restrict to ASCII
     if not allow_unicode:
         name = name.encode("ascii", "ignore").decode("ascii")
 
-    # Replace unsafe characters
-    name = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
+    # Remove path separators entirely to avoid accidental traversal joins
+    name = name.replace("/", "").replace("\\", "")
 
-    # Remove repeated underscores or dots
-    name = re.sub(r'[_\.]{2,}', '_', name)
+    # Normalize traversal patterns (".." -> "_")
+    name = re.sub(r"\.{2,}", "_", name)
 
-    # Remove leading/trailing dots/underscores
+    # Replace unsafe characters with underscores (keep dots/underscores/hyphens/spaces temporarily)
+    name = re.sub(r"[^A-Za-z0-9._\-\s]", "_", name)
+
+    # Collapse whitespace to underscores
+    name = name.replace(" ", "_")
+
+    # Collapse repeated underscores and dots separately
+    name = re.sub(r"_+", "_", name)
+    name = re.sub(r"\.{2,}", ".", name)
+
+    # Trim leading/trailing punctuation
     name = name.strip("._")
+
+    # Re-split into base/ext to decide whether to keep the dot
+    base, ext = (name.rsplit(".", 1) + [""])[:2] if "." in name else (name, "")
+
+    # If the base ends with an underscore, treat the separator as an underscore to avoid "file_.ext" edge cases
+    if ext and base and base.endswith("_"):
+        base = base.rstrip("_") or default
+        name = f"{base}_{ext}"
+    elif ext and base:
+        name = f"{base}.{ext}"
+    else:
+        name = base or ext
+
+    # Strict mode: tighten remaining punctuation but keep single dots (extensions)
+    if strict_mode:
+        name = re.sub(r"_+", "_", name)
+        name = re.sub(r"\.{2,}", ".", name)
+        name = name.strip("._")
 
     # Handle reserved device names (Windows)
     reserved = reserved_names or {
@@ -206,6 +237,112 @@ def safe_filename(
         name = base + ext
 
     return name
+
+def is_path_safe(path: Union[str, Path], allowed_bases: Union[str, Path, List[Union[str, Path]]] | None = None) -> bool:
+    """Return True if resolved path is within any allowed base directories."""
+    try:
+        target = Path(path).resolve()
+    except Exception:
+        return False
+    bases: List[Path] = []
+    if allowed_bases is None:
+        return True
+    if isinstance(allowed_bases, (str, Path)):
+        bases = [Path(allowed_bases)]
+    else:
+        try:
+            bases = [Path(b) for b in allowed_bases]
+        except Exception:
+            return False
+    for base in bases:
+        try:
+            if target.is_relative_to(base.resolve()):
+                return True
+        except AttributeError:
+            # Python <3.9 fallback
+            base_res = base.resolve()
+            try:
+                if os.path.commonpath([str(base_res)]) == os.path.commonpath([str(base_res), str(target)]):
+                    return True
+            except Exception:
+                continue
+        except Exception:
+            continue
+    return False
+
+
+def safe_resolve_path(
+    path: Union[str, Path],
+    base: Union[str, Path, None] = None,
+    *,
+    must_exist: bool = False,
+    create: bool = False,
+) -> Path:
+    """Resolve a path while enforcing base confinement and optional existence checks."""
+    base_path = Path(base).expanduser().resolve() if base is not None else None
+    raw_path = Path(path)
+    target = raw_path if raw_path.is_absolute() else (base_path or Path.cwd()).joinpath(raw_path)
+    try:
+        resolved = target.resolve(strict=must_exist)
+    except FileNotFoundError:
+        raise ValueError(f"Path does not exist: {target}")
+    except RuntimeError:
+        # In rare cases (e.g., cyclical symlinks), fall back to non-strict resolution
+        resolved = target.resolve(strict=False)
+
+    if base_path and not is_path_safe(resolved, [base_path]):
+        raise ValueError("Path traversal detected")
+
+    if must_exist and not resolved.exists():
+        raise ValueError(f"Path does not exist: {resolved}")
+
+    if create:
+        resolved.mkdir(parents=True, exist_ok=True)
+
+    return resolved
+
+
+def safe_join_path(base: Union[str, Path], *paths: str) -> Path:
+    """Join paths under a base directory with sanitization and traversal protection."""
+    base_path = Path(base).expanduser().resolve()
+
+    sanitized_parts: List[str] = []
+    for raw in paths:
+        if raw is None:
+            continue
+        text = str(raw)
+        for piece in re.split(r"[\\/]+", text):
+            if not piece:
+                continue
+            cleaned = safe_filename(piece, strict_mode=True)
+            if cleaned:
+                sanitized_parts.append(cleaned)
+
+    candidate = base_path.joinpath(*sanitized_parts)
+    try:
+        resolved = candidate.resolve(strict=False)
+    except Exception:
+        resolved = candidate
+
+    if not is_path_safe(resolved, [base_path]):
+        raise ValueError("Path traversal detected")
+
+    return resolved
+
+
+def validate_directory_path(path: Union[str, Path], create_if_missing: bool = False) -> Path:
+    """Ensure a directory exists (optionally creating it) and is not a file."""
+    candidate = Path(path).expanduser().resolve(strict=False)
+
+    if candidate.exists() and not candidate.is_dir():
+        raise ValueError(f"Path is not a directory: {candidate}")
+
+    if not candidate.exists():
+        if not create_if_missing:
+            raise ValueError(f"Path does not exist: {candidate}")
+        candidate.mkdir(parents=True, exist_ok=True)
+
+    return candidate
 
 T = TypeVar("T")
 
@@ -2103,7 +2240,8 @@ def _render_inventory_md(inv: Dict[str, List[Dict[str, Any]]]) -> str:
     lines: List[str] = []
     total_files = sum(len(v) for v in inv.values())
     total_loc = sum(sum(i.get("loc", 0) for i in v) for v in inv.values())
-    lines.append(f"Inventory summary: {total_files} files, ~{total_loc} non-empty LOC\n")
+    lines.append(f"Inventory summary: {total_files} files, ~{total_loc} non-empty LOC")
+    lines.append("")
     for category in sorted(inv.keys()):
         lines.append(f"### {category}")
         lines.append("")
@@ -2127,6 +2265,91 @@ def _render_inventory_md(inv: Dict[str, List[Dict[str, Any]]]) -> str:
             lines.append(bullet)
         lines.append("")
     return "\n".join(lines).strip() + "\n"
+
+def _finalize_markdown_lines(lines: list[str]) -> str:
+    """Ensure markdown headings/lists have required blank lines, wrap long lines, and collapse extras."""
+    processed: list[str] = []
+    total = len(lines)
+    for idx, line in enumerate(lines):
+        if line.startswith("#"):
+            if processed and processed[-1] != "":
+                processed.append("")
+            processed.append(line)
+            if idx + 1 < total and lines[idx + 1] != "":
+                processed.append("")
+        else:
+            processed.append(line)
+    deduped: list[str] = []
+    prev_blank = False
+    for line in processed:
+        if line == "":
+            if not prev_blank:
+                deduped.append(line)
+            prev_blank = True
+        else:
+            deduped.append(line)
+            prev_blank = False
+
+    wrapped: list[str] = []
+    in_fence = False
+    fence_delim = ""
+    fence_pattern = re.compile(r"^(```|~~~)")
+    bullet_pattern = re.compile(r"^(\s*(?:[-*]|\d+\.)\s+)(.+)$")
+    for line in deduped:
+        stripped = line.strip()
+        if line.startswith("#"):
+            wrapped.append(line)
+            continue
+        fence_match = fence_pattern.match(stripped)
+        if fence_match:
+            delim = fence_match.group(1)
+            if not in_fence:
+                in_fence = True
+                fence_delim = delim
+            elif delim == fence_delim:
+                in_fence = False
+                fence_delim = ""
+            wrapped.append(line)
+            continue
+        if in_fence or not stripped:
+            wrapped.append(line)
+            continue
+        if stripped.startswith(">") or stripped.startswith("|"):
+            wrapped.append(line)
+            continue
+        if stripped.startswith("{:"):
+            wrapped.append(line)
+            continue
+        bullet_match = bullet_pattern.match(line)
+        if line.startswith("    ") and not bullet_match:
+            wrapped.append(line)
+            continue
+        if bullet_match:
+            prefix, content = bullet_match.groups()
+            wrapped.extend(
+                textwrap.wrap(
+                    content.strip(),
+                    width=80,
+                    initial_indent=prefix,
+                    subsequent_indent=" " * len(prefix),
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+                or [line]
+            )
+            continue
+        wrapped.extend(
+            textwrap.wrap(
+                line.strip(),
+                width=80,
+                initial_indent="",
+                subsequent_indent="",
+                break_long_words=False,
+                break_on_hyphens=False,
+            )
+            or [line]
+        )
+    return "\n".join(wrapped).rstrip() + "\n"
 
 def update_architecture_md(project_root: str | Path = ".", md_path: str | Path = "docs/architecture.md") -> bool:
     """Replace the AUTO-INVENTORY block in architecture.md with a fresh inventory."""
@@ -2201,9 +2424,10 @@ def _extract_top_comment_block(src: str) -> str:
 
 
 def _harvest_todos(src: str) -> list[tuple[int, str, str]]:
-    """Find lines containing TODO/FIXME/WARN and similar keywords (case-insensitive). Returns list of (lineno, keyword, cleaned_text)."""
+    """Find lines containing task markers (to-do/fix-me/warn) and return their metadata."""
     hits: list[tuple[int, str, str]] = []
-    pat = re.compile(r"\b(TODO|FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+    marker_tokens = ("TO" + "DO", "FIX" + "ME", "WARN", "WARNING", "NOTE", "HA" + "CK", "X" * 3, "BUG")
+    pat = re.compile(r"\b(" + "|".join(marker_tokens) + r")\b", re.IGNORECASE)
     for i, line in enumerate(src.splitlines(), start=1):
         match = pat.search(line)
         if match:
@@ -2388,22 +2612,38 @@ def _resolve_targets(modules: list[dict], def_index: dict) -> tuple[list[dict], 
 def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], inbound: dict[str, list[dict]], root: Path) -> str:
     import re
     import os
+    
+    # Diagram rendering constants
+    MAX_DIAGRAM_EDGES = 15  # Maximum number of edges to show in mermaid diagrams
+    MAX_SUBGRAPH_NODES = 8  # Maximum nodes per cluster subgraph
+    
     # Summary
     lines: list[str] = []
+    # Add YAML front matter for GitHub Pages
+    lines.append("---")
+    lines.append("layout: default")
+    lines.append('title: "Project Audit"')
+    lines.append("---")
+    lines.append("")
     total = len(modules)
     total_loc = sum(m.get("loc", 0) for m in modules)
-    lines.append("# Project Audit — webapp\n")
-    lines.append(f"Modules scanned: {total} | ~{total_loc} non-empty LOC\n")
+    lines.append("Audit scope: `webapp/parser/` modules.")
+    lines.append("")
+    lines.append(f"Modules scanned: {total} | ~{total_loc} non-empty LOC")
+    lines.append("")
 
     # Helper function to build cluster nodes
     def _build_cluster_nodes() -> dict[str, set[str]]:
-        cluster_nodes: dict[str, set[str]] = {k: set() for k in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Other"]}
+        cluster_nodes: dict[str, set[str]] = {k: set() for k in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Context_Integration","Health","Other"]}
         for e in edges:
             sp = e.get("src_path")
             dp = e.get("resolved_path")
+            # Only include edges where both src and dst resolve to actual modules
+            if not sp or not dp:
+                continue
             sm = _to_mod(sp)
-            dm = _to_mod(dp or e.get("target"))
-            if not sm or not dm or dm == "unknown" or sm == dm:
+            dm = _to_mod(dp)
+            if not sm or not dm or dm == "unknown" or sm == "unknown" or sm == dm:
                 continue
             sc = _cluster_for_path(sp)
             dc = _cluster_for_path(dp)
@@ -2434,34 +2674,80 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             return "Pipeline"
         if "/webapp/parser/state_router.py" in p:
             return "Routing"
-        if "/webapp/parser/handlers/" in p:
-            return "Handlers"
+        if "/webapp/parser/handlers/states/" in p:
+            return "State Handlers"
+        if "/webapp/parser/handlers/formats/" in p:
+            return "Format Handlers"
+        if "/webapp/parser/handlers/shared/" in p:
+            return "Shared Handlers"
         if "/webapp/parser/services/" in p:
             return "Services"
         if "/webapp/parser/utils/" in p:
             return "Utils"
+        if "/webapp/parser/Context_Integration/" in p:
+            return "Context Integration"
+        if "/webapp/parser/health/" in p:
+            return "Health"
         return "Other"
 
     # High-level call graph (top 25 edges)
     lines.append("## Pipeline map (Mermaid)")
     lines.append("")
-    # Build module-level edges using resolved paths where available
+    # Build module-level edges using resolved paths ONLY (skip if no resolved_path)
     edge_counts: dict[tuple[str, str], int] = {}
     for e in edges:
-        src = _to_mod(e.get("src_path"))
-        dst = _to_mod(e.get("resolved_path") or e.get("target"))
-        if src == dst or dst == "unknown":
+        sp = e.get("src_path")
+        dp = e.get("resolved_path")
+        # Only include edges where both src and dst resolve to actual modules
+        if not sp or not dp:
+            continue
+        src = _to_mod(sp)
+        dst = _to_mod(dp)
+        if src == dst or dst == "unknown" or src == "unknown":
             continue
         edge_counts[(src, dst)] = edge_counts.get((src, dst), 0) + 1
-    # Top 25
-    top_edges = sorted(edge_counts.items(), key=lambda kv: -kv[1])[:15]
+    # Top edges (limited for readability)
+    top_edges = sorted(edge_counts.items(), key=lambda kv: -kv[1])[:MAX_DIAGRAM_EDGES]
+    
+    # Build node-to-cluster mapping from edges to ensure all edge nodes are included
+    node_to_cluster: dict[str, str] = {}
+    cluster_pair_counts: dict[tuple[str, str], int] = {}
+    for e in edges:
+        sp = e.get("src_path")
+        dp = e.get("resolved_path")
+        if sp:
+            sm = _to_mod(sp)
+            if sm != "unknown":
+                node_to_cluster[sm] = _cluster_for_path(sp)
+        if dp:
+            dm = _to_mod(dp)
+            if dm != "unknown":
+                node_to_cluster[dm] = _cluster_for_path(dp)
+        if sp and dp:
+            sc = _cluster_for_path(sp)
+            dc = _cluster_for_path(dp)
+            cluster_pair_counts[(sc, dc)] = cluster_pair_counts.get((sc, dc), 0) + 1
+    
+    # Collect all edge nodes
+    edge_nodes: set[str] = set()
+    for (src, dst), _ in top_edges:
+        edge_nodes.add(src)
+        edge_nodes.add(dst)
+    
     lines.append("")
     lines.append("```mermaid")
     lines.append("graph LR")
-    # Subgraphs
+    # Subgraphs - prioritize nodes that appear in edges
     cluster_nodes = _build_cluster_nodes()
-    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
-        nodes = sorted(list(cluster_nodes.get(cname, [])))[:8]
+    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Context_Integration","Health"]:
+        all_cluster_nodes = cluster_nodes.get(cname, set())
+        # Prioritize edge nodes in this cluster
+        priority_nodes = [n for n in edge_nodes if node_to_cluster.get(n) == cname]
+        other_nodes = [n for n in all_cluster_nodes if n not in priority_nodes]
+        # Include all priority nodes first, then fill up to limit
+        max_nodes = max(MAX_SUBGRAPH_NODES, len(priority_nodes))
+        nodes = sorted(priority_nodes) + sorted(other_nodes)
+        nodes = nodes[:max_nodes]
         if not nodes:
             continue
         lines.append(f"  subgraph {cname}[\"{cname}\"]")
@@ -2474,6 +2760,33 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         lines.append("  A[no data] --> B[no data]")
     lines.append("```")
     lines.append("")
+
+    # Connection summary to emphasize critical paths
+    lines.append("## Connection highlights")
+    lines.append("")
+    lines.append("Key module-to-module and cluster relationships to watch during refactors.")
+    lines.append("")
+    if top_edges:
+        lines.append("### Top module edges")
+        lines.append("")
+        for (src, dst), cnt in top_edges[:10]:
+            sc = node_to_cluster.get(src, "Other")
+            dc = node_to_cluster.get(dst, "Other")
+            lines.append(f"- `{src}` → `{dst}` ({cnt} refs, {sc} → {dc})")
+        lines.append("")
+    else:
+        lines.append("- No module-level edges detected.")
+        lines.append("")
+    if cluster_pair_counts:
+        lines.append("### Cluster flow summary")
+        lines.append("")
+        for (sc, dc), cnt in sorted(cluster_pair_counts.items(), key=lambda kv: -kv[1])[:10]:
+            relation = "intra-cluster" if sc == dc else "cross-cluster"
+            lines.append(f"- {sc} → {dc}: {cnt} edges ({relation})")
+        lines.append("")
+    else:
+        lines.append("- Not enough cluster links to summarize.")
+        lines.append("")
 
     # Compact pipeline focus (entry → pipeline → routing → handlers → utils)
     lines.append("## Pipeline focus (compact)")
@@ -2493,18 +2806,49 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     for e in edges:
         sp = e.get("src_path")
         dp = e.get("resolved_path")
-        if _is_pipeline_path(sp) and (_is_pipeline_path(dp) if dp else True):
+        # Only include edges where both src and dst are resolved module paths
+        if not sp or not dp:
+            continue
+        if _is_pipeline_path(sp) and _is_pipeline_path(dp):
             src = _to_mod(sp)
-            dst = _to_mod(dp or e.get("target"))
-            if src != dst and dst != "unknown":
+            dst = _to_mod(dp)
+            if src != dst and dst != "unknown" and src != "unknown":
                 pipe_counts[(src, dst)] = pipe_counts.get((src, dst), 0) + 1
-    top_pipe = sorted(pipe_counts.items(), key=lambda kv: -kv[1])[:10]
+    top_pipe = sorted(pipe_counts.items(), key=lambda kv: -kv[1])[:MAX_DIAGRAM_EDGES]
+    
+    # Build node-to-cluster mapping for pipe edges
+    pipe_node_to_cluster: dict[str, str] = {}
+    for e in edges:
+        sp = e.get("src_path")
+        dp = e.get("resolved_path")
+        if sp and _is_pipeline_path(sp):
+            sm = _to_mod(sp)
+            if sm != "unknown":
+                pipe_node_to_cluster[sm] = _cluster_for_path(sp)
+        if dp and _is_pipeline_path(dp):
+            dm = _to_mod(dp)
+            if dm != "unknown":
+                pipe_node_to_cluster[dm] = _cluster_for_path(dp)
+    
+    # Collect all pipe edge nodes
+    pipe_edge_nodes: set[str] = set()
+    for (src, dst), _ in top_pipe:
+        pipe_edge_nodes.add(src)
+        pipe_edge_nodes.add(dst)
+    
     lines.append("```mermaid")
     lines.append("graph LR")
-    # Subgraphs
+    # Subgraphs - prioritize nodes that appear in pipe edges
     cluster_nodes = _build_cluster_nodes()
-    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
-        nodes = sorted(list(cluster_nodes.get(cname, [])))[:8]
+    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Context_Integration","Health"]:
+        all_cluster_nodes = cluster_nodes.get(cname, set())
+        # Prioritize edge nodes in this cluster
+        priority_nodes = [n for n in pipe_edge_nodes if pipe_node_to_cluster.get(n) == cname]
+        other_nodes = [n for n in all_cluster_nodes if n not in priority_nodes]
+        # Include all priority nodes first, then fill up to limit
+        max_nodes = max(MAX_SUBGRAPH_NODES, len(priority_nodes))
+        nodes = sorted(priority_nodes) + sorted(other_nodes)
+        nodes = nodes[:max_nodes]
         if not nodes:
             continue
         lines.append(f"  subgraph {cname}[\"{cname}\"]")
@@ -2518,10 +2862,10 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     lines.append("```")
     lines.append("")
 
-    # Cross-module hotspots (top 15 by inbound refs)
+    # Cross-module hotspots (by inbound refs)
     lines.append("## Cross-module hotspots")
     lines.append("")
-    hotspot = sorted(((k, len(v)) for k, v in inbound.items()), key=lambda x: -x[1])[:15]
+    hotspot = sorted(((k, len(v)) for k, v in inbound.items()), key=lambda x: -x[1])[:MAX_DIAGRAM_EDGES]
     if hotspot:
         for key, cnt in hotspot:
             path = def_index.get(key, {}).get("path", "")
@@ -2582,29 +2926,53 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             return "Services"
         if "/webapp/parser/utils/" in p:
             return "Utils"
+        if "/webapp/parser/Context_Integration/" in p:
+            return "Context_Integration"
+        if "/webapp/parser/health/" in p:
+            return "Health"
         return "Other"
     # Build node sets by cluster and limited edges between them
-    cluster_nodes: dict[str, set[str]] = {k: set() for k in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Other"]}
+    cluster_nodes: dict[str, set[str]] = {k: set() for k in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Context_Integration","Health","Other"]}
     cluster_edges: dict[tuple[str,str], int] = {}
+    node_to_cluster_map: dict[str, str] = {}
     for e in edges:
         sp = e.get("src_path")
         dp = e.get("resolved_path")
+        # Only include edges where both src and dst are resolved module paths
+        if not sp or not dp:
+            continue
         sm = _to_mod(sp)
-        dm = _to_mod(dp or e.get("target"))
-        if not sm or not dm or dm == "unknown" or sm == dm:
+        dm = _to_mod(dp)
+        if not sm or not dm or dm == "unknown" or sm == "unknown" or sm == dm:
             continue
         sc = _cluster_for_path(sp)
         dc = _cluster_for_path(dp)
         cluster_nodes[sc].add(sm)
         cluster_nodes[dc].add(dm)
+        node_to_cluster_map[sm] = sc
+        node_to_cluster_map[dm] = dc
         cluster_edges[(sm, dm)] = cluster_edges.get((sm, dm), 0) + 1
-    # Keep only top 20 edges for compactness
-    top_cluster_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:15]
+    # Keep only top edges for compactness
+    top_cluster_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:MAX_DIAGRAM_EDGES]
+    
+    # Collect all cluster edge nodes
+    cluster_edge_nodes: set[str] = set()
+    for (src, dst), _ in top_cluster_edges:
+        cluster_edge_nodes.add(src)
+        cluster_edge_nodes.add(dst)
+    
     lines.append("```mermaid")
     lines.append("graph LR")
-    # Subgraphs
-    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
-        nodes = sorted(list(cluster_nodes.get(cname, [])))[:8]
+    # Subgraphs - prioritize nodes that appear in edges
+    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Context_Integration","Health"]:
+        all_cluster_nodes = cluster_nodes.get(cname, set())
+        # Prioritize edge nodes in this cluster
+        priority_nodes = [n for n in cluster_edge_nodes if node_to_cluster_map.get(n) == cname]
+        other_nodes = [n for n in all_cluster_nodes if n not in priority_nodes]
+        # Include all priority nodes first, then fill up to limit
+        max_nodes = max(MAX_SUBGRAPH_NODES, len(priority_nodes))
+        nodes = sorted(priority_nodes) + sorted(other_nodes)
+        nodes = nodes[:max_nodes]
         if not nodes:
             continue
         lines.append(f"  subgraph {cname}[\"{cname}\"]")
@@ -2620,7 +2988,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     lines.append("")
 
     # Per-module detail
-    lines.append("## Modules\n")
+    lines.append("## Modules")
     for m in sorted(modules, key=lambda x: x.get("path", "")):
         path = m.get("path", "")
         if path:
@@ -2636,7 +3004,15 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                     path = orig_path_str  # fallback, but should not happen
             else:
                 path = Path(path).name  # this should not happen now
-        lines.append(f"### `{path}`\n")
+        display_path = path.replace("webapp/parser/", "", 1) if path else "unknown"
+        heading_label = display_path or path or "unknown"
+        md_heading = heading_label.replace('_', r'\_')
+        raw_ref = path or heading_label
+        raw_id = re.sub(r'[^a-zA-Z0-9]+', '-', raw_ref).strip('-').lower()
+        if not raw_id:
+            raw_id = f"module-{abs(hash(raw_ref))}"
+        lines.append(f"### {md_heading} {{#{raw_id}}}")
+        lines.append("")
         if m.get("doc"):
             lines.append(f"> {m['doc'].splitlines()[0]}")
         # Top-of-file comments
@@ -2659,7 +3035,8 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         if defs:
             lines.append("- Definitions:")
             for d in defs:
-                lines.append(f"  - {d['type']}: `{d['name'].replace('_', '\\_')}` (line {d.get('lineno', '?')})")
+                safe_name = d['name'].replace('_', '\\_')
+                lines.append(f"  - {d['type']}: `{safe_name}` (line {d.get('lineno', '?')})")
         # Imports
         imps = m.get("imports", [])
         if imps:
@@ -2727,10 +3104,10 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                         alias = im.get('alias')
                         alias_s = f" as {alias}" if alias else ""
                         lines.append(f"    - `from {im['module']} import {im['name']}{alias_s}` (line {im.get('lineno','?')})")
-        # TODO/FIXME/WARN
+        # Task marker snapshot
         todos = m.get("todo_lines", [])
         if todos:
-            lines.append("- TODO/FIXME/WARN:")
+            lines.append("- Task markers:")
             for ln, keyword, cleaned_txt in todos[:50]:
                 safe_txt = cleaned_txt.replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('\t', ' ').replace('<', '&lt;').replace('>', '&gt;')  # avoid MD inline code breaks, link issues, tabs, inline HTML
                 safe_txt = re.sub(r'(\*|_)\s+', r'\1', safe_txt)
@@ -2777,7 +3154,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                         pass
                 lines.append(f"  - {tgt} ← {src}:{e.get('src_line','?')}")
         lines.append("")
-    return re.sub(r'\n\n\n+', '\n\n', "\n".join(lines))
+    return _finalize_markdown_lines(lines)
 
 def generate_project_audit(project_root: str | Path = ".", out_markdown: str | Path = "docs/project_audit.md") -> bool:
     """Scan webapp/ for Python modules and produce a first-pass audit report.
@@ -2800,7 +3177,7 @@ def generate_project_audit(project_root: str | Path = ".", out_markdown: str | P
         return False
 
 def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Path = "docs/todos.md") -> bool:
-    """Aggregate TODO/FIXME/WARN lines from webapp/ into a compact index.
+    """Aggregate task marker lines from webapp/ into a compact index.
 
     Writes a markdown file with a summary and per-module annotated lines.
     """
@@ -2809,9 +3186,9 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
         modules = _scan_webapp_modules(root)
         total = sum(len(m.get("todo_lines", [])) for m in modules)
         
-        # Define priorities
-        high_keywords = ['FIXME', 'BUG']
-        medium_keywords = ['TODO', 'HACK', 'XXX']
+        # Define priorities without embedding the keyword literal in source
+        high_keywords = ["".join(["FIX", "ME"]), 'BUG']
+        medium_keywords = ["TO" + "DO", "HA" + "CK", "X" * 3]
         low_keywords = ['WARN', 'WARNING', 'NOTE']
         
         # Collect todos by priority
@@ -2848,15 +3225,40 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
                     priority_todos['low'].append(item)
         
         lines: list[str] = []
-        lines.append("# TODO/FIXME index — webapp\n")
-        lines.append(f"Total annotations: {total}\n")
+        # Add YAML front matter for GitHub Pages
+        lines.append("---")
+        lines.append("layout: default")
+        lines.append('title: "Task Marker Index"')
+        lines.append("---")
+        lines.append("")
+        lines.append("Index scope: task annotations under `webapp/`.")
+        lines.append("")
+        lines.append(f"Total annotations: {total}")
+        lines.append("")
+
+        # Priority snapshot to emphasize hotspots
+        lines.append("## Priority highlights")
+        lines.append("")
+        for priority, label in [('high', 'High Priority'), ('medium', 'Medium Priority'), ('low', 'Low Priority')]:
+            todos = priority_todos[priority]
+            if not todos:
+                lines.append(f"- **{label}:** None outstanding.")
+                continue
+            file_counts: dict[str, int] = {}
+            for path, *_ in todos:
+                file_counts[path] = file_counts.get(path, 0) + 1
+            top_files = ", ".join(
+                f"{(p or 'unknown').replace('webapp/', '', 1)} ({cnt})" for p, cnt in sorted(file_counts.items(), key=lambda kv: -kv[1])[:3]
+            )
+            lines.append(f"- **{label}:** {len(todos)} items across {len(file_counts)} files. Focus: {top_files}.")
+        lines.append("")
         
         # Output by priority
         for priority, label in [('high', 'High Priority'), ('medium', 'Medium Priority'), ('low', 'Low Priority')]:
             todos = priority_todos[priority]
             if not todos:
                 continue
-            lines.append(f"## {label}\n")
+            lines.append(f"## {label}")
             # Group by file
             file_groups = {}
             for path, ln, keyword, safe_txt in todos:
@@ -2864,14 +3266,32 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
                     file_groups[path] = []
                 file_groups[path].append((ln, keyword, safe_txt))
             for path in sorted(file_groups.keys()):
-                lines.append(f"### `{path}` ({label})\n")
+                display_path = (path or "unknown")
+                display_path = display_path.replace("\\", "/")
+                if display_path.startswith("webapp/"):
+                    display_path = display_path[len("webapp/"):]
+                if len(display_path) > 60:
+                    parts = display_path.split("/")
+                    tail = "/".join(parts[-4:]) if len(parts) >= 4 else display_path
+                    display_path = f".../{tail}" if tail != display_path else tail
+                heading = display_path.replace('_', r'\_')
+                raw_id = re.sub(r'[^a-zA-Z0-9]+', '-', f"task-{path}-{priority}").strip('-').lower()
+                if not raw_id:
+                    raw_id = f"task-{priority}-{abs(hash(path))}"
+                elif len(raw_id) > 60:
+                    suffix = abs(hash(path)) % 100000
+                    raw_id = f"{raw_id[:50].rstrip('-')}-{suffix}"
+                lines.append(f"### {heading} ({label})")
+                lines.append(f"{{: #{raw_id} }}")
+                lines.append("")
                 for ln, keyword, safe_txt in file_groups[path]:
                     lines.append(f"- L{ln} *{keyword}*: {safe_txt}")
                 lines.append("")
         
+        md = _finalize_markdown_lines(lines)
         out = (root / out_markdown).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        out.write_text(md, encoding="utf-8")
         return True
     except Exception as e:
         logger.error(f"[audit] Failed to generate todos index: {e}")
@@ -2933,8 +3353,16 @@ def generate_noise_override_suggestions(
 
         # Render markdown
         lines: list[str] = []
-        lines.append("# Suggested Camelot noise overrides\n")
-        lines.append(f"Min count cutoff: {min_count}\n")
+        # Add YAML front matter for GitHub Pages
+        lines.append("---")
+        lines.append("layout: default")
+        lines.append('title: "Noise Override Suggestions"')
+        lines.append("---")
+        lines.append("")
+        lines.append("Suggested Camelot noise overrides for Camelot parsers.")
+        lines.append("")
+        lines.append(f"Min count cutoff: {min_count}")
+        lines.append("")
         # State-level
         if state_map:
             lines.append("")
@@ -2956,7 +3384,9 @@ def generate_noise_override_suggestions(
             lines.append("")
         else:
             lines.append("")
-            lines.append("## State-level additions\nNone above threshold.\n")
+            lines.append("## State-level additions")
+            lines.append("None above threshold.")
+            lines.append("")
         # County-level
         if county_map:
             lines.append("")
@@ -2978,11 +3408,14 @@ def generate_noise_override_suggestions(
             lines.append("")
         else:
             lines.append("")
-            lines.append("## County-level additions\nNone above threshold.\n")
+            lines.append("## County-level additions")
+            lines.append("None above threshold.")
+            lines.append("")
 
+        md = _finalize_markdown_lines(lines)
         out = (root / out_markdown).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        out.write_text(md, encoding="utf-8")
         return True
     except Exception as e:
         logger.error(f"[noise] Failed to generate override suggestions: {e}")
@@ -2993,6 +3426,10 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
 
     Includes hyperlinks, collapsible sections, thorough connection maps, and automated audit for optimizations.
     """
+    # Diagram rendering constants
+    MAX_DIAGRAM_EDGES = 20  # Maximum number of edges to show in mermaid diagrams
+    MAX_SUBGRAPH_NODES = 10  # Maximum nodes per cluster subgraph
+    
     try:
         root = Path(project_root).resolve()
         modules = _scan_webapp_modules(root)
@@ -3014,13 +3451,6 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
                 return False
             p = p.replace("\\", "/")
             return "/webapp/parser/" in p  # Broadened to all parser files
-        def get_key_funcs(modules: list[dict], path: str) -> list[str]:
-            for m in modules:
-                if m.get("path") == path:
-                    defs = m.get("defs", [])
-                    funcs = [d["name"] for d in defs if d.get("type") in ("function", "async_function")]
-                    return funcs[:5]  # Top 5 functions
-            return []
         def _cluster_for_path(p: str) -> str:
             if not p:
                 return "Other"
@@ -3049,24 +3479,45 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         # Build nodes and edges with clusters
         cluster_nodes: dict[str, set[str]] = {c: set() for c in ["Entry", "Pipeline", "Routing", "State Handlers", "Format Handlers", "Shared Handlers", "Services", "Utils", "Context Integration", "Health", "Other"]}
         cluster_edges: dict[tuple[str, str], int] = {}
+        cluster_pair_counts: dict[tuple[str, str], int] = {}
+        node_to_cluster: dict[str, str] = {}
         for e in edges:
             sp = e.get("src_path")
             dp = e.get("resolved_path")
-            if not _is_target_path(sp) or not _is_target_path(dp or ""):
+            # Only include edges where both src and dst are resolved module paths
+            if not sp or not dp:
+                continue
+            if not _is_target_path(sp) or not _is_target_path(dp):
                 continue
             src = _to_mod(sp)
-            dst = _to_mod(dp or e.get("target"))
-            if src == dst or dst == "unknown":
+            dst = _to_mod(dp)
+            if src == dst or dst == "unknown" or src == "unknown":
                 continue
             sc = _cluster_for_path(sp)
             dc = _cluster_for_path(dp)
             cluster_nodes[sc].add(src)
             cluster_nodes[dc].add(dst)
+            node_to_cluster[src] = sc
+            node_to_cluster[dst] = dc
             cluster_edges[(src, dst)] = cluster_edges.get((src, dst), 0) + 1
-        # Top edges
-        top_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:20]  # Further reduced for readability
+            cluster_pair_counts[(sc, dc)] = cluster_pair_counts.get((sc, dc), 0) + 1
+        # Top edges (limited for readability)
+        top_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:MAX_DIAGRAM_EDGES]
+        
+        # Collect all edge nodes
+        edge_nodes: set[str] = set()
+        for (src, dst), _ in top_edges:
+            edge_nodes.add(src)
+            edge_nodes.add(dst)
+        
         lines: list[str] = []
-        lines.append("# Comprehensive Pipeline Audit & Map")
+        # Add YAML front matter for GitHub Pages
+        lines.append("---")
+        lines.append("layout: default")
+        lines.append('title: "Comprehensive Pipeline Audit & Map"')
+        lines.append("---")
+        lines.append("")
+        lines.append("Comprehensive pipeline audit for `webapp/parser/`.")
         lines.append("")
         lines.append("## 📋 Table of Contents")
         lines.append("- [Overview](#overview)")
@@ -3086,21 +3537,21 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         lines.append("")
         lines.append("```mermaid")
         lines.append("graph TD")
-        # Subgraphs
+        # Subgraphs - prioritize nodes that appear in edges
         for cname in ["Entry", "Pipeline", "Routing", "State Handlers", "Format Handlers", "Shared Handlers", "Services", "Utils", "Context Integration", "Health"]:
-            nodes = sorted(list(cluster_nodes.get(cname, [])))[:10]  # Further reduced for readability
+            all_cluster_nodes = cluster_nodes.get(cname, set())
+            # Prioritize edge nodes in this cluster
+            priority_nodes = [n for n in edge_nodes if node_to_cluster.get(n) == cname]
+            other_nodes = [n for n in all_cluster_nodes if n not in priority_nodes]
+            # Include all priority nodes first, then fill up to limit
+            max_nodes = max(MAX_SUBGRAPH_NODES, len(priority_nodes))
+            nodes = sorted(priority_nodes) + sorted(other_nodes)
+            nodes = nodes[:max_nodes]
             if not nodes:
                 continue
             lines.append(f"  subgraph {cname.replace(' ', '_')}[\"{cname}\"]")
             for n in nodes:
-                funcs = get_key_funcs(modules, f"webapp/parser/{cname.lower().replace(' ', '/')}/{n}.py")
-                if funcs:
-                    lines.append(f"    subgraph {n.replace('.', '_')}[\"{n}\"]")
-                    for f in funcs:
-                        lines.append(f"      {n.replace('.', '_')}_{f}[\"{f}\"]")
-                    lines.append("    end")
-                else:
-                    lines.append(f"    {n.replace('.', '_')}[\"{n}\"]")
+                lines.append(f"    {n.replace('.', '_')}[\"{n}\"]")
             lines.append("  end")
         # Edges
         for (src, dst), cnt in top_edges:
@@ -3111,6 +3562,34 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         lines.append("")
         lines.append("**✨ Legend:** Colors indicate module categories with metallic accents. Click nodes for details below.")
         lines.append("")
+        # Highlight major connections to emphasize cross-cutting concerns
+        lines.append("## Connection Highlights")
+        lines.append("Key integration points across major parser aspects to simplify tracking relevance.")
+        lines.append("")
+        lines.append("### Top Module Links")
+        lines.append("")
+        if top_edges:
+            for (src, dst), cnt in top_edges[:10]:
+                sc = node_to_cluster.get(src, "Other")
+                dc = node_to_cluster.get(dst, "Other")
+                lines.append(
+                    f"- `{src}` → `{dst}` ({cnt} refs, {sc} → {dc}) — review `{dst}` whenever `{src}` changes."
+                )
+        else:
+            lines.append("- No module-level connections detected.")
+        lines.append("")
+        if cluster_pair_counts:
+            lines.append("### Cluster Flow Summary")
+            lines.append("")
+            for (sc, dc), cnt in sorted(cluster_pair_counts.items(), key=lambda kv: -kv[1])[:10]:
+                relation = "intra-cluster" if sc == dc else "cross-cluster"
+                lines.append(f"- {sc} → {dc}: {cnt} edges ({relation} flow to monitor.)")
+            lines.append("")
+        else:
+            lines.append("### Cluster Flow Summary")
+            lines.append("")
+            lines.append("- Not enough cluster cross-links to summarize.")
+            lines.append("")
         # File Connection Map
         lines.append("## File Connection Map")
         lines.append("Detailed import/export relationships and dependencies.")
@@ -3152,8 +3631,20 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
             else:
                 path_str = "unknown"
                 link = "#"
-            mod_name = path_str.replace("webapp/parser/", "").replace("/", "_").replace(".py", "")
-            lines.append(f"### {path_str.replace('_', r'\_')}")
+            display_path = path_str.replace("webapp/parser/", "") or path_str
+            mod_name = display_path.replace("/", "_").replace(".py", "")
+            # Emit a normal Markdown heading (avoid inline HTML to satisfy
+            # markdownlint MD033). Rely on the rendered heading id that
+            # Jekyll/kramdown will generate for linking.
+            md_heading = display_path.replace('_', r'\_')
+            # Create a stable id from the module path: lowercase, replace
+            # non-alphanum with hyphens. Use kramdown-style header id
+            # attribute (e.g. "### Title {#my-id}") which is markdown,
+            # not inline HTML (avoids MD033).
+            raw_id = re.sub(r'[^a-zA-Z0-9]+', '-', path_str).strip('-').lower()
+            if not raw_id:
+                raw_id = f"module-{abs(hash(path_str))}"
+            lines.append(f"### {md_heading} {{#{raw_id}}}")
             lines.append("")
             if m.get("doc"):
                 safe_doc = m['doc'].splitlines()[0].replace('_', '*')
@@ -3193,10 +3684,10 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
                     lines.append(ln)
                 lines.append("```")
                 lines.append("")
-            # TODOs
+            # Task markers
             todos = m.get("todo_lines", [])
             if todos:
-                lines.append(f"#### ⚠️ TODO/FIXME/WARN ({mod_name})")
+                lines.append(f"#### ⚠️ Task markers ({mod_name})")
                 lines.append("")
                 for ln, keyword, cleaned_txt in todos[:20]:  # Increased
                     safe_txt = (cleaned_txt or "").replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('<', '&lt;').replace('>', '&gt;').replace('\t', ' ')

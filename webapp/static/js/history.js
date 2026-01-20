@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const INTERNAL_ROUTE_PREFIXES = Object.freeze([
     '/',               // root
     '/history',
-    '/run_parser',
+    '/ballot_lens',
     '/data_framework',
     '/api/',
   ]);
@@ -165,7 +165,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---- Expand / Collapse all ----
   document.addEventListener('click', e => {
-    const btn = e.target.closest('[data-action]');
+    const tgt = e.target;
+    const btn = (tgt instanceof Element) ? tgt.closest('[data-action]') : null;
     if (!btn) return;
     const action = btn.getAttribute('data-action');
     if (action === 'expand-all' || action === 'collapse-all') {
@@ -183,7 +184,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   document.addEventListener('click', e => {
-    const btn = e.target.closest('[data-action="copy-json"],[data-action="download-json"],[data-safe-nav],[data-redirect]');
+    const tgt = e.target;
+    const btn = (tgt instanceof Element) ? tgt.closest('[data-action="copy-json"],[data-action="download-json"],[data-safe-nav],[data-redirect]') : null;
     if (!btn) return;
 
     // Guarded nav (re-validate on click)

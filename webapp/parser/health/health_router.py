@@ -46,6 +46,7 @@ from ..Context_Integration.librarian import load_context_library
 from ..utils.db_utils import get_engine
 from ..utils.logger_singleton import console, logger
 from ..utils.models import Base
+from .navigation_feedback_ingest import ingest_navigation_feedback
 
 try:
     import openai
@@ -373,6 +374,18 @@ class BotPipeline:
                 logger.info("[PIPELINE] Corrupted JSON files checked and fixed.")
             except Exception as e:
                 logger.warning(f"[PIPELINE] Could not fix corrupted JSON files: {e}")
+
+            try:
+                nav_ingested = ingest_navigation_feedback(LOG_DIR)
+                if nav_ingested:
+                    logger.info(f"[PIPELINE] Staged {nav_ingested} navigation feedback entries for correction.")
+                    self.results["navigation_feedback"] = f"processed:{nav_ingested}"
+                else:
+                    logger.info("[PIPELINE] No new navigation feedback entries detected.")
+                    self.results["navigation_feedback"] = "none"
+            except Exception as exc:
+                logger.error(f"[PIPELINE] Navigation feedback ingestion failed: {exc}")
+                self.results["navigation_feedback"] = "fail"
 
             # 4. Scan for misaligned NER examples
             misaligned = self.scan_misaligned()

@@ -17,7 +17,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import LabelEncoder
 from sqlalchemy import select
 
-from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
+from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH, LOG_DIR
 from ..Context_Integration.librarian import clean_for_json
 from ..utils import misc_utils
 from ..utils.db_utils import get_session
@@ -35,6 +35,46 @@ from ..utils.spacy_utils import extract_dates, extract_entities, flag_suspicious
 
 # Use Agg backend for non-GUI environments (e.g., servers, CI/CD pipelines)
 matplotlib.use("Agg")
+
+# Lightweight, bounded monitor log (non-DB)
+INTEGRITY_MONITOR_LOG = Path(LOG_DIR) / "integrity_monitor.jsonl"
+try:
+    INTEGRITY_MONITOR_LOG.touch(exist_ok=True)
+except Exception:
+    pass
+
+def _trim_monitor_log(path: Path, max_bytes: int, keep_tail: int) -> None:
+    if not path.exists():
+        return
+    try:
+        size = path.stat().st_size
+        if size <= max_bytes:
+            return
+        with path.open("rb") as handle:
+            if keep_tail >= size:
+                return
+            handle.seek(-keep_tail, 2)
+            tail = handle.read()
+        if not tail:
+            return
+        # Align to next newline to avoid partial JSON lines
+        first_nl = tail.find(b"\n")
+        if first_nl != -1:
+            tail = tail[first_nl + 1 :]
+        with path.open("wb") as handle:
+            handle.write(tail)
+    except Exception:
+        return
+
+def log_integrity_monitor(event: Dict[str, Any], max_bytes: int = 2_000_000, keep_tail: int = 1_500_000) -> None:
+    payload = dict(event or {})
+    payload.setdefault("timestamp", time.time())
+    try:
+        with INTEGRITY_MONITOR_LOG.open("ab") as handle:
+            handle.write(orjson.dumps(payload) + b"\n")
+        _trim_monitor_log(INTEGRITY_MONITOR_LOG, max_bytes=max_bytes, keep_tail=keep_tail)
+    except Exception:
+        return
 
 def _ensure_alerts_table():
     # Table is managed by SQLAlchemy migrations; nothing to do here
@@ -148,6 +188,14 @@ def analyze_contests(contests, expected_year=None, context_library_path=None) ->
     if context_library_path is None:
         context_library_path = CONTEXT_LIBRARY_PATH
     flagged = flag_suspicious_contests(contests, context_library_path=context_library_path)
+    log_integrity_monitor({
+        "type": "integrity_summary",
+        "contests": len(contests or []),
+        "integrity_issues": len(integrity_issues),
+        "date_anomalies": len(date_anomalies),
+        "ml_anomalies": len(anomalies or []),
+        "flagged_suspicious": len(flagged or []),
+    })
     return {
         "integrity_issues": integrity_issues,
         "date_anomalies": date_anomalies,

@@ -3,3 +3,6 @@ ruff==0.6.9
 pre-commit==3.8.0
 mypy==1.11.2
 types-requests==2.32.0.20241016
+python-dotenv>=1.2.1
+pytest>=9.0.2 
+# JS/Markdown tooling lives in package.json; install Node/npm and run `npm install` separately.

@@ -3,6 +3,7 @@ from __future__ import annotations
 # ==============================================================
 # 🗳️ Smart Elections: HTML Election Results Parser
 # ==============================================================
+import json
 import os
 import re
 import sys
@@ -31,11 +32,15 @@ from .config import (
     URL_LIST_FILE,
 )
 from .state_router import get_handler, preload_handler_map
+from .navigator import NavigationInstructionRunner, NavigationRecipeStore
 from .utils.browser_utils import (
     autoscroll_until_stable,
     safe_content,
     sync_browser_pipeline,
     sync_safe_browser_close,
+    TABLE_DISCOVERY_SELECTOR,
+    TABLE_DISCOVERY_SELECTOR_JS,
+    SCROLL_METRIC_KEYS,
 )
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.dynamic_table_extractor import dynamic_table_extractor
@@ -55,6 +60,28 @@ from .utils.table_builder import build_table_noninteractive
 if CACHE_RESET and PROCESSED_URLS_FILE.exists():
     logger.warning("Deleting .processed_urls cache for fresh start...")
     PROCESSED_URLS_FILE.unlink()
+
+_navigation_store = NavigationRecipeStore()
+NAVIGATION_RUNNER = NavigationInstructionRunner(_navigation_store)
+
+
+def _count_dom_table_rows(page) -> int:
+    if page is None:
+        return 0
+    try:
+        return int(
+            page.evaluate(
+                f"""() => {{
+                    const nodes = document.querySelectorAll({TABLE_DISCOVERY_SELECTOR_JS});
+                    let total = 0;
+                    nodes.forEach((tbl) => {{ total += tbl.querySelectorAll("tr").length; }});
+                    return total;
+                }}"""
+            )
+        )
+    except Exception:
+        return 0
+
 
 def load_urls() -> List[str]:
     if not URL_LIST_FILE.exists():
@@ -305,7 +332,15 @@ def prompt_url_selection(
     indices = sorted(set(i for i in indices if 0 <= i < len(urls)))
     return [urls[i] for i in indices]
 
-def process_format_override(session_id=None, source_dir='input', output_bypass=False, force_parse_input_file=None, force_parse_format=None) -> bool:
+def process_format_override(
+    session_id=None,
+    source_dir='input',
+    output_bypass=False,
+    force_parse_input_file=None,
+    force_parse_format=None,
+    cancel_flag=None,
+    **kwargs,
+) -> bool:
     """
     Manual single-file parse override.
     If source_dir == 'uploads', always prompt for file selection from uploads folder.
@@ -366,7 +401,9 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
                 manual_file=forced_path,
                 source_url="manual_override",
                 logger=logger,
-                session_id=session_id
+                session_id=session_id,
+                cancel_flag=cancel_flag,
+                **kwargs,
             )
             if not (isinstance(result, tuple) and len(result) == 4):
                 logger.error({
@@ -447,7 +484,9 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
         rejected_downloads=None,
         session_id=session_id,
         manual_upload_mode=True,
-        uploads_dir=input_folder
+        uploads_dir=input_folder,
+        cancel_flag=cancel_flag,
+        **kwargs,
     )
 
     if handled:
@@ -1029,6 +1068,14 @@ def generate_generic_html_result(
         "row_count": len(rows_final),
         "column_count": len(headers_final)
     })
+    
+    # Add ML quality metrics
+    from .config import log_extraction_quality
+    quality = log_extraction_quality(
+        headers_final, rows_final, metadata, "html_handler", logger, session_id
+    )
+    metadata["quality_metrics"] = quality
+    
     return headers_final, rows_final, contest_label, metadata
 
 def orchestrate_url(
@@ -1041,6 +1088,7 @@ def orchestrate_url(
 ):
     from .Context_Integration.context_coordinator import ContextCoordinator
     rejected_downloads = set()
+    coordinator = ContextCoordinator()
 
     msg = f"Navigating to: {target_url}"
     payload = {
@@ -1052,6 +1100,7 @@ def orchestrate_url(
     logger.info(payload)
 
     browser = page = None
+    result = None
     try:
         with sync_playwright() as p:
             browser, _, page, _ = sync_browser_pipeline(
@@ -1094,6 +1143,49 @@ def orchestrate_url(
                 sync_safe_browser_close(browser, session_id)
                 return
 
+            state, county = infer_state_county_from_url(target_url)
+            nav_context = {
+                "state": state,
+                "county": county,
+                "url": target_url,
+            }
+            nav_context_before = dict(nav_context)
+            nav_output = None
+            if NAVIGATION_RUNNER:
+                try:
+                    nav_output = NAVIGATION_RUNNER.run(
+                        page,
+                        context=nav_context,
+                        coordinator=coordinator,
+                        session_id=session_id,
+                    )
+                except Exception as exc:
+                    nav_output = None
+                    logger.warning({
+                        "level": "WARNING",
+                        "type": "navigation",
+                        "message": f"Navigation runner failed: {exc}",
+                        "session_id": session_id,
+                    })
+                else:
+                    if nav_output.executed:
+                        logger.info({
+                            "level": "INFO",
+                            "type": "navigation",
+                            "message": f"Navigation script executed: {nav_output.script_id}",
+                            "session_id": session_id,
+                        })
+                    if nav_output.context_updates:
+                        nav_context.update(nav_output.context_updates)
+                    coordinator.record_navigation_feedback(
+                        script_id=nav_output.script_id,
+                        success=nav_output.executed,
+                        context_before=nav_context_before,
+                        context_after=dict(nav_context),
+                        telemetry=nav_output.telemetry,
+                        metadata=nav_output.metadata,
+                    )
+            scroll_metrics: Dict[str, Any] = {}
             try:
                 autoscroll_until_stable(
                     page,
@@ -1101,87 +1193,131 @@ def orchestrate_url(
                     max_total_time=20000,
                     delay_ms=250,
                     session_id=session_id,
+                    metrics=scroll_metrics,
                 )
             except Exception:
-                # Soft-fail: continue; downstream will warn if nothing found
                 pass
+            if scroll_metrics:
+                logger.info(
+                    {
+                        "level": "INFO",
+                        "type": "telemetry",
+                        "message": "[Telemetry] Autoscroll metrics collected.",
+                        "session_id": session_id,
+                        **{k: v for k, v in scroll_metrics.items() if k in SCROLL_METRIC_KEYS},
+                    }
+                )
 
-            result, handled = prompt_and_handle_download(
-                page, target_url, rejected_downloads, session_id=session_id
-            )
+            dom_table_rows = _count_dom_table_rows(page)
+            download_parse_tuple = None
+            handled = False
+            if dom_table_rows <= 0:
+                download_parse_tuple, handled = prompt_and_handle_download(
+                    page,
+                    target_url,
+                    rejected_downloads,
+                    session_id=session_id,
+                    cancel_flag=cancel_flag,
+                    **kwargs,
+                )
+            else:
+                logger.info(
+                    {
+                        "level": "INFO",
+                        "type": "download",
+                        "message": "[format_router] DOM tables detected; deferring downloads to keep HTML parsing priority.",
+                        "session_id": session_id,
+                        "dom_table_rows": dom_table_rows,
+                    }
+                )
             if handled:
-                mark_url_processed(target_url, status="success", session_id=session_id)
-                msg = f"Download handled for {target_url}"
-                payload = {
-                    "level": "INFO",
-                    "type": "download",
-                    "message": msg,
-                    "session_id": session_id
-                }
-                logger.info(payload)
-                sync_safe_browser_close(browser, session_id)
-                return
+                if isinstance(download_parse_tuple, tuple) and len(download_parse_tuple) == 4:
+                    result = download_parse_tuple
+                    msg = f"Download handled for {target_url}; continuing pipeline."
+                    payload = {
+                        "level": "INFO",
+                        "type": "download",
+                        "message": msg,
+                        "session_id": session_id
+                    }
+                    logger.info(payload)
+                else:
+                    logger.warning({
+                        "level": "WARNING",
+                        "type": "download",
+                        "message": "Download handler returned invalid result tuple; falling back to HTML pipeline.",
+                        "session_id": session_id
+                    })
 
-            state, county = infer_state_county_from_url(target_url)
+            handler = None
             context = {
-                "state": state,
-                "county": county,
+                **nav_context,
                 "url": target_url,
                 "session_id": session_id,
                 "output_bypass": output_bypass
             }
-            if state:
-                preload_handler_map(restrict_to_states=[state])
-            else:
-                preload_handler_map()
-            handler_result = get_handler(
-                context,
-                url=target_url,
-                debug=False,
-                fuzzy_cutoff=None,
-                session_id=session_id
-            )
-            handler = handler_result.get("handler") if isinstance(handler_result, dict) else None
-            summary = handler_result.get("summary") if isinstance(handler_result, dict) else None
+            if result is None:
+                active_state = context.get("state") or state
+                if active_state:
+                    preload_handler_map(restrict_to_states=[active_state])
+                else:
+                    preload_handler_map()
+                handler_result = get_handler(
+                    context,
+                    url=target_url,
+                    debug=False,
+                    fuzzy_cutoff=None,
+                    session_id=session_id
+                )
+                handler = handler_result.get("handler") if isinstance(handler_result, dict) else None
+                summary = handler_result.get("summary") if isinstance(handler_result, dict) else None
 
-            if summary and isinstance(summary, dict) and summary.get("log"):
-                log_entries = summary.get("log")
-                for entry in log_entries:
+                if summary and isinstance(summary, dict) and summary.get("log"):
+                    log_entries = summary.get("log")
+                    for entry in log_entries:
+                        payload = {
+                            "level": "INFO",
+                            "type": "router",
+                            "message": entry,
+                            "session_id": session_id
+                        }
+                        logger.info(payload)
+
+                if handler and hasattr(handler, 'parse'):
+                    result = safe_parse(
+                        handler,
+                        page,
+                        coordinator,
+                        context,
+                        session_id=session_id,
+                        logger=logger,
+                        cancel_flag=cancel_flag,
+                        **kwargs,
+                    )
+                else:
+                    msg = f"[Router] No suitable handler found for {target_url}, using generic HTML fallback."
                     payload = {
-                        "level": "INFO",
+                        "level": "WARNING",
                         "type": "router",
-                        "message": entry,
+                        "message": msg,
                         "session_id": session_id
                     }
-                    logger.info(payload)
-
-            coordinator = ContextCoordinator()
-
-            result = None
-            if handler and hasattr(handler, 'parse'):
-                result = safe_parse(handler, page, coordinator, context, session_id=session_id, logger=logger, **kwargs)
-            else:
-                msg = f"[Router] No suitable handler found for {target_url}, using generic HTML fallback."
-                payload = {
-                    "level": "WARNING",
-                    "type": "router",
-                    "message": msg,
-                    "session_id": session_id
-                }
-                logger.warning(payload)
-                html_content = None
-                try:
-                    html_content = page.inner_html("body") if page else None
-                except Exception:
+                    logger.warning(payload)
                     html_content = None
-                result = generate_generic_html_result(
-                    page=page,
-                    coordinator=coordinator,
-                    context=context,
-                    session_id=session_id,
-                    html_text=html_content,
-                    log_type="router"
-                )
+                    try:
+                        html_content = page.inner_html("body") if page else None
+                    except Exception:
+                        html_content = None
+                    result = generate_generic_html_result(
+                        page=page,
+                        coordinator=coordinator,
+                        context=context,
+                        session_id=session_id,
+                        html_text=html_content,
+                        log_type="router"
+                    )
+            else:
+                handler = None
 
             if not isinstance(result, tuple) or len(result) != 4:
                 msg = f"Handler did not return a valid result tuple. (Session: {session_id})"
@@ -1197,6 +1333,18 @@ def orchestrate_url(
                 return
 
             headers, data, contest, metadata = result
+
+            if isinstance(metadata, dict) and metadata.get("cancelled"):
+                cancel_msg = metadata.get("cancel_reason") or "Parsing cancelled by user request."
+                logger.info({
+                    "level": "CANCELLED",
+                    "type": "cancel",
+                    "message": cancel_msg,
+                    "session_id": session_id,
+                })
+                mark_url_processed(target_url, status="cancelled", session_id=session_id)
+                sync_safe_browser_close(browser, session_id)
+                return
 
             batch_mode = context.get("batch_mode") if isinstance(context, dict) else None
             selected_races = context.get("selected_races") if isinstance(context, dict) else None
@@ -1386,7 +1534,8 @@ def main(
                 source_dir='uploads',
                 output_bypass=output_bypass,
                 force_parse_input_file=kwargs.get("force_parse_input_file"),
-                force_parse_format=kwargs.get("force_parse_format")
+                force_parse_format=kwargs.get("force_parse_format"),
+                cancel_flag=cancel_flag,
             )
             if override_result is True:
                 logger.info({

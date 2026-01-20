@@ -9,7 +9,7 @@
  */
 document.addEventListener('DOMContentLoaded', () => {
   // ---------- Bootstrap activation ----------
-  if (window.bootstrap) {
+  if ((/** @type {any} */ (window)).bootstrap) {
     document.querySelectorAll('[data-bs-toggle="tooltip"]')
       .forEach(el => bootstrap.Tooltip.getOrCreateInstance(el));
     document.querySelectorAll('[data-bs-toggle="popover"]')
@@ -20,9 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const cfgEl = document.getElementById('dataFrameworkConfig');
   const hydratedUrl = cfgEl?.dataset.apiUrl;
   const apiUrl =
-    hydratedUrl ||  // server now injects absolute path via url_for
-    (window.__DATA_FRAMEWORK__ && window.__DATA_FRAMEWORK__.apiUrl) ||
-    '/api/warehouse_election_results';
+  hydratedUrl ||  // server now injects absolute path via url_for
+  ((/** @type {any} */ (window)).__DATA_FRAMEWORK__ && (/** @type {any} */ (window)).__DATA_FRAMEWORK__.apiUrl) ||
+  '/api/warehouse_election_results';
 
   // ---------- Elements ----------
   const el = {
@@ -66,7 +66,16 @@ document.addEventListener('DOMContentLoaded', () => {
   let sortDir = 'none';                 // 'ascending' | 'descending' | 'none'
   let searchTerm = '';
   let page = 1;
-  let pageSize = parseInt(el.pageSize?.value || '25', 10);
+  // Safely read pageSize from select/input if present
+  let pageSize = 25;
+  try {
+    const psEl = el.pageSize;
+    if (psEl instanceof HTMLSelectElement || psEl instanceof HTMLInputElement) {
+      pageSize = Math.max(1, parseInt(psEl.value || '25', 10) || 25);
+    }
+  } catch (err) {
+    pageSize = 25;
+  }
 
   // ---------- Constants / Policies ----------
   const COL_NAME_RX = /^[A-Za-z0-9_]{1,64}$/;
@@ -113,10 +122,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (el.uploadForm) {
     el.uploadForm.addEventListener('submit', e => {
       e.preventDefault();
-      const fd = new FormData(el.uploadForm);
+      // JSDoc cast to satisfy FormData typing expectations in TS checks
+      /** @type {HTMLFormElement|null} */
+      const uploadForm = (el.uploadForm && el.uploadForm instanceof HTMLFormElement) ? el.uploadForm : null;
+      const fd = uploadForm ? new FormData(uploadForm) : new FormData();
 
       // Optional: basic filename policy (client hint)
-      const file = fd.get('csv_file');
+      const fileEntry = fd.get('csv_file');
+      const file = (fileEntry instanceof File) ? fileEntry : null;
       if (file && file.name && !/\.(csv|txt|tsv|xlsx|xls)$/i.test(file.name)) {
         setStatus(el.uploadStatus, 'error', 'Only .csv, .txt, .tsv, .xls, or .xlsx files are allowed.');
         return;
@@ -179,8 +192,11 @@ document.addEventListener('DOMContentLoaded', () => {
           sortDir = cycleSortDirection(sortDir);
           if (sortDir === 'none') sortBy = null;
         }
-        [...el.theadRow.children].forEach(h =>
-          h.setAttribute('aria-sort', h.dataset.field === sortBy ? sortDir : 'none'));
+        [...el.theadRow.children].forEach(h => {
+          const hh = /** @type {HTMLElement} */ (h);
+          const fld = (hh.dataset && hh.dataset.field) ? hh.dataset.field : '';
+          hh.setAttribute('aria-sort', fld === sortBy ? sortDir : 'none');
+        });
         render();
       };
       th.addEventListener('click', toggleSort);
@@ -240,9 +256,11 @@ document.addEventListener('DOMContentLoaded', () => {
       data = [...data].sort((a, b) => {
         const av = safeGet(a[sortBy]);
         const bv = safeGet(b[sortBy]);
-        const bothNum = av !== '' && bv !== '' && !isNaN(av) && !isNaN(bv);
+        const avn = parseFloat(av);
+        const bvn = parseFloat(bv);
+        const bothNum = av !== '' && bv !== '' && !isNaN(avn) && !isNaN(bvn);
         const cmp = bothNum
-          ? (Number(av) - Number(bv))
+          ? (avn - bvn)
           : av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
         return cmp * dirMul;
       });
@@ -292,10 +310,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     el.pageInfo.textContent = `Page ${page} of ${pages} • ${total} rows`;
-    el.first.disabled = page <= 1;
-    el.prev.disabled = page <= 1;
-    el.next.disabled = page >= pages;
-    el.last.disabled = page >= pages;
+    if (el.first instanceof HTMLButtonElement || el.first instanceof HTMLInputElement) el.first.disabled = page <= 1;
+    if (el.prev instanceof HTMLButtonElement || el.prev instanceof HTMLInputElement) el.prev.disabled = page <= 1;
+    if (el.next instanceof HTMLButtonElement || el.next instanceof HTMLInputElement) el.next.disabled = page >= pages;
+    if (el.last instanceof HTMLButtonElement || el.last instanceof HTMLInputElement) el.last.disabled = page >= pages;
 
     setStatus(el.status,
       slice.length ? 'info' : (rawData.length ? 'info' : 'error'),
@@ -361,15 +379,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- Event Wiring ----------
   el.search?.addEventListener('input', debounce(e => {
-    searchTerm = sanitizeSearch(e.target.value);
-    page = 1;
-    render();
+    const tgt = e.target;
+    if (tgt instanceof HTMLInputElement || tgt instanceof HTMLTextAreaElement) {
+      searchTerm = sanitizeSearch(tgt.value);
+      page = 1;
+      render();
+    }
   }, 150));
 
   el.pageSize?.addEventListener('change', e => {
-    pageSize = Math.max(1, parseInt(e.target.value, 10) || 25);
-    page = 1;
-    render();
+    const tgt = e.target;
+    if (tgt instanceof HTMLSelectElement || tgt instanceof HTMLInputElement) {
+      pageSize = Math.max(1, parseInt(tgt.value, 10) || 25);
+      page = 1;
+      render();
+    }
   });
 
   el.first?.addEventListener('click', () => { page = 1; render(); });
@@ -385,7 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   el.resetFilters?.addEventListener('click', () => {
     searchTerm = '';
-    if (el.search) el.search.value = '';
+    if (el.search instanceof HTMLInputElement) el.search.value = '';
     sortBy = null;
     sortDir = 'none';
     page = 1;
@@ -405,7 +429,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('click', ev => {
     if (!colWrap) return;
-    if (!colWrap.contains(ev.target)) {
+    const tgt = ev.target;
+    if (!(tgt instanceof Node) || !colWrap.contains(tgt)) {
       colWrap.classList.remove('open');
       el.colBtn?.setAttribute('aria-expanded', 'false');
     }

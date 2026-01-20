@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Elections Parser - Quick Reference</title>
+  <link rel="stylesheet" href="../webapp/static/css/quick_reference.css">
+</head>
+<body>
+  <div class="container">
+    <h1>🗳️ Smart Elections Parser</h1>
+    <p>Quick Reference Guide - Modern UI</p>
+
+    <h2>🎯 Core Features</h2>
+    <div class="grid">
+      <div class="card">
+        <div class="card-title">📁 File Sources</div>
+        <div class="card-content">
+          <strong>Input Folder:</strong> Process files in /input<br>
+          <strong>Manual Upload:</strong> Browse and upload files<br>
+          <strong>Direct URLs:</strong> <span class="badge badge-new">NEW</span> Paste URLs for batch processing
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">⚡ Processing Modes</div>
+        <div class="card-content">
+          <strong>Normal:</strong> Interactive contest selection<br>
+          <strong>Batch Mode:</strong> <span class="badge badge-new">NEW</span> Auto-process all contests<br>
+          <strong>Output Bypass:</strong> Preview without saving CSV
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">🔍 Filters</div>
+        <div class="card-content">
+          <strong>Confidence:</strong> 0-100% quality threshold<br>
+          <strong>State:</strong> Filter by jurisdiction<br>
+          <strong>Log Level:</strong> ERROR/WARNING/INFO<br>
+          <strong>Presets:</strong> <span class="badge badge-new">NEW</span> Save filter combinations
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">📊 Session Actions</div>
+        <div class="card-content">
+          <strong>Clone:</strong> <span class="badge badge-new">NEW</span> Duplicate current session<br>
+          <strong>Export:</strong> <span class="badge badge-new">NEW</span> Download results as JSON<br>
+          <strong>Clear:</strong> <span class="badge badge-new">NEW</span> Reset logs
+        </div>
+      </div>
+    </div>
+
+    <h2>⌨️ Keyboard Shortcuts <span class="badge badge-advanced">ADVANCED</span></h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Shortcut</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><kbd>Ctrl</kbd> + <kbd>E</kbd></td>
+          <td>Export session data (JSON)</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd></td>
+          <td>Export as CSV</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl</kbd> + <kbd>L</kbd></td>
+          <td>Clear logs</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd></td>
+          <td>Clone current session</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd></td>
+          <td>Open command palette</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl</kbd> + <kbd>/</kbd></td>
+          <td>Show this keyboard shortcuts help</td>
+        </tr>
+        <tr>
+          <td><kbd>Escape</kbd></td>
+          <td>Close modals</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>🔗 Direct URL Processing <span class="badge badge-new">NEW</span></h2>
+    
+    <h3>How to Use:</h3>
+    <ul>
+      <li>Select "Direct URLs" radio button in Controls</li>
+      <li>Paste URLs in textarea (one per line)</li>
+      <li>Maximum 20 URLs per batch</li>
+      <li>Real-time validation with color-coded feedback</li>
+      <li>Enable "Batch Mode" for automatic contest processing</li>
+    </ul>
+
+    <div class="tip">
+      <strong>💡 Tip:</strong> Direct URL drafts are saved per session. Switch sessions to work on different URL sets without losing your work!
+    </div>
+
+    <h3>URL Validation Rules:</h3>
+    <ul>
+      <li>Only <code>http://</code> and <code>https://</code> protocols allowed</li>
+      <li>URLs with usernames/passwords are rejected (security)</li>
+      <li>Invalid URLs are highlighted in red</li>
+      <li>Valid URLs show green checkmark with count</li>
+    </ul>
+
+    <div class="warning">
+      <strong>⚠️ Warning:</strong> URLs exceeding the 20-item limit will be truncated. Split large batches into multiple sessions.
+    </div>
+
+    <h2>💾 Filter Presets <span class="badge badge-new">NEW</span></h2>
+    
+    <h3>Save Your Favorite Filters:</h3>
+    <ul>
+      <li>Adjust Confidence, State, and Log Level filters</li>
+      <li>Click "Save" button</li>
+      <li>Enter a descriptive name</li>
+      <li>Preset appears in dropdown</li>
+      <li>Select preset to instantly restore filters</li>
+      <li>Delete unwanted presets anytime</li>
+    </ul>
+
+    <div class="tip">
+      <strong>💡 Tip:</strong> Create presets for common workflows like "High-Confidence Only" (90%+, All states, ERROR only) or "California Full" (0%+, CA, INFO).
+    </div>
+
+    <h2>🔄 Session Management <span class="badge badge-new">NEW</span></h2>
+    
+    <h3>Clone Session:</h3>
+    <p>Creates an exact copy of your current session including all settings, filters, and URL drafts. Perfect for testing different configurations side-by-side.</p>
+
+    <h3>Export Data:</h3>
+    <p>Downloads all session results as a JSON file with timestamp. Useful for archiving, sharing, or post-processing in external tools.</p>
+
+    <h3>Clear Logs:</h3>
+    <p>Removes all log entries for the current session. Helpful when starting a new parse run or debugging specific issues.</p>
+
+    <h2>🎨 UI Tips</h2>
+    <ul>
+      <li><strong>Log Drawer:</strong> Click handle at bottom to expand/minimize</li>
+      <li><strong>Auto-scroll:</strong> Logs automatically scroll during parsing</li>
+      <li><strong>Search:</strong> Filter results by name in top search box</li>
+      <li><strong>File Browser:</strong> Click folder names to expand contents</li>
+      <li><strong>Preview:</strong> Click files to preview in modal</li>
+      <li><strong>Accessibility:</strong> Full keyboard navigation + screen reader support</li>
+    </ul>
+
+    <h2>📚 Common Workflows</h2>
+
+    <h3>Scenario 1: Process Multiple URLs Automatically</h3>
+    <ol class="ol-steps">
+      <li>Select "Direct URLs" radio button</li>
+      <li>Paste 5-10 election results URLs</li>
+      <li>Check "Batch Mode" checkbox</li>
+      <li>Click "Run Parser"</li>
+      <li>Parser processes all URLs and contests without prompts</li>
+    </ol>
+
+    <h3>Scenario 2: Filter and Export High-Quality Results</h3>
+    <ol class="ol-steps">
+      <li>Set Confidence slider to 85%+</li>
+      <li>Select specific State from dropdown</li>
+      <li>Set Log Level to "Errors" only</li>
+      <li>Click "Save" in Filter Presets → name "High Quality"</li>
+      <li>Click "Export Data" to download JSON</li>
+    </ol>
+
+    <h3>Scenario 3: Compare Different Processing Settings</h3>
+    <ol class="ol-steps">
+      <li>Run parser with normal settings</li>
+      <li>Click "Clone Session" (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>)</li>
+      <li>Switch to cloned session in sidebar</li>
+      <li>Change settings (e.g., enable Output Bypass)</li>
+      <li>Run parser again and compare results</li>
+    </ol>
+
+    <h2>🛠️ Troubleshooting</h2>
+
+    <div class="card mt-1">
+      <div class="card-title">Direct URLs not validating?</div>
+      <div class="card-content">
+        <ul>
+          <li>Ensure URLs start with http:// or https://</li>
+          <li>Remove any trailing spaces or special characters</li>
+          <li>Check that URLs don't contain @ symbols (credentials)</li>
+          <li>Verify total count doesn't exceed 20</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card mt-1">
+      <div class="card-title">Filter presets not saving?</div>
+      <div class="card-content">
+        <ul>
+          <li>Check browser localStorage is enabled</li>
+          <li>Try a different preset name (avoid special characters)</li>
+          <li>Refresh page and try again</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card mt-1">
+      <div class="card-title">Keyboard shortcuts not working?</div>
+      <div class="card-content">
+        <ul>
+          <li>Ensure no modal is open (press <kbd>Escape</kbd> first)</li>
+          <li>Check that no input field has focus</li>
+          <li>Try refreshing the page</li>
+        </ul>
+      </div>
+    </div>
+
+    <hr class="divider">
+    <p class="footnote">
+      Smart Elections Parser v3.0 | Modern UI with Advanced Features | Press <kbd>Ctrl</kbd> + <kbd>/</kbd> for shortcuts
+    </p>
+  </div>
+</body>
+</html>

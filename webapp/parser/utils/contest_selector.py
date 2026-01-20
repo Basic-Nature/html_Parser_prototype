@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 
 # Contest selection and filtering utilities (refactored)
 import re
@@ -53,6 +54,15 @@ except ImportError:
     STOPWORDS = set()
 
 LOG_SCOPE = "contest_selector"
+
+
+def _env_truthy(value: Optional[str], default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+_DEFAULT_ALLOW_PROMPT = _env_truthy(os.getenv("SMART_ELECTIONS_ENABLE_CONTEST_PROMPTS"), False)
 
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -1134,7 +1144,37 @@ def select_contest_auto_first(
       4. Always returns list[dict] (or None if user cancels)
     """
     ctx = context or {}
+    selector_data = ctx.get("selector_data") or {}
+    base_contests = selector_data.get("contests") or []
+    base_titles = [safe_get(entry, "title", "") for entry in base_contests if safe_get(entry, "title")]
     filename = safe_get(ctx, "input_file") or safe_get(ctx, "source_file") or safe_get(ctx, "source") or None
+
+    def _finalize(records: Optional[List[Dict[str, Any]]]):
+        if records is None:
+            return None
+        records = records or []
+        if return_mode == "json":
+            return json.dumps(records, ensure_ascii=False)
+        if return_mode == "titles":
+            return [safe_get(rec, "title", "") for rec in records]
+        return records
+
+    def _headless_default() -> List[Dict[str, Any]]:
+        fallback_title = safe_get(ctx.get("selector_options") or {}, "fallback_title")
+        if not fallback_title:
+            fallback_title = base_titles[0] if base_titles else (filename or "Unnamed Contest")
+        return [{
+            "title": fallback_title,
+            "confidence": 0.0,
+            "source": "headless_fallback",
+            "metadata": {"headless": True},
+        }]
+
+    selector_options = ctx.get("selector_options") or {}
+    allow_prompt = selector_options.get("allow_prompt")
+    if allow_prompt is None:
+        allow_prompt = _DEFAULT_ALLOW_PROMPT
+    allow_prompt = bool(allow_prompt)
     state, county, year = resolve_selection_context(
         coordinator=coordinator,
         context=ctx,
@@ -1155,18 +1195,24 @@ def select_contest_auto_first(
     auto_list = auto if isinstance(auto, list) else []
     # If we got exactly one or user forbids interactive, return it
     if not force_interactive and auto_list:
-        if len(auto_list) == 1:
-            return auto_list
-        # If top has very high confidence, accept
+        if len(auto_list) == 1 or allow_multiple:
+            chosen = auto_list if allow_multiple else [auto_list[0]]
+            return _finalize(chosen)
         try:
             top_conf = float(safe_get(auto_list[0], "confidence") or 0.0)
         except Exception:
             top_conf = 0.0
-        if top_conf >= auto_confidence_threshold and not allow_multiple:
-            return [auto_list[0]]
+        if top_conf >= auto_confidence_threshold:
+            return _finalize([auto_list[0]])
+
+    if not allow_prompt and not force_interactive:
+        records = auto_list or _headless_default()
+        if not allow_multiple and records:
+            records = [records[0]]
+        return _finalize(records)
 
     # Fallback to interactive
-    return select_contest(
+    interactive = select_contest(
         coordinator=coordinator,
         state=state,
         county=county,
@@ -1180,6 +1226,7 @@ def select_contest_auto_first(
         auto_confidence_threshold=auto_confidence_threshold,
         return_mode="objects"
     )
+    return _finalize(interactive)
 
 # ================================================
 # Non-interactive selection (auto strategy)
@@ -1253,6 +1300,20 @@ def select_contest_noninteractive(
             metadata=metadata
         ))
 
+    probe_preselect = safe_get(context, "probe_preselect") if context else None
+    preferred_probe_title = safe_get(probe_preselect or {}, "title")
+    preferred_probe_norm = _norm_key(preferred_probe_title) if preferred_probe_title else ""
+    if preferred_probe_norm:
+        bias = 0.25
+        for record in reps:
+            if _norm_key(record.title) == preferred_probe_norm:
+                base_conf = float(record.confidence or 0.0)
+                record.confidence = base_conf + bias
+                meta = dict(record.metadata or {})
+                meta["probe_preferred"] = True
+                meta["probe_confidence_bonus"] = bias
+                record.metadata = meta
+
     # Optional year preference
     if prefer_year_match and year:
         year_matches = [r for r in reps if r.year == year]
@@ -1268,6 +1329,79 @@ def select_contest_noninteractive(
     if return_mode == "titles":
         return [r.title for r in reps]
     return [asdict(r) for r in reps]
+
+# -------------------------
+# Web-specific emission
+# -------------------------
+def _emit_contest_options_to_webapp(
+    candidates: list[ContestRecord],
+    state: str | None,
+    county: str | None,
+    year: int | None,
+    session_id: str | None,
+    context: dict | None
+) -> None:
+    """
+    Emit structured contest options to webapp via logger.
+    The webapp's socketio_emit_func will intercept this and route to frontend.
+    """
+    if not session_id or not (getattr(prompt, "mode", None) == "webapp"):
+        return  # Only emit in webapp mode
+
+    structured_options = []
+    for idx, c in enumerate(candidates):
+        meta_parts = []
+        variant = safe_get(c.metadata, "variant_label")
+        scope_label = safe_get(c.metadata, "scope_label")
+        if variant:
+            meta_parts.append(str(variant))
+        elif scope_label:
+            meta_parts.append(str(scope_label))
+        detail_list = _extract_display_details(c.metadata) if hasattr(c, "metadata") else []
+        if detail_list:
+            meta_parts.append(" | ".join(detail_list))
+        if c.year:
+            meta_parts.append(str(c.year))
+        if c.confidence is not None:
+            meta_parts.append(f"conf={c.confidence:.2f}")
+        bundle_size = None
+        if c.metadata:
+            bundle_size = safe_get(c.metadata, "bundle_size")
+        if bundle_size and (c.metadata or {}).get("bundle_mode") == "aggregate":
+            meta_parts.append(f"{int(bundle_size)} sections")
+        meta_text = ", ".join(meta_parts) if meta_parts else ""
+        
+        option_meta = dict(c.metadata or {})
+        if c.confidence is not None and "confidence" not in option_meta:
+            option_meta["confidence"] = float(c.confidence)
+        if c.year is not None and "year" not in option_meta:
+            option_meta["year"] = c.year
+        
+        structured_options.append({
+            "index": idx,
+            "label": c.title,
+            "meta": meta_text,
+            "metadata": option_meta
+        })
+
+    # Emit via logger with type='contest_options' so webapp recognizes it
+    logger.info({
+        "level": "INFO",
+        "type": "contest_options",
+        "message": f"Emitting {len(structured_options)} contest options for selection",
+        "session_id": session_id,
+        "options": structured_options,
+        "total_count": len(structured_options),
+        "context": {
+            "state": state,
+            "county": county,
+            "year": year,
+            "source": safe_get(context, "source") or safe_get(context, "input_file"),
+            "handler": safe_get(context, "handler"),
+            "url": safe_get(context, "url"),
+            "input_file": safe_get(context, "input_file")
+        }
+    })
 
 # -------------------------
 # Core selection
@@ -1489,6 +1623,16 @@ def select_contest(
 
     selected: list[ContestRecord] = []
     prompted_once = False
+
+    # Emit contest options to webapp if in web mode
+    _emit_contest_options_to_webapp(
+        candidates=candidates,
+        state=state,
+        county=county,
+        year=year,
+        session_id=session_id,
+        context=context
+    )
 
     while True:
         page_options, total_pages = build_page_options(page)

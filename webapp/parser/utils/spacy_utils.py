@@ -16,18 +16,27 @@ from collections import Counter
 from typing import Any, Dict, List, Set, Tuple
 
 import orjson
-import spacy
+spacy = None  # lazy import to avoid thinc->torch chain at module import
 
 from ..Context_Integration.Context_Library.constants import KNOWN_STATE_TO_COUNTY_MAP
 from .logger_singleton import logger
 from .shared_logic import safe_get, safe_lower
 
-# Load spaCy model globally for efficiency; no runtime download
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError as e:
-    logger.error("spaCy model 'en_core_web_sm' is not installed. Rebuild the image with the model baked in.", exc_info=e)
-    raise
+def _get_nlp():
+    """
+    Lazy initializer for spaCy NLP model. Returns None if unavailable.
+    Avoids importing torch via thinc in environments without DLLs.
+    """
+    global spacy
+    try:
+        if spacy is None:
+            import spacy as _spacy
+            spacy = _spacy
+        # Attempt to load lightweight English model; fail gracefully
+        return spacy.load("en_core_web_sm")
+    except Exception as e:
+        logger.warning(f"spaCy unavailable or model load failed: {e}")
+        return None
 
 # --- Core NLP Utilities ---
 
@@ -39,6 +48,40 @@ def extract_entities(text: str) -> List[Tuple[str, str]]:
     if not isinstance(text, str) or not text.strip():
         logger.error(f"[extract_entities] Invalid or empty text input: {repr(text)}")
         return []
+    nlp = _get_nlp()
+    if nlp is None:
+        # Fallback heuristic when spaCy or model is unavailable: detect known states/counties
+        try:
+            text_low = text.lower()
+            matches = []
+            # Known states (normalize underscore keys to spaces)
+            for st in KNOWN_STATE_TO_COUNTY_MAP.keys():
+                if not st:
+                    continue
+                st_norm = st.replace("_", " ").lower()
+                if st_norm in text_low:
+                    # present as readable name
+                    matches.append((st_norm.title(), "GPE"))
+            # Known counties
+            for st, counties in KNOWN_STATE_TO_COUNTY_MAP.items():
+                for c in (counties or []):
+                    if not c:
+                        continue
+                    # match with and without 'county' suffix
+                    if c.lower() in text_low or (c + " county").lower() in text_low:
+                        matches.append((c, "GPE"))
+            # dedupe while preserving order
+            seen = set()
+            out = []
+            for ent, lbl in matches:
+                key = ent.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append((ent, lbl))
+            return out
+        except Exception:
+            return []
     try:
         doc = nlp(text)
         return [(ent.text, ent.label_) for ent in doc.ents]
@@ -47,6 +90,9 @@ def extract_entities(text: str) -> List[Tuple[str, str]]:
         return []
 
 def get_sentences(text: str) -> List[str]:
+    nlp = _get_nlp()
+    if nlp is None:
+        return []
     doc = nlp(text)
     return [sent.text for sent in doc.sents]
 
@@ -57,6 +103,9 @@ def extract_entities_from_list(texts: List[str]) -> List[List[Tuple[str, str]]]:
     return [extract_entities(t) for t in texts]
 
 def extract_entity_labels(text: str) -> Set[str]:
+    nlp = _get_nlp()
+    if nlp is None:
+        return set()
     doc = nlp(text)
     return set(ent.label_ for ent in doc.ents)
 
@@ -64,20 +113,32 @@ def is_location_entity(ent_label: str) -> bool:
     return ent_label in {"GPE", "LOC", "FAC"}
 
 def extract_locations(text: str) -> List[str]:
+    nlp = _get_nlp()
+    if nlp is None:
+        return []
     doc = nlp(text)
     return [ent.text for ent in doc.ents if is_location_entity(ent.label_)]
 
 def extract_dates(text: str) -> List[str]:
+    nlp = _get_nlp()
+    if nlp is None:
+        return []
     doc = nlp(text)
     return [ent.text for ent in doc.ents if ent.label_ == "DATE"]
 
 def filter_entities_by_type(text: str, types: List[str]) -> List[str]:
+    nlp = _get_nlp()
+    if nlp is None:
+        return []
     doc = nlp(text)
     return [ent.text for ent in doc.ents if ent.label_ in types]
 
 def entity_frequency(texts: List[str], entity_type: List[str] = None, top_n: int = 10) -> Dict[str, int]:
     counter = Counter()
     for text in texts:
+        nlp = _get_nlp()
+        if nlp is None:
+            continue
         doc = nlp(text)
         for ent in doc.ents:
             if entity_type is None or ent.label_ in entity_type:
@@ -95,6 +156,9 @@ def get_entity_context(text: str, entity: str, window: int = 30) -> List[str]:
     return contexts
 
 def similarity_score(text1: str, text2: str) -> float:
+    nlp = _get_nlp()
+    if nlp is None:
+        return 0.0
     doc1 = nlp(text1)
     doc2 = nlp(text2)
     if doc1.vector_norm and doc2.vector_norm:
@@ -102,14 +166,23 @@ def similarity_score(text1: str, text2: str) -> float:
     return 0.0
 
 def extract_persons(text: str) -> List[str]:
+    nlp = _get_nlp()
+    if nlp is None:
+        return []
     doc = nlp(text)
     return [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
 
 def extract_organizations(text: str) -> List[str]:
+    nlp = _get_nlp()
+    if nlp is None:
+        return []
     doc = nlp(text)
     return [ent.text for ent in doc.ents if ent.label_ == "ORG"]
 
 def extract_money(text: str) -> List[str]:
+    nlp = _get_nlp()
+    if nlp is None:
+        return []
     doc = nlp(text)
     return [ent.text for ent in doc.ents if ent.label_ == "MONEY"]
 
@@ -156,6 +229,9 @@ def detect_noisy_or_ambiguous_entities(text: str, noisy_patterns: List[str] = No
         noisy_patterns = [
             r"test", r"sample", r"unknown", r"n/a", r"tbd", r"lorem", r"ipsum"
         ]
+    nlp = _get_nlp()
+    if nlp is None:
+        return []
     doc = nlp(text)
     noisy = []
     for ent in doc.ents:

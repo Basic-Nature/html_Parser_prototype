@@ -3,17 +3,18 @@ playwright>=1.54.0
 rich>=14.1.0
 flask-socketio>=5.5.1
 gunicorn>=23.0.0
-eventlet>=0.40.2
 selectolax>=0.3.32
 langdetect>=1.0.9
 azure_identity>=1.24.0
-spacy>=3.8,<3.9
+# Pinned for Python 3.12 stability (spaCy stack)
+spacy==3.8.11
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 # Optional CAPTCHA visual bypass (install separately when needed)
 # seleniumbase>=4.40.8
 
 # File handling
-pandas>=2.3.1
+pandas==2.2.3
+numpy==2.2.6
 pytesseract>=0.3.13
 pdf2image>=1.17.0
 PyMuPDF>=1.26.5
@@ -29,7 +30,7 @@ opencv-python>=4.12.0.88
 rapidfuzz>=3.13.0
 matplotlib>=3.10.5
 sentence_transformers>=5.1.0
-torch==2.7.1+cpu
+torch==2.9.1+cpu
 --extra-index-url https://download.pytorch.org/whl/cpu
 nltk>=3.9.1
 # For JSON and structured parsing
@@ -38,9 +39,8 @@ orjson>=3.11.1
 # fake-useragent>=2.2.0
 
 # NLP and ML enhancements
-spacy>=3.8.7
-# shap>=0.48.0
 spacy-lookups-data>=1.0.5
+# shap>=0.48.0
 
 # flask-login for user session management, is not used in the current version
 # optional future implementation

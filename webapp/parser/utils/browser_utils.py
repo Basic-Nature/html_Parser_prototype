@@ -9,6 +9,7 @@ import inspect
 # user-agent rotation, and CAPTCHA handling. Supports both interactive (async)
 # and batch (subprocess) use cases.
 # ---------------------------------------------------------------
+import json
 import os
 import random
 import re
@@ -63,6 +64,18 @@ ElementLike = Union[
     SeleniumElement,
     object  # fallback for custom nodes
 ]
+
+TABLE_DISCOVERY_SELECTOR = "table, [role='table'], .table, .datatable, .table-responsive table"
+TABLE_DISCOVERY_SELECTOR_JS = json.dumps(TABLE_DISCOVERY_SELECTOR)
+SCROLL_METRIC_KEYS = {
+    "scroll_attempts",
+    "tables_seen",
+    "elapsed_ms",
+    "selector_hits",
+    "no_new_tables_iters",
+    "stable_frames",
+    "scroll_depth",
+}
 
 # Load user agents and captcha indicators from context library
 if os.path.exists(CONTEXT_LIBRARY_PATH):
@@ -641,11 +654,22 @@ def autoscroll_until_stable(
     step=8000,
     delay_ms=200,
     max_total_time=10000,
+    max_scroll_depth: Optional[int] = None,
+    max_no_new_table_iters: int = 12,
+    min_scrolls_before_no_new: int = 5,
     wait_for_selector=None,
     domain=None,
     coordinator_feedback=None,
     session_id: Optional[str] = None,
+    metrics: Optional[Dict[str, Any]] = None,
 ) -> bool:
+    """
+    Scroll until the page height/text stabilizes or limits are hit.
+
+    max_scroll_depth: optional maximum pixels to scroll before stopping.
+    max_no_new_table_iters: stop after this many iterations with no new tables detected.
+    min_scrolls_before_no_new: minimum scroll iterations before applying the no-new-tables exit.
+    """
     start_time = time.time()
     safe_evaluate(page, "window.scrollTo(0, 0)", logger)
     safe_wait_for_timeout(page, delay_ms, logger)
@@ -655,6 +679,23 @@ def autoscroll_until_stable(
     last_texts = []
     scroll_attempts = 0
     max_scrolls = max_total_time // delay_ms
+    total_scrolled = 0
+    max_tables_seen = 0
+    no_new_tables_iters = 0
+    selector_hits = 0
+    def _log_scroll_metrics(incomplete: bool = False) -> None:
+        logger.info(
+            {
+                "level": "INFO",
+                "type": "scroll",
+                "message": "[SCROLL] Metrics",
+                "session_id": session_id,
+                "scroll_attempts": scroll_attempts,
+                "tables_seen": max_tables_seen,
+                "elapsed_ms": elapsed_ms,
+                "incomplete": bool(incomplete),
+            }
+        )
     url_str = safe_url(page)
     domain = domain or (
         safe_get_first(url_str.split("/"), "domain_split", None, logger, default="")
@@ -699,11 +740,52 @@ def autoscroll_until_stable(
             safe_evaluate(page, f"window.scrollBy(0, {step})", logger)
             safe_wait_for_timeout(page, delay_ms, logger)
             scroll_attempts += 1
+            total_scrolled += step
             update_progress(scroll_attempts)
+            try:
+                current_table_count = safe_evaluate(
+                    page,
+                    f"document.querySelectorAll({TABLE_DISCOVERY_SELECTOR_JS}).length",
+                    logger
+                ) or 0
+            except Exception:
+                current_table_count = 0
+            if current_table_count > max_tables_seen:
+                max_tables_seen = current_table_count
+                no_new_tables_iters = 0
+            elif scroll_attempts >= min_scrolls_before_no_new:
+                no_new_tables_iters += 1
             if wait_for_selector and safe_locator(page, wait_for_selector, logger):
                 logger.info(f"[SCROLL] Selector '{wait_for_selector}' found. Stopping scroll.")
+                selector_hits += 1
                 break
             elapsed = (time.time() - start_time) * 1000
+            if (
+                scroll_attempts >= min_scrolls_before_no_new
+                and no_new_tables_iters >= max_no_new_table_iters
+            ):
+                logger.info(
+                    {
+                        "level": "INFO",
+                        "type": "scroll",
+                        "message": "[SCROLL] Stopping after repeated iterations without new tables.",
+                        "session_id": session_id,
+                        "tables_seen": max_tables_seen,
+                        "iterations_without_growth": no_new_tables_iters,
+                    }
+                )
+                break
+            if max_scroll_depth is not None and total_scrolled >= max_scroll_depth:
+                logger.info(
+                    {
+                        "level": "INFO",
+                        "type": "scroll",
+                        "message": "[SCROLL] Max scroll depth reached.",
+                        "session_id": session_id,
+                        "depth": total_scrolled,
+                    }
+                )
+                break
             if elapsed > max_total_time * 0.8 and scroll_attempts % 10 == 0:
                 if interactive_mode:
                     console.print("[bold yellow]Scrolling is taking longer than expected. Continue waiting? (y/N)[/bold yellow]")
@@ -724,13 +806,29 @@ def autoscroll_until_stable(
                         prompt_skipped_logged = True
         update_progress(max_scrolls)
 
+    elapsed_ms = int((time.time() - start_time) * 1000)
+    if isinstance(metrics, dict):
+        metrics.update(
+            {
+                "scroll_attempts": scroll_attempts,
+                "stable_frames": stable,
+                "elapsed_ms": elapsed_ms,
+                "tables_seen": max_tables_seen,
+                "selector_hits": selector_hits,
+                "no_new_tables_iters": no_new_tables_iters,
+                "scroll_depth": total_scrolled,
+            }
+        )
+
     if stable >= max_stable_frames:
         logger and logger.info("[SCROLL] Completed scrolling until page height/content stabilized.")
+        _log_scroll_metrics()
         if coordinator_feedback:
             coordinator_feedback(domain, scroll_attempts, step)
         return True
     else:
         logger and logger.warning("[SCROLL] Max scroll time/attempts exceeded. Page may not be fully loaded.")
+        _log_scroll_metrics(incomplete=True)
         if coordinator_feedback:
             coordinator_feedback(domain, scroll_attempts, step, incomplete=True)
         return False

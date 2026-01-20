@@ -172,5 +172,56 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Add theme toggle (optional future enhancement)
+  // Attach click handlers to mermaid nodes so clicking a node scrolls to the
+  // corresponding module section (if present). Retry until mermaid renders.
+  function attachMermaidNodeClickHandlers() {
+    const svgNodes = document.querySelectorAll('.mermaid svg g.node');
+    if (!svgNodes || svgNodes.length === 0) return false;
+
+    // Helper to normalize label text for comparison
+    function normalizeLabel(s) {
+      return (s || '').toString().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    svgNodes.forEach(function(g) {
+      try {
+        const textEl = g.querySelector('text');
+        if (!textEl) return;
+        const label = textEl.textContent.trim();
+        if (!label) return;
+
+        g.style.cursor = 'pointer';
+        g.addEventListener('click', function() {
+          // Find headings by normalized text (works for raw markdown headings
+          // which will be converted to <h*> elements by the site generator).
+          const candidates = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'));
+          const nLabel = normalizeLabel(label);
+          const target = candidates.find(h => normalizeLabel(h.textContent || '') === nLabel || (h.id && normalizeLabel(h.id) === nLabel));
+          if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // Flash highlight
+            const original = target.style.boxShadow;
+            target.style.transition = 'box-shadow 0.3s ease';
+            target.style.boxShadow = '0 0 12px rgba(0, 255, 231, 0.6)';
+            setTimeout(() => { target.style.boxShadow = original; }, 1800);
+          }
+        });
+      } catch (e) {
+        // ignore
+      }
+    });
+    return true;
+  }
+
+  // Retry attaching handlers for a short period (mermaid may render async)
+  let attachAttempts = 0;
+  const attachInterval = setInterval(() => {
+    attachAttempts++;
+    const ok = attachMermaidNodeClickHandlers();
+    if (ok || attachAttempts > 30) {
+      clearInterval(attachInterval);
+    }
+  }, 200);
+
   console.log('Smart Elections Documentation loaded with metallic theme');
 });

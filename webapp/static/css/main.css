@@ -57,6 +57,7 @@
     --z-overlay:1000;
 
     /* Breakpoints */
+    --bp-lg:1024px; /* wide screens for diamond layout */
     --bp-md:900px;
     --bp-sm:700px;
     --bp-xs:520px;
@@ -179,9 +180,18 @@
     font-size:1.2em;
     margin:0 0 1em;
     font-weight:600;
+    text-shadow:0 2px 10px rgba(30 40 50 /.55);
   }
   .rainbow-text {
-    background:linear-gradient(90deg,#f22,#f2f,#22f,#2ff,#2f2,#ff2,#f22);
+    /* Branded gradient using project tokens */
+    background:linear-gradient(90deg,
+      var(--main-red) 0%,
+      var(--neon3) 18%,
+      var(--neon) 36%,
+      var(--main-blue) 54%,
+      var(--gold) 72%,
+      var(--main-red) 100%
+    );
     background-size:200% auto;
     color:transparent;
     -webkit-background-clip:text;
@@ -245,18 +255,32 @@
                background .22s;
     will-change:transform;
   }
+  /* Generic hover/glow for all feature cards (applies to items without a specific accent rule) */
+  @media (min-width: var(--bp-lg)){
+  }
   /* Attribute-based accent borders */
-  .feature[href*="run_parser"] { border-color:var(--main-red); }
+  .feature[href*="ballot_lens"] { border-color:var(--main-red); }
   .feature[href*="history"] { border-color:var(--gold); }
-  .feature[href*="data_framework"] {
-    border-color:var(--main-blue);
-    box-shadow:0 0 18px 2px var(--main-blue),0 2px 12px #bfc9d1;
+  .feature[href*="quality_dashboard"] {
+    border-color:var(--cyan);
+    box-shadow:0 0 18px 2px var(--cyan),0 2px 12px #bfc9d1;
+  }
+  .feature[href*="azure_health"] {
+    border-color:var(--neon4);
+    box-shadow:0 0 18px 2px var(--neon4),0 2px 12px #bfc9d1;
   }
   /* Hover (legacy & keyboard focus) */
   .feature:focus-visible {
     box-shadow:0 0 0 3px rgba(0 255 231 /.45),0 0 18px 4px var(--neon);
   }
-  .feature[href*="run_parser"]:hover,
+  /* Accessibility parity: specific focus accents */
+  .feature[href*="quality_dashboard"]:focus-visible {
+    box-shadow:0 0 0 3px rgba(0 255 231 /.45),0 0 18px 4px var(--cyan);
+  }
+  .feature[href*="azure_health"]:focus-visible {
+    box-shadow:0 0 0 3px rgba(0 255 231 /.45),0 0 18px 4px var(--neon4);
+  }
+  .feature[href*="ballot_lens"]:hover,
   .feature.is-hovered-run {
     transform:translateY(-8px) scale(1.06);
     box-shadow:0 0 18px 8px var(--neon),0 2px 12px #bfc9d1;
@@ -277,6 +301,18 @@
     border-color:var(--neon);
     background:var(--gradient-feature-data);
   }
+  .feature[href*="quality_dashboard"]:hover {
+    transform:translate(8px,-8px) scale(1.06) rotate(2deg);
+    box-shadow:0 0 26px 10px var(--cyan),0 2px 16px #bfc9d1;
+    border-color:var(--neon);
+    background:rgba(0 255 231 /.10);
+  }
+  .feature[href*="azure_health"]:hover {
+    transform:translate(8px,-8px) scale(1.05) rotate(2deg);
+    box-shadow:0 0 28px 10px var(--neon4),0 2px 18px #bfc9d1;
+    border-color:var(--main-blue);
+    background:rgba(69 129 142 /.10);
+  }
   .feature.is-hovered-none {
     transform:none;
     box-shadow:0 2px 12px rgba(0 0 0 /.09);
@@ -291,8 +327,44 @@
   }
   .feature[href*="history"] h3 { color:var(--gold); text-shadow:0 2px 12px var(--neon2); }
   .feature[href*="data_framework"] h3 { color:var(--main-blue); text-shadow:0 2px 12px var(--neon); }
-  .feature[href*="run_parser"] h3 { color:var(--main-red); text-shadow:0 2px 12px var(--neon3); }
+  .feature[href*="ballot_lens"] h3 { color:var(--main-red); text-shadow:0 2px 12px var(--neon3); }
   .feature p { margin:0; color:#c6e2f7; font-size:1em; }
+  .feature[href*="quality_dashboard"] h3 { color:var(--cyan); text-shadow:0 2px 12px var(--neon); }
+  .feature[href*="azure_health"] h3 { color:var(--neon4); text-shadow:0 2px 12px var(--neon); }
+
+  /* Bottom tile (About & Docs): gentle upward hover echoing pyramid tip */
+  .feature[href*="html_Parser_prototype"]:hover,
+  .feature[href*="basic-nature.github.io"]:hover {
+    transform:translateY(-6px) scale(1.03);
+    box-shadow:0 0 18px 8px var(--neon2),0 2px 12px #bfc9d1;
+    border-color:var(--neon2);
+    background:rgba(212 175 55 /.08); /* soft gold tint */
+  }
+
+  /* Diamond/pyramid layout for feature tiles on wide screens */
+  @media (min-width: var(--bp-md)){
+    .feature-list {
+      display:grid;
+      grid-template-columns:1fr 1fr 1fr;
+      grid-auto-rows:auto;
+      gap:2em;
+      grid-template-areas:
+        ". top ."
+        "left-top . right-top"
+        "left-bottom . right-bottom"
+        ". bottom .";
+      align-items:start;
+      justify-items:stretch;
+    }
+    /* Assign grid areas by href pattern (no DOM changes required) */
+    .feature[href*="ballot_lens"]     { grid-area: top; }
+    .feature[href*="data_framework"] { grid-area: left-top; }
+    .feature[href*="quality_dashboard"] { grid-area: right-top; }
+    .feature[href*="history"]        { grid-area: left-bottom; }
+    .feature[href*="azure_health"]   { grid-area: right-bottom; }
+    .feature[href*="html_Parser_prototype"],
+    .feature[href*="basic-nature.github.io"] { grid-area: bottom; }
+  }
 
   /* Canvas Section */
   .canvas-section { margin:2em 0 1em; text-align:center; position:relative; }

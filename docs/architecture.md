@@ -144,50 +144,54 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 
 ### 1. **Core Data Flows and Roles**
 
-#### **A. Context Library (`context_library.json`)**
+#### **A. Context Library (`context_library.json`)
 
-- **Purpose:**  
+- **Purpose:**
   - The original, central source of contextual knowledge (states, counties, contests, patterns, etc.).
   - Used for lookups, normalization, and as a knowledge base for parsing and ML.
-- **Location:**  
+- **Location:**
   - `webapp/parser/Context_Integration/Context_Library/context_library.json`
-- **Accessed by:**  
+- **Accessed by:**
   - `context_coordinator.py`, `context_organizer.py`, `librarian.py`, and ML health.
 
-#### **B. Context Library DB (`context_library_db.json`)**
+#### **B. Context Library DB (`context_library_db.json`)
 
-- **Purpose:**  
+- **Purpose:**
   - A more structured or expanded version of the context library, possibly for ML or audit.
   - Generated/updated by `manual_correction.py` and possibly others.
-- **Location:**  
+- **Location:**
   - Same directory as above.
-- **Accessed by:**  
+- **Accessed by:**
   - Correction, possibly ML retraining scripts.
 
-#### **C. Context DB (`context_elections.db`)**
+#### **C. Context DB (`context_elections.db`)
 
-- **Purpose:**  
+- **Purpose:**
   - Legacy SQLite DB, now mostly replaced by PostgreSQL.
   - May still be referenced for backward compatibility or migration.
-- **Location:**  
+- **Location:**
   - Same directory as above.
-- **Accessed by:**  
+- **Accessed by:**
   - Should be phased out if you’re fully on PostgreSQL.
 
-#### **D. PostgreSQL (`POSTGRES_URL`)**
+#### **D. PostgreSQL (`POSTGRES_URL`)
 
-- **Purpose:**  
+- **Purpose:**
   - The main, production-grade relational database for all structured data (contests, table structures, entities, etc.).
   - Used for robust querying, updates, and ML training data storage.
-- **Accessed by:**  
+- **Accessed by:**
   - All SQLAlchemy-based models and session logic.
 
-#### **E. Logs (`log/` directory)**
+#### **E. Logs (`log/` directory)
 
-- **Purpose:**  
+- **Purpose:**
   - Store all extraction, correction, feedback, and anomaly logs as `.jsonl` files.
   - Serve as the audit trail and as a source for manual/ML correction and retraining.
-- **Accessed by:**  
+- **Accessed by:**
+  - `manual_correction.py`, `librarian.py`, retraining scripts, and context health.
+  - Store all extraction, correction, feedback, and anomaly logs as `.jsonl` files.
+  - Serve as the audit trail and as a source for manual/ML correction and retraining.
+  - **Accessed by:**
   - `manual_correction.py`, `librarian.py`, retraining scripts, and context health.
 
 ---
@@ -206,6 +210,13 @@ This project uses a modular, auditable pipeline for election data parsing, conte
   - Use the context library for normalization and enrichment.
   - Organize parsed data, deduplicate, and run integrity checks.
   - May update the context library with new findings.
+
+  **Enrichment Coordinator Handle**
+  - Treat `context_coordinator.py` as the enrichment coordinator that stages work before `ContextOrganizer.organize_context` fires. Instead of flooding the organizer with every detected asset, the coordinator should batch entities by category (contests, locations, vote methods, etc.), attach provenance tags, and only submit the bundles that pass lightweight heuristics.
+  - Each invocation of `organize_context` should emit a compact training snapshot: the categorized entities, the applied fixes, and the anomaly verdicts. Store these snapshots under `log/context_enrichment/*.jsonl` or directly in PostgreSQL so retraining jobs can ingest well-scoped examples rather than noisy global dumps.
+  - When wiring new handlers (HTML or PDF), call into the coordinator’s enrichment handle first; let it decide whether to spawn DOM scans, NLP passes, or ML anomaly checks. This throttles unrelated tasks and keeps training data aligned with best practices (one category per pass, provenance recorded, audit-ready metadata attached).
+  - The coordinator now builds an `enrichment_plan` (routes such as `dom`, `tables`, `ml`, `integrity`) and passes it to `ContextOrganizer`. The organizer honors that plan by skipping gated routes and records the resolved plan/decisions into `metadata.route_summary`. Every plan execution is appended to `log/context_enrichment/plan_snapshots.jsonl` for downstream training and auditing.
+  - Format-aware routing: HTML/DOM runs keep panel/button scans, PDFs prioritize reconstruction, OCR/image inputs request DOM + ML cleanup, CSV/JSON/API/XML feeds bypass DOM entirely and focus on structured table + integrity routes. Each detected path is logged via `plan.dynamic_paths` so future training jobs understand why a subset of routes ran.
 
 #### **Step 3: Logging & Feedback**
 
@@ -226,19 +237,19 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 
 ### 3. **Where Each File Fits**
 
-| File/Module                       | Main Role                                                                                   | Reads From                | Writes To                 |
-|------------------------------------|--------------------------------------------------------------------------------------------|---------------------------|---------------------------|
-| `context_library.json`             | Central knowledge base for context, patterns, mappings                                     | Used by all context code  | Updated by librarian/correction health |
-| `context_library_db.json`          | Structured/expanded context for ML/audit (optional)                                        | Correction health, ML       | Correction health           |
-| `context_elections.db`             | Legacy SQLite DB (should be phased out)                                                    | Legacy code               | Legacy code               |
-| `POSTGRES_URL` (PostgreSQL)        | Main relational DB for all structured data                                                 | SQLAlchemy models         | SQLAlchemy models         |
-| `log/*.jsonl`                      | All logs: extraction, correction, feedback, anomalies, etc.                                | Correction health, ML       | All pipeline components   |
-| `manual_correction.py`         | Reviews logs, allows corrections, updates context library and DB                           | log/, context_library     | context_library, DB       |
-| `librarian.py`                     | Centralizes context knowledge, extends/updates context library                             | context_library           | context_library           |
-| `context_coordinator.py`           | Orchestrates context enrichment, integrity, and ML checks                                 | context_library, DB       | log/                      |
-| `context_organizer.py`             | Organizes parsed context, deduplicates, runs ML, updates DB                               | context_library, DB       | DB, log/                  |
-| `retrain_table_structure_models.py`| Retrains NER and other models using context and logs                                       | context_library, DB, log/ | model files, log/         |
-| `config.py`                        | Centralizes all paths and DB connection strings                                            | .env, filesystem          | N/A                       |
+| File/Module | Main Role | Reads From | Writes To |
+| --- | --- | --- | --- |
+| `context_library.json` | Central knowledge base for context, patterns, mappings | Used by all context code | Updated by librarian / correction health |
+| `context_library_db.json` | Structured/expanded context for ML/audit (optional) | Correction health, ML | Correction health |
+| `context_elections.db` | Legacy SQLite DB (should be phased out) | Legacy code | Legacy code |
+| `POSTGRES_URL` (PostgreSQL) | Main relational DB for all structured data | SQLAlchemy models | SQLAlchemy models |
+| `log/*.jsonl` | All logs: extraction, correction, feedback, anomalies, etc. | Correction health, ML | All pipeline components |
+| `manual_correction.py` | Reviews logs, allows corrections, updates context library and DB | `log/`, `context_library` | `context_library`, DB |
+| `librarian.py` | Centralizes context knowledge, extends/updates context library | `context_library` | `context_library` |
+| `context_coordinator.py` | Orchestrates context enrichment, integrity, and ML checks | `context_library`, DB | `log/` |
+| `context_organizer.py` | Organizes parsed context, deduplicates, runs ML, updates DB | `context_library`, DB | DB, `log/` |
+| `retrain_table_structure_models.py` | Retrains NER and other models using context and logs | `context_library`, DB, `log/` | model files, `log/` |
+| `config.py` | Centralizes all paths and DB connection strings | `.env`, filesystem | N/A |
 
 ---
 
@@ -246,20 +257,20 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 
 #### **A. Paths and Structure**
 
-- **Single Source of Truth:**  
+- **Single Source of Truth:**
   - Use `context_library.json` as the canonical context source.
   - Use `librarian.py` for all context extension and updates.
-- **Phase Out Legacy DB:**  
+- **Phase Out Legacy DB:**
   - Remove all references to `context_elections.db` unless needed for migration.
-- **Explicit Context Library DB:**  
+- **Explicit Context Library DB:**
   - If you need a structured context DB for ML, always generate it from `context_library.json` and logs, not as a separate manual source.
 
 #### **B. Database Usage**
 
-- **PostgreSQL for All Structured Data:**  
+- **PostgreSQL for All Structured Data:**
   - All confirmed contests, table structures, entities, etc. should be stored in PostgreSQL.
   - Use SQLAlchemy models for all DB access.
-- **Context Library for Knowledge, Not Data:**  
+- **Context Library for Knowledge, Not Data:**
   - Use the context library for normalization, mapping, and as a knowledge base, not for storing raw data.
 
 #### **C. Logging and Correction**
@@ -306,18 +317,28 @@ Contributions welcome! See `CONTRIBUTING.md` to get started.
 
 1. **User chooses URL** from `urls.txt` (prompted via `prompt_user_input`).
 2. **Browser is launched** via `browser_utils` (Playwright-first; Selenium fallback only if optional dependency is installed).
+
+   - Before any handler or download prompt runs, the `NavigationInstructionRunner` loads context-aware recipes from `webapp/parser/navigator/navigation_recipes.orjson`.  These recipes describe DOM markers, selectors, and optional parallel action groups that toggle hidden views, fire menus, or kick off context scans.  The runner merges any projected data (e.g., contests, inferred years) back into the orchestration context so downstream handlers inherit the dynamically detected state/county metadata.
+
 3. **CAPTCHA page is detected**, `captcha_tools` attempts resolution.
+
 4. HTML is scanned by `html_scanner` to gather:
    - Election year (e.g. 2022)
    - Race categories (e.g. Governor, Senate, Proposition)
    - County names (if present)
+
 5. **Routing**:
    - If `state_router` detects a handler → delegate to `handlers/<state>.py`
    - Otherwise → delegate to `format_router`
+   - Downloaded files selected via `format_router` stay in the same pipeline; their parsed results now continue through the HTML parser's integrity/AI/export stages instead of short-circuiting after the download completes.
 6. The **handler parses and returns**: headers, data, contest, metadata.
+
 7. **Table extraction** is performed using `table_core.py` and `dynamic_table_extractor.py`, with ML/NLP scoring and patching.
+
 8. **Election integrity checks** are run via `Context_Integration/Integrity_check.py`.
+
 9. **CSV and metadata are saved** in `output/<state>/<county>/<race>/`.
+
 10. **Logs and audit trails** are written for transparency and reproducibility.
 
 ---
@@ -333,6 +354,17 @@ The `input/` folder is used for:
 Files are placed here by `download_utils.py` or manually.  
 Manual parsing is supported if you use the correct naming convention and trigger via override.
 
+### 🧭 Dynamic Navigation Recipes
+
+- File: `webapp/parser/navigator/navigation_recipes.orjson`
+- Loader: `NavigationRecipeStore`
+- Executor: `NavigationInstructionRunner`
+
+Each recipe defines matching constraints (`state`, `county`, URL fragments, DOM markers) and a list of steps.  Supported actions include waiting for selectors, clicking buttons, running JavaScript, automatic scrolling, projecting results from `scan_html_for_context`, and spawning **parallel** sub-steps to emulate multi-threaded navigation.  Recipes can project values (e.g., contests, inferred years) directly into the parser context so routing, contest selection, and ML scoring all share the same dynamically detected signals.  The shared runner executes before format detection, which means traditional handlers and download-based flows both inherit the navigation side effects (toggled panes, expanded menus, etc.).
+
+- Every execution streams structured telemetry (per-step status, selectors, scroll metadata) into `log/navigation_learning_log.jsonl` through `ContextCoordinator.record_navigation_feedback()`.  Use `webapp/parser/navigator/training_data.py` to pull that log into an orjson dataset for ML retraining or to bootstrap new recipes programmatically.
+- `webapp/parser/health/navigation_feedback_ingest.py` tails the same navigation log and converts fresh entries into `navigation_feedback_selection_log.jsonl`, so the existing manual correction bot can review wins/losses, auto-accept high-signal patterns, or trigger retraining without any extra tooling.
+
 ---
 
 ## 🛠️ Extensibility Guidelines
@@ -345,6 +377,8 @@ Manual parsing is supported if you use the correct naming convention and trigger
   Pass `noisy_labels` and `noisy_label_patterns` to `select_contest()` in your handler.
 - **Bot tasks:**  
   Add to `health/health_router.py` and enable with `ENABLE_BOT_TASKS=true` in `.env`.
+- **Azure Health Control Center:**  
+  The `/azure_health` route in `Smart_Elections_Parser_Webapp.py` exposes a control panel where high-impact scripts (manual correction modes, log/cache cleanup, full `BotPipeline.run`, retraining, Integrity_check summaries, dataset promotion, etc.) can be launched from the browser.  Each task streams stdout back into the UI so operators on Azure (or localhost) can supervise long-running health work without shell access.
 - **Context and correction:**  
   Add new context patterns or feedback to `context_library.json` or extend `context_organizer.py`.
 - **User prompts:**  
@@ -640,7 +674,7 @@ Notes:
 - `webapp/static/css/data_framework.css` (loc: 654)
 - `webapp/static/css/history.css` (loc: 314)
 - `webapp/static/css/main.css` (loc: 608)
-- `webapp/static/css/run_parser.css` (loc: 1722)
+- `webapp/static/css/ballot_lens_modern.css` (loc: 1722)
 - `webapp/static/favicon.ico` (loc: 0)
 - `webapp/static/icons/apple-touch-icon.png` (loc: 596)
 - `webapp/static/icons/favicon-32.png` (loc: 66)
@@ -657,14 +691,14 @@ Notes:
 - `webapp/static/js/history.js` (loc: 277)
 - `webapp/static/js/main.js` (loc: 701)
 - `webapp/static/js/nav_guard.js` (loc: 84)
-- `webapp/static/js/run_parser.js` (loc: 2469)
-- `webapp/static/vendor/bootstrap-5.3.0.bundle.min.js` (loc: 7)
-- `webapp/static/vendor/bootstrap-5.3.0.min.css` (loc: 6)
+- `webapp/static/js/ballot_lens_modern.js` (loc: 2469)
+- `webapp/static/vendor/bootstrap-5.3.8.bundle.min.js` (loc: 7)
+- `webapp/static/vendor/bootstrap-5.3.8.min.css` (loc: 6)
 - `webapp/static/vendor/socket.io-4.7.5.min.js` (loc: 7)
 - `webapp/templates/data_framework.html` (loc: 117)
 - `webapp/templates/history.html` (loc: 254)
 - `webapp/templates/index.html` (loc: 97)
-- `webapp/templates/run_parser.html` (loc: 305)
+- `webapp/templates/ballot_lens.html` (loc: 305)
 
 ### Tests
 

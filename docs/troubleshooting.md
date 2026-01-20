@@ -99,6 +99,23 @@ layout: default
     sudo apt-get install -y poppler-utils
     ```
 
+### ❗ Problem: Windows file lock errors during PDF processing
+
+- **Symptoms**:
+
+  ```text
+  PermissionError: [WinError 32] The process cannot access the file because it is being used by another process
+  -> Cannot close object; pdfium library is destroyed. This may cause a memory leak.
+  ```
+
+- **Cause**: PDF image objects and temporary files weren't being properly closed before exit, causing Windows file locks and pdfium memory leaks.
+- **Fix**: Automatic cleanup is now implemented (v1.0+). See [PDF_RESOURCE_CLEANUP.md](PDF_RESOURCE_CLEANUP.md) for details.
+- **Manual troubleshooting** (if issue persists):
+  - Restart the parser process
+  - Clear temporary files: `%TEMP%\pdf2image_*`
+  - Ensure no other processes are accessing the PDF
+  - Check for antivirus interference
+
   - Ensure the command above runs in your deployment script or container build. Once `pdftoppm` is on PATH, the handler automatically re-enables `pdf2image`.
 - **Verification**:
   - Re-run the problematic PDF (e.g., the Minnesota 2016 sample) and confirm the logs show `pdf2image` succeeded or that the Poppler warning no longer appears.

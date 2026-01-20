@@ -14,6 +14,7 @@ venv/
 env/
 .python-version
 .env
+*.vs/
 
 # VCS/CI
 .git
@@ -56,6 +57,7 @@ htmlcov/
 .ruff_cache/
 pytestdebug.log
 hint-report/ 
+tools/debug_headless_output/
 
 # ----------------------------
 # Logs & transient debug
@@ -67,7 +69,15 @@ hint-report/
 nohup.out
 *.out
 *debug.html
-
+tools/tmp/
+tools/axe-report.json
+tools/lh-report.json
+tools/lh-screenshots/
+tools/webhint-report.json
+json/
+tools/screenshots/
+tools/cluster_dom_mapping.json
+tools/reports/
 # ----------------------------
 # Generated / runtime data
 # ----------------------------
@@ -82,7 +92,8 @@ fine_tuned_table_headers_tmp/
 fine_tuned_spacy_ner_tmp/
 .lock
 cache/context_cache.json
-
+webapp/parser/Context_Integration/Context_Library/log/
+webapp/parser/Context_Integration/Context_Library/cache/
 # ----------------------------
 # Browser drivers & automation
 # ----------------------------
@@ -142,3 +153,8 @@ tests/
 # USER_AGENT_ROTATION=true
 # OUTPUT_DIR=output
 # Example final output path: ${OUTPUT_DIR}/${STATE}/${COUNTY}/${RACE}/results.csv
+scripts/install_poppler_ubuntu.sh
+scripts/install_poppler_ubuntu.sh
+
+# Windows temp
+%TEMP%/

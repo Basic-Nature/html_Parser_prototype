@@ -15,6 +15,8 @@ from typing import Any, Iterable, Sequence
 
 from ..Context_Integration.Context_Library.constants import (
     BALLOT_TYPES,
+    BALLOT_INLINE_TOKEN_ALIASES,
+    TABLE_ANCHOR_LABELS,
     PARTY_KEYWORDS,
     CONTEST_KEYWORDS,
     normalize_party_label,
@@ -23,6 +25,49 @@ from .header_utils import collapse_multiline_header
 
 
 _RECON_DEBUG_EVENTS: list[dict] = []
+
+_DEFAULT_ANCHOR_LABELS = (
+    "County",
+    "County Totals",
+    "Precinct",
+    "Precinct Totals",
+    "Precincts",
+    "Municipality",
+    "Ward",
+    "District",
+    "City",
+    "Town",
+    "Township",
+    "Borough",
+    "Parish",
+    "Division",
+    "Division Name",
+    "Location",
+    "Polling Location",
+)
+
+_ANCHOR_LABELS = TABLE_ANCHOR_LABELS or _DEFAULT_ANCHOR_LABELS
+_ANCHOR_LABEL_SET = {label.lower() for label in _ANCHOR_LABELS if isinstance(label, str)}
+
+_BALLOT_INLINE_ALIAS_MAP = {
+    (key or "").lower(): value
+    for key, value in (BALLOT_INLINE_TOKEN_ALIASES or {}).items()
+    if key
+}
+if not _BALLOT_INLINE_ALIAS_MAP:
+    _BALLOT_INLINE_ALIAS_MAP = {
+        "ed": "Election Day",
+        "electionday": "Election Day",
+        "inperson": "Election Day",
+        "early": "Early Voting",
+        "early voting": "Early Voting",
+        "absentee": "Absentee",
+        "mail": "Mail",
+        "by mail": "Mail",
+        "provisional": "Provisional",
+        "advance": "Early Voting",
+        "total": "Total Vote",
+    }
 
 
 def _recon_debug_enabled() -> bool:
@@ -636,20 +681,6 @@ def parse_candidate_line(line: str, ballot_types: Sequence[str]) -> dict | None:
     if not nums:
         return None
 
-    alias = {
-        "ed": "Election Day",
-        "electionday": "Election Day",
-        "inperson": "Election Day",
-        "early": "Early Voting",
-        "early voting": "Early Voting",
-        "absentee": "Absentee",
-        "mail": "Absentee",
-        "by mail": "Absentee",
-        "provisional": "Provisional",
-        "advance": "Early Voting",
-        "total": "Total Vote",
-    }
-
     parts = line.split()
     first_num_idx = None
     for idx, part in enumerate(parts):
@@ -686,8 +717,8 @@ def parse_candidate_line(line: str, ballot_types: Sequence[str]) -> dict | None:
             m_val = _NUM_RE.search(tail)
             if m_val:
                 assigned[bt] = int(m_val.group("num").replace(",", ""))
-    for key, value in alias.items():
-        if key in norm_line and value not in assigned:
+    for key, value in _BALLOT_INLINE_ALIAS_MAP.items():
+        if key and key in norm_line and value not in assigned:
             idx = norm_line.find(key)
             tail = norm_line[idx:]
             m_val = _NUM_RE.search(tail)
@@ -753,6 +784,51 @@ def extract_candidate_totals_from_lines(
     return headers, normalized_rows
 
 
+_EMPTY_VALUE_TOKENS = {"-", "--", "—"}
+
+
+def _split_crammed_numeric_row(text: str) -> list[str] | None:
+    """Split single-space precinct rows once numeric runs begin."""
+    tokens = text.split()
+    if len(tokens) < 6:
+        return None
+    value_flags: list[bool] = []
+    for tok in tokens:
+        cleaned = tok.strip()
+        is_value = is_numeric_like(cleaned) or cleaned in _EMPTY_VALUE_TOKENS
+        value_flags.append(is_value)
+    run_length = 0
+    run_start: int | None = None
+    for idx, is_value in enumerate(value_flags):
+        if is_value:
+            run_length += 1
+            if run_length >= 3:
+                run_start = idx - run_length + 1
+                break
+        else:
+            run_length = 0
+    if run_start is None:
+        return None
+    prefix_tokens = tokens[:run_start]
+    if not prefix_tokens:
+        return None
+    alpha_chars = sum(1 for tok in prefix_tokens for ch in tok if ch.isalpha())
+    if alpha_chars < 2:
+        return None
+    values: list[str] = []
+    for tok, is_value in zip(tokens[run_start:], value_flags[run_start:]):
+        if not is_value:
+            break
+        cleaned = tok.strip()
+        values.append("" if cleaned in _EMPTY_VALUE_TOKENS else cleaned)
+    if len(values) < 3:
+        return None
+    label = " ".join(prefix_tokens).strip(" ,;-")
+    if not label:
+        return None
+    return [label] + values
+
+
 def split_ws_blocks(s: str) -> list[str]:
     """Split a line into cells using multi-space, tab, or comma separators.
 
@@ -764,6 +840,10 @@ def split_ws_blocks(s: str) -> list[str]:
         return []
     text = re.sub(r"(?<=\d),(?=\d)", "", text)
     cells = re.split(r"\s{2,}|\t|,", text)
+    if len(cells) <= 1:
+        fallback = _split_crammed_numeric_row(text)
+        if fallback:
+            return fallback
     return [c.strip() for c in cells if c.strip()]
 
 
@@ -874,24 +954,54 @@ def matches_anchor_header(raw: str) -> bool:
     text = raw.strip().lower()
     if not text:
         return False
-    anchors = {
-        "county",
-        "precinct",
-        "municipality",
-        "ward",
-        "district",
-        "city",
-        "town",
-        "township",
-        "borough",
-        "parish",
-        "county totals",
-        "precinct totals",
-        "precincts",
-    }
+    digit_ratio = sum(1 for ch in text if ch.isdigit()) / max(1, len(text))
+    anchors = _ANCHOR_LABEL_SET or {label.lower() for label in _DEFAULT_ANCHOR_LABELS}
     if text in anchors:
         return True
-    return any(text.endswith(f" {anchor}") for anchor in anchors)
+    for anchor in anchors:
+        if text.endswith(f" {anchor}"):
+            return True
+        if digit_ratio <= 0.35:
+            if text.startswith(f"{anchor} "):
+                return True
+            if text.startswith(f"{anchor}:") or text.startswith(f"{anchor}|"):
+                return True
+            anchor_pattern = f" {anchor} "
+            if anchor_pattern in text:
+                return True
+            if text.find(anchor) in {0, 1}:
+                return True
+    return False
+
+
+def _extract_anchor_tokens(raw: str) -> tuple[str | None, list[str]]:
+    if not raw:
+        return None, []
+    tokens = split_ws_blocks(raw)
+    if not tokens:
+        return None, []
+    anchors = list(_ANCHOR_LABELS or _DEFAULT_ANCHOR_LABELS)
+    normalized_tokens = [re.sub(r"[^a-z0-9]+", "", token.lower()) for token in tokens]
+
+    def _normalized_anchor_parts(anchor: str) -> list[str]:
+        parts = re.split(r"\s+", anchor.strip())
+        normalized = [re.sub(r"[^a-z0-9]+", "", part.lower()) for part in parts if part]
+        if not normalized:
+            normalized = [re.sub(r"[^a-z0-9]+", "", anchor.lower())]
+        return normalized
+
+    for anchor in anchors:
+        anchor_parts = _normalized_anchor_parts(anchor)
+        length = len(anchor_parts)
+        if not length:
+            continue
+        for idx in range(len(normalized_tokens) - length + 1):
+            window = normalized_tokens[idx : idx + length]
+            if window == anchor_parts:
+                anchor_label = " ".join(tokens[idx : idx + length]).strip(" :|") or anchor
+                inline_tokens = tokens[idx + length :]
+                return anchor_label, inline_tokens
+    return None, []
 
 
 def _looks_like_vertical_stub(line: str) -> bool:
@@ -1241,6 +1351,28 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
             ordered.append(tok)
         return ordered
 
+    def _derive_inline_headers(tokens: list[str]) -> list[str]:
+        if not tokens:
+            return []
+        cleaned_tokens: list[str] = []
+        lower_seen: set[str] = set()
+        for token in tokens:
+            clean = _clean_header_token(token)
+            if not clean:
+                continue
+            if any(ch.isdigit() for ch in clean):
+                break
+            low = clean.lower()
+            if low in lower_seen:
+                continue
+            lower_seen.add(low)
+            cleaned_tokens.append(clean)
+            if len(cleaned_tokens) >= 24:
+                break
+        if len(cleaned_tokens) >= 2:
+            return cleaned_tokens
+        return []
+
     def _looks_like_party_definition(token: str) -> bool:
         text = (token or "").strip()
         if not text:
@@ -1263,17 +1395,18 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
     idx = 0
     while idx < max_anchor_scan:
         raw = cleaned[idx]
-        if not matches_anchor_header(raw):
+        anchor_label, anchor_inline_tokens = _extract_anchor_tokens(raw)
+        if not anchor_label:
             idx += 1
             continue
 
-        anchor_label = cleaned[idx]
         scan_idx = idx + 1
         header_rows: list[list[str]] = []
         _record_recon_event({
             "phase": "anchor_detected",
             "anchor_label": anchor_label,
             "anchor_index": idx,
+            "inline_token_sample": (anchor_inline_tokens[:6] if anchor_inline_tokens else []),
         })
 
         while scan_idx < len(cleaned):
@@ -1296,9 +1429,21 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
             if len(header_rows) >= 12:
                 break
 
+        inline_header_mode = False
+        candidate_headers: list[str] = []
         if not header_rows:
-            idx = max(idx + 1, scan_idx)
-            continue
+            inline_candidates = _derive_inline_headers(anchor_inline_tokens)
+            if inline_candidates:
+                candidate_headers = inline_candidates
+                inline_header_mode = True
+                _record_recon_event({
+                    "phase": "inline_anchor_headers",
+                    "anchor_label": anchor_label,
+                    "derived_headers": candidate_headers,
+                })
+            else:
+                idx = max(idx + 1, scan_idx)
+                continue
 
         pre_tokens: list[str] = []
         look_idx = idx - 1
@@ -1326,50 +1471,51 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
                 pre_tokens.insert(0, token_clean)
             look_idx -= 1
 
-        all_singletons = all(len(row) == 1 for row in header_rows)
-        if all_singletons:
-            post_tokens = [_clean_header_token(row[0]) for row in header_rows if row and row[0].strip()]
-            post_tokens = _merge_parenthetical_tokens(post_tokens)
-            candidate_headers = list(post_tokens)
-            if pre_tokens and len(candidate_headers) + 1 == len(pre_tokens):
-                missing = [tok for tok in pre_tokens if tok.lower().startswith("misc")]
-                if missing and missing[0].lower() not in {h.lower() for h in candidate_headers}:
-                    candidate_headers.append(missing[0])
-            if pre_tokens and len(candidate_headers) == len(pre_tokens):
-                combined = []
-                for post_token, pre_token in zip(candidate_headers, pre_tokens):
-                    combined.append(_combine_candidate_tokens(post_token, pre_token))
-                candidate_headers = combined
-            candidate_headers = _dedupe_preserve_order(candidate_headers)
-            _record_recon_event({
-                "phase": "header_rows_singletons",
-                "anchor_label": anchor_label,
-                "raw_header_rows": header_rows,
-                "pre_header_tokens": pre_tokens,
-                "derived_headers": candidate_headers,
-            })
-        else:
-            candidate_headers = _combine_header_rows(header_rows)
-            candidate_headers = [_clean_header_token(h) for h in candidate_headers if _clean_header_token(h)]
-            candidate_headers = _dedupe_preserve_order(candidate_headers)
-            if pre_tokens and len(candidate_headers) < len(pre_tokens):
-                extras = [tok for tok in pre_tokens if tok.lower() not in {h.lower() for h in candidate_headers}]
-                candidate_headers.extend(extras)
+        if not inline_header_mode:
+            all_singletons = all(len(row) == 1 for row in header_rows)
+            if all_singletons:
+                post_tokens = [_clean_header_token(row[0]) for row in header_rows if row and row[0].strip()]
+                post_tokens = _merge_parenthetical_tokens(post_tokens)
+                candidate_headers = list(post_tokens)
+                if pre_tokens and len(candidate_headers) + 1 == len(pre_tokens):
+                    missing = [tok for tok in pre_tokens if tok.lower().startswith("misc")]
+                    if missing and missing[0].lower() not in {h.lower() for h in candidate_headers}:
+                        candidate_headers.append(missing[0])
+                if pre_tokens and len(candidate_headers) == len(pre_tokens):
+                    combined = []
+                    for post_token, pre_token in zip(candidate_headers, pre_tokens):
+                        combined.append(_combine_candidate_tokens(post_token, pre_token))
+                    candidate_headers = combined
                 candidate_headers = _dedupe_preserve_order(candidate_headers)
-            _record_recon_event({
-                "phase": "header_rows_combined",
-                "anchor_label": anchor_label,
-                "raw_header_rows": header_rows,
-                "pre_header_tokens": pre_tokens,
-                "combined_headers": candidate_headers,
-            })
+                _record_recon_event({
+                    "phase": "header_rows_singletons",
+                    "anchor_label": anchor_label,
+                    "raw_header_rows": header_rows,
+                    "pre_header_tokens": pre_tokens,
+                    "derived_headers": candidate_headers,
+                })
+            else:
+                candidate_headers = _combine_header_rows(header_rows)
+                candidate_headers = [_clean_header_token(h) for h in candidate_headers if _clean_header_token(h)]
+                candidate_headers = _dedupe_preserve_order(candidate_headers)
+                if pre_tokens and len(candidate_headers) < len(pre_tokens):
+                    extras = [tok for tok in pre_tokens if tok.lower() not in {h.lower() for h in candidate_headers}]
+                    candidate_headers.extend(extras)
+                    candidate_headers = _dedupe_preserve_order(candidate_headers)
+                _record_recon_event({
+                    "phase": "header_rows_combined",
+                    "anchor_label": anchor_label,
+                    "raw_header_rows": header_rows,
+                    "pre_header_tokens": pre_tokens,
+                    "combined_headers": candidate_headers,
+                })
 
         if len(candidate_headers) <= 1:
             _record_recon_event({
                 "phase": "header_rows_insufficient",
                 "anchor_label": anchor_label,
                 "candidate_headers": candidate_headers,
-                "reason": "<=1 headers after combine",
+                "reason": "inline_headers_insufficient" if inline_header_mode else "<=1 headers after combine",
             })
             alt_headers, alt_rows = _reconstruct_vertical_table(cleaned, idx, regex)
             if alt_headers and alt_rows:

@@ -25,6 +25,7 @@ from ...utils.salvage import normalize_ballot_column_name
 from ...utils.contest_selector import (
     select_contest_auto_first,
 )
+from ...config import ENABLE_PARALLEL
 from ...utils.json_export_loader import _ALL_COUNTIES_LABEL, load_json_export
 from ...utils.location_helpers import (
     attach_precinct_column,
@@ -370,6 +371,11 @@ def _fastpath_county_results(
     if not isinstance(payload, dict) or not payload.get("localResults"):
         return None
 
+    derived_state = ""
+    derived_county = ""
+    if isinstance(payload, dict):
+        derived_state, derived_county = _derive_location_metadata(payload)
+
     try:
         export = load_json_export(Path(json_path))
     except Exception as exc:  # pragma: no cover - defensive logging
@@ -389,6 +395,11 @@ def _fastpath_county_results(
     fallback_state = parsed_location.get('state', '')
     fallback_county = parsed_location.get('county', '')
     year = parsed_location.get('year')
+    state = derived_state or fallback_state or "Unknown"
+    county = derived_county or fallback_county or "Unknown"
+    derived_state, derived_county = _derive_location_metadata(payload) if isinstance(payload, dict) else ("", "")
+    state = derived_state or fallback_state or "Unknown"
+    county = derived_county or fallback_county or "Unknown"
 
     contest_groups = _collect_contest_groups(export)
     if not contest_groups:
@@ -397,8 +408,12 @@ def _fastpath_county_results(
     selected_group = contest_groups[0]
     selected_metadata: Dict[str, Any] = dict(selected_group["metadata"])
     selected_ids: Set[str] = set(selected_group["contest_ids"])
+    force_contest_prompt = bool(os.environ.get("SMART_ELECTIONS_FORCE_CONTEST_PROMPT"))
+    allow_parallel_auto = ENABLE_PARALLEL and not force_contest_prompt
+    selection_required = force_contest_prompt or len(contest_groups) > 1
+    contest_selection_mode = "single_detected"
 
-    if len(contest_groups) > 1:
+    if selection_required:
         selector_entries = []
         for group in contest_groups:
             selector_entries.append({
@@ -422,8 +437,9 @@ def _fastpath_county_results(
             context=selection_context,
             session_id=session_id,
             allow_multiple=False,
-            force_interactive=True,
+            force_interactive=(not allow_parallel_auto) or force_contest_prompt,
         )
+        contest_selection_mode = "auto" if (allow_parallel_auto and choice) else "prompt"
         if not choice:
             logger.info({
                 "level": "INFO",
@@ -452,6 +468,8 @@ def _fastpath_county_results(
         selected_metadata = {**selected_group["metadata"], **choice_meta}
         if "contest_ids" not in selected_metadata:
             selected_metadata["contest_ids"] = selected_group["contest_ids"]
+    else:
+        contest_selection_mode = "single_detected" if len(contest_groups) == 1 else "prompt"
 
     if not selected_ids:
         selected_ids = set(selected_group["contest_ids"])
@@ -787,6 +805,7 @@ def _fastpath_county_results(
         "selected_contest_summary": selected_metadata,
         "contest_question": contest_question,
         "contest_name_raw": contest_name_raw,
+        "contest_selection_mode": contest_selection_mode,
     }
     if bundle_metadata:
         context["bundle_mode"] = "aggregate"
@@ -884,6 +903,7 @@ def _fastpath_county_results(
         "race": contest_name,
         "location_headers": location_headers,
         "precinct_attached": False,
+        "contest_selection_mode": contest_selection_mode,
     }
     if bundle_metadata:
         export_context.setdefault("bundle_mode", "aggregate")
@@ -931,6 +951,7 @@ def _fastpath_county_results(
         "selected_contest_summary": selected_metadata,
         "contest_question": contest_question,
         "contest_name_raw": contest_name_raw,
+        "contest_selection_mode": contest_selection_mode,
     }
     if bundle_metadata:
         metadata["bundle_mode"] = "aggregate"
@@ -949,6 +970,13 @@ def _fastpath_county_results(
         ),
         "session_id": session_id,
     })
+    
+    # Add ML quality metrics
+    from ...config import log_extraction_quality
+    quality = log_extraction_quality(
+        headers_final, data_final, metadata, "json_handler", logger, session_id
+    )
+    metadata["quality_metrics"] = quality
 
     return headers_final, data_final, contest_name, metadata
 
@@ -959,6 +987,12 @@ def parse_json_election_results(
 ) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
     with open(json_path, "rb") as f:
         data = orjson.loads(f.read())
+
+    payload_for_location: Dict[str, Any] | None = data if isinstance(data, dict) else None
+    derived_state = ""
+    derived_county = ""
+    if isinstance(payload_for_location, dict):
+        derived_state, derived_county = _derive_location_metadata(payload_for_location)
 
     fastpath = _fastpath_county_results(json_path, data, session_id, coordinator)
     if fastpath:
@@ -1023,30 +1057,43 @@ def parse_json_election_results(
         })
         return [], [], "", {"error": "No contests found"}
 
+    contest_choices = sorted(contests)
     selection_context = {
         "selector_data": {
-            "contests": [{"title": name} for name in sorted(contests)],
+            "contests": [{"title": name} for name in contest_choices],
             "noisy_patterns": [s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())]
         },
-        "input_file": os.path.basename(json_path)
+        "input_file": os.path.basename(json_path),
+        "handler": "json_handler",
+        "state": derived_state,
+        "county": derived_county,
     }
-
-    auto_pick = select_contest_auto_first(
-        coordinator=coordinator,
-        context=selection_context,
-        session_id=session_id,
-        allow_multiple=False,
-        force_interactive=False
-    )
-    if not auto_pick:
-        logger.error({
-            "level": "ERROR",
-            "type": "input",
-            "message": "No contest selected.",
-            "session_id": session_id
-        })
-        return [], [], "", {"error": "No contest selected"}
-    target_contest = safe_get(auto_pick[0], "title") or next(iter(contests))
+    force_contest_prompt = bool(os.environ.get("SMART_ELECTIONS_FORCE_CONTEST_PROMPT"))
+    allow_parallel_auto = ENABLE_PARALLEL and not force_contest_prompt
+    single_contest_detected = len(contest_choices) == 1
+    contest_selection_mode = "single_detected"
+    if single_contest_detected and not force_contest_prompt:
+        target_contest = contest_choices[0]
+    else:
+        auto_pick = select_contest_auto_first(
+            coordinator=coordinator,
+            context=selection_context,
+            session_id=session_id,
+            allow_multiple=False,
+            force_interactive=(not allow_parallel_auto) or force_contest_prompt,
+        )
+        contest_selection_mode = "auto" if (allow_parallel_auto and auto_pick) else "prompt"
+        if not auto_pick:
+            logger.error({
+                "level": "ERROR",
+                "type": "input",
+                "message": "No contest selected.",
+                "session_id": session_id
+            })
+            return [], [], "", {"error": "No contest selected"}
+        target_contest = safe_get(auto_pick[0], "title") or contest_choices[0]
+    if single_contest_detected and force_contest_prompt:
+        contest_selection_mode = "prompt"
 
     logger.info({
         "level": "INFO",
@@ -1204,6 +1251,8 @@ def parse_json_election_results(
     fallback_state = parsed_location.get('state', '')
     fallback_county = parsed_location.get('county', '')
     year = parsed_location.get('year')
+    state = derived_state or fallback_state or "Unknown"
+    county = derived_county or fallback_county or "Unknown"
 
     domain = safe_slug(os.path.basename(json_path))
     candidate_header_map_serializable: Dict[str, List[str]] = {}
@@ -1227,6 +1276,7 @@ def parse_json_election_results(
         "location_headers": location_headers,
         "precinct_attached": precinct_attached,
         "location_diagnostics": location_diagnostics,
+        "contest_selection_mode": contest_selection_mode,
     }
     headers_final, data_final, _entity_info = build_table_noninteractive(
         domain=domain,
@@ -1285,6 +1335,7 @@ def parse_json_election_results(
         "location_headers_detected": location_headers,
         "precinct_attached": precinct_attached,
         "location_diagnostics": location_diagnostics,
+        "contest_selection_mode": contest_selection_mode,
     }
 
     logger.info({
@@ -1293,6 +1344,13 @@ def parse_json_election_results(
         "message": f"✅ Completed! Output CSV: {finalized.get('csv_path')}, Metadata: {finalized.get('metadata_path')}",
         "session_id": session_id
     })
+    
+    # Add ML quality metrics
+    from ...config import log_extraction_quality
+    quality = log_extraction_quality(
+        headers_final, data_final, metadata, "json_handler", logger, session_id
+    )
+    metadata["quality_metrics"] = quality
 
     return headers_final, data_final, target_contest, metadata
 
@@ -1373,6 +1431,14 @@ def parse(
             "csv_path": finalized.get("csv_path"),
             "metadata_path": finalized.get("metadata_path"),
         }
+        
+        # Add ML quality metrics
+        from ...config import log_extraction_quality
+        quality = log_extraction_quality(
+            headers_final, data_final, metadata, "json_handler", logger, session_id
+        )
+        metadata["quality_metrics"] = quality
+        
         return headers_final, data_final, contest, metadata
     if html_context.get("skip_format") or html_context.get("manual_skip"):
         logger.info({

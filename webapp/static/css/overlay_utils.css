@@ -1,0 +1,54 @@
+/* Overlay common */
+.overlay, .dropdown, .nav-dropdown, #navMoreDropdown {
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+  padding: 8px;
+  background: white;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+  z-index: 1200;
+}
+.overlay[aria-hidden="true"] { display: none !important; }
+.overlay--align-right { right: 12px; left: auto; transform-origin: top right; }
+.overlay--align-top { bottom: 12px; top: auto; transform-origin: bottom left; }
+.overlay--center { left: 50%; transform: translateX(-50%); }
+/* small screens: full width anchors */
+@media (max-width: 540px) {
+  .overlay, .nav-dropdown, #navMoreDropdown { left: 8px !important; right: 8px !important; max-width: calc(100vw - 16px); }
+}
+
+/* helper when body scroll locked */
+.overlay-open { /* marker on html when overlays open */
+  /* prevent background scrolling when overlays are active */
+  overflow: hidden;
+}
+
+/* Anchor-attached overlays: avoid inline style usage by reparenting overlays into anchor containers */
+.overlay-anchor {
+  position: relative; /* anchor will act as positioning context */
+}
+
+  /* when overlay open, lock scrolling */
+  html.overlay-open, body.overlay-open { overflow: hidden; }
+.overlay-attached {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  transform: none;
+}
+.overlay-attached.align-right {
+  right: 0;
+  left: auto;
+}
+.overlay-top {
+  bottom: calc(100% + 6px);
+  top: auto;
+}
+.overlay--center {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 10vh;
+}

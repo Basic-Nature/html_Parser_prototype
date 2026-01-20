@@ -21,14 +21,14 @@ This project is designed to be scalable, readable, and resilient — please read
 
 ## 2. Division of Responsibilities
 
-| Component                | Language/Stack                | Role/Strengths                                                                                  |
-|--------------------------|-------------------------------|-------------------------------------------------------------------------------------------------|
-| HTML Parsing, ML/NLP     | Python                        | Flexible, rapid dev, best for spaCy, transformers, and custom parsing logic                     |
-| Batch Orchestration      | Python                        | Orchestrate batch jobs, manage queues, call C#/.NET for heavy ETL if needed                     |
-| High-Performance ETL     | C#/.NET                       | Bulk data loading, parallel processing, data normalization, warehouse management                |
-| Data Warehouse           | PostgreSQL                    | Central, normalized, scalable storage for all election data, accessible by both stacks          |
-| API Layer                | Python (FastAPI) or C# (.NET WebAPI) | Expose data/services to UIs, dashboards, or external consumers                    |
-| Analytics/Reporting      | C#/.NET or Python             | Use the best tool for the job: .NET for enterprise BI, Python for ad hoc analysis               |
+| Component | Language/Stack | Role/Strengths |
+| --- | --- | --- |
+| HTML Parsing, ML/NLP | Python | Flexible, rapid dev, best for spaCy, transformers, and custom parsing logic |
+| Batch Orchestration | Python | Orchestrate batch jobs, manage queues, call C#/.NET for heavy ETL if needed |
+| High-Performance ETL | C#/.NET | Bulk data loading, parallel processing, data normalization, warehouse management |
+| Data Warehouse | PostgreSQL | Central, normalized, scalable storage for all election data, accessible by both stacks |
+| API Layer | Python (FastAPI) or C# (.NET WebAPI) | Expose data/services to UIs, dashboards, or external consumers |
+| Analytics/Reporting | C#/.NET or Python | Use the best tool for the job: .NET for enterprise BI, Python for ad hoc analysis |
 
 ---
 
@@ -84,15 +84,15 @@ This project is designed to be scalable, readable, and resilient — please read
 
 ## 8. Summary Table
 
-| Task/Component         | Python         | C#/.NET         | PostgreSQL         |
-|------------------------|---------------|-----------------|--------------------|
-| HTML/ML Parsing        | ✔️             |                 |                    |
-| ML/NER/AI              | ✔️             |                 |                    |
-| Batch Orchestration    | ✔️ (small/med) | ✔️ (large)      |                    |
-| High-Perf ETL          |               | ✔️              |                    |
-| Data Warehouse         |               |                 | ✔️                 |
-| API Layer              | ✔️/✔️           | ✔️/✔️            |                    |
-| Analytics/Reporting    | ✔️/✔️           | ✔️/✔️            |                    |
+|Task/Component|Python|C#/.NET|PostgreSQL|
+|---|---|---|---|
+|HTML/ML Parsing|✔️|||
+|ML/NER/AI|✔️|||
+|Batch Orchestration|✔️ (small/med)|✔️ (large)||
+|High-Perf ETL||✔️||
+|Data Warehouse|||✔️|
+|API Layer|✔️/✔️|✔️/✔️||
+|Analytics/Reporting|✔️/✔️|✔️/✔️||
 
 ---
 

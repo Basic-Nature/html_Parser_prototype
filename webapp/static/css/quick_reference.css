@@ -1,0 +1,130 @@
+/* Quick Reference - Extracted CSS (no inline styles) */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  color: #e2e8f0;
+  padding: 2rem;
+  line-height: 1.6;
+}
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+h1 {
+  color: #60a5fa;
+  margin-bottom: 0.5rem;
+  font-size: 2rem;
+}
+h2 {
+  color: #93c5fd;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+  border-bottom: 2px solid #334155;
+  padding-bottom: 0.5rem;
+}
+h3 {
+  color: #bfdbfe;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.card {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 1rem;
+}
+.mt-1 { margin-top: 1rem; }
+.card-title {
+  font-weight: 600;
+  color: #60a5fa;
+  margin-bottom: 0.5rem;
+}
+.card-content {
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+kbd {
+  background: linear-gradient(180deg, #3a3f4b 0%, #2d323e 100%);
+  border: 1px solid #4a5160;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: 'Consolas', monospace;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 0 0 #1a1d24;
+  display: inline-block;
+  margin: 0 2px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+th, td {
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 1px solid #334155;
+}
+th {
+  background: #0f172a;
+  color: #60a5fa;
+  font-weight: 600;
+}
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-left: 0.5rem;
+}
+.badge-new { background: #16a34a; color: white; }
+.badge-advanced { background: #dc2626; color: white; }
+ul {
+  list-style: none;
+  padding-left: 0;
+}
+ul li {
+  padding: 0.5rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+}
+ul li:before {
+  content: "\25B8"; /* ▸ */
+  position: absolute;
+  left: 0;
+  color: #60a5fa;
+}
+.tip {
+  background: #1e40af;
+  border-left: 4px solid #3b82f6;
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: 4px;
+}
+.warning {
+  background: #991b1b;
+  border-left: 4px solid #dc2626;
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: 4px;
+}
+@media print {
+  body { background: white; color: black; }
+  .container { box-shadow: none; border: 1px solid #ccc; }
+}
+/* Utilities extracted from inline styles */
+.ol-steps { list-style: decimal; padding-left: 2rem; }
+.divider { border: none; border-top: 1px solid #334155; margin: 2rem 0; }
+.footnote { text-align: center; color: #64748b; font-size: 0.875rem; }
