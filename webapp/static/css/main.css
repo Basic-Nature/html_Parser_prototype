@@ -180,6 +180,7 @@
     font-size:1.2em;
     margin:0 0 1em;
     font-weight:600;
+    text-shadow:0 2px 10px rgba(30 40 50 /.55);
   }
   .rainbow-text {
     /* Branded gradient using project tokens */
