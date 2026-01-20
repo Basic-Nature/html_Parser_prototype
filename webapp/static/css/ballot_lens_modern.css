@@ -398,6 +398,34 @@ th {
    Sidebar Toggle Button & Backdrop
    ============================================ */
 
+/* Navbar-anchored left sidebar dropdown (compact, non-blocking)
+   Positioned absolutely so it doesn't push main content when opened.
+*/
+.sidebar-dropdown {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  width: var(--sidebar-left-min);
+  max-width: min(42vw, 380px);
+  max-height: calc(100vh - var(--navbar-height) - 40px);
+  overflow: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  padding: 12px;
+  display: none;
+  z-index: var(--z-sidebar);
+}
+.sidebar-dropdown.open,
+.sidebar-dropdown[aria-hidden="false"] {
+  display: block;
+}
+.sidebar-dropdown .sidebar-content {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .sidebar-toggle {
   display: none;  /* Hidden by default on desktop */
   position: absolute;
