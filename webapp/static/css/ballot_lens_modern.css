@@ -816,15 +816,18 @@ footer#sessionFooter .footer-inner { width: 100%; max-width: var(--content-max-w
 .results-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  gap: 12px;
   align-items: stretch; /* ensure cards stretch to same row height */
   grid-auto-rows: 1fr; /* make rows equal height so cards align vertically */
-  padding: 16px;
+  padding: 12px 0 12px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
   /* keep content clear of sticky navbar */
   margin-top: calc(var(--navbar-height) + 12px);
+  max-width: var(--content-max-width);
+  padding-left: var(--content-padding);
+  padding-right: var(--content-padding);
 }
 
 .result-card {
@@ -1780,6 +1783,13 @@ footer#sessionFooter .footer-inner { width: 100%; max-width: var(--content-max-w
   padding-bottom: var(--spacing-sm);
   -webkit-overflow-scrolling: touch;
   min-width: 0;
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--content-padding);
+  padding-right: var(--content-padding);
+  box-sizing: border-box;
 }
 
 .results-header > div:first-child {
@@ -1800,6 +1810,7 @@ footer#sessionFooter .footer-inner { width: 100%; max-width: var(--content-max-w
   min-width: 0;
   align-self: flex-end;
   flex: 0 1 420px;
+  justify-content: flex-end;
 }
 
 .results-header .text-muted {
@@ -2312,10 +2323,17 @@ code {
        white for dark theme so effect is gentle and accessible. */
   background: linear-gradient(to right, rgba(255,255,255,0.03), rgba(255,255,255,0.00));
   transition: background var(--transition-fast), box-shadow var(--transition-fast);
+  box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
 }
 
 .drawer-handle:hover {
   background: var(--bg-tertiary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.35);
+}
+
+.drawer-handle:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 .handle-icon {

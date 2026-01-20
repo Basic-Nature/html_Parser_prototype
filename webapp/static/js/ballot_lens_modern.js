@@ -2249,6 +2249,14 @@ const PendingOverlay = (() => {
   return { show, hide };
 })();
 
+// Expose overlay toggle for headless checks / tests
+try {
+  window.setOverlayVisible = function(visible){
+    if (visible) PendingOverlay.show(''); else PendingOverlay.hide();
+    return true;
+  };
+} catch (/** @type {any} */ e) { /* ignore */ }
+
 // ============================================
 // Filter Presets for Log Console
 // ============================================
@@ -3519,13 +3527,15 @@ $('#btnBulkExport')?.addEventListener('click', () => {
       if (btn.dataset.busy === '1') return;
       btn.dataset.busy = '1';
       btn.classList.add('is-loading');
-      showToast('Refreshing results...', 'info');
+      // Slight delay on the toast to avoid blink perception on fast refreshes
+      const toastTimer = setTimeout(() => showToast('Refreshing results...', 'info'), 180);
       // In production, fetch updated results from API
       setTimeout(() => {
         btn.dataset.busy = '0';
         btn.classList.remove('is-loading');
+        clearTimeout(toastTimer);
         showToast('Results refreshed', 'success');
-      }, 300);
+      }, 420);
     });
   }
 }
