@@ -1,5 +1,5 @@
 # Use a stable, public base
-FROM python:3.12-slim-bookworm
+FROM python:3.13-slim-bookworm
 
 # System deps for OCR and Playwright
 ENV DEBIAN_FRONTEND=noninteractive
