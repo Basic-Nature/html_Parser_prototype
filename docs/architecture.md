@@ -144,50 +144,54 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 
 ### 1. **Core Data Flows and Roles**
 
-#### **A. Context Library (`context_library.json`)**
+#### **A. Context Library (`context_library.json`)
 
-- **Purpose:**  
+- **Purpose:**
   - The original, central source of contextual knowledge (states, counties, contests, patterns, etc.).
   - Used for lookups, normalization, and as a knowledge base for parsing and ML.
-- **Location:**  
+- **Location:**
   - `webapp/parser/Context_Integration/Context_Library/context_library.json`
-- **Accessed by:**  
+- **Accessed by:**
   - `context_coordinator.py`, `context_organizer.py`, `librarian.py`, and ML health.
 
-#### **B. Context Library DB (`context_library_db.json`)**
+#### **B. Context Library DB (`context_library_db.json`)
 
-- **Purpose:**  
+- **Purpose:**
   - A more structured or expanded version of the context library, possibly for ML or audit.
   - Generated/updated by `manual_correction.py` and possibly others.
-- **Location:**  
+- **Location:**
   - Same directory as above.
-- **Accessed by:**  
+- **Accessed by:**
   - Correction, possibly ML retraining scripts.
 
-#### **C. Context DB (`context_elections.db`)**
+#### **C. Context DB (`context_elections.db`)
 
-- **Purpose:**  
+- **Purpose:**
   - Legacy SQLite DB, now mostly replaced by PostgreSQL.
   - May still be referenced for backward compatibility or migration.
-- **Location:**  
+- **Location:**
   - Same directory as above.
-- **Accessed by:**  
+- **Accessed by:**
   - Should be phased out if you’re fully on PostgreSQL.
 
-#### **D. PostgreSQL (`POSTGRES_URL`)**
+#### **D. PostgreSQL (`POSTGRES_URL`)
 
-- **Purpose:**  
+- **Purpose:**
   - The main, production-grade relational database for all structured data (contests, table structures, entities, etc.).
   - Used for robust querying, updates, and ML training data storage.
-- **Accessed by:**  
+- **Accessed by:**
   - All SQLAlchemy-based models and session logic.
 
-#### **E. Logs (`log/` directory)**
+#### **E. Logs (`log/` directory)
 
-- **Purpose:**  
+- **Purpose:**
   - Store all extraction, correction, feedback, and anomaly logs as `.jsonl` files.
   - Serve as the audit trail and as a source for manual/ML correction and retraining.
-- **Accessed by:**  
+- **Accessed by:**
+  - `manual_correction.py`, `librarian.py`, retraining scripts, and context health.
+  - Store all extraction, correction, feedback, and anomaly logs as `.jsonl` files.
+  - Serve as the audit trail and as a source for manual/ML correction and retraining.
+  - **Accessed by:**
   - `manual_correction.py`, `librarian.py`, retraining scripts, and context health.
 
 ---
@@ -233,19 +237,19 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 
 ### 3. **Where Each File Fits**
 
-| File/Module                       | Main Role                                                                                   | Reads From                | Writes To                 |
-|------------------------------------|--------------------------------------------------------------------------------------------|---------------------------|---------------------------|
-| `context_library.json`             | Central knowledge base for context, patterns, mappings                                     | Used by all context code  | Updated by librarian/correction health |
-| `context_library_db.json`          | Structured/expanded context for ML/audit (optional)                                        | Correction health, ML       | Correction health           |
-| `context_elections.db`             | Legacy SQLite DB (should be phased out)                                                    | Legacy code               | Legacy code               |
-| `POSTGRES_URL` (PostgreSQL)        | Main relational DB for all structured data                                                 | SQLAlchemy models         | SQLAlchemy models         |
-| `log/*.jsonl`                      | All logs: extraction, correction, feedback, anomalies, etc.                                | Correction health, ML       | All pipeline components   |
-| `manual_correction.py`         | Reviews logs, allows corrections, updates context library and DB                           | log/, context_library     | context_library, DB       |
-| `librarian.py`                     | Centralizes context knowledge, extends/updates context library                             | context_library           | context_library           |
-| `context_coordinator.py`           | Orchestrates context enrichment, integrity, and ML checks                                 | context_library, DB       | log/                      |
-| `context_organizer.py`             | Organizes parsed context, deduplicates, runs ML, updates DB                               | context_library, DB       | DB, log/                  |
-| `retrain_table_structure_models.py`| Retrains NER and other models using context and logs                                       | context_library, DB, log/ | model files, log/         |
-| `config.py`                        | Centralizes all paths and DB connection strings                                            | .env, filesystem          | N/A                       |
+| File/Module | Main Role | Reads From | Writes To |
+| --- | --- | --- | --- |
+| `context_library.json` | Central knowledge base for context, patterns, mappings | Used by all context code | Updated by librarian / correction health |
+| `context_library_db.json` | Structured/expanded context for ML/audit (optional) | Correction health, ML | Correction health |
+| `context_elections.db` | Legacy SQLite DB (should be phased out) | Legacy code | Legacy code |
+| `POSTGRES_URL` (PostgreSQL) | Main relational DB for all structured data | SQLAlchemy models | SQLAlchemy models |
+| `log/*.jsonl` | All logs: extraction, correction, feedback, anomalies, etc. | Correction health, ML | All pipeline components |
+| `manual_correction.py` | Reviews logs, allows corrections, updates context library and DB | `log/`, `context_library` | `context_library`, DB |
+| `librarian.py` | Centralizes context knowledge, extends/updates context library | `context_library` | `context_library` |
+| `context_coordinator.py` | Orchestrates context enrichment, integrity, and ML checks | `context_library`, DB | `log/` |
+| `context_organizer.py` | Organizes parsed context, deduplicates, runs ML, updates DB | `context_library`, DB | DB, `log/` |
+| `retrain_table_structure_models.py` | Retrains NER and other models using context and logs | `context_library`, DB, `log/` | model files, `log/` |
+| `config.py` | Centralizes all paths and DB connection strings | `.env`, filesystem | N/A |
 
 ---
 
@@ -253,20 +257,20 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 
 #### **A. Paths and Structure**
 
-- **Single Source of Truth:**  
+- **Single Source of Truth:**
   - Use `context_library.json` as the canonical context source.
   - Use `librarian.py` for all context extension and updates.
-- **Phase Out Legacy DB:**  
+- **Phase Out Legacy DB:**
   - Remove all references to `context_elections.db` unless needed for migration.
-- **Explicit Context Library DB:**  
+- **Explicit Context Library DB:**
   - If you need a structured context DB for ML, always generate it from `context_library.json` and logs, not as a separate manual source.
 
 #### **B. Database Usage**
 
-- **PostgreSQL for All Structured Data:**  
+- **PostgreSQL for All Structured Data:**
   - All confirmed contests, table structures, entities, etc. should be stored in PostgreSQL.
   - Use SQLAlchemy models for all DB access.
-- **Context Library for Knowledge, Not Data:**  
+- **Context Library for Knowledge, Not Data:**
   - Use the context library for normalization, mapping, and as a knowledge base, not for storing raw data.
 
 #### **C. Logging and Correction**
@@ -670,7 +674,7 @@ Notes:
 - `webapp/static/css/data_framework.css` (loc: 654)
 - `webapp/static/css/history.css` (loc: 314)
 - `webapp/static/css/main.css` (loc: 608)
-- `webapp/static/css/run_parser.css` (loc: 1722)
+- `webapp/static/css/ballot-lens_modern.css` (loc: 1722)
 - `webapp/static/favicon.ico` (loc: 0)
 - `webapp/static/icons/apple-touch-icon.png` (loc: 596)
 - `webapp/static/icons/favicon-32.png` (loc: 66)
@@ -687,14 +691,14 @@ Notes:
 - `webapp/static/js/history.js` (loc: 277)
 - `webapp/static/js/main.js` (loc: 701)
 - `webapp/static/js/nav_guard.js` (loc: 84)
-- `webapp/static/js/run_parser.js` (loc: 2469)
-- `webapp/static/vendor/bootstrap-5.3.0.bundle.min.js` (loc: 7)
-- `webapp/static/vendor/bootstrap-5.3.0.min.css` (loc: 6)
+- `webapp/static/js/ballot-lens_modern.js` (loc: 2469)
+- `webapp/static/vendor/bootstrap-5.3.8.bundle.min.js` (loc: 7)
+- `webapp/static/vendor/bootstrap-5.3.8.min.css` (loc: 6)
 - `webapp/static/vendor/socket.io-4.7.5.min.js` (loc: 7)
 - `webapp/templates/data_framework.html` (loc: 117)
 - `webapp/templates/history.html` (loc: 254)
 - `webapp/templates/index.html` (loc: 97)
-- `webapp/templates/run_parser.html` (loc: 305)
+- `webapp/templates/ballot-lens.html` (loc: 305)
 
 ### Tests
 

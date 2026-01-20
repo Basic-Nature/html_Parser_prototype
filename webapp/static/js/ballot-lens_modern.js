@@ -1,3 +1,332 @@
+(function(){
+  // Lightweight helpers to safely access EventTarget values and node containment
+  // Exposed on `window.__tl_helpers` for reuse across this large file.
+  try {
+          const W = /** @type {any} */ (window);
+          W.__tl_helpers = W.__tl_helpers || {};
+          /**
+           * @typedef {Event & { target?: EventTarget | null }} DomEvent
+           * @typedef {(ev: DomEvent) => string} TargetValueFn
+           * @typedef {(ev: DomEvent) => boolean} TargetCheckedFn
+           * @typedef {(ev: DomEvent, sel: string) => Element | null} TargetClosestFn
+  /* LogRecord typedef consolidated at top of file. */
+
+    /** @type {TlHelpers} */
+    W.__tl_helpers = /** @type {TlHelpers} */ (W.__tl_helpers || {});
+
+    /**
+     * Safely extract value from common form event targets.
+     * @type {TargetValueFn}
+     */
+    /** @param {Event & { target?: EventTarget | null }} ev */
+    W.__tl_helpers.targetValue = function(ev) {
+      try {
+      const t = ev && ev.target;
+      return (t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement) ? t.value : '';
+      } catch (/** @type {any} */ e) {
+      return '';
+      }
+    };
+    /**
+     * @interface TlHelpersInterface
+     * @property {TargetValueFn} targetValue
+     * @property {TargetCheckedFn} targetChecked
+     * @property {TargetClosestFn} targetClosest
+     * @property {NodeContainsFn} nodeContains
+     */
+
+    /**
+     * Safely extract checked state from common form event targets.
+     * @type {TargetCheckedFn}
+     */
+    /** @param {Event & { target?: EventTarget | null }} ev */
+    W.__tl_helpers.targetChecked = function(ev) {
+      try { const t = ev && ev.target; return (t instanceof HTMLInputElement) ? t.checked : false; } catch (/** @type {any} */ e) { return false; }
+    };
+    /**
+     * Safely find the closest ancestor matching selector from an event target.
+     * Uses the shared TargetClosestFn typedef: (ev: DomEvent, sel: string) => Element | null
+     * @type {TargetClosestFn}
+     */
+    /** @param {Event & { target?: EventTarget | null }} ev */
+    /** @param {string} sel */
+    W.__tl_helpers.targetClosest = /** @type {TargetClosestFn} */ (function(ev, sel) {
+      try {
+      const t = ev && ev.target;
+      return (t instanceof Element) ? t.closest(sel) : null;
+      } catch (/** @type {any} */ e) {
+      return null;
+      }
+    });
+    /**
+     * Safely test node containment from a container node to a target node.
+     * @type {NodeContainsFn}
+     */
+    /** @param {Node} container
+     *  @param {Node} t
+     */
+    W.__tl_helpers.nodeContains = /** @type {NodeContainsFn} */ (function(container, t) {
+      try { return (t instanceof Node) && container && container.contains && container.contains(t); } catch (/** @type {any} */ e) { return false; }
+    });
+    /**
+     * Safely get element value (for inputs/selects/textareas) or empty string.
+     * @param {Element|null|undefined} el
+     * @returns {string}
+     */
+    W.__tl_helpers.elValue = function(el) {
+      try {
+        return (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) ? el.value : '';
+      } catch (/** @type {any} */ e) {
+        return '';
+      }
+    };
+    /**
+     * Safely set element value where supported.
+     * @param {Element|null|undefined} el
+     * @param {string} v
+     */
+    W.__tl_helpers.setElValue = function(el, v) {
+      try {
+        if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) el.value = String(v);
+      } catch (/** @type {any} */ e) { /* noop */ }
+    };
+    /**
+     * Safely get checkbox/radio checked state.
+     * @param {Element|null|undefined} el
+     * @returns {boolean}
+     */
+    W.__tl_helpers.elChecked = function(el) {
+      try { return (el instanceof HTMLInputElement) ? !!el.checked : false; } catch (/** @type {any} */ e) { return false; }
+    };
+    /**
+     * Safely set checked where supported.
+     * @param {Element|null|undefined} el
+     * @param {boolean} v
+     */
+    W.__tl_helpers.setElChecked = function(el, v) {
+      try { if (el instanceof HTMLInputElement) el.checked = !!v; } catch (/** @type {any} */ e) { /* noop */ }
+    };
+    /**
+     * Safe click helper: calls .click() if available
+     * @param {Element|null|undefined} el
+     */
+    W.__tl_helpers.safeClick = function(el) {
+      try { if (el && typeof /** @type {any} */ (el).click === 'function') /** @type {any} */ (el).click(); } catch (/** @type {any} */ e) { /* noop */ }
+    };
+    /**
+     * Safely set disabled on buttons/inputs
+     * @param {Element|null|undefined} el
+     * @param {boolean} v
+     */
+    W.__tl_helpers.setDisabled = function(el, v) {
+      try { if (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) el.disabled = !!v; } catch (/** @type {any} */ e) { /* noop */ }
+    };
+    /**
+     * Bound-property helpers for storing listener refs on elements.
+     * @param {Element|null|undefined} el
+     * @param {string} prop
+     * @param {any} val
+     */
+    W.__tl_helpers.setBound = function(el, prop, val) { try { if (el && typeof el === 'object') el[prop] = val; } catch (/** @type {any} */ e) {} };
+    W.__tl_helpers.getBound = function(el, prop) { try { return el && typeof el === 'object' ? el[prop] : undefined; } catch (/** @type {any} */ e) { return undefined; } };
+  } catch (/** @type {any} */ e) { /* ignore helper install errors */ }
+})();
+
+/* --------------------------------------------------------------------------
+ * Canonical typedefs -- single source of truth to avoid duplicate JSDoc defs
+ * Consolidate commonly-reused typedef names here. If you add new typedefs,
+ * append them to this block rather than repeating the same @typedef later.
+ * -------------------------------------------------------------------------- */
+/**
+ * @template T
+ * @typedef {T} VirtualItem
+ */
+
+/** @typedef {Event & { target?: EventTarget | null }} DomEvent */
+/** @typedef {(ev: DomEvent) => string} TargetValueFn */
+/** @typedef {(ev: DomEvent) => boolean} TargetCheckedFn */
+/** @typedef {(ev: DomEvent, sel: string) => Element | null} TargetClosestFn */
+/** @typedef {(container: Node, t: Node) => boolean} NodeContainsFn */
+/** @typedef {{ targetValue: TargetValueFn, targetChecked: TargetCheckedFn, targetClosest: TargetClosestFn, nodeContains: NodeContainsFn }} TlHelpers */
+
+/** @typedef {Object.<string, any>} PreviewRow */
+/** @typedef {PreviewRow[]} PreviewData */
+
+/** @typedef {Object} LogRecord */
+/** @typedef {Object.<string, any>} ParserOutputEvent */
+/** @typedef {Object} ContestOptionsPayload */
+
+/** @typedef {{ index?: number, value?: string|number, label?: string, meta?: string, metadata?: Object.<string, any> }} PromptOption */
+/** @typedef {{ bundled?: boolean, isChild?: boolean }} CreateBtnOptions */
+/** @typedef {Object} Result */
+/** @typedef {(e: Event) => void} ClickHandler */
+/** @typedef {Object} ResultCardButton */
+/** @typedef {string|number} PromptValue */
+/** @typedef {Object} ParserPromptPayload */
+/** @callback EmitPromptFn */
+/** @callback SubmitPromptFn */
+
+
+// Fallback handlers for drawer and sidebar toggles (ensure mobile buttons work)
+(function(){
+  document.addEventListener('DOMContentLoaded', function(){
+    function attachDrawerHandle(){
+      var dh = document.getElementById('drawerHandle') || document.querySelector('.drawer-handle');
+      if(!dh) return;
+      dh.addEventListener('click', function(){
+        var targetId = dh.getAttribute('aria-controls') || 'logDrawer';
+        var drawer = document.getElementById(targetId) || document.querySelector('#logDrawer');
+        if(drawer){
+          var isOpen = dh.getAttribute('aria-expanded') === 'true';
+          dh.setAttribute('aria-expanded', String(!isOpen));
+          drawer.classList.toggle('open', !isOpen);
+        } else if (typeof window.openRight === 'function'){
+          try{ window.openRight(); }catch(e){ console.debug(e); }
+        }
+      }, {passive:true});
+    }
+
+    function attachSidebarToggle(){
+      var st = document.getElementById('sidebarToggleBtn');
+      if(!st) return;
+      st.addEventListener('click', function(){
+        var sidebar = document.getElementById('sidebar') || document.querySelector('.sidebar-left, .sidebar');
+        if(sidebar){
+          var isOpen = sidebar.classList.toggle('sidebar-open');
+          document.body.classList.toggle('no-scroll', isOpen);
+          st.setAttribute('aria-expanded', String(isOpen));
+        } else if (typeof window.openLeft === 'function'){
+          try{ window.openLeft(); }catch(e){ console.debug(e); }
+        }
+      }, {passive:true});
+    }
+
+    function compactDrawerCheck(){
+      var dh = document.querySelector('.drawer-handle');
+      if(!dh) return;
+      try{
+        var rect = dh.getBoundingClientRect();
+        if(rect.width < 140 || window.innerWidth <= 640) dh.classList.add('compact'); else dh.classList.remove('compact');
+      }catch(e){ /* ignore */ }
+    }
+
+    attachDrawerHandle();
+    attachSidebarToggle();
+    compactDrawerCheck();
+    window.addEventListener('resize', compactDrawerCheck);
+  });
+})();
+
+// Parser tools dropdown: manage aria-expanded, focus trap, and outside clicks
+(function(){
+  /**
+   * @typedef {HTMLAnchorElement|HTMLButtonElement|HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|HTMLElement} FocusableElement
+   *
+   * @typedef {Object} FocusableDescendantsInterface
+   * @property {(root: Element) => FocusableElement[]} focusableDescendants
+   */
+
+  /**
+   * Return focusable, visible descendants of a root element.
+   * @param {Element} root
+   * @returns {FocusableElement[]}
+   */
+  /** @type {FocusableDescendantsInterface['focusableDescendants']} */
+  const focusableDescendants = function(root){
+    const sel = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    return /** @type {FocusableElement[]} */ (Array.from(root.querySelectorAll(sel)).filter(el => (el instanceof HTMLElement) && el.offsetParent !== null));
+  };
+
+  /**
+   * @typedef {HTMLElement & { _onKey?: (e: KeyboardEvent) => void }} ParserToolsDropdown
+   * @typedef {HTMLElement} ParserToolsToggle
+   */
+
+  /**
+   * Close the parser tools dropdown and clean up event handlers.
+   * @param {ParserToolsDropdown | null | undefined} dropdown
+   * @param {ParserToolsToggle | null | undefined} toggle
+   * @returns {void}
+   */
+  function closeParserTools(
+    /** @type {ParserToolsDropdown | null | undefined} */ dropdown,
+    /** @type {ParserToolsToggle | null | undefined} */ toggle
+  ){
+    if(!dropdown || !toggle) return;
+    dropdown.setAttribute('aria-hidden', 'true');
+    toggle.setAttribute('aria-expanded','false');
+    dropdown.classList.remove('open');
+    try{ toggle.focus(); }catch(e){}
+    // remove stored key handler (use any-cast for custom property)
+    const ddAny = /** @type {any} */ (dropdown);
+    if(ddAny && ddAny._onKey) { document.removeEventListener('keydown', ddAny._onKey); try { delete ddAny._onKey; } catch (/** @type {any} */ e) {} }
+  }
+
+  function openParserTools(
+    /** @type {ParserToolsDropdown | null | undefined} */ dropdown,
+    /** @type {ParserToolsToggle | null | undefined} */ toggle
+  ){
+    if(!dropdown || !toggle) return;
+    dropdown.setAttribute('aria-hidden', 'false');
+    toggle.setAttribute('aria-expanded','true');
+    dropdown.classList.add('open');
+    const items = focusableDescendants(dropdown);
+    if(items.length) items[0].focus();
+
+    // trap focus inside
+    /** @param {KeyboardEvent} e */
+    function onKey(e){
+      if(e.key === 'Escape'){
+        closeParserTools(dropdown,toggle);
+      }
+      if(e.key === 'Tab'){
+        const focusables = focusableDescendants(dropdown);
+        if(focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length -1];
+        if(e.shiftKey && document.activeElement === first){
+          e.preventDefault(); last.focus();
+        } else if(!e.shiftKey && document.activeElement === last){
+          e.preventDefault(); first.focus();
+        }
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    // store cleanup on element for removal later (use any-cast)
+    const ddAny = /** @type {any} */ (dropdown);
+    ddAny._onKey = onKey;
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    const toggle = document.getElementById('btnToggleRightSidebar');
+    const dropdown = document.getElementById('parserToolsDropdown');
+    if(!toggle || !dropdown) return;
+
+    // initialize attributes
+    toggle.setAttribute('aria-expanded', 'false');
+    dropdown.setAttribute('aria-hidden','true');
+
+    toggle.addEventListener('click', function(){
+      const open = toggle.getAttribute('aria-expanded') === 'true';
+      if(open){ closeParserTools(dropdown,toggle); }
+      else { openParserTools(dropdown,toggle); }
+    });
+
+    // close when clicking outside
+    /** @param {MouseEvent} e */
+    document.addEventListener('click', function(e){
+      if(dropdown.getAttribute('aria-hidden') === 'true') return;
+      const tgt = (e && e.target && (e.target instanceof Node)) ? e.target : null;
+      if ((/** @type {any} */ (window)).__tl_helpers.nodeContains(toggle, tgt) || (/** @type {any} */ (window)).__tl_helpers.nodeContains(dropdown, tgt)) return;
+      closeParserTools(dropdown,toggle);
+    }, true);
+
+    // wire close button inside menu
+    const closeBtn = document.getElementById('btnToggleRightSidebarClose');
+    if(closeBtn) closeBtn.addEventListener('click', function(){ closeParserTools(dropdown,toggle); });
+  });
+})();
+
 /**
  * Smart Elections Parser - Modern UI JavaScript
  * Phase 1: Core Layout, SheetJS Integration, Component Interactions
@@ -33,35 +362,59 @@ const toggleLeftBtn = document.getElementById('sidebarToggleBtn');
           if (typeof document !== 'undefined') {
             const _origAdd = document.addEventListener && typeof document.addEventListener === 'function' ? document.addEventListener.bind(document) : null;
             const _origRemove = document.removeEventListener && typeof document.removeEventListener === 'function' ? document.removeEventListener.bind(document) : null;
+            /**
+             * @interface NativeEventListener
+             * @param {Event|string} event
+             * @param {EventListenerOrEventListenerObject} listener
+             * @param {boolean|AddEventListenerOptions} [options]
+             * @returns {void}
+             */
+
+            /**
+             * @typedef {() => void} RemoveListenerFn
+             */
+
+            /**
+             * @typedef {(evt: string, cb: EventListenerOrEventListenerObject, opts?: boolean|AddEventListenerOptions) => RemoveListenerFn} AddEventListenerShim
+             */
+
             Object.defineProperty(document, 'addEventListener', {
               configurable: true,
               enumerable: false,
               writable: false,
+              /**
+               * Shimmed addEventListener that delegates to original handlers and
+               * returns a cleanup function for safe removal.
+               * @type {AddEventListenerShim}
+               * @param {string} evt
+               * @param {EventListenerOrEventListenerObject} cb
+               * @param {boolean|AddEventListenerOptions=} opts
+               */
               value: function(evt, cb, opts) {
-                try {
-                  if (_origAdd) {
-                    _origAdd(evt, cb, opts);
-                  } else if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-                    window.addEventListener(evt, cb, opts);
-                  }
-                } catch (err) {
-                  // swallow delegate errors but ensure cleanup is returned
+              try {
+                if (_origAdd) {
+                _origAdd(evt, cb, opts);
+                } else if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+                window.addEventListener(evt, cb, opts);
                 }
-                return function() {
-                  try {
-                    if (_origRemove) {
-                      _origRemove(evt, cb, opts);
-                    } else if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
-                      window.removeEventListener(evt, cb, opts);
-                    }
-                  } catch (e) {
-                    /* ignore */
-                  }
-                };
+              } catch (/** @type {any} */ err) {
+                // swallow delegate errors but ensure cleanup is returned
+              }
+              return /** @type {RemoveListenerFn} */ (function() {
+                try {
+                if (_origRemove) {
+                  _origRemove(evt, cb, opts);
+                } else if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+                  window.removeEventListener(evt, cb, opts);
+                }
+                } catch (/** @type {any} */ e) {
+                /* ignore */
+                }
+              });
               }
             });
           }
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
           // ignore
         }
 
@@ -88,7 +441,7 @@ const AdvancedFeatures = (() => {
           filterPresets.set(name, filters);
         });
       }
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
       console.warn('[Presets] Failed to load:', err);
     }
   }
@@ -108,30 +461,50 @@ const AdvancedFeatures = (() => {
   
   // Get current filter state
   function getCurrentFilters() {
-    return {
-      confidence: document.getElementById('filterConfidence')?.value || '0',
-      state: document.getElementById('filterState')?.value || '',
-      level: document.getElementById('filterLevel')?.value || '',
-    };
-  }
-  
-  // Apply filters
-  function applyFilters(filters) {
-    const { confidence, state, level } = filters;
     const confEl = document.getElementById('filterConfidence');
     const stateEl = document.getElementById('filterState');
     const levelEl = document.getElementById('filterLevel');
+    const confidence = (confEl instanceof HTMLInputElement || confEl instanceof HTMLSelectElement || confEl instanceof HTMLTextAreaElement) ? confEl.value : '0';
+    const state = (stateEl instanceof HTMLInputElement || stateEl instanceof HTMLSelectElement || stateEl instanceof HTMLTextAreaElement) ? stateEl.value : '';
+    const level = (levelEl instanceof HTMLInputElement || levelEl instanceof HTMLSelectElement || levelEl instanceof HTMLTextAreaElement) ? levelEl.value : '';
+    return { confidence, state, level };
+  }
+  
+  // Apply filters
+  /**
+   * @typedef {Object} FilterValues
+   * @property {string|number} [confidence]
+   * @property {string} [state]
+   * @property {string} [level]
+   *
+   * @typedef {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|null} MaybeFormElement
+   *
+   * @callback ApplyFiltersFn
+   * @param {FilterValues} filters
+   * @returns {void}
+   */
+
+  /** @type {ApplyFiltersFn} */
+  function applyFilters(filters) {
+    const { confidence, state, level } = filters;
+    /** @type {MaybeFormElement} */
+    const confEl = /** @type {MaybeFormElement} */ (document.getElementById('filterConfidence'));
+    /** @type {MaybeFormElement} */
+    const stateEl = /** @type {MaybeFormElement} */ (document.getElementById('filterState'));
+    /** @type {MaybeFormElement} */
+    const levelEl = /** @type {MaybeFormElement} */ (document.getElementById('filterLevel'));
     
-    if (confEl) confEl.value = confidence || '0';
-    if (stateEl) stateEl.value = state || '';
-    if (levelEl) levelEl.value = level || '';
+    if (confEl instanceof HTMLInputElement || confEl instanceof HTMLSelectElement || confEl instanceof HTMLTextAreaElement) confEl.value = String(typeof confidence === 'number' ? confidence : (confidence ?? '0'));
+    if (stateEl instanceof HTMLInputElement || stateEl instanceof HTMLSelectElement || stateEl instanceof HTMLTextAreaElement) stateEl.value = String(state ?? '');
+    if (levelEl instanceof HTMLInputElement || levelEl instanceof HTMLSelectElement || levelEl instanceof HTMLTextAreaElement) levelEl.value = String(level ?? '');
     
     // Update confidence label
+    /** @type {HTMLElement | null} */
     const labelEl = document.getElementById('filterConfidenceValue');
-    if (labelEl && confEl) labelEl.textContent = confEl.value + '%+';
+    if (labelEl && (confEl instanceof HTMLInputElement || confEl instanceof HTMLSelectElement || confEl instanceof HTMLTextAreaElement)) labelEl.textContent = confEl.value + '%+';
     
-    // Trigger filter update
-    if (window.applyLogFilters) window.applyLogFilters();
+    // Trigger filter update (call via any-cast to avoid TS window property errors)
+    try { (/** @type {any} */ (window)).applyLogFilters && (/** @type {any} */ (window)).applyLogFilters(); } catch (/** @type {any} */ err) { /* ignore */ }
   }
   
   return {
@@ -154,6 +527,7 @@ const ErrorBoundary = (() => {
   const errorLog = [];
   const maxErrors = 50;
   
+  /** @param {any} error */
   function logError(error, context = '') {
     const timestamp = new Date().toISOString();
     const errorInfo = {
@@ -173,10 +547,34 @@ const ErrorBoundary = (() => {
     return errorInfo;
   }
   
+  /**
+   * @template T
+   * @callback SyncFunction
+   * @returns {T}
+   */
+
+  /**
+   * @typedef {Object} LoggedErrorInfo
+   * @property {string} timestamp
+   * @property {string} message
+   * @property {string} context
+   * @property {string} stack
+   * @property {boolean} recovered
+   */
+
+  /**
+   * Execute a synchronous function with error capture, logging and a fallback.
+   * @template T
+   * @param {SyncFunction<T>} fn - Synchronous function to execute.
+   * @param {string} [context='anonymous'] - Short label for logging context.
+   * @param {T|null} [fallback=null] - Value to return when execution fails.
+   * @returns {T|null}
+   */
   function safeExecute(fn, context = 'anonymous', fallback = null) {
     try {
       return fn();
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
+      /** @type {LoggedErrorInfo} */
       const logged = logError(error, context);
       logged.recovered = true;
       showErrorNotification(error, context);
@@ -184,21 +582,53 @@ const ErrorBoundary = (() => {
     }
   }
   
-  function safeAsync(asyncFn, context = 'async_operation') {
-    return Promise.resolve()
-      .then(() => asyncFn())
-      .catch(error => {
-        logError(error, context);
-        showErrorNotification(error, context);
-      });
+  /**
+   * @callback AsyncOperation
+   * @returns {Promise<any>}
+   */
+
+  /**
+   * Execute an async function with error capture and notification.
+   * @param {AsyncOperation} asyncFn - Asynchronous function to execute.
+   * @param {string} [context='async_operation'] - Short label for logging context.
+   * @returns {Promise<any|void>} Resolves with the asyncFn result or void on error.
+   */
+  async function safeAsync(asyncFn, context = 'async_operation') {
+    try {
+      return await asyncFn();
+    } catch (/** @type {any} */ error) {
+      logError(error, context);
+      showErrorNotification(error, context);
+      // swallow and return void on error (preserve previous behavior)
+      return;
+    }
   }
   
+  /**
+   * @typedef {Object} ErrorLike
+   * @property {string} [message]
+   * @property {string} [stack]
+   */
+
+  /**
+   * @typedef {HTMLDivElement} ToastElement
+   */
+
+  /**
+   * Display a brief error notification toast.
+   * @param {Error|ErrorLike|null|undefined} error
+   * @param {string} context
+   * @returns {void}
+   */
   function showErrorNotification(error, context) {
+    /** @type {string} */
     const message = `Error in ${context}: ${error?.message || 'Unknown error'}`;
-    const toast = document.createElement('div');
+    /** @type {ToastElement} */
+    const toast = /** @type {ToastElement} */ (document.createElement('div'));
     toast.className = 'error-toast notification-toast';
     toast.textContent = message;
     document.body.appendChild(toast);
+    // setTimeout returns number in browsers
     setTimeout(() => toast.remove(), 5000);
   }
   
@@ -224,11 +654,34 @@ const ErrorBoundary = (() => {
 // ============================================
 
 // Debouncing utility for search/filter inputs
+/**
+ * @callback AnyFunction
+ * @param {...any} args
+ * @returns any
+ */
+
+/**
+ * @typedef {number|undefined|null} TimeoutId
+ */
+
+/**
+ * @callback DebouncedFunction
+ * @param {...any} args
+ * @returns void
+ */
+
+/**
+ * Create a debounced wrapper for a function.
+ * @param {AnyFunction} fn
+ * @param {number} delay
+ * @returns {DebouncedFunction}
+ */
 function debounce(fn, delay) {
-  let timeoutId;
+  /** @type {TimeoutId} */
+  let timeoutId = undefined;
   return function(...args) {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn.apply(this, args), delay);
+    try { if (typeof timeoutId !== 'undefined' && timeoutId !== null) clearTimeout(timeoutId); } catch (/** @type {any} */ e) {}
+    timeoutId = /** @type {TimeoutId} */ (/** @type {any} */ (setTimeout(() => fn.apply(this, args), delay)));
   };
 }
 
@@ -240,6 +693,17 @@ const VirtualScroll = (() => {
   let scrollTop = 0;
   let containerHeight = 0;
   
+  /**
+   * @typedef {Object} VirtualScrollContainer
+   * @property {number} clientHeight
+   */
+
+  /**
+   * Enable virtual scrolling when items exceed the threshold.
+   * @param {Array<any>} items
+   * @param {VirtualScrollContainer} container
+   * @returns {boolean}
+   */
   function enable(items, container) {
     if (items.length < CONFIG.virtualScrollThreshold) {
       isEnabled = false;
@@ -262,13 +726,30 @@ const VirtualScroll = (() => {
     return allItems.slice(visibleRange.start, visibleRange.end);
   }
   
+  /**
+   * @typedef {Object} VirtualScrollRange
+   * @property {number} start
+   * @property {number} end
+   */
+
+  /**
+   * Update visible window based on new scroll top position.
+   * @param {number} newScrollTop
+   * @returns {void}
+   */
   function updateScroll(newScrollTop) {
     if (!isEnabled) return;
-    
+
+    /** @type {number} */
     scrollTop = newScrollTop;
+
+    /** @type {number} */
     const itemsPerPage = Math.ceil(containerHeight / CONFIG.virtualScrollItemHeight);
+
+    /** @type {number} */
     const startIdx = Math.floor(scrollTop / CONFIG.virtualScrollItemHeight);
-    
+
+    /** @type {VirtualScrollRange} */
     visibleRange.start = Math.max(0, startIdx - CONFIG.virtualScrollBuffer);
     visibleRange.end = Math.min(allItems.length, startIdx + itemsPerPage + CONFIG.virtualScrollBuffer);
   }
@@ -304,30 +785,55 @@ const VirtualScroll = (() => {
 // ============================================
 
 const TablePreview = (() => {
+  /* PreviewRow/PreviewData typedefs consolidated at top of file. */
+  /**
+   * @interface RenderPreviewOptions
+   * @property {number} [maxRows]
+   */
+
+  /**
+   * Render a simple HTML table preview for an array of row objects.
+   * @param {PreviewData} data
+   * @param {number} [maxRows=5]
+   * @returns {string}
+   */
   function renderPreview(data, maxRows = 5) {
     if (!Array.isArray(data) || !data.length) return '<p class="text-muted">No data to preview</p>';
-    
+
+    /** @type {PreviewRow[]} */
     const rows = data.slice(0, maxRows);
-    const keys = Object.keys(rows[0]);
-    
+    /** @type {string[]} */
+    const keys = Object.keys(rows[0] || {});
+
     let html = '<table class="preview-table"><thead><tr>';
     keys.forEach(k => html += `<th>${escapeHtml(k)}</th>`);
     html += '</tr></thead><tbody>';
-    
-    rows.forEach(row => {
+
+    rows.forEach(/** @param {PreviewRow} row */ (row) => {
       html += '<tr>';
       keys.forEach(k => html += `<td>${escapeHtml(String(row[k] || ''))}</td>`);
       html += '</tr>';
     });
-    
+
     html += '</tbody></table>';
     if (data.length > maxRows) html += `<p class="text-muted small">${data.length - maxRows} more rows...</p>`;
-    
+
     return html;
   }
   
+  /* PreviewRow/PreviewData typedefs consolidated at top of file. */
+  /**
+   * @typedef {HTMLDivElement & { _onKey?: (e: KeyboardEvent) => void }} PreviewModalElement
+   */
+
+  /**
+   * Show a modal with a small table preview.
+   * @param {string} title
+   * @param {PreviewData} data
+   * @returns {void}
+   */
   function showPreviewModal(title, data) {
-    const modal = document.createElement('div');
+    const modal = /** @type {PreviewModalElement} */ (document.createElement('div'));
     modal.className = 'modal preview-modal';
     modal.innerHTML = `
       <div class="modal-content">
@@ -339,12 +845,17 @@ const TablePreview = (() => {
           ${renderPreview(data)}
         </div>
         <div class="modal-footer">
-          <button class="btn btn-primary" onclick="this.closest('.preview-modal').remove()">Continue</button>
+          <button class="btn btn-primary preview-continue">Continue</button>
         </div>
       </div>
     `;
     document.body.appendChild(modal);
-    modal.querySelector('.modal-close').onclick = () => modal.remove();
+    /** @type {Element | null} */
+    const closeBtn = modal.querySelector('.modal-close');
+    if (closeBtn instanceof Element) closeBtn.addEventListener('click', () => modal.remove());
+    /** @type {Element | null} */
+    const cont = modal.querySelector('.preview-continue');
+    if (cont instanceof Element) cont.addEventListener('click', () => modal.remove());
   }
   
   return { renderPreview, showPreviewModal };
@@ -357,16 +868,30 @@ const TablePreview = (() => {
 const SessionRestore = (() => {
   const RESTORE_KEY = 'smartElectionsRestore';
   
+  /**
+   * @typedef {Object} SessionRestoreState
+   * @property {number} timestamp
+   * @property {string|null} sessionId
+   * @property {Array<string|null>} urls
+   * @property {Array<string>} searches
+   */
+
+  /**
+   * Save a lightweight restore snapshot to sessionStorage.
+   * @param {any} data
+   * @returns {void}
+   */
   function saveState(data) {
     try {
+      /** @type {SessionRestoreState} */
       const state = {
-        timestamp: Date.now(),
-        sessionId: currentSessionId,
-        urls: Array.from(document.querySelectorAll('[data-url]')).map(el => el.getAttribute('data-url')),
-        searches: Array.from(document.querySelectorAll('input[type="search"]')).map(el => el.value),
-      };
+          timestamp: Date.now(),
+          sessionId: /** @type {string|null} */ (currentSessionId || null),
+          urls: /** @type {Array<string|null>} */ (Array.from(document.querySelectorAll('[data-url]')).map(el => (el instanceof Element) ? el.getAttribute('data-url') : null)),
+          searches: /** @type {string[]} */ (Array.from(document.querySelectorAll('input[type="search"]')).map(el => (el instanceof HTMLInputElement) ? el.value : '')),
+        };
       sessionStorage.setItem(RESTORE_KEY, JSON.stringify(state));
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       ErrorBoundary.logError(e, 'SessionRestore.saveState');
     }
   }
@@ -392,15 +917,17 @@ const SessionRestore = (() => {
     `;
     document.body.prepend(banner);
     
-    document.getElementById('btnRestoreYes').onclick = () => {
+    const btnYes = document.getElementById('btnRestoreYes');
+    const btnNo = document.getElementById('btnRestoreNo');
+    if (btnYes instanceof Element) btnYes.addEventListener('click', () => {
       // Restore state
       banner.remove();
       showToast('Session restored', 'success');
-    };
-    document.getElementById('btnRestoreNo').onclick = () => {
+    });
+    if (btnNo instanceof Element) btnNo.addEventListener('click', () => {
       sessionStorage.removeItem(RESTORE_KEY);
       banner.remove();
-    };
+    });
   }
   
   return { saveState, hasRestoreData, showRestoreBanner };
@@ -422,11 +949,34 @@ function enhanceAccessibility() {
   });
   
   // Add ARIA labels to dynamic content
-  const addAriaLabel = (selector, label) => {
-    document.querySelectorAll(selector).forEach(el => {
-      if (!el.getAttribute('aria-label')) el.setAttribute('aria-label', label);
+  /**
+   * @callback AddAriaLabelFn
+   * @param {string} selector
+   * @param {string} label
+   * @returns {void}
+   */
+
+  /**
+   * Lightweight interface describing elements which may accept aria attributes.
+   * @typedef {HTMLElement} AriaElement
+   */
+
+  /**
+   * Set an accessible aria-label on matching elements if one is not already present.
+   * @type {AddAriaLabelFn}
+   */
+  const addAriaLabel = /** @type {AddAriaLabelFn} */ (function(selector, label) {
+    /** @type {NodeListOf<Element>} */
+    const nodes = document.querySelectorAll(selector);
+    nodes.forEach(/** @param {Element} el */ (el) => {
+      try {
+        const maybeEl = /** @type {AriaElement} */ (el);
+        if (!maybeEl.getAttribute('aria-label')) maybeEl.setAttribute('aria-label', label);
+      } catch (/** @type {any} */ e) {
+        // ignore elements that cannot accept attributes
+      }
     });
-  };
+  });
   
   addAriaLabel('.prompt-option', 'Contest option');
   addAriaLabel('.prompt-bundle-toggle', 'Expand/collapse bundle');
@@ -514,13 +1064,33 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Show flagged details in a dedicated modal with simple filters
+/**
+ * @typedef {Object} FlaggedItem
+ * @property {string} [url]
+ * @property {string} [status]
+ * @property {string|string[]} [reasons]
+ * @property {Object<string, any>} [metadata_excerpt]
+ * @property {number|string} [timestamp]
+ */
+
+/**
+ * @typedef {Object} SortState
+ * @property {string} key
+ * @property {number} dir
+ */
+
+/**
+ * @param {FlaggedItem[]} flagged
+ * @param {string} report_path
+ */
 function showFlaggedModal(flagged, report_path) {
   try {
     const existing = document.getElementById('flaggedModal');
     if (existing) existing.remove();
-
+    const reportName = report_path ? report_path.replace(/\\/g, '/').split('/').pop() : '';
     // Persistent sort state per report
     const persistedKey = reportName ? `flagged_sort_${reportName}` : 'flagged_sort_global';
+    /** @type {SortState} */
     let currentSort = { key: '', dir: 1 };
     try {
       const p = localStorage.getItem(persistedKey);
@@ -535,7 +1105,6 @@ function showFlaggedModal(flagged, report_path) {
     const modal = document.createElement('div');
     modal.id = 'flaggedModal';
     modal.className = 'flagged-modal';
-    const reportName = report_path ? report_path.replace(/\\/g, '/').split('/').pop() : '';
     modal.innerHTML = `
       <div class="flagged-modal-content">
         <div class="flagged-modal-header">
@@ -557,11 +1126,18 @@ function showFlaggedModal(flagged, report_path) {
     document.body.appendChild(modal);
 
     // close on ESC
+    /** @param {KeyboardEvent} ev */
     const escHandler = (ev) => { if (ev.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', escHandler); } };
     document.addEventListener('keydown', escHandler);
 
+    /** @type {HTMLElement | null} */
     const tbody = modal.querySelector('#flaggedTableBody');
 
+    /**
+     * @param {FlaggedItem} item
+     * @param {string} key
+     * @returns {string|number}
+     */
     function getSortValue(item, key) {
       if (key === 'url') return (item.url || '').toLowerCase();
       if (key === 'status') return (item.status || '').toLowerCase();
@@ -574,7 +1150,12 @@ function showFlaggedModal(flagged, report_path) {
       return '';
     }
 
+    /**
+     * Render provided rows into table body.
+     * @param {FlaggedItem[]} list
+     */
     function renderRows(list) {
+      if (!tbody) return;
       tbody.innerHTML = '';
       // apply sort
       const rowsList = Array.isArray(list) ? [...list] : [];
@@ -628,7 +1209,7 @@ function showFlaggedModal(flagged, report_path) {
       // attach copy handlers
       tbody.querySelectorAll('.copy-meta').forEach(btn => {
         btn.addEventListener('click', () => {
-          const meta = decodeURIComponent(btn.dataset.meta || '');
+          const meta = (btn instanceof HTMLElement) ? decodeURIComponent(btn.getAttribute('data-meta') || '') : '';
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(meta).then(() => showToast('Metadata copied', 'success'), () => showToast('Copy failed', 'error'));
           } else {
@@ -644,10 +1225,11 @@ function showFlaggedModal(flagged, report_path) {
     }
 
     // delegated handlers for copy and jump actions
-    tbody.addEventListener('click', (ev) => {
+    /** @param {Event} ev */
+    tbody.addEventListener('click', function(ev) {
       const target = ev.target;
-      if (!target) return;
-      if (target.classList && target.classList.contains('copy-meta')) {
+      if (!target || !(target instanceof Element)) return;
+      if (target.classList.contains('copy-meta')) {
         const metaRaw = target.getAttribute('data-meta');
         try {
           const obj = JSON.parse(metaRaw);
@@ -664,7 +1246,7 @@ function showFlaggedModal(flagged, report_path) {
           // noop
         }
       }
-      if (target.classList && target.classList.contains('jump-row')) {
+      if (target.classList.contains('jump-row')) {
         const rowIdx = target.getAttribute('data-row');
         // try to find associated metadata for output file
         const tr = target.closest('tr');
@@ -703,6 +1285,11 @@ function showFlaggedModal(flagged, report_path) {
       }
     });
 
+    /**
+     * Fallback copy prompt
+     * @param {string} text
+     * @param {Element} targetBtn
+     */
     function promptCopyFallback(text, targetBtn) {
       const ta = document.createElement('textarea');
       ta.value = text; document.body.appendChild(ta);
@@ -715,11 +1302,13 @@ function showFlaggedModal(flagged, report_path) {
     renderRows(flagged);
 
     // filtering
+    /** @type {HTMLInputElement | null} */
     const filterInput = modal.querySelector('#flaggedFilter');
+    /** @type {HTMLInputElement | null} */
     const confInput = modal.querySelector('#flaggedMinConf');
     function applyFilter() {
-      const q = (filterInput.value || '').toLowerCase().trim();
-      const minConf = parseFloat(confInput.value);
+      const q = (filterInput instanceof HTMLInputElement ? (filterInput.value || '') : '').toLowerCase().trim();
+      const minConf = parseFloat(confInput instanceof HTMLInputElement ? confInput.value : 'NaN');
       const filtered = flagged.filter(f => {
         let ok = true;
         if (q) {
@@ -742,7 +1331,8 @@ function showFlaggedModal(flagged, report_path) {
     // header sort handlers + UI indicators
     function updateHeaderIndicators() {
       modal.querySelectorAll('.flagged-table thead th').forEach(th => {
-        const k = th.dataset.key || '';
+        if (!(th instanceof HTMLElement)) return;
+        const k = th.getAttribute('data-key') || '';
         if (k && currentSort.key === k) {
           th.classList.add('active');
           th.setAttribute('data-sort-dir', String(currentSort.dir));
@@ -755,8 +1345,9 @@ function showFlaggedModal(flagged, report_path) {
     }
 
     modal.querySelectorAll('.flagged-table thead th').forEach(th => {
+      if (!(th instanceof HTMLElement)) return;
       th.addEventListener('click', () => {
-        const key = th.dataset.key;
+        const key = th.getAttribute('data-key');
         if (!key) return;
         if (currentSort.key === key) currentSort.dir *= -1; else { currentSort.key = key; currentSort.dir = 1; }
         // persist
@@ -770,7 +1361,7 @@ function showFlaggedModal(flagged, report_path) {
     // export handlers
     function exportJSON() {
       const payload = JSON.stringify(flagged, null, 2);
-      const blob = new Blob([payload], { type: 'application/json' });
+      const blob = new Blob([/** @type {any} */ (payload)], { type: 'application/json' });
       const name = reportName ? `${reportName.replace(/\.json$/,'')}_flagged.json` : `flagged_${Date.now()}.json`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -789,7 +1380,7 @@ function showFlaggedModal(flagged, report_path) {
         return row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',');
       });
       const csv = [header.join(','), ...rows].join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
+      const blob = new Blob([/** @type {any} */ (csv)], { type: 'text/csv' });
       const name = reportName ? `${reportName.replace(/\.json$/,'')}_flagged.csv` : `flagged_${Date.now()}.csv`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
@@ -881,6 +1472,22 @@ const LogColorCoding = (() => {
     'TRACE': { bg: '#2a1a3d', border: '#8b5cf6', text: '#c4b5fd' }
   };
   
+  /**
+   * @typedef {Object} LevelColor
+   * @property {string} bg
+   * @property {string} border
+   * @property {string} text
+   */
+
+  /* LevelColorMap typedef consolidated inline; see `levelColors` object above. */
+
+  /**
+   * Apply a level-specific CSS class to an element.
+   * Removes any existing level classes derived from levelColors and adds the class for the provided level.
+   * @param {HTMLElement} element
+   * @param {string} level - Level key (e.g., "ERROR", "INFO")
+   * @returns {void}
+   */
   function applyColorToElement(element, level) {
     // Remove all level classes first
     Object.keys(levelColors).forEach(lvl => {
@@ -891,6 +1498,15 @@ const LogColorCoding = (() => {
     element.classList.add(levelClass);
   }
   
+  /**
+   * @typedef {Object.<string, LevelColor>} LevelColorMap
+   */
+
+  /**
+   * Return the color mapping for a given log level.
+   * @param {string} level
+  * @returns {LevelColor}
+   */
   function getLevelColor(level) {
     return levelColors[level] || levelColors['INFO'];
   }
@@ -920,13 +1536,36 @@ const LogTypeBadges = (() => {
     'heartbeat': { icon: '💓', color: '#6b7280', label: 'Heartbeat' }
   };
   
+  /**
+   * @typedef {Object} TypeConfigEntry
+   * @property {string} icon
+   * @property {string} color
+   * @property {string} label
+   */
+
+  /**
+   * @typedef {Object.<string, TypeConfigEntry>} TypeConfigMap
+   */
+
+  /**
+   * Create an HTML badge for a log type.
+   * @param {string} type
+   * @returns {string}
+   */
   function createBadge(type) {
-    const config = typeConfig[type] || { icon: '📌', color: '#6b7280', label: type };
+    /** @type {TypeConfigEntry} */
+    const config = /** @type {TypeConfigEntry} */ (typeConfig[type] || { icon: '📌', color: '#6b7280', label: type });
     // Use CSS classes instead of inline styles for CSP compliance
-    const typeClass = `log-type-${(type || 'info').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+    const safeType = (type || 'info').toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const typeClass = `log-type-${safeType}`;
     return `<span class="log-type-badge ${typeClass}">${config.icon} ${config.label}</span>`;
   }
   
+  /**
+   * Get configuration entry for a given log type.
+   * @param {string} type
+   * @returns {TypeConfigEntry}
+   */
   function getTypeConfig(type) {
     return typeConfig[type] || { icon: '📌', color: '#6b7280', label: type };
   }
@@ -939,9 +1578,21 @@ const LogTypeBadges = (() => {
  * Highlight matching text in log messages
  */
 const SearchHighlighter = (() => {
+  /**
+   * @typedef {Object} HighlightMatch
+   * @property {string} original - original matched text
+   * @property {string} highlighted - HTML highlighted fragment
+   *
+   * @callback HighlightTextFn
+   * @param {string} text - full text to search within
+   * @param {string} searchTerm - term to highlight
+   * @returns {string} HTML string with <mark class="search-highlight"> wrappers
+   */
+
+  /** @type {HighlightTextFn} */
   function highlightText(text, searchTerm) {
     if (!searchTerm || !text) return escapeHtml(text);
-    
+
     const escaped = escapeHtml(text);
     const regex = new RegExp(`(${escapeRegex(searchTerm)})`, 'gi');
     return escaped.replace(regex, '<mark class="search-highlight">$1</mark>');
@@ -967,13 +1618,37 @@ const SearchHighlighter = (() => {
  * Export logs in multiple formats (JSON, CSV, Markdown)
  */
 const AdvancedExport = (() => {
+  /* LogRecord typedef consolidated at top of file. */
+  /**
+   * @typedef {Object} AdvancedExportInterface
+   * @property {(logs: LogRecord[], filename?: string) => void} exportAsJSON
+   * @property {(logs: LogRecord[], filename?: string) => void} exportAsCSV
+   * @property {(logs: LogRecord[], filename?: string) => void} exportAsMarkdown
+   */
+
+  /**
+   * Export logs as a JSON file.
+   * @param {LogRecord[]|any[]} logs
+   * @param {string} [filename='parser_logs.json']
+   * @returns {void}
+   */
   function exportAsJSON(logs, filename = 'parser_logs.json') {
     const data = JSON.stringify(logs, null, 2);
     downloadBlob(data, filename, 'application/json');
   }
   
+  /* LogRecord typedef consolidated at top of file. */
+
+  /**
+   * Export logs as CSV.
+   * @param {LogRecord[]} logs
+   * @param {string} [filename='parser_logs.csv']
+   * @returns {void}
+   */
   function exportAsCSV(logs, filename = 'parser_logs.csv') {
+    /** @type {string[]} */
     const headers = ['Timestamp', 'Level', 'Type', 'Message', 'Session ID'];
+    /** @type {Array<Array<string>>} */
     const rows = logs.map(log => [
       new Date(log.timestamp).toISOString(),
       log.level || '',
@@ -990,18 +1665,47 @@ const AdvancedExport = (() => {
     downloadBlob(csv, filename, 'text/csv');
   }
   
+  /**
+   * @typedef {Object} MarkdownExportEntry
+   * @property {number|string} timestamp
+   * @property {string} [level]
+   * @property {string} [type]
+   * @property {string} [message]
+   * @property {string} [sessionId]
+   */
+
+  /**
+   * Export logs as a Markdown file.
+   * @param {MarkdownExportEntry[]|any[]} logs
+   * @param {string} [filename='parser_logs.md']
+   * @returns {void}
+   */
   function exportAsMarkdown(logs, filename = 'parser_logs.md') {
     const header = '# Parser Logs\n\n';
     const timestamp = `**Exported:** ${new Date().toISOString()}\n`;
     const count = `**Total Logs:** ${logs.length}\n\n`;
     const divider = '---\n\n';
     
-    const entries = logs.map(log => {
+    /**
+     * @typedef {Object} MarkdownExportLog
+     * @property {number} timestamp
+     * @property {string} level
+     * @property {string} type
+     * @property {string} message
+     * @property {string|null} sessionId
+     */
+
+    /** @type {string} */
+    const entries = logs.map(/** @param {MarkdownExportLog} log */ (log) => {
+      /** @type {string} */
       const time = new Date(log.timestamp).toLocaleString();
+      /** @type {string} */
       const level = log.level || 'INFO';
+      /** @type {string} */
       const type = log.type || 'info';
+      /** @type {string} */
       const msg = log.message || '';
-      
+
       return `### ${level} - ${type}\n**Time:** ${time}\n**Session:** ${log.sessionId || 'N/A'}\n\n${msg}\n\n`;
     }).join(divider);
     
@@ -1009,8 +1713,19 @@ const AdvancedExport = (() => {
     downloadBlob(markdown, filename, 'text/markdown');
   }
   
+  /**
+   * @typedef {string|Blob|ArrayBuffer|ArrayBufferView|Uint8Array|Int8Array|Uint8ClampedArray|Int16Array|Uint16Array|Int32Array|Uint32Array|Float32Array|Float64Array} BlobContent
+   *
+   * @callback DownloadBlobFn
+   * @param {BlobContent} content - The content to write into the blob.
+   * @param {string} filename - Suggested filename for download.
+   * @param {string} mimeType - MIME type for the blob (e.g., "application/json").
+   * @returns {void}
+   */
+
+  /** @type {DownloadBlobFn} */
   function downloadBlob(content, filename, mimeType) {
-    const blob = new Blob([content], { type: mimeType });
+    const blob = new Blob([/** @type {any} */ (content)], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1064,9 +1779,11 @@ const KeyboardGuide = (() => {
       </div>
     `;
     document.body.appendChild(modal);
-    modal.querySelector('.modal-close').onclick = () => modal.remove();
+    const closeBtn = modal.querySelector('.modal-close');
+    if (closeBtn instanceof HTMLElement) closeBtn.addEventListener('click', () => modal.remove());
     modal.addEventListener('click', (e) => {
-      if (e.target === modal) modal.remove();
+      const tgt = (e && e.target && (e.target instanceof Node)) ? e.target : null;
+      if (tgt === modal) modal.remove();
     });
   }
   
@@ -1101,6 +1818,7 @@ let selectedPromptOptions = new Set(); // Multi-select tracking
 // ===== DIAGNOSTIC: Log all Socket.IO events =====
 const allEventsReceivedBySocket = [];
 const oneventOrig = socket.onevent;
+/** @param {any} packet */
 socket.onevent = function(packet) {
   const eventName = packet.data[0];
   const eventData = packet.data[1];
@@ -1128,7 +1846,8 @@ socket.onevent = function(packet) {
 window.debugSocketIO = {
   getAllEvents: () => allEventsReceivedBySocket,
   getLastEvent: () => allEventsReceivedBySocket[allEventsReceivedBySocket.length - 1],
-  getEventsByName: (name) => allEventsReceivedBySocket.filter(e => e.event === name),
+  // getEventsByName consolidated at top-level typed helper
+  getEventsByName: /** @type {(name: string) => Array<{ timestamp: string; event: string; data: any }>} */ ((name) => allEventsReceivedBySocket.filter(e => e.event === name)),
   getCurrentSession: () => currentSessionId,
   getModalState: () => ({
     promptTitle: document.getElementById('promptTitle')?.textContent,
@@ -1142,22 +1861,31 @@ socket.on('connect', () => {
   console.log('[Socket.IO] Connected:', socket.id);
 });
 
-socket.on('session_id', (data) => {
+/**
+ * @typedef {{ session_id: string }} SessionIdPayload
+ */
+
+socket.on('session_id', /** @param {SessionIdPayload} data */ (data) => {
+  /** @type {string} */
   currentSessionId = data.session_id;
   console.log('[Session] ID:', currentSessionId);
   updateSessionsList();
   
   // Restore Direct URL draft for this session if exists
   AdvancedFeatures.currentSessionId = currentSessionId;
+  /** @type {string|undefined} */
   const savedDraft = AdvancedFeatures.directUrlDraftBySession.get(currentSessionId);
+  /** @type {HTMLElement | null} */
   const textarea = document.getElementById('directUrlTextarea');
-  if (textarea && savedDraft) {
+  if (textarea instanceof HTMLTextAreaElement && savedDraft) {
     textarea.value = savedDraft;
     parseDirectUrlField();
   }
 });
 
-socket.on('parser_output', (data) => {
+/* ParserOutputContext/ParserOutputEvent typedefs consolidated at top of file. */
+
+socket.on('parser_output', /** @param {ParserOutputEvent} data */ (data) => {
   ErrorBoundary.safeAsync(async () => {
     // DEBUG: Log all incoming parser_output events
     console.debug('[Socket.IO parser_output]', {
@@ -1178,38 +1906,82 @@ socket.on('parser_output', (data) => {
   }, 'socket:parser_output');
 });
 
-socket.on('contest_options', (data) => {
-  ErrorBoundary.safeExecute(() => {
-    console.debug('[Socket.IO contest_options]', {
-      optionsCount: data?.options?.length,
-      optionsSample: data?.options?.slice(0, 3),
-      context: data?.context,
-      fullData: data
-    });
-    handleContestOptions(data);
-  }, 'socket:contest_options');
+/* ContestOption/ContestOptionsPayload typedefs consolidated at top of file. */
+
+socket.on('contest_options', /** @param {ContestOptionsPayload} data */ (data) => {
+  ErrorBoundary.safeExecute(
+    /** @type {() => void} */ (() => {
+      console.debug('[Socket.IO contest_options]', {
+        optionsCount: data?.options?.length,
+        optionsSample: data?.options?.slice(0, 3),
+        context: data?.context,
+        fullData: data
+      });
+      handleContestOptions(data);
+    }),
+    'socket:contest_options'
+  );
 });
 
-socket.on('session_state', (data) => {
-  ErrorBoundary.safeExecute(() => {
-    console.log('[Session State]', data);
-    updateProgressCard(data);
-    updateSessionsList();
-  }, 'socket:session_state');
+/**
+ * @typedef {Object<string, any>} SessionMetadata
+ *
+ * @typedef {Object} SessionStatePayload
+ * @property {string} [session_id]
+ * @property {string} [state]
+ * @property {string} [phase]
+ * @property {SessionMetadata} [metadata]
+ * @property {number|string} [timestamp]
+ */
+socket.on('session_state', /** @param {SessionStatePayload} data */ (data) => {
+  ErrorBoundary.safeExecute(
+    /** @type {() => void} */ (() => {
+      console.log('[Session State]', data);
+      updateProgressCard(data);
+      updateSessionsList();
+    }),
+    'socket:session_state'
+  );
 });
 
-socket.on('session_list', (data) => {
+/**
+ * @typedef {Object} SessionSummary
+ * @property {string} session_id
+ * @property {string} [state]
+ * @property {string} [phase]
+ * @property {Object.<string, any>} [metadata]
+ */
+
+/**
+ * @typedef {Object} SessionListPayload
+ * @property {SessionSummary[]} [sessions]
+ */
+
+socket.on('session_list', /** @param {SessionListPayload} data */ (data) => {
   ErrorBoundary.safeExecute(() => {
     updateSessionsList(data.sessions);
   }, 'socket:session_list');
 });
 
 // Run lifecycle events: started / progress / summary
-socket.on('run_started', (data) => {
+/**
+ * @typedef {Object} RunStartedPayload
+ * @property {string} session_id
+ * @property {number} [timestamp]
+ * @property {number} [total_entries]
+ * @property {Object.<string, any>} [metadata]
+ */
+
+/**
+ * @typedef {HTMLDivElement & { id: string, className: string }} RunSummaryPanelElement
+ */
+
+socket.on('run_started', /** @param {RunStartedPayload} data */ (data) => {
   ErrorBoundary.safeExecute(() => {
     console.info('[Run] started', data);
     showToast(`Run started (${data.session_id})`, 'info');
-    let panel = document.getElementById('runSummaryPanel');
+    /** @type {RunSummaryPanelElement | null} */
+    let panel = /** @type {RunSummaryPanelElement | null} */ (document.getElementById('runSummaryPanel'));
     if (!panel) {
       panel = document.createElement('div');
       panel.id = 'runSummaryPanel';
@@ -1221,20 +1993,81 @@ socket.on('run_started', (data) => {
   }, 'socket:run_started');
 });
 
-socket.on('run_progress', (data) => {
+/**
+ * @typedef {Object} RunProgressPayload
+ * @property {string} session_id
+ * @property {number} [total_entries]
+ * @property {number} [processed]
+ * @property {Object<string, number>} [status_counts]
+ * @property {string} [status]
+ */
+
+socket.on('run_progress', /** @param {RunProgressPayload} data */ (data) => {
   ErrorBoundary.safeExecute(() => {
     // data: { session_id, total_entries, processed, status_counts }
-    let panel = document.getElementById('runSummaryPanel');
+    /** @type {HTMLElement | null} */
+    let panel = /** @type {HTMLElement | null} */ (document.getElementById('runSummaryPanel'));
     if (!panel) return;
-    const pct = data.total_entries ? Math.round((data.processed / data.total_entries) * 100) : 0;
-    panel.innerHTML = `<strong>Run:</strong> ${escapeHtml(data.session_id)} — ${pct}% (${data.processed}/${data.total_entries})`;
+    /** @type {number} */
+    const total = Number(data.total_entries || 0);
+    /** @type {number} */
+    const processed = Number(data.processed || 0);
+    /** @type {number} */
+    const pct = total ? Math.round((processed / total) * 100) : 0;
+    panel.innerHTML = `<strong>Run:</strong> ${escapeHtml(data.session_id)} — ${pct}% (${processed}/${total})`;
   }, 'socket:run_progress');
 });
 
-socket.on('run_summary', (data) => {
+/**
+ * @typedef {Object} RunErrorEntry
+ * @property {string} [url]
+ * @property {string|number} [status]
+ * @property {string} [error]
+ */
+
+/**
+ * @typedef {Object} RunConfidenceMetrics
+ * @property {number} [avg]
+ * @property {number} [min]
+ * @property {number} [max]
+ * @property {number} [median]
+ * @property {number} [count]
+ */
+
+/**
+ * @typedef {Object} FlaggedDetail
+ * @property {string} [url]
+ * @property {string} [status]
+ * @property {string|string[]} [reasons]
+ * @property {Object<string, any>} [metadata_excerpt]
+ * @property {number|string} [timestamp]
+ */
+
+/**
+ * @typedef {Object} RunSummary
+ * @property {Object.<string, number>} [status_counts]
+ * @property {number} [total_entries]
+ * @property {number} [flagged_count]
+ * @property {RunConfidenceMetrics} [confidence_metrics]
+ * @property {RunErrorEntry[]} [errors]
+ * @property {FlaggedDetail[]} [flagged_details]
+ */
+
+/**
+ * @typedef {Object} RunSummaryPayload
+ * @property {string} session_id
+ * @property {number} [timestamp]
+ * @property {RunSummary} [summary]
+ * @property {string} [report_path]
+ */
+
+socket.on('run_summary', /**
+ * @param {RunSummaryPayload} data
+ */ (data) => {
   ErrorBoundary.safeExecute(() => {
     console.info('[Run] summary', data);
     showToast('Run completed', 'success');
+    /** @type {HTMLElement | null} */
     let panel = document.getElementById('runSummaryPanel');
     if (!panel) {
       panel = document.createElement('div');
@@ -1243,10 +2076,13 @@ socket.on('run_summary', (data) => {
       const container = document.getElementById('runControls') || document.body;
       container.prepend(panel);
     }
+    /** @type {RunSummary} */
     const summary = data.summary || {};
+    /** @type {Object.<string, number>} */
     const counts = summary.status_counts || {};
+    /** @type {number} */
     const total = summary.total_entries || 0;
-    let html = `<strong>Run:</strong> ${escapeHtml(data.session_id)} — <em>completed</em> <span class="small muted">(${new Date(data.timestamp*1000).toLocaleString()})</span>`;
+    let html = `<strong>Run:</strong> ${escapeHtml(data.session_id)} — <em>completed</em> <span class="small muted">(${new Date((data.timestamp || Date.now())*1000).toLocaleString()})</span>`;
     html += `<div class="mt-2">Total: ${total} — `;
     html += Object.entries(counts).map(([k,v])=>`${escapeHtml(k)}: ${v}`).join(' · ');
     html += `</div>`;
@@ -1255,22 +2091,25 @@ socket.on('run_summary', (data) => {
       html += `<div class="mt-1">Flagged for review: ${Number(summary.flagged_count)}</div>`;
     }
     // confidence metrics
+    /** @type {RunConfidenceMetrics} */
     const conf = summary.confidence_metrics || {};
     if (conf && conf.count) {
       html += `<div class="mt-1">Confidence — avg: ${Number(conf.avg).toFixed(2)} min: ${Number(conf.min).toFixed(2)} max: ${Number(conf.max).toFixed(2)} median: ${Number(conf.median).toFixed(2)} (n=${conf.count})</div>`;
     }
     // errors list (collapsible)
+    /** @type {RunErrorEntry[]} */
     const errors = summary.errors || [];
     if (Array.isArray(errors) && errors.length) {
       html += `<div class="mt-2"><details><summary>Errors (${errors.length})</summary><ul class="small">`;
       for (const e of errors.slice(0, 20)) {
         const msg = e.error ? ` — ${escapeHtml(e.error)}` : '';
-        html += `<li>${escapeHtml(e.url || e['url'] || String(e))} (${escapeHtml(e.status || '')})${msg}</li>`;
+        html += `<li>${escapeHtml(e.url || e['url'] || String(e))} (${escapeHtml(String(e.status || ''))})${msg}</li>`;
       }
       if (errors.length > 20) html += `<li class="muted small">...and ${errors.length-20} more</li>`;
       html += `</ul></details></div>`;
     }
     // flagged_details (expanded, limited view)
+    /** @type {FlaggedDetail[]} */
     const flagged = summary.flagged_details || [];
     if (Array.isArray(flagged) && flagged.length) {
       // store last flagged set for modal access
@@ -1280,7 +2119,7 @@ socket.on('run_summary', (data) => {
       for (const f of flagged.slice(0, 20)) {
         const reasons = Array.isArray(f.reasons) ? f.reasons.join(', ') : (f.reasons || '');
         const meta = f.metadata_excerpt ? escapeHtml(JSON.stringify(f.metadata_excerpt)) : '';
-        const when = f.timestamp ? ` (${escapeHtml(f.timestamp)})` : '';
+        const when = f.timestamp ? ` (${escapeHtml(String(f.timestamp))})` : '';
         const urlText = escapeHtml(f.url || f["url"] || '');
         // link to report if available
         let reportLink = '';
@@ -1319,7 +2158,13 @@ socket.on('run_summary', (data) => {
   }, 'socket:run_summary');
 });
 
-socket.on('session_cloned', (data) => {
+/**
+ * @typedef {Object} SessionClonedPayload
+ * @property {string} [old_session]  // original session id (optional)
+ * @property {string} new_session    // newly created session id
+ */
+
+socket.on('session_cloned', /** @param {SessionClonedPayload} data */ (data) => {
   ErrorBoundary.safeExecute(() => {
     console.log('[Session Cloned]', data);
     showToast(`Session cloned: ${data.new_session}`, 'success');
@@ -1327,7 +2172,14 @@ socket.on('session_cloned', (data) => {
   }, 'socket:session_cloned');
 });
 
-socket.on('session_deleted', (data) => {
+/**
+ * @typedef {Object} SessionDeletedPayload
+ * @property {string} [session_id]    // Logical session id that was deleted
+ * @property {string} [reason]        // Optional human-readable reason
+ * @property {Object.<string, any>} [metadata] // Additional payload metadata
+ */
+
+socket.on('session_deleted', /** @param {SessionDeletedPayload} data */ (data) => {
   ErrorBoundary.safeExecute(() => {
     console.log('[Session Deleted]', data);
     showToast('Session deleted', 'info');
@@ -1404,9 +2256,31 @@ const PendingOverlay = (() => {
 const filterPresets = (() => {
   const STORAGE_KEY = 'logFilterPresets';
   
+  /**
+   * @typedef {Object} FilterState
+   * @property {string} [search]
+   * @property {string} [level]
+   * @property {string} [type]
+   *
+   * @typedef {Object} PresetEntry
+   * @property {string} search
+   * @property {string} level
+   * @property {string} type
+   * @property {number} timestamp
+   *
+   * @typedef {Object.<string, PresetEntry>} PresetMap
+   */
+
+  /**
+   * Save a named filter preset to localStorage.
+   * @param {string} name
+   * @param {FilterState} filters
+   * @returns {void}
+   */
   function save(name, filters) {
     if (!name || !filters) return;
-    const presets = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    /** @type {PresetMap} */
+    const presets = /** @type {PresetMap} */ (JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'));
     presets[name] = {
       search: filters.search || '',
       level: filters.level || '',
@@ -1417,13 +2291,25 @@ const filterPresets = (() => {
     updatePresetDropdown();
   }
   
+  /**
+   * Load a named preset from localStorage.
+   * @param {string} name
+   * @returns {PresetEntry|null}
+   */
   function load(name) {
-    const presets = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    /** @type {PresetMap} */
+    const presets = /** @type {PresetMap} */ (JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'));
     return presets[name] || null;
   }
   
+  /**
+   * Delete a named preset.
+   * @param {string} name
+   * @returns {void}
+   */
   function deletePreset(name) {
-    const presets = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    /** @type {PresetMap} */
+    const presets = /** @type {PresetMap} */ (JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'));
     delete presets[name];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
     updatePresetDropdown();
@@ -1447,13 +2333,31 @@ const filterPresets = (() => {
     select.innerHTML = options.join('');
   }
   
+  /**
+   * @typedef {Object} FilterPresetEntry
+   * @property {string} [search]
+   * @property {string} [level]
+   * @property {string} [type]
+   * @property {number} [timestamp]
+   */
+
+  /**
+   * Apply a named preset from storage to the UI filters.
+   * @param {string} name
+   * @returns {void}
+   */
   function applyPreset(name) {
-    const preset = load(name);
+    /** @type {FilterPresetEntry|null} */
+    const preset = /** @type {FilterPresetEntry|null} */ (load(name));
     if (!preset) return;
     state.filters = { ...state.filters, ...preset };
     renderLogs();
-    if ($('#logSearchInput')) $('#logSearchInput').value = preset.search || '';
-    if ($('#logLevelFilter')) $('#logLevelFilter').value = preset.level || '';
+    /** @type {HTMLElement | null} */
+    const logSearchInputEl = /** @type {HTMLElement | null} */ (document.getElementById('logSearchInput'));
+    if (logSearchInputEl instanceof HTMLInputElement || logSearchInputEl instanceof HTMLTextAreaElement) logSearchInputEl.value = preset.search || '';
+    /** @type {HTMLElement | null} */
+    const logLevelFilterEl = /** @type {HTMLElement | null} */ (document.getElementById('logLevelFilter'));
+    if (logLevelFilterEl instanceof HTMLInputElement || logLevelFilterEl instanceof HTMLSelectElement || logLevelFilterEl instanceof HTMLTextAreaElement) logLevelFilterEl.value = preset.level || '';
   }
   
   return { save, load, deletePreset, list, updatePresetDropdown, applyPreset };
@@ -1463,18 +2367,59 @@ const filterPresets = (() => {
 // Utility Functions
 // ============================================
 
+/**
+ * @typedef {HTMLElement | SVGElement | null} DomElement
+ *
+ * Query helper interfaces
+ * @typedef {(selector: string) => DomElement} QuerySelectorFn
+ */
+
+/**
+ * Lightweight single-element selector helper.
+ * Returns the first Element matching the selector or null when not found.
+ * Kept minimal to avoid changing runtime behavior.
+ * @type {QuerySelectorFn}
+ * @param {string} selector
+ * @returns {DomElement}
+ */
 function $(selector) {
   return document.querySelector(selector);
 }
 
+/**
+ * @template {Element} T
+ * @typedef {(selector: string) => NodeListOf<T>} QuerySelectorAllFn
+ *
+ * Lightweight multi-element selector helper.
+ * Returns a live NodeList of matching Elements or an empty NodeList when none found.
+ * Keeping a generic T allows better editor intellisense when used with specific element casts.
+ *
+ * @type {QuerySelectorAllFn<Element>}
+ * @param {string} selector
+ * @returns {NodeListOf<Element>}
+ */
 function $$(selector) {
   return document.querySelectorAll(selector);
 }
 
+/**
+ * @typedef {'info'|'success'|'warning'|'error'} ToastType
+ * @typedef {HTMLElement & { _timeoutId?: number | null }} ToastElement
+ */
+
+/**
+ * Show a transient toast notification.
+ * @param {string} message
+ * @param {ToastType} [type='info']
+ * @param {number} [duration=CONFIG.toastDuration]
+ * @returns {void}
+ */
 function showToast(message, type = 'info', duration = CONFIG.toastDuration) {
-  const toast = document.createElement('div');
+  /** @type {ToastElement} */
+  const toast = /** @type {ToastElement} */ (document.createElement('div'));
   toast.className = `toast ${type} fade-in`;
   
+  /** @type {Record<ToastType, string>} */
   const icons = {
     info: 'ℹ️',
     success: '✓',
@@ -1488,16 +2433,27 @@ function showToast(message, type = 'info', duration = CONFIG.toastDuration) {
     <button class="toast-close">×</button>
   `;
   
-  $('#toastContainer').appendChild(toast);
+  const container = /** @type {HTMLElement | null} */ ($('#toastContainer'));
+  if (container) container.appendChild(toast);
+  else document.body.appendChild(toast);
+
+  const closeBtn = toast.querySelector('.toast-close');
+  if (closeBtn instanceof HTMLElement) {
+    closeBtn.addEventListener('click', () => {
+      toast.remove();
+    });
+  }
   
-  toast.querySelector('.toast-close').addEventListener('click', () => {
-    toast.remove();
-  });
-  
-  setTimeout(() => {
-    toast.style.animation = 'slideOutRight 300ms ease';
-    setTimeout(() => toast.remove(), 300);
-  }, duration);
+  // Ensure removal after duration (store timeout id in case future code wants to clear)
+  const toId = /** @type {TimeoutId} */ (/** @type {any} */ (setTimeout(() => {
+    try {
+      toast.style.animation = 'slideOutRight 300ms ease';
+      setTimeout(() => toast.remove(), 300);
+    } catch (e) {
+      try { toast.remove(); } catch (err) {}
+    }
+  }, duration)));
+  toast._timeoutId = toId;
 }
 
 function escapeHtml(text) {
@@ -1511,19 +2467,59 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (m) => map[m]);
 }
 
+/**
+ * @typedef {'B'|'KB'|'MB'|'GB'} ByteUnit
+ *
+ * @typedef {Object} ByteFormatter
+ * @property {(bytes: number) => string} formatBytes
+ */
+
+/**
+ * Format a byte count into a human-readable string.
+ * @type {(bytes: number) => string}
+ * @param {number} bytes
+ * @returns {string}
+ */
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B';
+  /** @type {number} */
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
+  /** @type {ByteUnit[]} */
+  const sizes = /** @type {ByteUnit[]} */ (['B', 'KB', 'MB', 'GB']);
+  /** @type {number} */
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+/**
+ * @typedef {string|number|Date} DateInput
+ */
+
+/**
+ * Format a date-like value into a locale string.
+ * @param {DateInput} date
+ * @returns {string}
+ */
 function formatDate(date) {
   const d = new Date(date);
   return d.toLocaleString();
 }
 
+/**
+ * @typedef {'high-confidence'|'medium-confidence'|'low-confidence'} ConfidenceClass
+ */
+
+/**
+ * Classifier interface for confidence-based labels.
+ * @typedef {Object} ConfidenceClassifier
+ * @property {(confidence: number) => ConfidenceClass} classify
+ */
+
+/**
+ * Map a numeric confidence into a CSS classification string.
+ * @param {number} confidence
+ * @returns {ConfidenceClass}
+ */
 function parseConfidenceClass(confidence) {
   if (confidence >= 90) return 'high-confidence';
   if (confidence >= 70) return 'medium-confidence';
@@ -1534,14 +2530,22 @@ function parseConfidenceClass(confidence) {
 // Log Management
 // ============================================
 
+/* ParserOutputEvent/LogRecord typedefs consolidated at top of file. */
+
+/**
+ * Add a normalized log entry to the UI buffer.
+ * @param {ParserOutputEvent} logObj
+ * @returns {void}
+ */
 function addLog(logObj) {
   ErrorBoundary.safeExecute(() => {
+    /** @type {LogRecord} */
     const normalized = {
-      timestamp: logObj.timestamp || Date.now(),
-      level: logObj.level || 'INFO',
-      type: logObj.type || 'info',
-      message: logObj.message || '',
-      sessionId: logObj.session_id || currentSessionId,
+      timestamp: Number(logObj.timestamp || Date.now()),
+      level: String(logObj.level || 'INFO'),
+      type: String(logObj.type || 'info'),
+      message: String(logObj.message || ''),
+      sessionId: logObj.session_id || currentSessionId || null,
     };
     
     state.logs.push(normalized);
@@ -1560,7 +2564,9 @@ function addLog(logObj) {
     // Auto-scroll if enabled
     if (state.autoScroll) {
       const logOutput = $('#logOutput');
-      logOutput.scrollTop = logOutput.scrollHeight;
+      try {
+        if (logOutput) logOutput.scrollTop = logOutput.scrollHeight;
+      } catch (e) { /* ignore scroll errors */ }
     }
   }, 'addLog');
 }
@@ -1570,9 +2576,9 @@ function updateLogCounts() {
   const warnings = state.logs.filter(l => l.level === 'WARNING').length;
   const infos = state.logs.filter(l => l.level === 'INFO').length;
   
-  $('#errorCount').textContent = errors;
-  $('#warningCount').textContent = warnings;
-  $('#infoCount').textContent = infos;
+  $('#errorCount').textContent = String(errors);
+  $('#warningCount').textContent = String(warnings);
+  $('#infoCount').textContent = String(infos);
 }
 
 function renderLogs() {
@@ -1611,6 +2617,13 @@ function renderLogs() {
 // Results Management (SheetJS Integration)
 // ============================================
 
+/* Result typedef consolidated at top of file. */
+
+/**
+ * Create a result card HTML fragment for the given result.
+ * @param {Result} result
+ * @returns {string}
+ */
 function createResultCard(result) {
   const confClass = parseConfidenceClass(result.confidence || 0);
   
@@ -1638,9 +2651,9 @@ function createResultCard(result) {
       <div class="card-preview">${result.preview || 'No preview available'}</div>
       
       <div class="card-actions">
-        <button class="btn-sm" onclick="previewFile('${result.id}')">👁 Preview</button>
-        <button class="btn-sm" onclick="downloadFile('${result.id}')">⬇ Download</button>
-        <input type="checkbox" class="card-checkbox" onchange="toggleSelectResult('${result.id}')">
+        <button class="btn-sm btn-preview" data-result-id="${result.id}">👁 Preview</button>
+        <button class="btn-sm btn-download" data-result-id="${result.id}">⬇ Download</button>
+        <input type="checkbox" class="card-checkbox" data-result-id="${result.id}" id="select-result-${result.id}" name="select-result-${result.id}">
       </div>
     </div>
   `;
@@ -1659,7 +2672,82 @@ function renderResults() {
     }
     return true;
   });
+  // Attach non-inline handlers to comply with CSP (avoid inline attributes)
+  attachResultHandlers();
   
+
+function attachResultHandlers() {
+  // Preview buttons
+  $$('.btn-preview').forEach(btn => {
+    const prev = /** @type {any} */ ((/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.getBound ? (/** @type {any} */ (window)).__tl_helpers.getBound(btn, '_boundPreview') : null);
+    if (prev && btn.removeEventListener) btn.removeEventListener('click', prev);
+    const id = btn.getAttribute('data-result-id');
+    /** @type {ClickHandler} */
+    const handler = /** @type {ClickHandler} */ (function(e) {
+      /** @type {Event} */ (e);
+      try { e.preventDefault(); } catch (/** @type {any} */ _){ }
+      previewFile(id);
+    });
+    btn.addEventListener('click', handler);
+    if ((/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.setBound) {
+      (/** @type {any} */ (window)).__tl_helpers.setBound(btn, '_boundPreview', handler);
+    } else {
+      /** @type {any} */ (btn)._boundPreview = handler;
+    }
+  });
+  // Download buttons
+  $$('.btn-download').forEach(btn => {
+    const prev = /** @type {any} */ ((/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.getBound ? (/** @type {any} */ (window)).__tl_helpers.getBound(btn, '_boundDownload') : null);
+    if (prev && btn.removeEventListener) btn.removeEventListener('click', prev);
+    const id = btn.getAttribute('data-result-id');
+    /** @type {ClickHandler} */
+    const downloadHandler = /** @type {ClickHandler} */ (function(e) {
+      /** @type {Event} */ (e);
+      try { e.preventDefault(); } catch (/** @type {any} */ _) { /* ignore */ }
+      downloadFile(/** @type {string} */ (id));
+    });
+    btn.addEventListener('click', downloadHandler);
+    if ((/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.setBound) {
+      (/** @type {any} */ (window)).__tl_helpers.setBound(btn, '_boundDownload', downloadHandler);
+    } else {
+      /** @type {any} */ (btn)._boundDownload = downloadHandler;
+    }
+  });
+  // Checkboxes
+  $$('.card-checkbox').forEach(cb => {
+    const id = cb.getAttribute('data-result-id');
+    /**
+     * @typedef {HTMLElement & { _boundChange?: EventListenerOrEventListenerObject }} ResultCardCheckbox
+     * Represents a checkbox element within a result card with an optional stored listener reference.
+     */
+
+    /** @type {ResultCardCheckbox} */
+    const cbEl = /** @type {ResultCardCheckbox} */ (cb);
+
+    /** @type {string} */
+    const checkboxResultId = String(id);
+    /**
+     * @typedef {(e: Event) => void} ChangeHandler
+     */
+
+    /** @type {ChangeHandler} */
+    const handler = /** @type {ChangeHandler} */ (function(e) {
+      // Normalize event and prevent default when available
+      try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (err) {}
+      try { toggleSelectResult(id); } catch (err) { /* swallow */ }
+    });
+    const prevCb = /** @type {any} */ ((/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.getBound ? (/** @type {any} */ (window)).__tl_helpers.getBound(cb, '_boundChange') : null);
+    if (prevCb && cb.removeEventListener) cb.removeEventListener('change', prevCb);
+    cb.addEventListener('change', handler);
+    if ((/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.setBound) {
+      (/** @type {any} */ (window)).__tl_helpers.setBound(cb, '_boundChange', handler);
+    } else {
+      /** @type {any} */ (cb)._boundChange = handler;
+    }
+    // Initialize checked state from `state.selectedResults` (guard element type)
+    try { if (cb instanceof HTMLInputElement) cb.checked = state.selectedResults.has(id); } catch (e) {}
+  });
+}
   const grid = $('#resultsGrid');
   const emptyState = $('#emptyState');
   if (filtered.length === 0) {
@@ -1678,48 +2766,90 @@ function renderResults() {
 // File Preview Modal with SheetJS
 // ============================================
 
+/* Result typedef consolidated at top of file. */
+
+/**
+ * Preview a file by result id.
+ * @param {string} resultId
+ * @returns {void}
+ */
 function previewFile(resultId) {
-  const result = state.results.find(r => r.id === resultId);
+  /** @type {Result|undefined} */
+  const result = /** @type {Result|undefined} */ (state.results.find(r => r.id === resultId));
   if (!result) return;
   
   state.currentFile = result;
   
   // Update modal header
-  $('#previewTitle').textContent = `Preview: ${result.name}`;
+  const previewTitle = /** @type {HTMLElement|null} */ ($('#previewTitle'));
+  if (previewTitle) previewTitle.textContent = `Preview: ${result.name}`;
   
   // Load and parse file based on type
   loadFilePreview(result);
   
   // Show modal
-  const previewModal = $('#previewModal');
+  const previewModal = /** @type {HTMLElement|null} */ ($('#previewModal'));
   if (previewModal) previewModal.classList.remove('hidden');
 }
 
+/**
+ * @typedef {Object} FilePreviewResult
+ * @property {string} id
+ * @property {string} name
+ * @property {string} type
+ * @property {number} [rows]
+ * @property {number} [columns]
+ * @property {number} [confidence]
+ * @property {string} [preview]
+ * @property {string} [state]
+ * @property {string} [county]
+ * @property {string} [handler]
+ * @property {number} [timestamp]
+ */
+
+/**
+ * Load and display a preview for a given result file.
+ * @param {FilePreviewResult} result
+ * @returns {void}
+ */
 function loadFilePreview(result) {
   // In real implementation, fetch the actual file
   // For now, show sample data
-  
+
   if (result.type === 'csv' || result.type === 'xlsx') {
     displayTablePreview(result);
   } else if (result.type === 'json') {
     displayJsonPreview(result);
   }
-  
+
   displayFileInfo(result);
 }
 
+/**
+ * @typedef {string[]} TableRow
+ * @typedef {TableRow[]} TableData
+ */
+
+/**
+ * Display a simple table preview for a result.
+ * @param {FilePreviewResult} result
+ * @returns {void}
+ */
 function displayTablePreview(result) {
   // Simulated data - in production, load actual file
+  /** @type {TableData} */
   const sampleData = [
     ['Candidate', 'Votes', 'Percentage', 'Party'],
     ['Alice Johnson', '45234', '52.3%', 'Democratic'],
     ['Bob Smith', '41123', '47.7%', 'Republican'],
   ];
   
-  const table = $('#previewTable');
+  /** @type {HTMLTableElement} */
+  const table = /** @type {HTMLTableElement} */ ($('#previewTable'));
   table.innerHTML = '';
   
   // Headers
+  /** @type {HTMLTableSectionElement} */
   const thead = document.createElement('thead');
   thead.innerHTML = `
     <tr>
@@ -1729,6 +2859,7 @@ function displayTablePreview(result) {
   table.appendChild(thead);
   
   // Body
+  /** @type {HTMLTableSectionElement} */
   const tbody = document.createElement('tbody');
   sampleData.slice(1, CONFIG.maxPreviewRows + 1).forEach(row => {
     const tr = document.createElement('tr');
@@ -1738,8 +2869,20 @@ function displayTablePreview(result) {
   table.appendChild(tbody);
 }
 
+/**
+ * @typedef {{ name: string, votes: number }} Candidate
+ * @typedef {{ contest: string, candidates: Candidate[] }} JsonPreviewData
+ */
+
+/**
+ * Display a JSON preview for a result.
+ * @param {FilePreviewResult} result
+ * @returns {void}
+ */
 function displayJsonPreview(result) {
-  const tabContent = $('#tabPreview');
+  /** @type {HTMLElement | null} */
+  const tabContent = /** @type {HTMLElement | null} */ ($('#tabPreview'));
+  /** @type {JsonPreviewData} */
   const sampleJson = {
     contest: 'County Attorney',
     candidates: [
@@ -1747,22 +2890,40 @@ function displayJsonPreview(result) {
       { name: 'Bob Smith', votes: 41123 },
     ],
   };
-  
-  const pre = document.createElement('pre');
+
+  /** @type {HTMLPreElement} */
+  const pre = /** @type {HTMLPreElement} */ (document.createElement('pre'));
   pre.textContent = JSON.stringify(sampleJson, null, 2);
   pre.style.background = 'var(--bg-primary)';
   pre.style.padding = 'var(--spacing-lg)';
   pre.style.borderRadius = 'var(--radius-md)';
   pre.style.overflow = 'auto';
-  
-  tabContent.innerHTML = '';
-  tabContent.appendChild(pre);
+
+  if (tabContent) {
+    tabContent.innerHTML = '';
+    tabContent.appendChild(pre);
+  }
 }
 
+/**
+ * @typedef {Object} FileInfo
+ * @property {string} name
+ * @property {number} [rows]
+ * @property {number} [columns]
+ * @property {number} [confidence]
+ * @property {string} [handler]
+ * @property {number|string|Date} [timestamp]
+ */
+
+/**
+ * Update file info panel with metadata from a result.
+ * @param {FileInfo} result
+ * @returns {void}
+ */
 function displayFileInfo(result) {
   $('#infoFileName').textContent = result.name;
   $('#infoRows').textContent = (result.rows || 0).toLocaleString();
-  $('#infoColumns').textContent = result.columns || 'N/A';
+  $('#infoColumns').textContent = String(result.columns ?? 'N/A');
   $('#infoConfidence').textContent = (result.confidence || 0).toFixed(1) + '%';
   $('#infoHandler').textContent = result.handler || 'unknown';
   $('#infoTimestamp').textContent = formatDate(result.timestamp || Date.now());
@@ -1793,36 +2954,54 @@ function updateSessionsList(sessions = state.sessions) {
     </div>
   `).join('');
   
-  $('#sessionCount').textContent = state.sessions.length;
+  $('#sessionCount').textContent = String(state.sessions.length);
 }
 
+/**
+ * @typedef {Object} ProgressSessionData
+ * @property {string} [session_id]
+ * @property {string} [state]
+ * @property {string} [phase]
+ */
+
+/**
+ * Update the small progress card UI with session progress.
+ * @param {ProgressSessionData | null | undefined} sessionData
+ * @returns {void}
+ */
 function updateProgressCard(sessionData) {
-  const progressCard = $('#progressCard');
+  /** @type {HTMLElement | null} */
+  const progressCard = /** @type {HTMLElement | null} */ ($('#progressCard'));
   if (!progressCard) return; // Element doesn't exist in DOM
-  
+
   if (!sessionData || sessionData.state === 'IDLE') {
     progressCard.style.display = 'none';
     return;
   }
-  
+
   progressCard.style.display = 'block';
-  const progressSessionEl = $('#progressSessionId');
-  const progressStatusEl = $('#progressStatus');
-  const progressStagesEl = $('#progressStages');
-  
-  if (progressSessionEl) progressSessionEl.textContent = sessionData.session_id;
-  if (progressStatusEl) progressStatusEl.textContent = sessionData.state;
-  
+  /** @type {HTMLElement | null} */
+  const progressSessionEl = /** @type {HTMLElement | null} */ ($('#progressSessionId'));
+  /** @type {HTMLElement | null} */
+  const progressStatusEl = /** @type {HTMLElement | null} */ ($('#progressStatus'));
+  /** @type {HTMLElement | null} */
+  const progressStagesEl = /** @type {HTMLElement | null} */ ($('#progressStages'));
+
+  if (progressSessionEl) progressSessionEl.textContent = /** @type {string} */ (sessionData.session_id);
+  if (progressStatusEl) progressStatusEl.textContent = /** @type {string} */ (sessionData.state);
+
   // Update phases
   if (progressStagesEl) {
+    /** @type {string[]} */
     const phases = ['PREPARE', 'SOURCE', 'RUN', 'REVIEW'];
     const stagesHtml = phases.map(phase => {
+      /** @type {string} */
       let className = '';
       if (phase === sessionData.phase) className = 'active';
       else if (phases.indexOf(phase) < phases.indexOf(sessionData.phase)) className = 'completed';
       return `<div class="stage ${className}">${phase}</div>`;
     }).join('');
-    
+
     progressStagesEl.innerHTML = stagesHtml;
   }
 }
@@ -1836,7 +3015,7 @@ $$('input[name="fileSource"]').forEach(radio => {
   radio.addEventListener('change', (e) => {
     socket.emit('set_manual_source', {
       session_id: currentSessionId,
-      file_source: e.target.value,
+      file_source: (/** @type {any} */ (window)).__tl_helpers.targetValue(e),
     });
   });
 });
@@ -1851,7 +3030,8 @@ $('#outputBypass').addEventListener('change', () => {
 // Run Parser Button
 $$('#btnRunParser, #btnRunParser2').forEach(btn => {
   btn.addEventListener('click', () => {
-    const fileSource = $('input[name="fileSource"]:checked').value;
+    const fileSourceEl = document.querySelector('input[name="fileSource"]:checked');
+    const fileSource = (fileSourceEl instanceof HTMLInputElement) ? fileSourceEl.value : '';
     const payload = {
       session_id: currentSessionId,
       file_source: fileSource,
@@ -1869,13 +3049,13 @@ $$('#btnRunParser, #btnRunParser2').forEach(btn => {
     
     // Add batch mode flag
     const batchModeCheckbox = $('#batchMode');
-    if (batchModeCheckbox && batchModeCheckbox.checked) {
+    if (batchModeCheckbox && (/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.elChecked(batchModeCheckbox)) {
       payload.batch_mode = true;
     }
     
-    socket.emit('run_parser', payload);
-    $('#btnRunParser2').disabled = true;
-    $('#btnCancel').disabled = false;
+    socket.emit('ballot-lens', payload);
+    (/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.setDisabled($('#btnRunParser2'), true);
+    (/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.setDisabled($('#btnCancel'), false);
     
     // Update current session in advanced features
     AdvancedFeatures.currentSessionId = currentSessionId;
@@ -1889,8 +3069,8 @@ $('#btnCancel').addEventListener('click', () => {
   socket.emit('cancel_parser', {
     session_id: currentSessionId,
   });
-  $('#btnRunParser2').disabled = false;
-  $('#btnCancel').disabled = true;
+  (/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.setDisabled($('#btnRunParser2'), false);
+  (/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.setDisabled($('#btnCancel'), true);
 });
 
 // ============================================
@@ -1898,23 +3078,23 @@ $('#btnCancel').addEventListener('click', () => {
 // ============================================
 
 $('#searchResults').addEventListener('input', (e) => {
-  state.filters.search = e.target.value;
+  state.filters.search = (/** @type {any} */ (window)).__tl_helpers.targetValue(e);
   renderResults();
 });
 
 $('#filterConfidence').addEventListener('input', (e) => {
-  state.filters.confidence = parseInt(e.target.value);
-  $('#filterConfidenceValue').textContent = e.target.value + '%+';
+  state.filters.confidence = parseInt((/** @type {any} */ (window)).__tl_helpers.targetValue(e), 10);
+  $('#filterConfidenceValue').textContent = (/** @type {any} */ (window)).__tl_helpers.targetValue(e) + '%+';
   renderResults();
 });
 
 $('#filterState').addEventListener('change', (e) => {
-  state.filters.state = e.target.value;
+  state.filters.state = (/** @type {any} */ (window)).__tl_helpers.targetValue(e);
   renderResults();
 });
 
 $('#filterLevel').addEventListener('change', (e) => {
-  state.filters.level = e.target.value;
+  state.filters.level = (/** @type {any} */ (window)).__tl_helpers.targetValue(e);
   renderLogs();
 });
 
@@ -1922,13 +3102,23 @@ $('#filterLevel').addEventListener('change', (e) => {
 // Event Listeners: Log Drawer
 // ============================================
 
-const drawerHandle = $('#drawerHandle');
+const drawerHandle = document.getElementById('drawerHandle');
 if (drawerHandle) {
+  // initialize aria-expanded from current drawer state
+  try {
+    const logDrawerInit = document.getElementById('logDrawer');
+    if (logDrawerInit) {
+      drawerHandle.setAttribute('aria-expanded', logDrawerInit.classList.contains('expanded') ? 'true' : 'false');
+    }
+  } catch (e) { /* ignore */ }
+
   drawerHandle.addEventListener('click', () => {
-    const logDrawer = $('#logDrawer');
+    const logDrawer = document.getElementById('logDrawer');
     if (logDrawer) {
       logDrawer.classList.toggle('minimized');
       logDrawer.classList.toggle('expanded');
+      const expanded = logDrawer.classList.contains('expanded');
+      try { drawerHandle.setAttribute('aria-expanded', expanded ? 'true' : 'false'); } catch (e) {}
     }
   });
 }
@@ -1990,10 +3180,20 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
   const toggleRightBtn = $('#btnToggleRightSidebar');
   const overlay = $('#mobileSidebarOverlay') || sidebarBackdrop;
 
+  /**
+   * @typedef {HTMLElement} OverlayElement
+   */
+
+  /**
+   * Set visibility for overlay/backdrop elements and body scroll state.
+   * @param {boolean} visible
+   * @returns {void}
+   */
   function setOverlayVisible(visible) {
+    /** @type {OverlayElement[]} */
     const targets = [];
-    if (sidebarBackdrop) targets.push(sidebarBackdrop);
-    if (overlay && overlay !== sidebarBackdrop) targets.push(overlay);
+    if (sidebarBackdrop) targets.push(/** @type {OverlayElement} */ (sidebarBackdrop));
+    if (overlay && overlay !== sidebarBackdrop) targets.push(/** @type {OverlayElement} */ (overlay));
     targets.forEach((el) => {
       try {
         if (visible) el.classList.add('visible'); else el.classList.remove('visible');
@@ -2095,7 +3295,7 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
   } catch (e) {
     /* ignore */
   }
-})();
+});
 
 const btnClearLogs = $('#btnClearLogs');
 if (btnClearLogs) {
@@ -2132,7 +3332,7 @@ if (btnExportLogs) {
     ).join('\n');
     
     const blob = new Blob(
-      ['timestamp,level,type,message\n' + csv],
+      [/** @type {any} */ ('timestamp,level,type,message\n' + csv)],
       { type: 'text/csv' }
     );
     const url = URL.createObjectURL(blob);
@@ -2175,16 +3375,20 @@ if (btnClosePreviewAlt) {
 }
 
 // Tab switching in modal
-$$('.tab-btn').forEach(btn => {
+    $$('.tab-btn').forEach(btn => {
   btn.addEventListener('click', (e) => {
     // Remove active from all
     $$('.tab-btn').forEach(b => b.classList.remove('active'));
     $$('.tab-content').forEach(c => c.classList.remove('active'));
     
-    // Add active to clicked
-    e.target.classList.add('active');
-    const tabName = e.target.getAttribute('data-tab');
-    $(`#tab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`).classList.add('active');
+    // Add active to clicked (safe guard)
+    const tgt = (e && e.target && (e.target instanceof Element)) ? e.target : null;
+    if (tgt) {
+      tgt.classList.add('active');
+      const tabName = tgt.getAttribute('data-tab') || '';
+      const tabEl = tabName ? document.querySelector(`#tab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`) : null;
+      if (tabEl instanceof Element) tabEl.classList.add('active');
+    }
   });
 });
 
@@ -2198,6 +3402,16 @@ $('#btnDownloadPreview')?.addEventListener('click', () => {
 // Event Listeners: Results
 // ============================================
 
+/**
+ * @typedef {Set<string>} SelectedResultsSet
+ * @typedef {HTMLButtonElement} BulkExportButton
+ */
+
+/**
+ * Toggle selection of a result id in the selectedResults set.
+ * @param {string} resultId
+ * @returns {void}
+ */
 function toggleSelectResult(resultId) {
   if (state.selectedResults.has(resultId)) {
     state.selectedResults.delete(resultId);
@@ -2205,8 +3419,9 @@ function toggleSelectResult(resultId) {
     state.selectedResults.add(resultId);
   }
   
-  // Update button state
-  $('#btnBulkExport').disabled = state.selectedResults.size === 0;
+  // Update button state (guard + typed cast)
+  const btn = /** @type {BulkExportButton | null} */ ($('#btnBulkExport'));
+  if (btn) btn.disabled = state.selectedResults.size === 0;
 }
 
 $('#btnBulkExport')?.addEventListener('click', () => {
@@ -2236,8 +3451,16 @@ $('#btnRefreshResults').addEventListener('click', () => {
 // File Operations (Stubs for Production)
 // ============================================
 
+/* Result typedef consolidated at top of file. */
+
+/**
+ * Trigger a download for a result by id.
+ * @param {string} resultId
+ * @returns {void}
+ */
 function downloadFile(resultId) {
-  const result = state.results.find(r => r.id === resultId);
+  /** @type {Result|undefined} */
+  const result = /** @type {Result|undefined} */ (state.results.find(r => r.id === resultId));
   if (!result) return;
   
   showToast(`Downloading ${result.name}...`, 'info');
@@ -2253,11 +3476,11 @@ function downloadFile(resultId) {
 // ============================================
 
 const commands = [
-  { title: 'Run Parser', description: 'Start parsing', shortcut: 'Ctrl+Enter', action: () => $('#btnRunParser2').click() },
-  { title: 'Cancel Parser', description: 'Stop parsing', shortcut: 'Ctrl+Shift+C', action: () => $('#btnCancel').click() },
-  { title: 'Clear Logs', description: 'Clear debug console', shortcut: 'Ctrl+K', action: () => $('#btnClearLogs').click() },
+  { title: 'Run Parser', description: 'Start parsing', shortcut: 'Ctrl+Enter', action: () => (/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.safeClick($('#btnRunParser2')) },
+  { title: 'Cancel Parser', description: 'Stop parsing', shortcut: 'Ctrl+Shift+C', action: () => (/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.safeClick($('#btnCancel')) },
+  { title: 'Clear Logs', description: 'Clear debug console', shortcut: 'Ctrl+K', action: () => (/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.safeClick($('#btnClearLogs')) },
   { title: 'Toggle Theme', description: 'Switch dark/light mode', shortcut: 'Ctrl+Shift+T', action: () => toggleTheme() },
-  { title: 'Export Logs', description: 'Download debug logs', shortcut: 'Ctrl+Shift+E', action: () => $('#btnExportLogs').click() },
+  { title: 'Export Logs', description: 'Download debug logs', shortcut: 'Ctrl+Shift+E', action: () => (/** @type {any} */ (window)).__tl_helpers.safeClick($('#btnExportLogs')) },
 ];
 
 // Safety: ensure overlays start hidden even if cache or styles misbehave
@@ -2281,7 +3504,7 @@ if (btnCommandPalette) {
 const commandInput = $('#commandInput');
 if (commandInput) {
   commandInput.addEventListener('input', (e) => {
-    const query = e.target.value.toLowerCase();
+    const query = (/** @type {any} */ (window)).__tl_helpers.targetValue(e).toLowerCase();
     const results = commands.filter(c => 
       c.title.toLowerCase().includes(query) || 
       c.description.toLowerCase().includes(query)
@@ -2290,7 +3513,7 @@ if (commandInput) {
     const commandResults = $('#commandResults');
     if (commandResults) {
       commandResults.innerHTML = results.map((cmd, idx) => `
-        <div class="command-item" onclick="executeCommand(${idx})">
+        <div class="command-item" data-idx="${idx}">
           <div class="command-text">
             <div class="command-title">${cmd.title}</div>
             <div class="command-description">${cmd.description}</div>
@@ -2298,10 +3521,31 @@ if (commandInput) {
           <div class="command-shortcut">${cmd.shortcut}</div>
         </div>
       `).join('');
+      // Attach non-inline handlers
+      Array.from(commandResults.querySelectorAll('.command-item')).forEach((el) => {
+        try {
+          const idxAttr = el.getAttribute('data-idx');
+          const i = idxAttr ? Number(idxAttr) : NaN;
+          if (!isNaN(i)) el.addEventListener('click', () => executeCommand(i));
+        } catch (/** @type {any} */ _e) { /* noop */ }
+      });
     }
   });
 }
 
+/**
+ * @typedef {Object} CommandEntry
+ * @property {string} title
+ * @property {string} description
+ * @property {string} shortcut
+ * @property {() => void} action
+ */
+
+/**
+ * Execute a command by its index in the commands array.
+ * @param {number} index
+ * @returns {void}
+ */
 function executeCommand(index) {
   commands[index].action();
   const commandPalette = $('#commandPalette');
@@ -2324,9 +3568,9 @@ document.addEventListener('keydown', (e) => {
   }
   
   // Open command palette with Ctrl+Shift+P
-  if (e.ctrlKey && e.shiftKey && e.key === 'P') {
+    if (e.ctrlKey && e.shiftKey && e.key === 'P') {
     e.preventDefault();
-    $('#btnCommandPalette').click();
+    (/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.safeClick($('#btnCommandPalette'));
   }
 });
 
@@ -2340,29 +3584,61 @@ const promptInputEl = $('#promptInput');
 const promptSearchEl = $('#promptSearch');
 const promptOptionsEl = $('#promptOptions');
 
+/* PromptOption typedef consolidated at top of file. */
+
+/**
+ * Context object that may accompany parser_output prompt logs.
+ * @typedef {Object} PromptContext
+ * @property {Array<string>} [urls] - Direct URL list for URL-selection prompts.
+ * @property {Array<string|Object>} [options] - Contest/options array (strings or objects).
+ * @property {Object.<string, any>} [processed] - Processed-info map keyed by URL.
+ * @property {string} [title] - Optional prompt title override.
+ * @property {string} [placeholder] - Optional placeholder text for prompt input/search.
+ * @property {Object.<string, any>} [metadata] - Any additional metadata.
+ */
+
+/**
+ * Parser output event (lightweight subset used by handlePromptLog).
+ * Reuses the broader ParserOutputEvent typedef if present; duplicated fields here
+ * for clarity and local tooling.
+ * @typedef {Object} LocalParserOutputEvent
+ * @property {string} [type]
+ * @property {string} [message]
+ * @property {string} [session_id]
+ * @property {PromptContext} [context]
+ */
+
+/**
+ * Inspect incoming parser_output log entries and surface interactive prompts.
+ * @param {LocalParserOutputEvent} data
+ */
 function handlePromptLog(data) {
   ErrorBoundary.safeExecute(() => {
+    /** @type {string} */
     const message = typeof data?.message === 'string' ? data.message : '';
+    /** @type {boolean} */
     const isPrompt = data?.type === 'prompt' || message.toUpperCase().includes('[PROMPT]');
-    const ctx = data?.context || {};
+    /** @type {PromptContext} */
+    const ctx = /** @type {PromptContext} */ (data?.context || {});
+    /** @type {PromptOption[]} */
     let options = [];
 
     // DEBUG: Log what we're receiving
     console.debug('[handlePromptLog] Received data:', {
       messagePreview: message.substring(0, 100),
       hasContext: !!ctx,
-      contextKeys: Object.keys(ctx),
+      contextKeys: Object.keys(ctx || {}),
       contextData: ctx
     });
 
     // URL selection prompt
     if (Array.isArray(ctx.urls) && ctx.urls.length) {
       console.debug('[handlePromptLog] Found URLs in context:', ctx.urls.length);
-      options = ctx.urls.map((u, idx) => ({
+      options = ctx.urls.map((u, idx) => (/** @type {PromptOption} */ ({
         index: idx + 1,
         label: u,
         meta: ctx.processed && ctx.processed[u] ? ctx.processed[u].status || '' : '',
-      }));
+      })));
     }
 
     // Contest/options style prompt
@@ -2371,17 +3647,18 @@ function handlePromptLog(data) {
       options = ctx.options.map((opt, idx) => {
         if (typeof opt === 'string') {
           const m = opt.match(/^\s*\[(\d+)\]\s+(.+?)(?:\s+\(([^)]+)\))?\s*$/);
-          if (m) return { index: Number(m[1]), label: m[2], meta: m[3] || '' };
-          return { index: idx + 1, label: opt, meta: '' };
+          if (m) return /** @type {PromptOption} */ ({ index: Number(m[1]), label: m[2], meta: m[3] || '' });
+          return /** @type {PromptOption} */ ({ index: idx + 1, label: opt, meta: '' });
         }
         if (opt && typeof opt === 'object') {
-          return {
+          return /** @type {PromptOption} */ ({
             index: Number(opt.index ?? idx + 1),
             label: opt.label || opt.title || opt.name || `Option ${idx + 1}`,
             meta: opt.meta || opt.summary || '',
-          };
+            metadata: opt
+          });
         }
-        return { index: idx + 1, label: String(opt), meta: '' };
+        return /** @type {PromptOption} */ ({ index: idx + 1, label: String(opt), meta: '' });
       });
     }
 
@@ -2399,19 +3676,78 @@ function handlePromptLog(data) {
   }, 'handlePromptLog');
 }
 
+/**
+ * @typedef {Object} IncomingContestOption
+ * @property {number|string} [index]
+ * @property {string} [label]
+ * @property {string} [name]
+ * @property {string} [title]
+ * @property {string} [meta]
+ * @property {Object<string, any>} [metadata]
+ */
+
+/* ContestOptionsPayload typedef consolidated at top of file. */
+
+/**
+ * Normalized choice used by the UI prompt.
+ * @typedef {Object} ContestOptionChoice
+ * @property {number} index
+ * @property {string} label
+ * @property {string} meta
+ */
+
+/**
+ * Handle incoming contest_options socket payload and surface a selection prompt.
+ * @param {ContestOptionsPayload} payload
+ */
 function handleContestOptions(payload) {
   ErrorBoundary.safeExecute(() => {
-    const options = Array.isArray(payload?.options) ? payload.options.map((opt, idx) => ({
-      index: Number(opt.index ?? idx + 1),
-      label: opt.label || opt.name || opt.title || `Option ${idx + 1}`,
-      meta: opt.meta || (opt.metadata && opt.metadata.summary) || '',
-    })) : [];
+    /** @type {ContestOptionChoice[]} */
+    /**
+     * @typedef {Object} IncomingContestOption
+     * @property {number|string} [index]
+     * @property {string} [label]
+     * @property {string} [name]
+     * @property {string} [title]
+     * @property {string} [meta]
+     * @property {Object.<string, any>} [metadata]
+     */
+
+    /**
+     * @typedef {Object} ContestOptionChoice
+     * @property {number} index
+     * @property {string} label
+     * @property {string} meta
+     */
+
+    /** @type {ContestOptionChoice[]} */
+    const options = Array.isArray(payload?.options)
+      ? /** @type {ContestOptionChoice[]} */ (payload.options.map(
+        /**
+         * @param {IncomingContestOption|string} opt
+         * @param {number} idx
+         * @returns {ContestOptionChoice}
+         */
+        (opt, idx) => ({
+        index: Number((opt && typeof opt === 'object' ? (opt.index ?? idx + 1) : (idx + 1))),
+        label: (typeof opt === 'string'
+          ? opt
+          : (opt && (opt.label || opt.name || opt.title)) || `Option ${idx + 1}`),
+        meta: (opt && typeof opt === 'object' ? (opt.meta || (opt.metadata && opt.metadata.summary) || '') : '')
+        })
+      ))
+      : [];
+
     if (!options.length) {
       console.warn('[handleContestOptions] No options provided');
       return;
     }
+
+    /** @type {Object<string, any>} */
     const ctx = payload?.context || {};
+    /** @type {string} */
     const message = ctx.message || 'Select a contest';
+
     showPrompt({
       title: 'Select Contest',
       message,
@@ -2477,48 +3813,73 @@ function renderPromptOptions(filterText = '') {
 }
 
 // Helper: Render a group element (for both virtual and standard rendering)
+/* PromptOption typedef consolidated at top of file. */
+
+/**
+ * Group descriptor for bundled prompt options.
+ * @typedef {Object} PromptGroup
+ * @property {PromptOption} parent
+ * @property {PromptOption[]} children
+ * @property {boolean} expanded
+ */
+
+/**
+ * Render a group element (for both virtual and standard rendering)
+ * @param {PromptGroup} group
+ * @param {string|number} key
+ * @returns {HTMLElement}
+ */
 function renderGroupElement(group, key) {
-  const { parent, children, expanded } = group;
-  
+  /** @type {PromptOption} */
+  const parent = group.parent;
+  /** @type {PromptOption[]} */
+  const children = group.children || [];
+  /** @type {boolean} */
+  const expanded = Boolean(group.expanded);
+
   if (!children.length) {
     // Single option (not grouped)
-    return createPromptOptionButton(parent);
+    return /** @type {HTMLElement} */ (createPromptOptionButton(parent));
   }
-  
+
   // Bundle with children
+  /** @type {HTMLDivElement} */
   const wrapper = document.createElement('div');
   wrapper.className = 'prompt-bundle';
-  
+
   // Bundle header with toggle
+  /** @type {HTMLDivElement} */
   const header = document.createElement('div');
   header.className = 'prompt-bundle-header';
-  
+
+  /** @type {HTMLButtonElement} */
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'prompt-bundle-toggle';
   toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   toggle.textContent = expanded ? '▼' : '▶';
-  toggle.onclick = (e) => {
+  toggle.addEventListener('click', (e) => {
     e.preventDefault();
     bundleExpandedState.set(key, !bundleExpandedState.get(key));
-    renderPromptOptions(promptSearchEl?.value || '');
-  };
-  
+    renderPromptOptions((/** @type {any} */ (window)).__tl_helpers.elValue(promptSearchEl) || '');
+  });
+
   header.appendChild(toggle);
-  header.appendChild(createPromptOptionButton(parent, { bundled: true }));
+  header.appendChild(/** @type {HTMLElement} */ (createPromptOptionButton(parent, { bundled: true })));
   wrapper.appendChild(header);
-  
+
   // Children (show if expanded)
   if (expanded && children.length) {
+    /** @type {HTMLDivElement} */
     const childContainer = document.createElement('div');
     childContainer.className = 'prompt-bundle-children';
-    children.forEach(child => {
-      const childBtn = createPromptOptionButton(child, { isChild: true });
+    children.forEach(/** @param {PromptOption} child */ (child) => {
+      const childBtn = /** @type {HTMLElement} */ (createPromptOptionButton(child, { isChild: true }));
       childContainer.appendChild(childBtn);
     });
     wrapper.appendChild(childContainer);
   }
-  
+
   return wrapper;
 }
 
@@ -2590,11 +3951,11 @@ function renderPromptOptions_OLD(filterText = '') {
         toggle.className = 'prompt-bundle-toggle';
         toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
         toggle.textContent = expanded ? '▼' : '▶';
-        toggle.onclick = (e) => {
+        toggle.addEventListener('click', (e) => {
           e.preventDefault();
           bundleExpandedState.set(key, !bundleExpandedState.get(key));
-          renderPromptOptions(promptSearchEl?.value || '');
-        };
+          renderPromptOptions((/** @type {any} */ (window)).__tl_helpers.elValue(promptSearchEl) || '');
+        });
         
         header.appendChild(toggle);
         header.appendChild(createPromptOptionButton(parent, { bundled: true }));
@@ -2604,10 +3965,13 @@ function renderPromptOptions_OLD(filterText = '') {
         if (expanded && children.length) {
           const childContainer = document.createElement('div');
           childContainer.className = 'prompt-bundle-children';
-          children.forEach(child => {
-            const childBtn = createPromptOptionButton(child, { isChild: true });
+            // Render each child in the bundle with explicit types
+            /** @type {PromptOption[]} */
+            (children).forEach(/** @param {PromptOption} child */ (child) => {
+            /** @type {HTMLElement} */
+            const childBtn = /** @type {HTMLElement} */ (createPromptOptionButton(child, { isChild: true }));
             childContainer.appendChild(childBtn);
-          });
+            });
           wrapper.appendChild(childContainer);
       }
       
@@ -2619,15 +3983,26 @@ function renderPromptOptions_OLD(filterText = '') {
   }, 'renderPromptOptions');
 }
 
+/* PromptOption / CreateBtnOptions typedefs consolidated at top of file. */
+
+/**
+ * Create a prompt option button element for the prompt modal.
+ * @param {PromptOption} opt
+ * @param {CreateBtnOptions} [options]
+ * @returns {HTMLElement | null}
+ */
 function createPromptOptionButton(opt, options = {}) {
   return ErrorBoundary.safeExecute(() => {
     const { bundled = false, isChild = false } = options;
-    const btn = document.createElement('button');
+    /** @type {HTMLButtonElement} */
+    const btn = /** @type {HTMLButtonElement} */ (document.createElement('button'));
     btn.type = 'button';
     btn.className = 'prompt-option' + (isChild ? ' prompt-option-child' : '') + (bundled ? ' prompt-option-bundled' : '');
     
+    /** @type {Object.<string, any>} */
     const meta = opt.metadata || {};
     const bundleSize = meta.bundle_child_count ? meta.bundle_child_count + 1 : 0;
+    /** @type {string[]} */
     const badges = [];
     
     // P1.2 Metadata Badges
@@ -2662,10 +4037,11 @@ function createPromptOptionButton(opt, options = {}) {
     `;
     
     // Checkbox event handler
-    const checkbox = btn.querySelector('.prompt-option-checkbox');
+    /** @type {HTMLInputElement | null} */
+    const checkbox = /** @type {HTMLInputElement | null} */ (btn.querySelector('.prompt-option-checkbox'));
     if (checkbox) {
       checkbox.addEventListener('change', (e) => {
-        if (e.target.checked) {
+        if ((/** @type {any} */ (window)).__tl_helpers.targetChecked(e)) {
           selectedPromptOptions.add(opt.index);
         } else {
           selectedPromptOptions.delete(opt.index);
@@ -2719,12 +4095,12 @@ function showPrompt({ title = 'Action required', message = '', options = [], pla
       console.debug('[showPrompt] Set message');
     }
     if (promptInputEl) {
-      promptInputEl.value = '';
-      if (placeholder) promptInputEl.placeholder = placeholder;
+      (/** @type {any} */ (window)).__tl_helpers.setElValue(promptInputEl, '');
+      if (placeholder && promptInputEl instanceof HTMLInputElement) promptInputEl.placeholder = placeholder;
     }
     if (promptSearchEl) {
-      promptSearchEl.value = '';
-      promptSearchEl.placeholder = placeholder || 'Filter options...';
+      (/** @type {any} */ (window)).__tl_helpers.setElValue(promptSearchEl, '');
+      if (promptSearchEl instanceof HTMLInputElement) promptSearchEl.placeholder = placeholder || 'Filter options...';
     }
     renderPromptOptions('');
 
@@ -2741,27 +4117,42 @@ function showPrompt({ title = 'Action required', message = '', options = [], pla
   }, 'showPrompt');
 }
 
-function submitPrompt(forcedValue) {
+/**
+/* Prompt typedefs consolidated at top of file. */
+
+/**
+ * Submit a prompt response to the server.
+ * @param {string|number|undefined|null} [forcedValue] - Optional forced value (clicked option or explicit index)
+ * @returns {void}
+ */
+function submitPrompt(/** @type {string|number|undefined|null} */ forcedValue) {
   ErrorBoundary.safeExecute(() => {
+    /** @type {string} */
     let value;
-    
+
     // If forced value provided (clicked option), use it
     if (forcedValue) {
       value = String(forcedValue);
     } else if (selectedPromptOptions.size > 0) {
       // Otherwise, use comma-separated selected indices (P2.1 multi-select)
-      value = Array.from(selectedPromptOptions).sort((a, b) => Number(a) - Number(b)).join(',');
+      /** @type {number[]} */
+      const selArr = /** @type {number[]} */ (Array.from(selectedPromptOptions));
+      selArr.sort((a, b) => Number(a) - Number(b));
+      value = selArr.join(',');
     } else {
       // Fall back to text input
-      value = promptInputEl?.value || '';
+      value = (/** @type {any} */ (window)).__tl_helpers.elValue(promptInputEl) || '';
     }
-    
+
     if (!value) {
       showToast('Please select an option or enter a response', 'warning');
       return;
     }
-    
-    socket.emit('parser_prompt', { session_id: currentSessionId, value });
+
+    socket.emit('parser_prompt', /** @type {ParserPromptPayload} */ ({
+      session_id: currentSessionId,
+      value,
+    }));
     hidePrompt();
   }, 'submitPrompt');
 }
@@ -2832,8 +4223,9 @@ if (btnClosePrompt) {
 const promptInputField = $('#promptInput');
 if (promptInputField) {
   promptInputField.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
+    const ke = /** @type {KeyboardEvent} */ (e);
+    if (ke.key === 'Enter') {
+      ke.preventDefault();
       submitPrompt();
     }
   });
@@ -2846,7 +4238,7 @@ if (promptSearchEl) {
   }, CONFIG.searchDebounceMs);
   
   promptSearchEl.addEventListener('input', (e) => {
-    debouncedRender(e.target.value);
+    debouncedRender((/** @type {any} */ (window)).__tl_helpers.targetValue(e));
   });
 }
 
@@ -2886,7 +4278,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (deleteBtn) {
     deleteBtn.addEventListener('click', () => {
       const select = $('#logFilterPresetSelect');
-      const name = select.value;
+      const name = (/** @type {any} */ (window)).__tl_helpers.elValue(select);
       if (name && confirm(`Delete preset "${name}"?`)) {
         filterPresets.deletePreset(name);
         showToast(`Preset "${name}" deleted`, 'info');
@@ -2897,9 +4289,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const select = $('#logFilterPresetSelect');
   if (select) {
     select.addEventListener('change', (e) => {
-      if (e.target.value && e.target.value !== '__separator__') {
-        filterPresets.applyPreset(e.target.value);
-      }
+      const val = (/** @type {any} */ (window)).__tl_helpers.targetValue(e);
+      if (val && val !== '__separator__') {
+          filterPresets.applyPreset(val);
+        }
     });
   }
   
@@ -2927,23 +4320,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 if (promptSearchEl) {
   promptSearchEl.addEventListener('input', (e) => {
-    renderPromptOptions(e.target.value || '');
+    renderPromptOptions((/** @type {any} */ (window)).__tl_helpers.targetValue(e) || '');
   });
-}
-
-function submitPrompt(forcedValue) {
-  const inputVal = forcedValue !== undefined ? forcedValue : (promptInputEl?.value || '');
-  const value = inputVal || '';
-  if (!currentSessionId) {
-    hidePrompt();
-    return;
-  }
-  socket.emit('parser_prompt', {
-    session_id: currentSessionId,
-    value,
-  });
-  hidePrompt();
-  showToast('Response sent', 'success');
 }
 
 // ============================================
@@ -2981,7 +4359,7 @@ function parseDirectUrlField() {
   const feedback = document.getElementById('directUrlFeedback');
   if (!textarea || !feedback) return [];
   
-  const raw = textarea.value || '';
+  const raw = (textarea instanceof HTMLTextAreaElement ? textarea.value : '') || '';
   const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   
   const urls = [];
@@ -3034,37 +4412,42 @@ function initDirectUrlControl() {
   
   if (!textarea || !directRadio || !advancedSection) return;
   
+  const isTextarea = textarea instanceof HTMLTextAreaElement;
+  const isDirectRadio = directRadio instanceof HTMLInputElement;
+
   // Show/hide based on radio selection
   function updateVisibility() {
-    if (directRadio.checked) {
-      advancedSection.classList.remove('hidden');
-      parseDirectUrlField();
+    if (isDirectRadio && directRadio.checked) {
+      if (advancedSection instanceof Element) advancedSection.classList.remove('hidden');
+      if (isTextarea) parseDirectUrlField();
     } else {
-      advancedSection.classList.add('hidden');
+      if (advancedSection instanceof Element) advancedSection.classList.add('hidden');
     }
   }
   
   document.querySelectorAll('input[name="fileSource"]').forEach(radio => {
-    radio.addEventListener('change', updateVisibility);
+    if (radio instanceof HTMLInputElement) radio.addEventListener('change', updateVisibility);
   });
   
   // Live validation
-  textarea.addEventListener('input', debounce(() => {
-    parseDirectUrlField();
-    // Save draft per session
-    if (AdvancedFeatures.currentSessionId) {
-      AdvancedFeatures.directUrlDraftBySession.set(
-        AdvancedFeatures.currentSessionId,
-        textarea.value
-      );
-    }
-  }, 500));
+  if (isTextarea) {
+    textarea.addEventListener('input', debounce(() => {
+      parseDirectUrlField();
+      // Save draft per session
+      if (AdvancedFeatures.currentSessionId) {
+        AdvancedFeatures.directUrlDraftBySession.set(
+          AdvancedFeatures.currentSessionId,
+          textarea.value
+        );
+      }
+    }, 500));
+  }
   
   // Clear button
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {
-      textarea.value = '';
-      parseDirectUrlField();
+      if (isTextarea) textarea.value = '';
+      if (isTextarea) parseDirectUrlField();
       if (AdvancedFeatures.currentSessionId) {
         AdvancedFeatures.directUrlDraftBySession.delete(AdvancedFeatures.currentSessionId);
       }
@@ -3082,6 +4465,18 @@ const ManualUploadManager = (() => {
   let inventory = [];
   let currentSelection = null;
   
+  /**
+   * @typedef {Object} ManualUploadPath
+   * @property {string} relPath - Normalized relative path (forward-slash separated)
+   * @property {string} name - File name (last segment)
+   * @property {string} dir - Directory portion (may be empty)
+   */
+
+  /**
+   * Parse a provided path-like string into a normalized upload relative path object.
+   * @param {string|undefined|null} pathStr
+   * @returns {ManualUploadPath|null}
+   */
   function parseManualUploadPath(pathStr) {
     if (!pathStr || typeof pathStr !== 'string') return null;
     const normalized = pathStr.replace(/\\/g, '/').trim().replace(/^\/+|\/+$/g, '');
@@ -3110,15 +4505,47 @@ const ManualUploadManager = (() => {
         throw new Error('Invalid response format');
       }
       
+      /**
+       * @typedef {{ name: string, type: string, size?: number|null, modified?: number|null }} UploadEntry
+       * @typedef {{ relPath: string, name: string, size: number, modified: number }} NormalizedUpload
+       */
       inventory = data.entries
-        .filter(e => e.type === 'file')
-        .map(e => ({
-          name: e.name,
-          relPath: e.name,
-          size: e.size || 0,
-          modified: e.modified || Date.now()
-        }))
-        .sort((a, b) => b.modified - a.modified);
+        .filter(
+          /**
+           * @param {any} e
+           * @returns {e is UploadEntry}
+           */
+          function isUploadFile(e) {
+        try {
+          return !!e &&
+        e.type === 'file' &&
+        typeof e.name === 'string' &&
+        (typeof e.size === 'number' || e.size === null || typeof e.size === 'undefined') &&
+        (typeof e.modified === 'number' || e.modified === null || typeof e.modified === 'undefined');
+        } catch (/** @type {any} */ _err) {
+          return false;
+        }
+          }
+        )
+        .map(
+          /** @param {UploadEntry} e @returns {NormalizedUpload} */
+          e => ({
+        name: e.name,
+        relPath: e.name,
+        size: e.size || 0,
+        modified: e.modified || Date.now()
+          })
+        )
+        .sort(
+          /** @param {NormalizedUpload} a
+           *  @param {NormalizedUpload} b
+           *  @returns {number}
+           */
+          (a, b) => b.modified - a.modified
+        );
+
+      /** @type {NormalizedUpload[]} */
+      inventory = /** @type {NormalizedUpload[]} */ (inventory);
       
       updateManualUploadUI();
       
@@ -3128,7 +4555,39 @@ const ManualUploadManager = (() => {
       
       // Try to restore selection
       if (preserveSelection && currentSelection) {
-        const found = inventory.find(f => f.relPath === currentSelection.relPath);
+        /**
+         * @typedef {Object} NormalizedUploadLocal
+         * @property {string} relPath
+         * @property {string} name
+         * @property {number} size
+         * @property {number} modified
+         */
+
+        /** @type {NormalizedUploadLocal|undefined} */
+        /** @type {NormalizedUploadLocal | undefined} */
+        const found = /** @type {NormalizedUploadLocal | undefined} */ (inventory.find(
+          /** @param {any} f @returns {boolean} */ (f) => f && typeof f.relPath === 'string' && f.relPath === currentSelection.relPath
+        ));
+        /**
+         * @typedef {Object} UploadEntry
+         * @property {string} name
+         * @property {'file'|'dir'} type
+         * @property {number|null|undefined} [size]
+         * @property {number|null|undefined} [modified]
+         */
+
+        /**
+         * Normalized upload object used in UI lists.
+         * @typedef {Object} NormalizedUpload
+         * @property {string} relPath - Normalized relative path (forward-slash separated)
+         * @property {string} name - File name (last segment)
+         * @property {number} size - File size in bytes
+         * @property {number} modified - Unix ms timestamp of last modification
+         */
+
+        /** Ensure inventory is treated as NormalizedUpload[] for tooling/type hints */
+        /** @type {NormalizedUpload[]} */
+        inventory = /** @type {any} */ (inventory || []);
         if (found) {
           applySelection(found, { updateSource: false });
         } else {
@@ -3149,24 +4608,36 @@ const ManualUploadManager = (() => {
   function updateManualUploadUI() {
     const select = document.getElementById('manualUploadSelect');
     const summary = document.getElementById('manualUploadSummary');
+    const selectEl = select instanceof HTMLSelectElement ? select : null;
     
-    if (!select) return;
+    if (!selectEl) return;
     
     // Clear and rebuild options
-    select.innerHTML = '<option value="">— Choose a file —</option>';
+    selectEl.innerHTML = '<option value="">— Choose a file —</option>';
     
-    inventory.forEach((file, idx) => {
+    /**
+     * @typedef {Object} NormalizedUpload
+     * @property {string} relPath - Normalized relative path (forward-slash separated)
+     * @property {string} name - File name (last segment)
+     * @property {number} size - File size in bytes
+     * @property {number} modified - Unix ms timestamp of last modification
+     */
+
+    inventory.forEach((/** @type {NormalizedUpload} */ file, /** @type {number} */ idx) => {
+      /** @type {HTMLOptionElement} */
       const option = document.createElement('option');
       option.value = file.relPath;
       option.textContent = file.name;
-      option.dataset.size = file.size || 0;
-      option.dataset.modified = file.modified || 0;
-      select.appendChild(option);
+      if (option instanceof HTMLElement) {
+      option.setAttribute('data-size', String(file.size || 0));
+      option.setAttribute('data-modified', String(file.modified || 0));
+      }
+      selectEl.appendChild(option);
     });
     
     // Restore selection
     if (currentSelection) {
-      select.value = currentSelection.relPath;
+      selectEl.value = currentSelection.relPath;
     }
     
     // Update summary
@@ -3182,6 +4653,24 @@ const ManualUploadManager = (() => {
     }
   }
   
+  /**
+   * @typedef {Object} NormalizedUpload
+   * @property {string} relPath - Normalized relative path (forward-slash separated)
+   * @property {string} name - File name (last segment)
+   * @property {number} [size] - File size in bytes
+   * @property {number} [modified] - Unix ms timestamp of last modification
+   */
+  /**
+   * @typedef {Object} ApplySelectionOptions
+   * @property {boolean} [updateSource]
+   */
+
+  /**
+   * Apply a selection from the uploads inventory.
+   * @param {NormalizedUpload | null | undefined} file
+   * @param {ApplySelectionOptions} [options]
+   * @returns {void}
+   */
   function applySelection(file, options = {}) {
     const { updateSource = true } = options;
     
@@ -3214,28 +4703,41 @@ const ManualUploadManager = (() => {
   function clearSelection() {
     currentSelection = null;
     const select = document.getElementById('manualUploadSelect');
-    if (select) select.value = '';
+    if (select instanceof HTMLSelectElement) select.value = '';
     updateManualUploadUI();
     showToast('Selection cleared', 'info', 1500);
   }
   
   function init() {
     const select = document.getElementById('manualUploadSelect');
+    const selectEl = select instanceof HTMLSelectElement ? select : null;
     const refreshBtn = document.getElementById('manualUploadRefreshBtn');
     const clearBtn = document.getElementById('manualUploadClearBtn');
     const uploadRadio = document.querySelector('input[name="fileSource"][value="uploads"]');
-    
-    if (!select) return;
+
+    if (!selectEl) return;
     
     // Selection change handler
-    select.addEventListener('change', (e) => {
-      const value = e.target.value;
+    selectEl.addEventListener('change', (e) => {
+      const value = (/** @type {any} */ (window)).__tl_helpers.targetValue(e);
       if (!value) {
         clearSelection();
         return;
       }
       
-      const file = inventory.find(f => f.relPath === value);
+      /**
+       * Normalized upload object used in UI lists.
+       * @typedef {Object} NormalizedUpload
+       * @property {string} relPath - Normalized relative path (forward-slash separated)
+       * @property {string} name - File name (last segment)
+       * @property {number} [size] - File size in bytes
+       * @property {number} [modified] - Unix ms timestamp of last modification
+       */
+
+      /** @type {NormalizedUpload|undefined} */
+      const file = /** @type {NormalizedUpload|undefined} */ (inventory.find(
+        /** @param {any} f @returns {boolean} */ (f) => f && f.relPath === value
+      ));
       if (file) {
         applySelection(file);
       }
@@ -3254,7 +4756,7 @@ const ManualUploadManager = (() => {
     }
     
     // Auto-refresh when uploads radio is selected
-    if (uploadRadio) {
+    if (uploadRadio instanceof HTMLInputElement) {
       uploadRadio.addEventListener('change', () => {
         if (uploadRadio.checked) {
           refreshInventory({ preserveSelection: true, silent: true });
@@ -3288,35 +4790,39 @@ function initFilterPresets() {
   const deleteBtn = document.getElementById('deletePresetBtn');
   
   if (!presetSelect || !saveBtn || !deleteBtn) return;
+  const presetSel = presetSelect instanceof HTMLSelectElement ? presetSelect : null;
   
   // Populate preset dropdown
   function refreshPresetList() {
     // Clear existing options except first
-    while (presetSelect.options.length > 1) {
-      presetSelect.remove(1);
+    if (presetSel) {
+      while (presetSel.options.length > 1) {
+        presetSel.remove(1);
+      }
     }
     
     AdvancedFeatures.filterPresets.forEach((filters, name) => {
       const option = document.createElement('option');
       option.value = name;
       option.textContent = name;
-      presetSelect.appendChild(option);
+      if (presetSel) presetSel.appendChild(option);
     });
-    
-    presetSelect.value = '';
+
+    if (presetSel) presetSel.value = '';
   }
-  
-  // Load preset when selected
-  presetSelect.addEventListener('change', () => {
-    const selected = presetSelect.value;
-    if (!selected) return;
-    
-    const filters = AdvancedFeatures.filterPresets.get(selected);
-    if (filters) {
-      AdvancedFeatures.applyFilters(filters);
-      showToast(`Loaded preset: ${selected}`, 'success');
-    }
-  });
+
+  if (presetSel) {
+    presetSel.addEventListener('change', () => {
+      const selected = presetSel.value;
+      if (!selected) return;
+
+      const filters = AdvancedFeatures.filterPresets.get(selected);
+      if (filters) {
+        AdvancedFeatures.applyFilters(filters);
+        showToast(`Loaded preset: ${selected}`, 'success');
+      }
+    });
+  }
   
   // Save current filters as preset
   saveBtn.addEventListener('click', () => {
@@ -3332,7 +4838,7 @@ function initFilterPresets() {
   
   // Delete selected preset
   deleteBtn.addEventListener('click', () => {
-    const selected = presetSelect.value;
+    const selected = presetSel ? presetSel.value : '';
     if (!selected) {
       showToast('Select a preset to delete', 'warning');
       return;
@@ -3384,7 +4890,7 @@ function initSessionActions() {
       }
       
       const dataStr = JSON.stringify(state.results, null, 2);
-      const blob = new Blob([dataStr], { type: 'application/json' });
+      const blob = new Blob([/** @type {any} */ (dataStr)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -3420,20 +4926,20 @@ function initKeyboardShortcuts() {
   const shortcuts = {
     'Ctrl+E': () => {
       // Export JSON
-      document.getElementById('btnExportSession')?.click();
+      (/** @type {any} */ (window)).__tl_helpers.safeClick(document.getElementById('btnExportSession'));
     },
     'Ctrl+Shift+E': () => {
       // Export CSV (if available)
       const exportCsvBtn = document.querySelector('[data-action="export-csv"]');
-      if (exportCsvBtn) exportCsvBtn.click();
+      if (exportCsvBtn instanceof HTMLElement) (/** @type {any} */ (window)).__tl_helpers.safeClick(exportCsvBtn);
     },
     'Ctrl+L': () => {
       // Clear logs
-      document.getElementById('btnClearSession')?.click();
+      (/** @type {any} */ (window)).__tl_helpers.safeClick(document.getElementById('btnClearSession'));
     },
     'Ctrl+Shift+C': () => {
       // Clone session
-      document.getElementById('btnCloneSession')?.click();
+      (/** @type {any} */ (window)).__tl_helpers.safeClick(document.getElementById('btnCloneSession'));
     },
     'Ctrl+Shift+P': () => {
       // Open command palette
@@ -3537,13 +5043,50 @@ async function loadRealData() {
     }
 
     // Transform warehouse schema to UI results format
-    state.results = items.map((item, idx) => ({
+    /**
+     * @typedef {Object} WarehouseItem
+     * @property {string|number} [id]
+     * @property {string} [contest]
+     * @property {string} [county]
+     * @property {string} [format]
+     * @property {number} [row_count]
+     * @property {number} [column_count]
+     * @property {number|string} [confidence_score]
+     * @property {string} [state]
+     * @property {string} [handler_name]
+     * @property {string|number|Date} [created_at]
+     * @property {string} [source_url]
+     * @property {string} [preview_html]
+     * @property {string} [preview_text]
+     */
+
+    /**
+     * @typedef {Object} UIResult
+     * @property {string} id
+     * @property {string} name
+     * @property {string} type
+     * @property {number} rows
+     * @property {number} columns
+     * @property {number} confidence
+     * @property {string} state
+     * @property {string} county
+     * @property {string} handler
+     * @property {number} timestamp
+     * @property {string} source_url
+     * @property {string} preview
+     */
+
+    /** @type {WarehouseItem[]} */
+    const warehouseItems = /** @type {any} */ (items);
+
+    /** @type {UIResult[]} */
+    const mappedResults = warehouseItems.map((item, idx) => ({
       id: String(item.id || idx + 1),
       name: item.contest || item.county || `Result #${idx + 1}`,
       type: (item.format || 'csv').toLowerCase(),
       rows: item.row_count || 0,
       columns: item.column_count || 0,
-      confidence: item.confidence_score ? parseFloat(item.confidence_score) * 100 : 85.0,
+      confidence: item.confidence_score ? Number(item.confidence_score) * 100 : 85.0,
       state: item.state || 'N/A',
       county: item.county || '',
       handler: item.handler_name || 'unknown',
@@ -3552,9 +5095,11 @@ async function loadRealData() {
       preview: item.preview_html || item.preview_text || '(No preview available)',
     }));
 
+    state.results = mappedResults;
+
     console.log(`[API] Loaded ${state.results.length} results from warehouse`);
     renderResults();
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     console.error('[API] Failed to load real data:', error);
     showToast(`Failed to load results: ${error.message}. Using sample data.`, 'warning');
     loadSampleData();
@@ -3627,6 +5172,22 @@ const ThemeManager = (() => {
     return localStorage.getItem(THEME_KEY) || 'dark';
   }
   
+  /**
+   * @typedef {'light'|'dark'} ThemeName
+   *
+   * @typedef {Object} ThemeManagerInterface
+   * @property {(theme: ThemeName | string) => void} setTheme
+   * @property {() => void} init
+   * @property {() => ThemeName} getCurrentTheme
+   * @property {(theme: ThemeName) => void} toggleTheme
+   */
+
+  /**
+   * Set the current theme.
+   * Accepts a ThemeName or arbitrary string (invalid values default to 'dark').
+   * @param {ThemeName | string} theme
+   * @returns {void}
+   */
   function setTheme(theme) {
     const validTheme = theme === 'light' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', validTheme);
@@ -3634,8 +5195,25 @@ const ThemeManager = (() => {
     updateThemeIcon(validTheme);
   }
   
+  /**
+   * ThemeName typedef consolidated above; use that instead of redeclaring.
+   */
+
+  /**
+   * Map of theme name to icon string.
+   * @typedef {Object.<ThemeName, string>} ThemeIconsMap
+   */
+
+  /** @typedef {HTMLButtonElement} ThemeButtonElement */
+
+  /**
+   * Update the theme icon button's visual content and tooltip.
+   * @param {ThemeName|string} theme
+   * @returns {void}
+   */
   function updateThemeIcon(theme) {
-    const btn = document.getElementById('btnTheme');
+    /** @type {ThemeButtonElement | null} */
+    const btn = /** @type {ThemeButtonElement | null} */ (document.getElementById('btnTheme'));
     if (btn) {
       btn.textContent = THEME_ICONS[theme];
       btn.title = `Switch to ${theme === 'light' ? 'dark' : 'light'} theme`;
@@ -3725,8 +5303,10 @@ const PipelineManager = (() => {
     }
     
     pipelineHintEl.textContent = message;
-    pipelineHintEl.dataset.level = level;
-    pipelineHintEl.classList.toggle('hidden', !message);
+    if (pipelineHintEl instanceof HTMLElement) {
+      pipelineHintEl.setAttribute('data-level', String(level));
+      pipelineHintEl.classList.toggle('hidden', !message);
+    }
   }
   
   function focusPhaseElement(phase) {
@@ -3751,7 +5331,7 @@ const PipelineManager = (() => {
     if (navbar && !pipelineHintEl) {
       pipelineHintEl = document.createElement('div');
       pipelineHintEl.className = 'pipeline-hint';
-      pipelineHintEl.dataset.level = 'info';
+      if (pipelineHintEl instanceof HTMLElement) pipelineHintEl.setAttribute('data-level', 'info');
       navbar.appendChild(pipelineHintEl);
     }
     
@@ -3989,16 +5569,17 @@ const UrlListManager = (() => {
         // Use direct URL field if available
         const directUrlField = $('#directUrlField');
         if (directUrlField) {
-          directUrlField.value = url;
-          directUrlField.dispatchEvent(new Event('input', { bubbles: true }));
+          (/** @type {any} */ (window)).__tl_helpers.setElValue(directUrlField, url);
+          try { directUrlField.dispatchEvent(new Event('input', { bubbles: true })); } catch (/** @type {any} */ _e) { /* noop */ }
         }
       });
       
       // Keyboard accessibility
       el.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          el.click();
+        const ke = /** @type {KeyboardEvent} */ (e);
+        if (ke.key === 'Enter' || ke.key === ' ') {
+          ke.preventDefault();
+          (/** @type {any} */ (window)).__tl_helpers && (/** @type {any} */ (window)).__tl_helpers.safeClick(el);
         }
       });
     });
@@ -4011,7 +5592,7 @@ const UrlListManager = (() => {
       cachedUrls = data.urls || [];
       renderUrlList(cachedUrls);
       return cachedUrls;
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       console.error('[UrlListManager] Failed to fetch URLs:', error);
       renderUrlList([]);
       return [];
@@ -4026,7 +5607,7 @@ const UrlListManager = (() => {
     
     if (searchBox) {
       searchBox.addEventListener('input', (e) => {
-        renderUrlList(cachedUrls, e.target.value);
+        renderUrlList(cachedUrls, (/** @type {any} */ (window)).__tl_helpers.targetValue(e));
       });
     }
     
@@ -4048,7 +5629,7 @@ const UrlListManager = (() => {
         e.preventDefault();
         const isCollapsed = urlsContainer.classList.toggle('collapsed');
         collapseBtn.classList.toggle('collapsed');
-        localStorage.setItem('urlsCollapsed', isCollapsed);
+        localStorage.setItem('urlsCollapsed', String(isCollapsed));
       });
     }
     
@@ -4302,7 +5883,7 @@ const FolderBrowser = (() => {
       const response = await fetch(`/api/fs/list?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`);
       const data = await response.json();
       return data.entries || [];
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       console.error('[FolderBrowser] Failed to fetch directory:', error);
       return [];
     }
@@ -4317,7 +5898,7 @@ const FolderBrowser = (() => {
       });
       const data = await response.json();
       return data.success;
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       console.error('[FolderBrowser] Failed to create folder:', error);
       return false;
     }
@@ -4351,7 +5932,7 @@ const FolderBrowser = (() => {
       const rootCrumb = document.createElement('span');
       rootCrumb.className = 'crumb';
       rootCrumb.textContent = label;
-      rootCrumb.onclick = () => { cwd = ''; refresh(); };
+      rootCrumb.addEventListener('click', () => { cwd = ''; refresh(); });
       crumbs.push(rootCrumb);
       
       let acc = '';
@@ -4365,7 +5946,7 @@ const FolderBrowser = (() => {
         partCrumb.className = 'crumb';
         partCrumb.textContent = part;
         const currentPath = acc;
-        partCrumb.onclick = () => { cwd = currentPath; refresh(); };
+        partCrumb.addEventListener('click', () => { cwd = currentPath; refresh(); });
         crumbs.push(partCrumb);
       });
       
@@ -4402,7 +5983,7 @@ const FolderBrowser = (() => {
       newFolderBtn.type = 'button';
       newFolderBtn.className = 'btn btn-sm';
       newFolderBtn.textContent = '+ New Folder';
-      newFolderBtn.onclick = async () => {
+      newFolderBtn.addEventListener('click', async () => {
         const name = prompt('Enter folder name:');
         if (name) {
           const success = await createFolder(root, cwd, name);
@@ -4412,7 +5993,7 @@ const FolderBrowser = (() => {
             alert('Failed to create folder.');
           }
         }
-      };
+      });
       toolbar.appendChild(newFolderBtn);
       optionsDiv.appendChild(toolbar);
       
@@ -4421,12 +6002,12 @@ const FolderBrowser = (() => {
         const upLink = document.createElement('div');
         upLink.className = 'download-option';
         upLink.innerHTML = '⬆️ <b>[..]</b> <small>Up one level</small>';
-        upLink.onclick = () => {
+        upLink.addEventListener('click', () => {
           const parts = cwd.split('/').filter(Boolean);
           parts.pop();
           cwd = parts.join('/');
           refresh();
-        };
+        });
         optionsDiv.appendChild(upLink);
       }
       
@@ -4443,20 +6024,20 @@ const FolderBrowser = (() => {
         
         item.innerHTML = `${icon} <b>${escapeHtml(entry.name)}</b>${sizeText}`;
         
-        item.onclick = () => {
+        item.addEventListener('click', () => {
           if (entry.type === 'dir') {
             cwd = cwd ? `${cwd}/${entry.name}` : entry.name;
             refresh();
           } else {
             finish({ root, path: cwd, name: entry.name, fullPath: cwd ? `${cwd}/${entry.name}` : entry.name });
           }
-        };
-        
-        item.onkeydown = (e) => {
-          if (e.key === 'Enter') {
-            item.onclick();
+        });
+
+        item.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && item instanceof HTMLElement) {
+            item.click();
           }
-        };
+        });
         
         optionsDiv.appendChild(item);
       });
@@ -4477,8 +6058,9 @@ const FolderBrowser = (() => {
     titleEl.textContent = `Browse ${label}`;
     summaryDiv.textContent = '';
     searchEl.value = '';
-    searchEl.oninput = (e) => renderList(e.target.value);
-    closeBtn.onclick = cancelBtn.onclick = () => finish(null);
+    searchEl.addEventListener('input', (e) => renderList((/** @type {any} */ (window)).__tl_helpers.targetValue(e)));
+    if (closeBtn instanceof Element) closeBtn.addEventListener('click', () => finish(null));
+    if (cancelBtn instanceof Element) cancelBtn.addEventListener('click', () => finish(null));
     
     Modal.open();
     refresh();
@@ -4560,10 +6142,10 @@ const DownloadModal = (() => {
             <span class="download-type ms-2">${highlight(opt.contest, q)}</span>
           `;
           
-          item.onclick = () => finish(opt.index);
-          item.onkeydown = (e) => {
+          item.addEventListener('click', () => finish(opt.index));
+          item.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') finish(opt.index);
-          };
+          });
           
           groupDiv.appendChild(item);
         });
@@ -4579,8 +6161,9 @@ const DownloadModal = (() => {
     }
     
     searchEl.value = '';
-    searchEl.oninput = (e) => renderList(e.target.value);
-    closeBtn.onclick = cancelBtn.onclick = () => finish(null);
+    searchEl.addEventListener('input', (e) => renderList((/** @type {any} */ (window)).__tl_helpers.targetValue(e)));
+    if (closeBtn instanceof Element) closeBtn.addEventListener('click', () => finish(null));
+    if (cancelBtn instanceof Element) cancelBtn.addEventListener('click', () => finish(null));
     
     renderList();
     Modal.open();
@@ -4615,6 +6198,56 @@ document.addEventListener('DOMContentLoaded', () => {
   const navLinks = Array.from(document.querySelectorAll('.navbar-links .nav-link'));
   const navMoreToggle = document.getElementById('btnNavMore');
   const navMoreDropdown = document.getElementById('navMoreDropdown');
+  function setHiddenWithInert(el, hidden) {
+    if (!el) return;
+    try {
+      // Prefer native inert when available
+      if ('inert' in el) {
+        el.inert = hidden;
+      } else if (hidden) {
+        el.setAttribute('inert', '');
+      } else {
+        el.removeAttribute('inert');
+      }
+    } catch (e) {
+      // ignore inert errors
+    }
+    // Manage focusable descendants to avoid axe complaining about focusable children inside aria-hidden
+    try {
+      const focusable = el.querySelectorAll('a[href], button, input, select, textarea, [tabindex]');
+      focusable.forEach((f) => {
+        if (!(f instanceof HTMLElement)) return;
+        if (hidden) {
+          if (f.hasAttribute('tabindex')) {
+            f.setAttribute('data-_savedTabindex', f.getAttribute('tabindex') || '');
+          } else {
+            f.setAttribute('data-_savedTabindex', 'none');
+          }
+          f.setAttribute('tabindex', '-1');
+        } else {
+          const saved = f.getAttribute('data-_savedTabindex');
+          if (saved && saved !== 'none') {
+            f.setAttribute('tabindex', saved);
+          } else {
+            f.removeAttribute('tabindex');
+          }
+          try { f.removeAttribute('data-_savedTabindex'); } catch (e) {}
+        }
+      });
+    } catch (e) {
+      /* ignore */
+    }
+    try { el.setAttribute('aria-hidden', hidden ? 'true' : 'false'); } catch (e) {}
+  }
+
+  // Ensure dropdown is initialized as inert/hidden as early as possible to avoid
+  // headless snapshots where aria-hidden contains focusable children.
+  try {
+    // Start hidden by default; apply inert/tabindex suppression now
+    if (navMoreDropdown) setHiddenWithInert(navMoreDropdown, true);
+  } catch (e) {
+    /* ignore */
+  }
 
   function setNavDropdown(open) {
     if (!navMoreDropdown || !navMoreToggle) return;
@@ -4645,27 +6278,49 @@ document.addEventListener('DOMContentLoaded', () => {
         navMoreDropdown.style.minWidth = '';
       }
     } catch (e) {}
-    navMoreDropdown.setAttribute('aria-hidden', open ? 'false' : 'true');
+    // Use inert/tabindex management to avoid focusable children inside aria-hidden
+    try { setHiddenWithInert(navMoreDropdown, !open); } catch (e) {}
     navMoreToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
-
-  function closeNavDropdown() { setNavDropdown(false); }
-
   function toggleNavDropdown() {
     if (!navMoreDropdown) return;
     const isOpen = navMoreDropdown.classList.contains('open');
     setNavDropdown(!isOpen);
   }
 
+  // Ensure a dedicated close helper exists so event handlers can call it safely.
+  // Some older builds referenced `closeNavDropdown` directly; provide a stable
+  // implementation that delegates to `setNavDropdown(false)`.
+  function closeNavDropdown() {
+    try {
+      if (navMoreDropdown && navMoreDropdown.classList.contains('open')) {
+        setNavDropdown(false);
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  /*
+   * Test note: `tools/check_nav_dropdown.js` (Puppeteer) exercises
+   * `syncNavOverflow()` and `closeNavDropdown()` to detect runtime
+    /** @typedef {HTMLDivElement & { _timeoutId?: any }} ToastElement */
+
+
   function syncNavOverflow() {
     if (!navMoreDropdown || !navLinks.length) return;
     navMoreDropdown.innerHTML = '';
     navLinks.forEach((link) => {
-      const clone = link.cloneNode(true);
-      clone.addEventListener('click', closeNavDropdown);
-      navMoreDropdown.appendChild(clone);
+      try {
+        const clone = /** @type {HTMLElement} */ (link.cloneNode(true));
+        clone.addEventListener('click', closeNavDropdown);
+        navMoreDropdown.appendChild(clone);
+      } catch (/** @type {any} */ _e) {
+        // ignore clone failures
+      }
     });
-    navMoreDropdown.setAttribute('aria-hidden', 'true');
+    // After cloning, immediately ensure it's inert when hidden so axe won't flag focusable children.
+    setHiddenWithInert(navMoreDropdown, true);
   }
 
   if (navMoreToggle && navMoreDropdown) {
@@ -4676,8 +6331,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.addEventListener('click', (e) => {
       if (!navMoreDropdown.classList.contains('open')) return;
-      if (navMoreDropdown.contains(e.target)) return;
-      if (navMoreToggle === e.target || navMoreToggle.contains(e.target)) return;
+      const tgt = (e && e.target && (e.target instanceof Node)) ? e.target : null;
+      if ((/** @type {any} */ (window)).__tl_helpers.nodeContains(navMoreDropdown, tgt)) return;
+      if (navMoreToggle === tgt || (/** @type {any} */ (window)).__tl_helpers.nodeContains(navMoreToggle, tgt)) return;
       closeNavDropdown();
     });
     document.addEventListener('keydown', (e) => {
@@ -4696,7 +6352,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!navbarActions) return;
 
     function handleNavbarActionClick(e) {
-      const btn = e.target && (e.target.closest ? e.target.closest('button') : (e.target.tagName === 'BUTTON' ? e.target : null));
+      const btn = (/** @type {any} */ (window)).__tl_helpers.targetClosest(e, 'button') || ((e.target instanceof Element && e.target.tagName === 'BUTTON') ? e.target : null);
       if (!btn) return;
       const id = btn.id;
       try {
@@ -4718,14 +6374,14 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           case 'sidebarToggleBtn': {
             // Prefer programmatic API if present
-            if (typeof openLeft === 'function') { openLeft(); } else {
+            if (typeof (/** @type {any} */ (window)).openLeft === 'function') { try { (/** @type {any} */ (window)).openLeft(); } catch (e) { /* swallow */ } } else {
               // fallback to existing click handler
               try { btn.click(); } catch (err) { console.debug('sidebarToggle click fallback failed', err); }
             }
             break;
           }
           case 'btnToggleRightSidebar': {
-            if (typeof openRight === 'function') { openRight(); } else { try { btn.click(); } catch (err) {} }
+            if (typeof (/** @type {any} */ (window)).openRight === 'function') { try { (/** @type {any} */ (window)).openRight(); } catch (e) { /* swallow */ } } else { try { btn.click(); } catch (err) {} }
             break;
           }
           case 'btnNavMore': {
@@ -4749,9 +6405,10 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialize state filters
   $$('#filterState option').forEach(opt => {
-    if (!STATES.includes(opt.value)) {
+    const optVal = /** @type {HTMLOptionElement} */ (opt).value;
+    if (!STATES.includes(optVal)) {
       STATES.forEach(state => {
-        if (!Array.from($$('#filterState option')).some(o => o.value === state)) {
+        if (!Array.from($$('#filterState option')).some(o => /** @type {HTMLOptionElement} */ (o).value === state)) {
           const option = document.createElement('option');
           option.value = state;
           option.textContent = state;
@@ -4803,7 +6460,7 @@ document.addEventListener('DOMContentLoaded', () => {
     footerPreview.addEventListener('click', (e) => {
       e.stopPropagation();
       sessionFooter.classList.toggle('expanded');
-      localStorage.setItem('footerExpanded', sessionFooter.classList.contains('expanded'));
+      localStorage.setItem('footerExpanded', String(sessionFooter.classList.contains('expanded')));
     });
     
     // Restore previously expanded state
@@ -4814,7 +6471,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Close footer when clicking outside
     document.addEventListener('click', (e) => {
-      if (!sessionFooter.contains(e.target) && sessionFooter.classList.contains('expanded')) {
+      const tgt = (e && e.target && (e.target instanceof Node)) ? e.target : null;
+      if (!((/** @type {any} */ (window)).__tl_helpers.nodeContains(sessionFooter, tgt)) && sessionFooter.classList.contains('expanded')) {
         sessionFooter.classList.remove('expanded');
       }
     });
@@ -4913,9 +6571,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Ensure sidebar closes on navigation actions
     document.addEventListener('click', (e) => {
-      const target = e.target;
+      const target = (e && e.target && (e.target instanceof Element)) ? e.target : null;
       if (!sidebarRight) return;
-      if (sidebarRight.classList.contains('sidebar-open') && !sidebarRight.contains(target) && !target.closest('.sidebar-toggle')) {
+      if (sidebarRight.classList.contains('sidebar-open') && target && !sidebarRight.contains(target) && !target.closest('.sidebar-toggle')) {
         closeSidebar();
       }
     });

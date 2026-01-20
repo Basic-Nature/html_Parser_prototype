@@ -10,7 +10,7 @@
 
 ### P1.1: Bundle Grouping ✅
 
-**File:** `webapp/static/js/run_parser_modern.js`
+**File:** `webapp/static/js/ballot-lens_modern.js`
 
 **Features:**
 
@@ -26,7 +26,7 @@
 - `bundleExpandedState` Map (line ~48)
 - Enhanced `renderPromptOptions()` with grouping logic (150+ lines)
 - `createPromptOptionButton()` with bundle awareness (80+ lines)
-- Bundle CSS classes in `run_parser_modern.css`
+- Bundle CSS classes in `ballot-lens_modern.css`
 
 **Visual Result:**
 
@@ -42,7 +42,7 @@
 
 ### P1.2: Metadata Badges ✅
 
-**File:** `webapp/static/js/run_parser_modern.js` + `run_parser_modern.css`
+**File:** `webapp/static/js/ballot-lens_modern.js` + `ballot-lens_modern.css`
 
 **Badge Types Implemented:**
 
@@ -74,7 +74,7 @@
 
 ### P1.3: Filter Presets System ✅
 
-**File:** `webapp/static/js/run_parser_modern.js` + `run_parser.html` + `run_parser_modern.css`
+**File:** `webapp/static/js/ballot-lens_modern.js` + `ballot-lens.html` + `ballot-lens_modern.css`
 
 **Features:**
 
@@ -115,7 +115,7 @@ Presets: [dropdown] [Save] [Delete]
 
 ### P1.4: Pending Overlay ✅
 
-**File:** `webapp/static/js/run_parser_modern.js` + `run_parser_modern.css`
+**File:** `webapp/static/js/ballot-lens_modern.js` + `ballot-lens_modern.css`
 
 **Features:**
 
@@ -147,7 +147,7 @@ Presets: [dropdown] [Save] [Delete]
 
 ### P2.1: Multi-Select Checkboxes ✅
 
-**File:** `webapp/static/js/run_parser_modern.js` + `run_parser_modern.css`
+**File:** `webapp/static/js/ballot-lens_modern.js` + `ballot-lens_modern.css`
 
 **Features:**
 
@@ -190,7 +190,7 @@ selectedPromptOptions = new Set([8, 9, 12])
 
 ### Modified Files
 
-#### 1. `webapp/static/js/run_parser_modern.js`
+#### 1. `webapp/static/js/ballot-lens_modern.js`
 
 - **Lines Added:** ~450 lines of new code
 - **Lines Modified:** ~30 lines of existing code
@@ -199,7 +199,7 @@ selectedPromptOptions = new Set([8, 9, 12])
 - **Enhanced Functions:** renderPromptOptions, createPromptOptionButton, submitPrompt, hidePrompt
 - **Socket Integration:** Enhanced parser_output listener for pending overlay
 
-#### 2. `webapp/static/css/run_parser_modern.css`
+#### 2. `webapp/static/css/ballot-lens_modern.css`
 
 - **Lines Added:** ~380 lines of new CSS
 - **New Classes:** 30+ new classes for bundles, badges, overlay, presets, checkboxes
@@ -210,7 +210,7 @@ selectedPromptOptions = new Set([8, 9, 12])
   - Filter preset controls (dropdown, buttons)
   - Multi-select checkbox styling
 
-#### 3. `webapp/templates/run_parser.html`
+#### 3. `webapp/templates/ballot-lens.html`
 
 - **Lines Added:** 7 lines
 - **New Elements:**
@@ -369,8 +369,8 @@ Auto-hides when operation complete
 
 ## 📋 Deployment Checklist
 
-- [x] All code implemented in run_parser_modern.js
-- [x] All CSS added to run_parser_modern.css
+- [x] All code implemented in ballot-lens_modern.js
+- [x] All CSS added to ballot-lens_modern.css
 - [x] HTML template updated with new elements
 - [x] Socket.IO integration tested
 - [x] localStorage access verified
@@ -526,7 +526,7 @@ The hybrid approach successfully combines:
 
 ### Code Quality
 
-**File:** `webapp/static/js/run_parser_modern.js`
+**File:** `webapp/static/js/ballot-lens_modern.js`
 
 - Total lines: 1532 (was 1406, +126 lines)
 - ErrorBoundary IIFE: 90 lines, no logic errors
@@ -639,7 +639,7 @@ errors.forEach(e => console.log(e.context, e.message, e.recovered));
 
 ### Code Quality
 
-**File:** `webapp/static/js/run_parser_modern.js`
+**File:** `webapp/static/js/ballot-lens_modern.js`
 
 - Lines added: +155 (80 utilities + 75 integration)
 - Total: 1760 lines (was 1605)
@@ -695,12 +695,12 @@ errors.forEach(e => console.log(e.context, e.message, e.recovered));
 
 **Files Modified:**
 
-- `webapp/static/js/run_parser_modern.js`
+- `webapp/static/js/ballot-lens_modern.js`
   - Lines added: +265 (50 table + 75 restore + 60 accessibility + 80 tests)
   - Total: 1966 lines (was 1700)
   - 8 null reference errors fixed ✅
 
-- `webapp/static/css/run_parser_modern.css`
+- `webapp/static/css/ballot-lens_modern.css`
   - Lines added: +120 (preview table + restore banner + modals)
   - Total: 1968 lines (was 1848)
 
@@ -827,16 +827,16 @@ With Phase 1-2-3-4 complete, potential future enhancements include:
 
 **Files Modified:**
 
-- `webapp/static/js/run_parser_modern.js`
+- `webapp/static/js/ballot-lens_modern.js`
   - Lines added: +400 (80 color + 70 badges + 40 highlight + 120 export + 90 guide)
   - Total: 2,367 lines (was 1,967)
   - All features tested ✅
 
-- `webapp/static/css/run_parser_modern.css`
+- `webapp/static/css/ballot-lens_modern.css`
   - Lines added: +150 (badges, highlights, keyboard guide styling)
   - Total: 2,122 lines (was 1,972)
 
-- `webapp/templates/run_parser.html`
+- `webapp/templates/ballot-lens.html`
   - Export buttons added to drawer toolbar (4 new buttons)
   - Keyboard shortcut button added
 

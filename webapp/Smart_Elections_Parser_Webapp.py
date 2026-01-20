@@ -2007,7 +2007,7 @@ def delete_input_file(filename) -> str:
         flash(f"Deleted '{filename}' from input folder.", "success")
     else:
         flash(f"File '{filename}' not found in input folder.", "danger")
-    return redirect(request.referrer or url_for("run_parser"))
+    return redirect(request.referrer or url_for("ballot-lens"))
 
 @app.route("/delete/output/<filename>", methods=["POST"])
 def delete_output_file(filename) -> str:
@@ -2017,7 +2017,7 @@ def delete_output_file(filename) -> str:
         flash(f"Deleted '{filename}' from output folder.", "success")
     else:
         flash(f"File '{filename}' not found in output folder.", "danger")
-    return redirect(request.referrer or url_for("run_parser"))
+    return redirect(request.referrer or url_for("ballot-lens"))
 
 @app.route("/delete/uploads/<filename>", methods=["POST"])
 def delete_upload_file(filename) -> str:
@@ -2027,7 +2027,7 @@ def delete_upload_file(filename) -> str:
         flash(f"Deleted '{filename}' from uploads folder.", "success")
     else:
         flash(f"File '{filename}' not found in uploads folder.", "danger")
-    return redirect(request.referrer or url_for("run_parser"))
+    return redirect(request.referrer or url_for("ballot-lens"))
 
 @app.route("/download/input/<filename>")
 def download_input_file(filename) -> str:
@@ -2041,8 +2041,8 @@ def download_output_file(filename) -> str:
 def download_upload_file(filename) -> str:
     return send_from_directory(UPLOADS_DIR, filename, as_attachment=True)
 
-@app.route("/run_parser", methods=["GET", "POST"])
-def run_parser():
+@app.route("/ballot-lens", methods=["GET", "POST"])
+def ballot_lens():
     try:
         qp_source = safe_lower(request.args.get("source", "")) if request.method == "GET" else ""
         if qp_source in {"input", "uploads"}:
@@ -2057,7 +2057,7 @@ def run_parser():
                 flash("Invalid file type or no file selected.", "danger")
         file_lists = get_all_file_lists()
         return render_template(
-            "run_parser.html",
+            "ballot-lens.html",
             input_files=file_lists["input_files"],
             output_files=file_lists["output_files"],
             uploaded_files=file_lists["uploaded_files"],
@@ -2071,10 +2071,10 @@ def run_parser():
         print(traceback.format_exc())
         return "Internal Server Error", 500
 
-@app.route("/run_parser_modern", methods=["GET"])
-def run_parser_modern():
-    """Redirect to consolidated modern interface at /run_parser."""
-    return redirect(url_for("run_parser"))
+@app.route("/ballot-lens_modern", methods=["GET"])
+def ballot_lens_modern():
+    """Redirect to consolidated modern interface at /ballot-lens."""
+    return redirect(url_for("ballot-lens"))
 
 @app.route("/site.webmanifest")
 def site_webmanifest():
@@ -2099,7 +2099,7 @@ def site_webmanifest():
             {"src": "/static/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable any"}
         ],
         "shortcuts": [
-            {"name": "Run Parser", "short_name": "Run", "url": "/run_parser"},
+            {"name": "Ballot Lens", "short_name": "Ballot Lens", "url": "/ballot-lens"},
             {"name": "History", "short_name": "History", "url": "/history"}
         ],
         "prefer_related_applications": False
@@ -2113,6 +2113,17 @@ def site_webmanifest():
     resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     resp.headers["ETag"] = etag
     return resp
+
+
+@app.route("/ballot-lens", methods=["GET", "POST"])
+def ballot_lens():
+    """Compatibility alias for /ballot-lens during staged rename to ballot-lens.
+
+    This simply delegates to the existing `ballot-lens` view so the new
+    UI label can point at `/ballot-lens` immediately while keeping the
+    original route active.
+    """
+    return ballot_lens()
 
 @app.route("/quality_dashboard")
 def quality_dashboard():
@@ -2210,7 +2221,7 @@ def upload_to_input() -> str:
         flash(f"File '{filename}' uploaded to input folder.", "success")
     else:
         flash("Invalid file type or no file selected.", "danger")
-    return redirect(request.referrer or url_for("run_parser"))
+    return redirect(request.referrer or url_for("ballot-lens"))
 
 @app.route("/upload/output", methods=["POST"])
 def upload_to_output() -> str:
@@ -2227,7 +2238,7 @@ def upload_to_output() -> str:
         flash(f"File '{filename}' uploaded to output folder.", "success")
     else:
         flash("Invalid file type or no file selected.", "danger")
-    return redirect(request.referrer or url_for("run_parser"))
+    return redirect(request.referrer or url_for("ballot-lens"))
 
 @app.route("/upload/uploads", methods=["POST"])
 def upload_to_uploads() -> str:
@@ -2241,7 +2252,7 @@ def upload_to_uploads() -> str:
         flash(f"File '{filename}' uploaded to uploads folder.", "success")
     else:
         flash("Invalid file type or no file selected.", "danger")
-    return redirect(request.referrer or url_for("run_parser"))
+    return redirect(request.referrer or url_for("ballot-lens"))
 
 @app.route("/health")
 def health() -> str:
@@ -2308,7 +2319,7 @@ def history() -> str:
 def rerun_prior(run_id):
     """
     Trigger a rerun using the recorded source/output_bypass flags.
-    This just emits a SocketIO event style workflow (reuse run_parser logic).
+    This just emits a SocketIO event style workflow (reuse ballot-lens logic).
     """
     # Minimal metadata lookup
     source = "input"
@@ -2332,7 +2343,7 @@ def rerun_prior(run_id):
     session['logical_session_id'] = new_session
     flash(f"Re-running prior config (run_id={run_id}) in new session {new_session}", "success")
     # Front-end JS should now request a run (or we can directly invoke)
-    return redirect(url_for("run_parser", source=source))
+    return redirect(url_for("ballot-lens", source=source))
 
 # 6. SocketIO Event Handlers
 
@@ -2791,8 +2802,8 @@ def handle_delete_session(data) -> None:
     emit('session_deleted', {'session_id': sid}, broadcast=True)
     broadcast_sessions()
 
-@socketio.on('run_parser')
-def handle_run_parser(data=None) -> None:
+@socketio.on('ballot-lens')
+def handle_ballot_lens(data=None) -> None:
     """
     Ensures session join is fully propagated before emitting any logs,
     synchronizes session/thread state, and launches the parser pipeline.

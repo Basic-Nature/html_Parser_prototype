@@ -1,4 +1,4 @@
-<!-- filepath: webapp/templates/run_parser.html -->
+<!-- filepath: webapp/templates/ballot-lens.html -->
 <!DOCTYPE html>
 <html lang="en" data-page="run-parser">
 <head>
@@ -30,7 +30,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
 
   <!-- Modern dashboard interface -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser_modern.css') }}?v={{ static_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/ballot-lens_modern.css') }}?v={{ static_version }}">
 </head>
 <body data-page="run-parser" data-allow-style="1">
   <script nonce="{{ g.csp_nonce }}">
@@ -52,7 +52,7 @@
     }
   </script>
         <!-- Sidebar: Unified File Management & URL Manager -->
-        <aside id="sidebar" class="sidebar">
+        <aside id="sidebar" class="sidebar" role="complementary" aria-label="File manager">
             <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
             
             <div class="sidebar-content">
@@ -68,7 +68,8 @@
                 <section class="sidebar-section" id="urlsSection">
                     <h3 class="sidebar-header"><span>📋 URLs</span> <button type="button" class="btn-icon-small" id="btnAddUrl" aria-label="Add URL">+</button> <button type="button" class="btn-icon-small collapse-toggle" id="btnCollapseUrls" title="Minimize URLs section" aria-expanded="false" aria-controls="urlLinesBox" aria-label="Toggle URLs section">▼</button></h3>
                     <div class="urls-container">
-                        <input type="search" class="url-search-box" placeholder="Search state, county, or URL..." aria-label="Search URLs">
+                        <label for="urlSearchBox" class="visually-hidden">Search URLs</label>
+                        <input type="search" id="urlSearchBox" class="url-search-box" placeholder="Search state, county, or URL..." aria-label="Search URLs">
                         <div class="url-lines" id="urlLinesBox"></div>
                         <form id="addUrlForm" class="flex-wrap-row mb-1em mt-1em">
                             <input type="url" id="newUrl" class="url-add-input" placeholder="Paste new election results URL here" required aria-label="New URL">
@@ -150,26 +151,36 @@
 
         <!-- Modern Dashboard Interface -->
         <div class="modern-layout">
-          <nav class="navbar-modern">
+          <nav class="navbar-modern" role="navigation" aria-label="Main navigation">
             <div class="navbar-content">
-              <h1 class="navbar-title">🗳️ Smart Elections Parser</h1>
+              <h1 class="navbar-title">🗳️ Ballot Lens</h1>
               <div class="navbar-links">
                 <a href="/" class="nav-link" title="Home">Home</a>
-                <a href="/run_parser" class="nav-link active" title="Run Parser">Run Parser</a>
+                <a href="/ballot-lens" class="nav-link active" title="BallotLens">Ballot Lens</a>
                 <a href="/quality_dashboard" class="nav-link" title="Quality Dashboard">Quality</a>
                 <a href="/azure_health" class="nav-link" title="Health & Monitoring">Health</a>
                 <a href="/data_framework" class="nav-link" title="Data Framework">Data Framework</a>
                 <a href="/history" class="nav-link" title="Run History">History</a>
               </div>
                 <div class="navbar-actions">
-                  <button type="button" class="btn-icon" id="btnCommandPalette" title="Command Palette (Ctrl+Shift+P)" aria-label="Open command palette">⌘</button>
-                <button type="button" class="btn-icon" id="btnNotifications" title="Notifications" aria-label="Notifications">🔔</button>
-                <button type="button" class="btn-icon" id="btnTheme" title="Toggle Theme" aria-label="Toggle theme">🌙</button>
-                  <!-- Left sidebar toggle moved here so it remains in DOM flow and clickable on mobile -->
+                  <!-- Left sidebar toggle remains visible and keyboard-accessible -->
                   <button type="button" id="sidebarToggleBtn" class="sidebar-toggle btn-icon" aria-controls="sidebar" aria-expanded="false" title="Menu" aria-label="Toggle menu">☰</button>
-                <button type="button" class="btn-icon" id="btnToggleRightSidebar" title="Controls (mobile)" aria-label="Open controls">⚙️</button>
+
+                  <!-- Right-side parser tools: a single toggle opens an accessible popover with tool buttons -->
+                  <div class="parser-tools" style="position:relative">
+                    <button type="button" class="btn-icon" id="btnToggleRightSidebar" aria-haspopup="true" aria-controls="parserToolsDropdown" aria-expanded="false" title="Tools" aria-label="Open parser tools">⚙️</button>
+                    <div id="parserToolsDropdown" class="parser-tools-dropdown" role="menu" aria-hidden="true" tabindex="-1">
+                      <div role="none">
+                        <button type="button" class="btn-icon" id="btnCommandPalette" role="menuitem" title="Command Palette (Ctrl+Shift+P)" aria-label="Open command palette">⌘</button>
+                        <button type="button" class="btn-icon" id="btnNotifications" role="menuitem" title="Notifications" aria-label="Notifications">🔔</button>
+                        <button type="button" class="btn-icon" id="btnTheme" role="menuitem" title="Toggle Theme" aria-label="Toggle theme">🌙</button>
+                        <button type="button" class="btn-icon" id="btnToggleRightSidebarClose" role="menuitem" title="Close tools" aria-label="Close tools">✕</button>
+                      </div>
+                    </div>
+                  </div>
+
                 <button type="button" class="btn-icon nav-more-toggle" id="btnNavMore" title="More navigation" aria-haspopup="true" aria-expanded="false" aria-label="More navigation">⋯</button>
-                <div class="nav-more-dropdown" id="navMoreDropdown" aria-hidden="true"></div>
+                <div class="nav-more-dropdown" id="navMoreDropdown"></div>
               </div>
             </div>
           </nav>
@@ -196,16 +207,18 @@
             </main>
 
             <!-- RIGHT SIDEBAR -->
-            <aside class="sidebar-right">
+            <aside class="sidebar-right" role="complementary" aria-label="Controls">
               <section class="sidebar-section">
                 <h3 class="sidebar-header">⚙️ Controls</h3>
                 <div class="control-group">
-                  <label>File Source</label>
-                  <div class="radio-group">
-                    <label class="radio-label"><input type="radio" name="fileSource" value="input" checked>Input Folder</label>
-                    <label class="radio-label"><input type="radio" name="fileSource" value="uploads">Manual Upload</label>
-                    <label class="radio-label"><input type="radio" name="fileSource" value="direct">Direct URLs</label>
-                  </div>
+                  <fieldset class="radio-fieldset">
+                    <legend class="sidebar-header">File Source</legend>
+                    <div class="radio-group" role="radiogroup" aria-label="File Source">
+                      <label class="radio-label"><input type="radio" id="fileSourceInput" name="fileSource" value="input" checked> <span>Input Folder</span></label>
+                      <label class="radio-label"><input type="radio" id="fileSourceUploads" name="fileSource" value="uploads"> <span>Manual Upload</span></label>
+                      <label class="radio-label"><input type="radio" id="fileSourceDirect" name="fileSource" value="direct"> <span>Direct URLs</span></label>
+                    </div>
+                  </fieldset>
                 </div>
                 <div class="control-group advanced-option" data-source="direct">
                   <label for="directUrlTextarea">URLs (one per line, max 20)</label>
@@ -221,24 +234,24 @@
                   <label class="checkbox-label"><input type="checkbox" id="batchMode"> Batch Mode</label>
                   <small>Process multiple contests automatically</small>
                 </div>
-                <button type="button" class="btn-primary btn-large" id="btnRunParser2" aria-label="Run parser">▶ Run Parser</button>
+                <button type="button" class="btn-primary btn-large" id="btnRunParser2" aria-label="Run Ballot Lens">▶ BallotLens</button>
                 <button type="button" class="btn-danger btn-large" id="btnCancel" disabled aria-label="Cancel parsing">⏹ Cancel</button>
               </section>
               <hr class="sidebar-divider">
               <section class="sidebar-section">
                 <h3 class="sidebar-header">🔍 Filters</h3>
                 <div class="control-group">
-                  <label>Confidence</label>
-                  <input type="range" id="filterConfidence" min="0" max="100" value="0" class="slider">
+                  <label for="filterConfidence">Confidence</label>
+                  <input type="range" id="filterConfidence" min="0" max="100" value="0" class="slider" aria-describedby="filterConfidenceValue">
                   <small id="filterConfidenceValue">0%+</small>
                 </div>
                 <div class="control-group">
-                  <label>State</label>
-                  <select id="filterState" class="form-control-sm"></select>
+                  <label for="filterState">State</label>
+                  <select id="filterState" class="form-control-sm" aria-label="Filter by state"></select>
                 </div>
                 <div class="control-group">
-                  <label>Log Level</label>
-                  <select id="filterLevel" class="form-control-sm">
+                  <label for="filterLevel">Log Level</label>
+                  <select id="filterLevel" class="form-control-sm" aria-label="Filter by log level">
                     <option value="">All Levels</option>
                     <option value="ERROR">Errors</option>
                     <option value="WARNING">Warnings</option>
@@ -246,8 +259,8 @@
                   </select>
                 </div>
                 <div class="control-group">
-                  <label>Filter Presets</label>
-                  <select id="filterPresetSelect" class="form-control-sm">
+                  <label for="filterPresetSelect">Filter Presets</label>
+                  <select id="filterPresetSelect" class="form-control-sm" aria-label="Filter presets">
                     <option value="">— Save new preset —</option>
                   </select>
                   <div class="btn-group-sm">
@@ -264,6 +277,10 @@
                   <button type="button" class="btn-sm" id="btnExportSession" title="Export session data">📤 Export Data</button>
                   <button type="button" class="btn-sm" id="btnClearSession" title="Clear session logs">🗑️ Clear Logs</button>
                 </div>
+                <!-- Drawer toggle moved into the debug console aside for proper landmark containment -->
+                <div class="control-group mt-half">
+                  <span class="visually-hidden">Debug console toggle moved to console</span>
+                </div>
               </section>
             </aside>
           </div>
@@ -271,16 +288,16 @@
           <div id="mobileSidebarOverlay" class="mobile-sidebar-overlay" aria-hidden="true"></div>
 
           <!-- LOG DRAWER -->
-          <div class="log-drawer minimized" id="logDrawer">
-            <div class="drawer-handle" id="drawerHandle">
-              <span class="handle-icon">⌃</span>
-              <div class="drawer-badges">
+          <aside class="log-drawer minimized" id="logDrawer" role="complementary" aria-label="Debug Console">
+            <button type="button" class="drawer-handle" id="drawerHandle" aria-controls="logDrawer" aria-expanded="false" aria-label="Toggle debug console">
+              <span class="handle-icon" aria-hidden="true">⌃</span>
+              <div class="drawer-badges" aria-hidden="true">
                 <span class="log-badge error" id="errorCount">0</span>
                 <span class="log-badge warning" id="warningCount">0</span>
                 <span class="log-badge info" id="infoCount">0</span>
               </div>
               <span class="drawer-hint">Debug Console • Click to expand</span>
-            </div>
+            </button>
             <div class="drawer-content">
               <div class="drawer-toolbar">
                 <h4>Debug Console</h4>
@@ -299,24 +316,24 @@
                 <select id="logFilterPresetSelect" class="form-select form-select-sm">
                   <option value="">— Save new preset —</option>
                 </select>
-                <button id="btnSaveFilterPreset" class="btn btn-sm btn-outline-secondary" title="Save current filters">Save</button>
-                <button id="btnDeleteFilterPreset" class="btn btn-sm btn-outline-danger" title="Delete selected preset">Delete</button>
+                <button type="button" id="btnSaveFilterPreset" class="btn btn-sm btn-outline-secondary" title="Save current filters">Save</button>
+                <button type="button" id="btnDeleteFilterPreset" class="btn btn-sm btn-outline-danger" title="Delete selected preset">Delete</button>
               </div>
               <div class="log-output" id="logOutput"></div>
             </div>
-          </div>
+          </aside>
 
           <!-- FILE PREVIEW MODAL -->
           <div class="modal hidden" id="previewModal">
             <div class="modal-content modal-large">
               <div class="modal-header">
                 <h3 id="previewTitle">File Preview</h3>
-                <button class="btn-close" id="btnClosePreview">&times;</button>
+                <button type="button" class="btn-close" id="btnClosePreview" aria-label="Close preview">&times;</button>
               </div>
               <div class="modal-body">
                 <div class="preview-tabs">
-                  <button class="tab-btn active" data-tab="preview">Preview</button>
-                  <button class="tab-btn" data-tab="info">Info</button>
+                  <button type="button" class="tab-btn active" data-tab="preview">Preview</button>
+                  <button type="button" class="tab-btn" data-tab="info">Info</button>
                 </div>
                 <div class="tab-content active" id="tabPreview">
                   <div class="table-wrapper"><table id="previewTable" class="preview-table"></table></div>
@@ -339,7 +356,7 @@
             <div class="modal-content modal-small">
               <div class="modal-header">
                 <h3 id="promptTitle">Action required</h3>
-                <button class="btn-close" id="btnClosePrompt" aria-label="Close prompt">&times;</button>
+                <button type="button" class="btn-close" id="btnClosePrompt" aria-label="Close prompt">&times;</button>
               </div>
               <div class="modal-body">
                 <p id="promptMessage" class="prompt-message"></p>
@@ -348,8 +365,8 @@
                 <div id="promptOptions" class="prompt-options"></div>
                 <input type="text" id="promptInput" class="form-control" placeholder="Enter response..." aria-label="Manual response">
                 <div class="modal-footer">
-                  <button class="btn-primary" id="btnSubmitPrompt">Submit</button>
-                  <button class="btn" id="btnCancelPrompt">Cancel</button>
+                  <button type="button" class="btn-primary" id="btnSubmitPrompt">Submit</button>
+                  <button type="button" class="btn" id="btnCancelPrompt">Cancel</button>
                 </div>
               </div>
             </div>
@@ -394,7 +411,7 @@
     <!-- htmllint-enable -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/nav_guard.js') }}?v={{ static_version }}" defer></script>
     <!-- Modern dashboard interface (includes all features) -->
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/run_parser_modern.js') }}?v={{ static_version }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot-lens_modern.js') }}?v={{ static_version }}" defer></script>
 
     <footer id="sessionFooter" class="minimized">
         <div class="footer-preview" id="footerPreview">
@@ -405,7 +422,7 @@
         <div class="footer-full" id="footerFull">
             <div class="footer-heading">Active Sessions</div>
             <div id="sessionList" class="session-list"></div>
-            <button id="addSessionBtn" class="session-btn ms-1em">+ New Session</button>
+            <button type="button" id="addSessionBtn" class="session-btn ms-1em">+ New Session</button>
         </div>
     </footer>
 </body>

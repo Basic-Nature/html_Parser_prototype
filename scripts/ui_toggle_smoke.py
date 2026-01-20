@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Smoke test: verify off-canvas sidebar and footer toggle behavior using Playwright.
-Run this while the dev server is running (default http://localhost:5000/run_parser).
+Run this while the dev server is running (default http://localhost:5000/ballot-lens).
 """
 import sys
 import time
@@ -142,7 +142,7 @@ def run_check(url: str) -> int:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--url', default='http://localhost:5000/run_parser', help='URL of running dev server')
+    parser.add_argument('--url', default='http://localhost:5000/ballot-lens', help='URL of running dev server')
     args = parser.parse_args()
     rc = run_check(args.url)
     sys.exit(rc)

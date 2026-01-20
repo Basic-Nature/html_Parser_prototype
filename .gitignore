@@ -69,7 +69,12 @@ tools/debug_headless_output/
 nohup.out
 *.out
 *debug.html
-
+tools/tmp/
+tools/axe-report.json
+tools/lh-report.json
+tools/lh-screenshots/
+tools/webhint-report.json
+json/
 # ----------------------------
 # Generated / runtime data
 # ----------------------------

@@ -5,10 +5,14 @@ let charts = {};
 async function loadMetrics() {
     const params = new URLSearchParams();
 
-    const handler = document.getElementById('handlerFilter').value;
-    const state = document.getElementById('stateFilter').value;
-    const minConf = document.getElementById('minConfidence').value;
-    const limit = document.getElementById('limitFilter').value;
+    const handlerEl = document.getElementById('handlerFilter');
+    const stateEl = document.getElementById('stateFilter');
+    const minConfEl = document.getElementById('minConfidence');
+    const limitEl = document.getElementById('limitFilter');
+    const handler = (handlerEl instanceof HTMLInputElement || handlerEl instanceof HTMLSelectElement) ? handlerEl.value : '';
+    const state = (stateEl instanceof HTMLInputElement || stateEl instanceof HTMLSelectElement) ? stateEl.value : '';
+    const minConf = (minConfEl instanceof HTMLInputElement || minConfEl instanceof HTMLSelectElement) ? minConfEl.value : '';
+    const limit = (limitEl instanceof HTMLInputElement || limitEl instanceof HTMLSelectElement) ? limitEl.value : '';
 
     if (handler) params.append('handler', handler);
     if (state) params.append('state', state);
@@ -32,7 +36,7 @@ function updateDashboard() {
 
 // Update summary stats
 function updateStats() {
-    document.getElementById('totalCount').textContent = allMetrics.length;
+    document.getElementById('totalCount').textContent = String(allMetrics.length);
 
     const confidences = allMetrics
         .map(m => m.quality_metrics?.extraction_confidence)
@@ -40,7 +44,7 @@ function updateStats() {
     const avgConf = confidences.length > 0
         ? (confidences.reduce((a, b) => a + b, 0) / confidences.length).toFixed(3)
         : 'N/A';
-    document.getElementById('avgConfidence').textContent = avgConf;
+    document.getElementById('avgConfidence').textContent = String(avgConf);
 
     const rows = allMetrics
         .map(m => m.row_count)
@@ -48,7 +52,7 @@ function updateStats() {
     const avgRows = rows.length > 0
         ? Math.round(rows.reduce((a, b) => a + b, 0) / rows.length)
         : 'N/A';
-    document.getElementById('avgRows').textContent = avgRows;
+    document.getElementById('avgRows').textContent = String(avgRows);
 
     const cols = allMetrics
         .map(m => m.column_count)
@@ -56,7 +60,7 @@ function updateStats() {
     const avgCols = cols.length > 0
         ? Math.round(cols.reduce((a, b) => a + b, 0) / cols.length)
         : 'N/A';
-    document.getElementById('avgCols').textContent = avgCols;
+    document.getElementById('avgCols').textContent = String(avgCols);
 }
 
 // Update charts
@@ -66,7 +70,7 @@ function updateCharts() {
     const confidences = allMetrics.map(m => m.quality_metrics?.extraction_confidence || 0);
 
     if (charts.confidence) charts.confidence.destroy();
-    charts.confidence = new Chart(document.getElementById('confidenceChart'), {
+    charts.confidence = new (/** @type {any} */ (window).Chart)(document.getElementById('confidenceChart'), {
         type: 'line',
         data: {
             labels,
@@ -102,7 +106,7 @@ function updateCharts() {
     });
 
     if (charts.handler) charts.handler.destroy();
-    charts.handler = new Chart(document.getElementById('handlerChart'), {
+    charts.handler = new (/** @type {any} */ (window).Chart)(document.getElementById('handlerChart'), {
         type: 'bar',
         data: {
             labels: handlerLabels,
@@ -131,7 +135,7 @@ function updateCharts() {
     });
 
     if (charts.distribution) charts.distribution.destroy();
-    charts.distribution = new Chart(document.getElementById('distributionChart'), {
+    charts.distribution = new (/** @type {any} */ (window).Chart)(document.getElementById('distributionChart'), {
         type: 'doughnut',
         data: {
             labels: ['High (≥0.8)', 'Medium (0.5-0.8)', 'Low (<0.5)', 'Unknown'],
@@ -151,7 +155,7 @@ function updateCharts() {
     ).filter(r => r != null);
 
     if (charts.emptyRow) charts.emptyRow.destroy();
-    charts.emptyRow = new Chart(document.getElementById('emptyRowChart'), {
+    charts.emptyRow = new (/** @type {any} */ (window).Chart)(document.getElementById('emptyRowChart'), {
         type: 'line',
         data: {
             labels: labels.slice(0, emptyRatios.length),
@@ -212,18 +216,20 @@ function updateTable() {
 // Update state filter dropdown
 function updateStateFilter() {
     const stateFilter = document.getElementById('stateFilter');
-    const currentValue = stateFilter.value;
+    const currentValue = (stateFilter instanceof HTMLSelectElement || stateFilter instanceof HTMLInputElement) ? stateFilter.value : '';
 
     const states = new Set(allMetrics.map(m => m.state).filter(s => s));
 
-    stateFilter.innerHTML = '<option value="">All States</option>';
-    Array.from(states).sort().forEach(state => {
-        const option = document.createElement('option');
-        option.value = state;
-        option.textContent = state;
-        if (state === currentValue) option.selected = true;
-        stateFilter.appendChild(option);
-    });
+    if (stateFilter instanceof HTMLSelectElement) {
+        stateFilter.innerHTML = '<option value="">All States</option>';
+        Array.from(states).sort().forEach(state => {
+            const option = document.createElement('option');
+            option.value = state;
+            option.textContent = state;
+            if (state === currentValue) option.selected = true;
+            stateFilter.appendChild(option);
+        });
+    }
 }
 
 // Export dataset

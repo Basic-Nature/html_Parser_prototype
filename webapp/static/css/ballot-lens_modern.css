@@ -10,6 +10,7 @@
   --bg-tertiary: #2a3642;
   --text-primary: #e2e8f0;
   --text-muted: #94a3b8;
+  --text-muted-strong: #cbd5e1;
   --border-color: #334155;
   --accent-primary: #2563eb;
   --accent-secondary: #3b82f6;
@@ -63,6 +64,7 @@
   --bg-tertiary: #e8ecff;
   --text-primary: #1e293b;
   --text-muted: #64748b;
+  --text-muted-strong: #475569;
   --border-color: #cbd5e1;
   --accent-primary: #2563eb;
   --accent-secondary: #3b82f6;
@@ -117,10 +119,51 @@ body {
   min-height: 100vh;
 }
 
+/* Cross-browser text-size adjust for mobile/zoom consistency */
+/* Cross-browser text-size adjust for mobile/zoom consistency */
+html, body {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%; /* unprefixed fallback for modern browsers */
+}
+
 /* Typography */
 h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
   line-height: 1.2;
+}
+
+/* utility for small top margin to replace inline style */
+.mt-half { margin-top: .5rem; }
+
+/* Table header text-align compatibility fallbacks */
+th {
+  text-align: match-parent;
+  text-align: -webkit-match-parent; /* Safari fallback */
+  text-align: inherit; /* safe final fallback */
+}
+
+/* Vendor-prefixed user-select fallbacks for interactive elements */
+.drawer-handle, .footer-preview {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Replace deprecated color-adjust with print-color-adjust fallbacks */
+.form-check-input {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* WebKit scrollbar fallbacks for browsers that support ::-webkit-scrollbar */
+.main-content::-webkit-scrollbar, .modal-body::-webkit-scrollbar, .prompt-options::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.main-content::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb, .prompt-options::-webkit-scrollbar-thumb {
+  background: var(--accent-primary, #2563eb);
+  border-radius: 6px;
 }
 
 h1 { font-size: 1.875rem; }
@@ -191,13 +234,19 @@ hr {
 }
 
 .nav-link {
-  color: var(--text-muted);
+  /* stronger default color to meet contrast requirements */
+  color: var(--text-muted-strong);
   text-decoration: none;
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--radius-sm);
   font-size: 0.95rem;
   transition: all var(--transition-fast);
   white-space: nowrap;
+}
+
+/* Safari support for match-parent text alignment used in some user agents */
+th {
+  text-align: match-parent;
 }
 
 .nav-link:hover {
@@ -236,6 +285,24 @@ hr {
 }
 
 .nav-more-dropdown.open { display: block; }
+
+/* Parser tools dropdown (anchored to gear button) */
+.parser-tools-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 200px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+  padding: 8px;
+  display: none;
+  z-index: calc(var(--z-navbar) + 10);
+}
+.parser-tools-dropdown[aria-hidden="false"] { display: block; }
+.parser-tools-dropdown .btn-icon { display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 4px; }
+.parser-tools-dropdown .btn-icon:hover { background: var(--bg-tertiary); }
 
 .nav-more-dropdown .nav-link {
   display: block;
@@ -1185,6 +1252,12 @@ hr {
   padding: var(--spacing-sm);
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
   user-select: none;
   font-weight: 500;
 }
@@ -1532,7 +1605,38 @@ hr {
 
 .results-header .text-muted {
   font-size: 0.875rem;
+  /* Force a light color by default to ensure contrast against dark backgrounds.
+     Use a lighter color for dark theme and a darker tone when data-theme=light. */
+  color: #e2e8f0;
 }
+
+/* When the page is explicitly in light theme, switch to a darker muted tone */
+[data-theme="light"] .results-header .text-muted {
+  color: #475569;
+}
+
+/* Strong override to ensure vendor CSS doesn't reduce contrast for this critical header */
+.results-header > div:first-child > p.text-muted {
+  color: #e2e8f0 !important;
+}
+
+#lastUpdated {
+  color: var(--text-primary);
+}
+
+/* Ensure placeholder text meets contrast thresholds */
+input::placeholder,
+textarea::placeholder,
+select::placeholder {
+  color: var(--text-muted-strong);
+  opacity: 1; /* override browser defaults for contrast calculations */
+}
+
+/* Vendor-prefixed placeholder selectors */
+input::-webkit-input-placeholder { color: var(--text-muted-strong); opacity: 1; }
+input::-moz-placeholder { color: var(--text-muted-strong); opacity: 1; }
+textarea::-webkit-input-placeholder { color: var(--text-muted-strong); opacity: 1; }
+textarea::-moz-placeholder { color: var(--text-muted-strong); opacity: 1; }
 
 .results-actions {
   display: flex;
@@ -2001,7 +2105,11 @@ code {
   align-items: center;
   gap: var(--spacing-md);
   user-select: none;
-  transition: background var(--transition-fast);
+  /* Subtle gradient to lift handle from background when not hovered
+     - light/dark themes handled via CSS variables; prefer very low-opacity
+       white for dark theme so effect is gentle and accessible. */
+  background: linear-gradient(to right, rgba(255,255,255,0.03), rgba(255,255,255,0.00));
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .drawer-handle:hover {
@@ -2045,9 +2153,11 @@ code {
 }
 
 .drawer-hint {
-  color: var(--text-muted);
+  /* Use primary text color for adequate contrast in both themes */
+  color: var(--text-primary);
   font-size: 0.875rem;
   margin-left: auto;
+  font-weight: 600;
 }
 
 .drawer-content {
@@ -3624,3 +3734,79 @@ body.no-scroll {
   overflow: hidden !important;
   touch-action: none;
 }
+
+/* ============================================
+   Responsive adjustments for drawer handle
+   Ensures compact layout on small/short screens: hide long hint,
+   shrink badges, and allow ellipsizing so the control fits.
+   ============================================ */
+.drawer-handle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  min-width: 0; /* allow flex children to shrink */
+  overflow: hidden;
+}
+.drawer-handle .handle-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+.drawer-handle .drawer-badges {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.drawer-handle .drawer-badges .log-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 6px;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drawer-handle .drawer-hint {
+  flex: 1 1 auto;
+  min-width: 0; /* enable truncation inside flex */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+/* Compact behaviour on narrow viewports or when container is constrained */
+@media (max-width: 640px) {
+  .drawer-handle {
+    padding: 6px 8px;
+    gap: 0.35rem;
+  }
+  .drawer-handle .drawer-hint {
+    display: none; /* hide long hint on small screens */
+  }
+  .drawer-handle .drawer-badges .log-badge {
+    padding: 0 4px;
+    font-size: 0.7rem;
+    min-width: 1rem;
+    height: 1rem;
+  }
+}
+
+/* Also provide a compact class for JS-driven toggles (fallback) */
+.drawer-handle.compact .drawer-hint { display: none; }
+.drawer-handle.compact .drawer-badges .log-badge { padding: 0 4px; font-size: 0.7rem; }

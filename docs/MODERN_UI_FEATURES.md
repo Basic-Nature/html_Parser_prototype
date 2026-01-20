@@ -162,7 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
 **Outbound Events:**
 
 ```javascript
-socket.emit('run_parser', {
+socket.emit('ballot-lens', {
   session_id: currentSessionId,
   file_source: 'direct',
   direct_urls: ['http://...', 'http://...'],
@@ -188,7 +188,7 @@ socket.on('session_deleted', (data) => {
 
 ## CSS Styling
 
-All advanced feature styles are in `run_parser_modern.css`:
+All advanced feature styles are in `ballot-lens_modern.css`:
 
 - `.advanced-option` - Container for conditional features (Direct URLs)
 - `.advanced-option.hidden` - Hide when not selected
@@ -204,7 +204,7 @@ All advanced feature styles are in `run_parser_modern.css`:
 
 The existing Socket.IO handlers support all features:
 
-- `handle_run_parser()` - Accepts `direct_urls` and `batch_mode` parameters
+- `handle_ballot-lens()` - Accepts `direct_urls` and `batch_mode` parameters
 - `handle_clone_session()` - Emits `session_cloned` event
 - `handle_delete_session()` - Emits `session_deleted` event
 
@@ -251,7 +251,7 @@ def main(urls=None, ...):
 - [ ] Direct URL validation limits to 20 URLs
 - [ ] Direct URL textarea shows/hides based on radio selection
 - [ ] Direct URL draft persists when switching sessions
-- [ ] Batch mode checkbox value included in run_parser payload
+- [ ] Batch mode checkbox value included in ballot-lens payload
 - [ ] Filter presets save to localStorage
 - [ ] Filter presets restore all three filters
 - [ ] Clone session creates new session

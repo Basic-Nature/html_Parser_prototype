@@ -1,0 +1,414 @@
+﻿<!-- filepath: webapp/templates/ballot-lens.html -->
+<!DOCTYPE html>
+<html lang="en" data-page="run-parser">
+<head>
+  <!-- Document metadata (character set & viewport first) -->
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+  <!-- Title & description -->
+  <title>Smart Elections Parser</title>
+  <meta name="description" content="Election results parsing interface">
+
+  <!-- Color / display intents -->
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="theme-color" content="#2563eb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a232a" media="(prefers-color-scheme: dark)"> 
+
+  <!-- PWA / platform capability -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <!-- Manifest & icons -->
+  <link rel="manifest" href="/site.webmanifest?v=v1">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png?v=v1">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png?v=v1">
+
+  <!-- Vendor Bootstrap -->
+  <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+
+  <!-- Modern dashboard interface -->
+  <link rel="stylesheet" href="/static/css/ballot-lens_modern.css?v=v1">
+</head>
+<body data-page="run-parser" data-allow-style="1">
+  <script nonce="T5UgePoQY3tb6tpYk-m1qA">
+    // Defensive early polyfill: ensure document.addEventListener is callable
+    // and return an unsubscribe function for callers that expect it.
+    try {
+      if (typeof document !== 'undefined' && typeof document.addEventListener !== 'function') {
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+          document.addEventListener = function(evt, cb, opts) {
+            window.addEventListener(evt, cb, opts);
+            return function() { try { window.removeEventListener(evt, cb, opts); } catch (e) {} };
+          };
+        } else {
+          document.addEventListener = function() { return function() {}; };
+        }
+      }
+    } catch (e) {
+      // swallow errors — best-effort only
+    }
+  </script>
+        <!-- Sidebar: Unified File Management & URL Manager -->
+        <aside id="sidebar" class="sidebar" role="complementary" aria-label="File manager">
+            <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
+            
+            <div class="sidebar-content">
+                
+                
+                
+                
+                <!-- URLs Section -->
+                <section class="sidebar-section" id="urlsSection">
+                    <h3 class="sidebar-header"><span>📋 URLs</span> <button type="button" class="btn-icon-small" id="btnAddUrl" aria-label="Add URL">+</button> <button type="button" class="btn-icon-small collapse-toggle" id="btnCollapseUrls" title="Minimize URLs section" aria-expanded="false" aria-controls="urlLinesBox" aria-label="Toggle URLs section">▼</button></h3>
+                    <div class="urls-container">
+                        <label for="urlSearchBox" class="visually-hidden">Search URLs</label>
+                        <input type="search" id="urlSearchBox" class="url-search-box" placeholder="Search state, county, or URL..." aria-label="Search URLs">
+                        <div class="url-lines" id="urlLinesBox"></div>
+                        <form id="addUrlForm" class="flex-wrap-row mb-1em mt-1em">
+                            <input type="url" id="newUrl" class="url-add-input" placeholder="Paste new election results URL here" required aria-label="New URL">
+                            <button type="submit" class="btn btn-success url-add-btn">Add URL</button>
+                            <button type="button" class="btn btn-primary ms-1em" id="refreshUrlListBtn" title="Refresh URL list">⟳</button>
+                        </form>
+                    </div>
+                </section>
+                
+                <hr class="sidebar-divider spaced-divider">
+
+                <!-- Files Section -->
+                <section class="sidebar-section files-section">
+                  <h3 class="sidebar-header files-header">📁 Files</h3>
+                    
+                  <!-- Input Folder -->
+                  <div class="folder-item spaced-item">
+                    <details>
+                      <summary class="folder-summary">📂 Input Folder</summary>
+                      <div class="collapsible-content folder-content">
+                                <form method="POST" action="/upload/input" enctype="multipart/form-data" class="mb-1em">
+                                    <label for="inputFile" class="visually-hidden">Choose file for input folder</label>
+                                    <input type="file" id="inputFile" name="file" required aria-label="Choose file for input folder">
+                                    <button type="submit" class="btn btn-upload">Upload</button>
+                                </form>
+                                <div id="inputFolderPanel" class="folder-panel" data-root="input" aria-live="polite"></div>
+                            </div>
+                        </details>
+                    </div>
+                    
+                    <!-- Uploads Folder -->
+                    <div class="folder-item spaced-item">
+                      <details>
+                        <summary class="folder-summary">📤 Uploads</summary>
+                        <div class="collapsible-content folder-content">
+                                <form method="POST" action="/upload/uploads" enctype="multipart/form-data" class="mb-1em">
+                                    <label for="uploadsFile" class="visually-hidden">Choose file for uploads folder</label>
+                                    <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">
+                                    <button type="submit" class="btn btn-upload">Upload</button>
+                                </form>
+                                
+                                <!-- Manual Upload File Selection -->
+                                <div class="manual-upload-controls">
+                                  <label for="manualUploadSelect" class="form-label manual-upload-label">
+                                    Select File to Parse
+                                  </label>
+                                  <select id="manualUploadSelect" class="form-control manual-upload-select">
+                                    <option value="">-- Choose a file --</option>
+                                  </select>
+                                  <div class="manual-upload-actions">
+                                    <button type="button" id="manualUploadRefreshBtn" class="btn btn-sm">↻ Refresh</button>
+                                    <button type="button" id="manualUploadClearBtn" class="btn btn-sm">× Clear</button>
+                                  </div>
+                                  <div id="manualUploadSummary" class="manual-upload-summary"></div>
+                                </div>
+                                
+                                <div id="uploadsFolderPanel" class="folder-panel" data-root="uploads" aria-live="polite"></div>
+                            </div>
+                        </details>
+                    </div>
+                    
+                    <!-- Output Folder -->
+                    <div class="folder-item">
+                      <details>
+                        <summary class="folder-summary">📥 Output</summary>
+                        <div class="collapsible-content folder-content">
+                                <form method="POST" action="/upload/output" enctype="multipart/form-data" class="mb-1em">
+                                    <label for="outputFile" class="visually-hidden">Choose file for output folder</label>
+                                    <input type="file" id="outputFile" name="file" required aria-label="Choose file for output folder">
+                                    <button type="submit" class="btn btn-upload">Upload</button>
+                                </form>
+                                <div id="outputFolderPanel" class="folder-panel" data-root="output" aria-live="polite"></div>
+                            </div>
+                        </details>
+                    </div>
+                </section>
+            </div>
+        </aside>
+
+        <!-- Modern Dashboard Interface -->
+        <div class="modern-layout">
+          <nav class="navbar-modern" role="banner" aria-label="Application banner">
+            <div class="navbar-content">
+              <h1 class="navbar-title">🗳️ Smart Elections Parser</h1>
+              <div class="navbar-links">
+                <a href="/" class="nav-link" title="Home">Home</a>
+                <a href="/ballot-lens" class="nav-link active" title="Run Parser">Run Parser</a>
+                <a href="/quality_dashboard" class="nav-link" title="Quality Dashboard">Quality</a>
+                <a href="/azure_health" class="nav-link" title="Health & Monitoring">Health</a>
+                <a href="/data_framework" class="nav-link" title="Data Framework">Data Framework</a>
+                <a href="/history" class="nav-link" title="Run History">History</a>
+              </div>
+                <div class="navbar-actions">
+                  <button type="button" class="btn-icon" id="btnCommandPalette" title="Command Palette (Ctrl+Shift+P)" aria-label="Open command palette">⌘</button>
+                <button type="button" class="btn-icon" id="btnNotifications" title="Notifications" aria-label="Notifications">🔔</button>
+                <button type="button" class="btn-icon" id="btnTheme" title="Toggle Theme" aria-label="Toggle theme">🌙</button>
+                  <!-- Left sidebar toggle moved here so it remains in DOM flow and clickable on mobile -->
+                  <button type="button" id="sidebarToggleBtn" class="sidebar-toggle btn-icon" aria-controls="sidebar" aria-expanded="false" title="Menu" aria-label="Toggle menu">☰</button>
+                <button type="button" class="btn-icon" id="btnToggleRightSidebar" title="Controls (mobile)" aria-label="Open controls">⚙️</button>
+                <button type="button" class="btn-icon nav-more-toggle" id="btnNavMore" title="More navigation" aria-haspopup="true" aria-expanded="false" aria-label="More navigation">⋯</button>
+                <div class="nav-more-dropdown" id="navMoreDropdown"></div>
+              </div>
+            </div>
+          </nav>
+
+          <div class="dashboard-grid">
+            <!-- MAIN CONTENT -->
+            <main class="main-content">
+              <div class="results-header">
+                <div>
+                  <h2>Parsed Results</h2>
+                  <p class="text-muted"><span id="resultCount">0</span> results • Last updated: <span id="lastUpdated">now</span></p>
+                </div>
+                  <div class="results-actions">
+                  <input type="text" id="searchResults" class="search-box" placeholder="Search results...">
+                  <button type="button" class="btn-primary" id="btnRefreshResults" aria-label="Refresh results">🔄 Refresh</button>
+                </div>
+              </div>
+              <div class="results-grid" id="resultsGrid"></div>
+              <div class="empty-state" id="emptyState">
+                <div class="empty-state-icon">📊</div>
+                <h3>No results yet</h3>
+                <p>Run the parser or select files from the sidebar to view results.</p>
+              </div>
+            </main>
+
+            <!-- RIGHT SIDEBAR -->
+            <aside class="sidebar-right" role="complementary" aria-label="Controls">
+              <section class="sidebar-section">
+                <h3 class="sidebar-header">⚙️ Controls</h3>
+                <div class="control-group">
+                  <fieldset class="radio-fieldset">
+                    <legend class="sidebar-header">File Source</legend>
+                    <div class="radio-group" role="radiogroup" aria-label="File Source">
+                      <label class="radio-label"><input type="radio" id="fileSourceInput" name="fileSource" value="input" checked> <span>Input Folder</span></label>
+                      <label class="radio-label"><input type="radio" id="fileSourceUploads" name="fileSource" value="uploads"> <span>Manual Upload</span></label>
+                      <label class="radio-label"><input type="radio" id="fileSourceDirect" name="fileSource" value="direct"> <span>Direct URLs</span></label>
+                    </div>
+                  </fieldset>
+                </div>
+                <div class="control-group advanced-option" data-source="direct">
+                  <label for="directUrlTextarea">URLs (one per line, max 20)</label>
+                  <textarea id="directUrlTextarea" class="form-control" rows="4" placeholder="https://example.com/results1&#10;https://example.com/results2" aria-label="Direct URLs"></textarea>
+                  <small id="directUrlFeedback" class="text-muted">Enter one URL per line.</small>
+                  <button type="button" class="btn-sm btn-ghost" id="directUrlClearBtn" title="Clear URLs">Clear</button>
+                </div>
+                <div class="control-group">
+                  <label class="checkbox-label"><input type="checkbox" id="outputBypass"> Bypass Output Files</label>
+                  <small>Don't save CSV to disk</small>
+                </div>
+                <div class="control-group">
+                  <label class="checkbox-label"><input type="checkbox" id="batchMode"> Batch Mode</label>
+                  <small>Process multiple contests automatically</small>
+                </div>
+                <button type="button" class="btn-primary btn-large" id="btnRunParser2" aria-label="Run parser">▶ Run Parser</button>
+                <button type="button" class="btn-danger btn-large" id="btnCancel" disabled aria-label="Cancel parsing">⏹ Cancel</button>
+              </section>
+              <hr class="sidebar-divider">
+              <section class="sidebar-section">
+                <h3 class="sidebar-header">🔍 Filters</h3>
+                <div class="control-group">
+                  <label for="filterConfidence">Confidence</label>
+                  <input type="range" id="filterConfidence" min="0" max="100" value="0" class="slider" aria-describedby="filterConfidenceValue">
+                  <small id="filterConfidenceValue">0%+</small>
+                </div>
+                <div class="control-group">
+                  <label for="filterState">State</label>
+                  <select id="filterState" class="form-control-sm" aria-label="Filter by state"></select>
+                </div>
+                <div class="control-group">
+                  <label for="filterLevel">Log Level</label>
+                  <select id="filterLevel" class="form-control-sm" aria-label="Filter by log level">
+                    <option value="">All Levels</option>
+                    <option value="ERROR">Errors</option>
+                    <option value="WARNING">Warnings</option>
+                    <option value="INFO">Info</option>
+                  </select>
+                </div>
+                <div class="control-group">
+                  <label for="filterPresetSelect">Filter Presets</label>
+                  <select id="filterPresetSelect" class="form-control-sm" aria-label="Filter presets">
+                    <option value="">— Save new preset —</option>
+                  </select>
+                  <div class="btn-group-sm">
+                    <button type="button" class="btn-sm btn-ghost" id="saveFiltersBtn" title="Save current filters">Save</button>
+                    <button type="button" class="btn-sm btn-ghost" id="deletePresetBtn" title="Delete preset">Delete</button>
+                  </div>
+                </div>
+              </section>
+              <hr class="sidebar-divider">
+              <section class="sidebar-section">
+                <h3 class="sidebar-header">📋 Session Actions</h3>
+                <div class="btn-group-vertical">
+                  <button type="button" class="btn-sm" id="btnCloneSession" title="Clone current session (Ctrl+Shift+C)">🔄 Clone Session</button>
+                  <button type="button" class="btn-sm" id="btnExportSession" title="Export session data">📤 Export Data</button>
+                  <button type="button" class="btn-sm" id="btnClearSession" title="Clear session logs">🗑️ Clear Logs</button>
+                </div>
+                <div class="control-group" style="margin-top:.5rem">
+                  <button type="button" id="drawerHandle" class="btn-sm btn-ghost" aria-controls="logDrawer" aria-expanded="false" aria-label="Toggle debug console">Debug Console</button>
+                </div>
+              </section>
+            </aside>
+          </div>
+
+          <div id="mobileSidebarOverlay" class="mobile-sidebar-overlay" aria-hidden="true"></div>
+
+          <!-- LOG DRAWER -->
+          <aside class="log-drawer minimized" id="logDrawer" role="complementary" aria-label="Debug Console">
+            <button type="button" class="drawer-handle" id="drawerHandleVisual" aria-hidden="true" tabindex="-1">
+              <span class="handle-icon" aria-hidden="true">⌃</span>
+              <div class="drawer-badges" aria-hidden="true">
+                <span class="log-badge error" id="errorCount">0</span>
+                <span class="log-badge warning" id="warningCount">0</span>
+                <span class="log-badge info" id="infoCount">0</span>
+              </div>
+              <span class="drawer-hint">Debug Console • Click to expand</span>
+            </button>
+            <div class="drawer-content">
+              <div class="drawer-toolbar">
+                <h4>Debug Console</h4>
+                    <div class="drawer-actions">
+                    <button type="button" class="btn-sm" id="btnExportJSON" title="Export logs as JSON (Ctrl+E)" aria-label="Export logs as JSON">📄 JSON</button>
+                    <button type="button" class="btn-sm" id="btnExportCSV" title="Export logs as CSV (Ctrl+Shift+E)" aria-label="Export logs as CSV">📊 CSV</button>
+                    <button type="button" class="btn-sm" id="btnExportMarkdown" title="Export logs as Markdown" aria-label="Export logs as Markdown">📝 MD</button>
+                    <button type="button" class="btn-sm" id="btnShowKeyboardShortcuts" title="Show keyboard shortcuts (Ctrl+/)">⌨️</button>
+                    <button type="button" class="btn-sm" id="btnCopyLogs" title="Copy all logs to clipboard" aria-label="Copy logs">Copy</button>
+                    <button type="button" class="btn-sm" id="btnToggleScroll" title="Toggle auto-scroll" aria-label="Toggle auto-scroll">Pin</button>
+                    <button type="button" class="btn-sm" id="btnClearLogs" title="Clear console (Ctrl+L)" aria-label="Clear console">Clear</button>
+                  </div>
+              </div>
+              <div class="log-filter-controls">
+                <label for="logFilterPresetSelect">Presets:</label>
+                <select id="logFilterPresetSelect" class="form-select form-select-sm">
+                  <option value="">— Save new preset —</option>
+                </select>
+                <button id="btnSaveFilterPreset" class="btn btn-sm btn-outline-secondary" title="Save current filters">Save</button>
+                <button id="btnDeleteFilterPreset" class="btn btn-sm btn-outline-danger" title="Delete selected preset">Delete</button>
+              </div>
+              <div class="log-output" id="logOutput"></div>
+            </div>
+          </aside>
+
+          <!-- FILE PREVIEW MODAL -->
+          <div class="modal hidden" id="previewModal">
+            <div class="modal-content modal-large">
+              <div class="modal-header">
+                <h3 id="previewTitle">File Preview</h3>
+                <button class="btn-close" id="btnClosePreview">&times;</button>
+              </div>
+              <div class="modal-body">
+                <div class="preview-tabs">
+                  <button class="tab-btn active" data-tab="preview">Preview</button>
+                  <button class="tab-btn" data-tab="info">Info</button>
+                </div>
+                <div class="tab-content active" id="tabPreview">
+                  <div class="table-wrapper"><table id="previewTable" class="preview-table"></table></div>
+                </div>
+                <div class="tab-content" id="tabInfo"><div class="info-grid" id="infoGrid"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- COMMAND PALETTE -->
+          <div class="command-palette hidden" id="commandPalette">
+            <div class="command-palette-content">
+              <input type="text" class="command-input" id="commandInput" placeholder="Type a command... (ESC to close)">
+              <div class="command-results" id="commandResults"></div>
+            </div>
+          </div>
+
+          <!-- PROMPT MODAL -->
+          <div class="modal hidden" id="promptModal">
+            <div class="modal-content modal-small">
+              <div class="modal-header">
+                <h3 id="promptTitle">Action required</h3>
+                <button class="btn-close" id="btnClosePrompt" aria-label="Close prompt">&times;</button>
+              </div>
+              <div class="modal-body">
+                <p id="promptMessage" class="prompt-message"></p>
+                <input type="search" id="promptSearch" class="form-control" placeholder="Filter or type to search options..." aria-label="Filter prompt options">
+                <div id="promptSelectionSummary" class="hidden"></div>
+                <div id="promptOptions" class="prompt-options"></div>
+                <input type="text" id="promptInput" class="form-control" placeholder="Enter response..." aria-label="Manual response">
+                <div class="modal-footer">
+                  <button class="btn-primary" id="btnSubmitPrompt">Submit</button>
+                  <button class="btn" id="btnCancelPrompt">Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TOAST NOTIFICATIONS -->
+          <div class="toast-container" id="toastContainer"></div>
+        </div>
+        <!-- End modern-layout -->
+    <!-- SheetJS for CSV/XLSX preview -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    
+    <script nonce="T5UgePoQY3tb6tpYk-m1qA" src="/static/vendor/bootstrap.bundle.min.js"></script>
+    <!-- htmllint-disable -->
+    <script nonce="T5UgePoQY3tb6tpYk-m1qA" src="/static/vendor/socket.io-4.7.5.min.js" data-socketio-config="{"pingInterval": 10000, "pingTimeout": 60000, "pollingOnly": true, "transports": ["polling"]}"></script>
+    <script nonce="T5UgePoQY3tb6tpYk-m1qA">
+        // Extract config from data attribute to avoid Jinja2 in script content
+        const configEl = document.querySelector('script[data-socketio-config]');
+        const defaultConfig = {transports: ['polling'], pollingOnly: true, pingInterval: 10000, pingTimeout: 60000};
+        if (configEl) {
+            try {
+                const configData = configEl.getAttribute('data-socketio-config');
+                if (configData && typeof configData === 'string' && configData.trim().length > 2) {
+                    const trimmed = configData.trim();
+                    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                        const parsed = JSON.parse(trimmed);
+                        window.__SOCKETIO_CONFIG__ = Object.keys(parsed).length > 0 ? parsed : defaultConfig;
+                    } else {
+                        window.__SOCKETIO_CONFIG__ = defaultConfig;
+                    }
+                } else {
+                    window.__SOCKETIO_CONFIG__ = defaultConfig;
+                }
+            } catch (e) {
+                console.warn('Failed to parse Socket.IO config, using defaults:', e);
+                window.__SOCKETIO_CONFIG__ = defaultConfig;
+            }
+        } else {
+            window.__SOCKETIO_CONFIG__ = defaultConfig;
+        }
+    </script>
+    <!-- htmllint-enable -->
+    <script nonce="T5UgePoQY3tb6tpYk-m1qA" src="/static/js/nav_guard.js?v=v1" defer></script>
+    <!-- Modern dashboard interface (includes all features) -->
+    <script nonce="T5UgePoQY3tb6tpYk-m1qA" src="/static/js/ballot-lens_modern.js?v=v1" defer></script>
+
+    <footer id="sessionFooter" class="minimized">
+        <div class="footer-preview" id="footerPreview">
+            <span class="footer-heading">Active Sessions</span>
+            <span id="sessionCount" class="session-count"></span>
+            <span class="footer-hint">(Hover to expand)</span>
+        </div>
+        <div class="footer-full" id="footerFull">
+            <div class="footer-heading">Active Sessions</div>
+            <div id="sessionList" class="session-list"></div>
+            <button id="addSessionBtn" class="session-btn ms-1em">+ New Session</button>
+        </div>
+    </footer>
+</body>
+</html>
