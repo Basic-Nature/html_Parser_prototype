@@ -3511,10 +3511,24 @@ $('#btnBulkExport')?.addEventListener('click', () => {
   }, 1000);
 });
 
-$('#btnRefreshResults').addEventListener('click', () => {
-  // In production, fetch updated results from API
-  showToast('Results refreshed', 'success');
-});
+{
+  const btn = $('#btnRefreshResults');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      // Guard against accidental double-fire while an async refresh is in flight.
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1';
+      btn.classList.add('is-loading');
+      showToast('Refreshing results...', 'info');
+      // In production, fetch updated results from API
+      setTimeout(() => {
+        btn.dataset.busy = '0';
+        btn.classList.remove('is-loading');
+        showToast('Results refreshed', 'success');
+      }, 300);
+    });
+  }
+}
 
 // ============================================
 // File Operations (Stubs for Production)
