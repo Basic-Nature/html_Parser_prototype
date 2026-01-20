@@ -2249,6 +2249,47 @@ const PendingOverlay = (() => {
   return { show, hide };
 })();
 
+// Expose overlay toggle for headless checks / tests
+try {
+  window.setOverlayVisible = function(visible){
+    if (visible) PendingOverlay.show(''); else PendingOverlay.hide();
+    return true;
+  };
+} catch (/** @type {any} */ e) { /* ignore */ }
+
+// Diagnostic: expose layout metrics for headless runs
+try {
+  window.dumpLayoutMetrics = function(){
+    /** @param {string} sel */
+    const snap = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      const styles = getComputedStyle(el);
+      return {
+        width: rect.width,
+        height: rect.height,
+        top: rect.top,
+        left: rect.left,
+        paddingInline: [styles.paddingLeft, styles.paddingRight],
+        marginInline: [styles.marginLeft, styles.marginRight],
+        gap: styles.gap || styles.columnGap || '',
+        display: styles.display,
+        maxWidth: styles.maxWidth
+      };
+    };
+    return {
+      ts: Date.now(),
+      viewport: { w: window.innerWidth, h: window.innerHeight },
+      resultsHeader: snap('.results-header'),
+      resultsGrid: snap('.results-grid'),
+      drawer: snap('#logDrawer'),
+      drawerHandle: snap('.drawer-handle'),
+      footer: snap('#sessionFooter')
+    };
+  };
+} catch (/** @type {any} */ e) { /* ignore */ }
+
 // ============================================
 // Filter Presets for Log Console
 // ============================================
@@ -3511,10 +3552,26 @@ $('#btnBulkExport')?.addEventListener('click', () => {
   }, 1000);
 });
 
-$('#btnRefreshResults').addEventListener('click', () => {
-  // In production, fetch updated results from API
-  showToast('Results refreshed', 'success');
-});
+{
+  const btn = $('#btnRefreshResults');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      // Guard against accidental double-fire while an async refresh is in flight.
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1';
+      btn.classList.add('is-loading');
+      // Slight delay on the toast to avoid blink perception on fast refreshes
+      const toastTimer = setTimeout(() => showToast('Refreshing results...', 'info'), 180);
+      // In production, fetch updated results from API
+      setTimeout(() => {
+        btn.dataset.busy = '0';
+        btn.classList.remove('is-loading');
+        clearTimeout(toastTimer);
+        showToast('Results refreshed', 'success');
+      }, 420);
+    });
+  }
+}
 
 // ============================================
 // File Operations (Stubs for Production)
