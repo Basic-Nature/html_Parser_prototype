@@ -359,7 +359,7 @@
         </div>
         <!-- End modern-layout -->
     <!-- SheetJS for CSV/XLSX preview -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="{{ url_for('static', filename='vendor/xlsx.full.min.js') }}"></script>
     
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <!-- htmllint-disable -->
