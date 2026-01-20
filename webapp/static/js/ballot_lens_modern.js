@@ -2257,6 +2257,39 @@ try {
   };
 } catch (/** @type {any} */ e) { /* ignore */ }
 
+// Diagnostic: expose layout metrics for headless runs
+try {
+  window.dumpLayoutMetrics = function(){
+    /** @param {string} sel */
+    const snap = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      const styles = getComputedStyle(el);
+      return {
+        width: rect.width,
+        height: rect.height,
+        top: rect.top,
+        left: rect.left,
+        paddingInline: [styles.paddingLeft, styles.paddingRight],
+        marginInline: [styles.marginLeft, styles.marginRight],
+        gap: styles.gap || styles.columnGap || '',
+        display: styles.display,
+        maxWidth: styles.maxWidth
+      };
+    };
+    return {
+      ts: Date.now(),
+      viewport: { w: window.innerWidth, h: window.innerHeight },
+      resultsHeader: snap('.results-header'),
+      resultsGrid: snap('.results-grid'),
+      drawer: snap('#logDrawer'),
+      drawerHandle: snap('.drawer-handle'),
+      footer: snap('#sessionFooter')
+    };
+  };
+} catch (/** @type {any} */ e) { /* ignore */ }
+
 // ============================================
 // Filter Presets for Log Console
 // ============================================
