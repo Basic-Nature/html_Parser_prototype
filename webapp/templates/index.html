@@ -13,6 +13,8 @@
         <a href="https://smartelections.us/">Home Base</a>
         <a href="https://discord.gg/your_invite" target="_blank" rel="noreferrer">Community</a>
         <a href="https://github.com/Basic-Nature/html_Parser_prototype/issues" target="_blank" rel="noreferrer">Feedback</a>
+        <a href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer">Docs</a>
+        <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank" rel="noreferrer">Repository</a>
       <a href="{{ url_for('quick_reference_page') }}">Quick Reference</a>
     </nav>
     <div class="container">
@@ -24,29 +26,7 @@
           {% endif %}
         {% endwith %}
 
-        <h1 class="d-flex align-items-center justify-content-between">
-          <span>Smart Elections Parser</span>
-          <div class="d-flex align-items-center gap-2">
-            <button type="button"
-                    class="btn btn-outline-primary btn-sm"
-                    data-bs-toggle="popover"
-                    data-bs-trigger="focus"
-                    data-bs-placement="left"
-                    title="About"
-                    data-bs-content="Explore tools to extract, normalize, and analyze election results.">
-              Help
-            </button>
-            <div class="dropdown">
-              <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                More
-              </button>
-              <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer">Docs</a></li>
-                <li><a class="dropdown-item" href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank" rel="noreferrer">Repository</a></li>
-              </ul>
-            </div>
-          </div>
-        </h1>
+        <h1 class="text-center">Smart Elections Parser</h1>
         <div class="subtitle rainbow-text">Open, Transparent, and Modular Election Data Extraction</div>
         <div class="mission mission-panel" id="missionPanel">
           <canvas class="rim-tracer" id="rimTracer" aria-hidden="true"></canvas>
