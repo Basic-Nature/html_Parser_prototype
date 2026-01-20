@@ -33,24 +33,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/ballot_lens_modern.css') }}?v={{ static_version }}">
 </head>
 <body data-page="run-parser" data-allow-style="1">
-  <script nonce="{{ g.csp_nonce }}">
-    // Defensive early polyfill: ensure document.addEventListener is callable
-    // and return an unsubscribe function for callers that expect it.
-    try {
-      if (typeof document !== 'undefined' && typeof document.addEventListener !== 'function') {
-        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-          document.addEventListener = function(evt, cb, opts) {
-            window.addEventListener(evt, cb, opts);
-            return function() { try { window.removeEventListener(evt, cb, opts); } catch (e) {} };
-          };
-        } else {
-          document.addEventListener = function() { return function() {}; };
-        }
-      }
-    } catch (e) {
-      // swallow errors — best-effort only
-    }
-  </script>
+  <!-- Init script moved to external file (CSP-friendly) -->
         <!-- Modern Dashboard Interface -->
         <div class="modern-layout">
           <nav class="navbar-modern" role="navigation" aria-label="Main navigation">
@@ -63,6 +46,9 @@
                 <a href="/azure_health" class="nav-link" title="Health & Monitoring">Health</a>
                 <a href="/data_framework" class="nav-link" title="Data Framework">Data Framework</a>
                 <a href="/history" class="nav-link" title="Run History">History</a>
+                <!-- Overflow "More" toggle (populated by JS when links overflow) -->
+                <button id="btnNavMore" class="nav-more-toggle" aria-haspopup="true" aria-controls="navMoreDropdown" aria-expanded="false" title="More" aria-label="More navigation">⋯</button>
+                <div id="navMoreDropdown" class="nav-more-dropdown" role="menu" aria-hidden="true" tabindex="-1"></div>
               </div>
                 <div class="navbar-actions">
                   <!-- Left sidebar dropdown toggle -->
@@ -164,9 +150,9 @@
                   </div>
 
                   <!-- Right-side parser tools: a single toggle opens an accessible popover with tool buttons -->
-                  <div class="parser-tools" style="position:relative">
+                  <div class="parser-tools">
                     <button type="button" class="btn-icon" id="btnToggleRightSidebar" aria-haspopup="true" aria-controls="parserToolsDropdown" aria-expanded="false" title="Tools" aria-label="Open parser tools">⚙️</button>
-                    <div id="parserToolsDropdown" class="parser-tools-dropdown" role="menu" aria-hidden="true" tabindex="-1">
+                    <div id="parserToolsDropdown" class="parser-tools-dropdown nav-dropdown overlay" role="dialog" aria-hidden="true" tabindex="-1" data-focus-trap="true">
                       <div role="none">
                         <button type="button" class="btn-icon" id="btnCommandPalette" role="menuitem" title="Command Palette (Ctrl+Shift+P)" aria-label="Open command palette">⌘</button>
                         <button type="button" class="btn-icon" id="btnNotifications" role="menuitem" title="Notifications" aria-label="Notifications">🔔</button>
@@ -378,32 +364,8 @@
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <!-- htmllint-disable -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io-4.7.5.min.js') }}" data-socketio-config="{{ socketio_client_config | tojson | safe }}"></script>
-    <script nonce="{{ g.csp_nonce }}">
-        // Extract config from data attribute to avoid Jinja2 in script content
-        const configEl = document.querySelector('script[data-socketio-config]');
-        const defaultConfig = {transports: ['polling'], pollingOnly: true, pingInterval: 10000, pingTimeout: 60000};
-        if (configEl) {
-            try {
-                const configData = configEl.getAttribute('data-socketio-config');
-                if (configData && typeof configData === 'string' && configData.trim().length > 2) {
-                    const trimmed = configData.trim();
-                    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-                        const parsed = JSON.parse(trimmed);
-                        window.__SOCKETIO_CONFIG__ = Object.keys(parsed).length > 0 ? parsed : defaultConfig;
-                    } else {
-                        window.__SOCKETIO_CONFIG__ = defaultConfig;
-                    }
-                } else {
-                    window.__SOCKETIO_CONFIG__ = defaultConfig;
-                }
-            } catch (e) {
-                console.warn('Failed to parse Socket.IO config, using defaults:', e);
-                window.__SOCKETIO_CONFIG__ = defaultConfig;
-            }
-        } else {
-            window.__SOCKETIO_CONFIG__ = defaultConfig;
-        }
-    </script>
+    <!-- Socket.IO config + DOM polyfills moved to external init script (CSP-friendly) -->
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot_lens_init.js') }}?v={{ static_version }}" defer></script>
     <!-- htmllint-enable -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/nav_guard.js') }}?v={{ static_version }}" defer></script>
     <!-- Modern dashboard interface (includes all features) -->

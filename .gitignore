@@ -75,6 +75,9 @@ tools/lh-report.json
 tools/lh-screenshots/
 tools/webhint-report.json
 json/
+tools/screenshots/
+tools/cluster_dom_mapping.json
+tools/reports/
 # ----------------------------
 # Generated / runtime data
 # ----------------------------

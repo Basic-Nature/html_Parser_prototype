@@ -35,7 +35,7 @@
       <button class="btn btn-outline-primary btn-sm" data-action="expand-all" data-bs-toggle="tooltip" title="Expand all runs">Expand all</button>
       <button class="btn btn-outline-primary btn-sm" data-action="collapse-all" data-bs-toggle="tooltip" title="Collapse all runs">Collapse all</button>
     </div>
-    <form class="d-flex gap-2 align-items-center run-filters" onsubmit="return false;">
+    <form class="d-flex gap-2 align-items-center run-filters">
       <input id="runFilterInput" class="form-control form-control-sm" placeholder="Filter (run / session / status / source)">
       <select id="statusFilter" class="form-select form-select-sm">
         <option value="">Status</option>
@@ -51,8 +51,8 @@
       </select>
       <button id="clearFilters" class="btn btn-sm btn-outline-secondary" type="button">Reset</button>
     </form>
-    <form method="POST" action="{{ url_for('clear_history') }}" style="display:inline;">
-      <button class="btn btn-sm btn-danger" type="submit" onclick="return confirm('Clear all run history? This cannot be undone.');">
+    <form method="POST" action="{{ url_for('clear_history') }}" class="d-inline">
+      <button class="btn btn-sm btn-danger" type="submit" data-confirm="Clear all run history? This cannot be undone.">
         Clear History
       </button>
     </form>
@@ -118,7 +118,7 @@
             {% endif %}
           </td>
           <td>{{ r.duration_ms or '' }}</td>
-          <td class="text-truncate" style="max-width:140px" title="{{ r.ts }}">{{ r.ts }}</td>
+          <td class="text-truncate td-truncated" title="{{ r.ts }}">{{ r.ts }}</td>
           <td>
             <form method="POST" action="{{ url_for('rerun_prior', run_id=r.run_id) }}" class="d-inline">
               <button class="btn btn-sm btn-outline-primary">Re-run</button>

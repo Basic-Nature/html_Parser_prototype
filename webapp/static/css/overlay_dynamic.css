@@ -1,0 +1,3 @@
+/* Dynamic overlay positioning rules (populated at runtime via CSSOM).
+   Kept intentionally empty; runtime code inserts per-overlay rules here.
+*/

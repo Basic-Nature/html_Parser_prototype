@@ -348,8 +348,8 @@ const CONFIG = {
   maxDirectUrls: 20, // Maximum URLs for batch processing
 };
 
-// Expose left toggle element for other modules that reference it
-const toggleLeftBtn = document.getElementById('sidebarToggleBtn');
+// Accessor to get left toggle element when needed (avoid early DOM query)
+function getToggleLeftBtn() { return document.getElementById('sidebarToggleBtn'); }
 
 // Defensive guard: ensure `document.addEventListener` exists and is callable.
 // Some injected or third-party code can accidentally overwrite it; avoid a hard crash
@@ -1111,7 +1111,7 @@ function showFlaggedModal(flagged, report_path) {
           <h3>Flagged Details (${flagged.length})</h3>
           <div class="flagged-controls">
             <input id="flaggedFilter" placeholder="Filter by URL or reason" class="input-sm" />
-            <input id="flaggedMinConf" type="number" min="0" max="1" step="0.01" placeholder="Min confidence" class="input-sm" style="width:110px;" />
+            <input id="flaggedMinConf" type="number" min="0" max="1" step="0.01" placeholder="Min confidence" class="input-sm w-110" />
             <button id="flaggedExportCSV" class="btn btn-sm">Export CSV</button>
             <button id="flaggedExportJSON" class="btn btn-sm">Export JSON</button>
             ${reportName ? `<a class="btn btn-sm btn-outline" id="flaggedDownload" href="/download_fs?root=output&path=reports&name=${encodeURIComponent(reportName)}" target="_blank" rel="noopener">Download report</a>` : ''}
@@ -1198,9 +1198,9 @@ function showFlaggedModal(flagged, report_path) {
           <td>${status}</td>
           <td>${escapeHtml(reasons)}</td>
           <td>${confVal !== '' ? Number(confVal).toFixed(2) : ''}</td>
-          <td><div style="display:flex;gap:8px;flex-direction:column;align-items:flex-start;">
-            <div style="display:flex;gap:8px;align-items:center;">${openLinkHtml}${jumpBtnHtml}<button class="copy-meta btn btn-xs" data-meta="${metaDataAttr}">Copy</button></div>
-            <pre class="small muted" style="white-space:pre-wrap;margin:0;">${metaEsc}</pre>
+          <td><div class="flex-col-gap-start">
+            <div class="flex-row-gap-center">${openLinkHtml}${jumpBtnHtml}<button class="copy-meta btn btn-xs" data-meta="${metaDataAttr}">Copy</button></div>
+            <pre class="small muted pre-wrap no-margin">${metaEsc}</pre>
           </div></td>
         `;
         tbody.appendChild(tr);
@@ -1758,7 +1758,7 @@ const KeyboardGuide = (() => {
     const modal = document.createElement('div');
     modal.className = 'modal keyboard-guide-modal';
     modal.innerHTML = `
-      <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-content modal-large-max">
         <div class="modal-header">
           <h3>⌨️ Keyboard Shortcuts</h3>
           <button class="modal-close" aria-label="Close shortcuts guide">×</button>
@@ -1774,7 +1774,7 @@ const KeyboardGuide = (() => {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-primary" onclick="this.closest('.modal').remove()">Got it</button>
+          <button class="btn btn-primary" data-action="modal-remove">Got it</button>
         </div>
       </div>
     `;
@@ -2129,7 +2129,7 @@ socket.on('run_summary', /**
           const href = `/download_fs?root=output&path=reports&name=${encodeURIComponent(name)}`;
           reportLink = ` <a href="${href}" target="_blank" rel="noopener">View report</a>`;
         }
-        html += `<li><strong>${urlText}</strong>${when} — ${escapeHtml(f.status || '')} — ${escapeHtml(reasons)}${reportLink}<pre class="muted small" style="white-space:pre-wrap;margin-top:6px;">${meta}</pre></li>`;
+        html += `<li><strong>${urlText}</strong>${when} — ${escapeHtml(f.status || '')} — ${escapeHtml(reasons)}${reportLink}<pre class="muted small pre-wrap mt-6px">${meta}</pre></li>`;
       }
       if (flagged.length > 20) html += `<li class="muted small">...and ${flagged.length-20} more</li>`;
       html += `</ul></details></div>`;
@@ -3239,6 +3239,16 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
     if (!rightSidebar) return;
     rightSidebar.classList.add('open');
     rightSidebar.classList.add('sidebar-open');
+    // Center as a tool window on wide screens; full/right slide on small screens
+    try {
+      if (window.innerWidth >= 1024) {
+        rightSidebar.classList.add('centered-tool-window');
+      } else {
+        rightSidebar.classList.remove('centered-tool-window');
+      }
+    } catch (e) {
+      // ignore
+    }
     setOverlayVisible(true);
     document.body.classList.add('no-scroll');
     document.body.classList.add('sidebar-right-open');
@@ -3281,6 +3291,65 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeAll();
   });
+
+  // Delegated fallback: ensure toggle buttons work even if elements are replaced dynamically.
+  // This listens at document level for clicks on the toggle buttons and invokes the
+  // exposed open/close helpers to keep behavior robust against DOM replacements.
+  document.addEventListener('click', function delegatedSidebarToggle(e) {
+    try {
+      const tgt = /** @type {any} */ (e.target);
+      const btn = (tgt && tgt.closest) ? tgt.closest('#btnToggleRightSidebar, #sidebarToggleBtn') : null;
+      if (!btn) return;
+      e.preventDefault();
+      // Dev-only health logging: only on localhost to avoid noise in prod
+      const isLocal = (typeof window !== 'undefined') && (window.location && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+      if (isLocal && console && console.debug) console.debug('[health] delegatedSidebarToggle invoked for', btn.id || btn);
+      if (btn.id === 'btnToggleRightSidebar') {
+        if (typeof window.openRight === 'function') return window.openRight();
+        // fallback: toggle classes directly
+        const rs = document.querySelector('.sidebar-right');
+        if (!rs) return;
+        const isOpen = rs.classList.contains('open');
+        if (isOpen) {
+          rs.classList.remove('open', 'sidebar-open', 'centered-tool-window');
+          document.body.classList.remove('no-scroll', 'sidebar-right-open');
+          if (isLocal && console && console.debug) console.debug('[health] right sidebar closed via delegate');
+        } else {
+          if (window.innerWidth >= 1024) rs.classList.add('centered-tool-window');
+          rs.classList.add('open', 'sidebar-open');
+          document.body.classList.add('no-scroll', 'sidebar-right-open');
+          if (isLocal && console && console.debug) console.debug('[health] right sidebar opened via delegate');
+        }
+        return;
+      }
+      if (btn.id === 'sidebarToggleBtn') {
+        if (typeof window.openLeft === 'function') return window.openLeft();
+        const ls = document.getElementById('sidebar');
+        if (!ls) return;
+        const isOpen = ls.classList.contains('sidebar-open');
+        if (isOpen) {
+          ls.classList.remove('sidebar-open');
+          document.body.classList.remove('no-scroll');
+          if (isLocal && console && console.debug) console.debug('[health] left sidebar closed via delegate');
+        } else {
+          ls.classList.add('sidebar-open');
+          document.body.classList.add('no-scroll');
+          if (isLocal && console && console.debug) console.debug('[health] left sidebar opened via delegate');
+        }
+      }
+    } catch (err) {
+      /* noop */
+    }
+  }, true);
+
+// Dev-only: confirm delegated listener is installed when running locally
+try {
+  if (typeof window !== 'undefined' && window.location && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    if (console && console.debug) console.debug('[health] delegatedSidebarToggle listener installed');
+  }
+} catch (err) {
+  /* noop */
+}
 
   // Auto-close on resize to desktop
   window.addEventListener('resize', () => {
@@ -4170,43 +4239,45 @@ function hidePrompt() {
 }
 
 const btnSubmitPrompt = $('#btnSubmitPrompt');
-if (btnSubmitPrompt) {
-  btnSubmitPrompt.addEventListener('click', () => submitPrompt());
-  // Left sidebar toggle (legacy file/URL sidebar)
-  if (toggleLeftBtn) {
-    toggleLeftBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const legacySidebarEl = document.getElementById('sidebar');
-      const rightSidebarEl = document.querySelector('.sidebar-right');
-      const sidebarBackdropEl = document.getElementById('sidebarBackdrop');
-      const overlayEl = document.getElementById('mobileSidebarOverlay');
-      const toggleRightEl = document.getElementById('btnToggleRightSidebar');
-      const isOpen = legacySidebarEl && legacySidebarEl.classList.contains('sidebar-open');
-      if (isOpen) {
-        // Close behavior (local, avoids calling outer-scope helpers)
-        if (legacySidebarEl) legacySidebarEl.classList.remove('sidebar-open');
-        if (rightSidebarEl) {
-          rightSidebarEl.classList.remove('open');
-          rightSidebarEl.classList.remove('sidebar-open');
+  if (btnSubmitPrompt) {
+    btnSubmitPrompt.addEventListener('click', () => submitPrompt());
+    // Left sidebar toggle (legacy file/URL sidebar)
+    // Resolve element at runtime to avoid stale null from early queries
+    const toggleLeft = document.getElementById('sidebarToggleBtn');
+    if (toggleLeft) {
+      toggleLeft.addEventListener('click', (e) => {
+        e.preventDefault();
+        const legacySidebarEl = document.getElementById('sidebar');
+        const rightSidebarEl = document.querySelector('.sidebar-right');
+        const sidebarBackdropEl = document.getElementById('sidebarBackdrop');
+        const overlayEl = document.getElementById('mobileSidebarOverlay');
+        const toggleRightEl = document.getElementById('btnToggleRightSidebar');
+        const isOpen = legacySidebarEl && legacySidebarEl.classList.contains('sidebar-open');
+        if (isOpen) {
+          // Close behavior (local, avoids calling outer-scope helpers)
+          if (legacySidebarEl) legacySidebarEl.classList.remove('sidebar-open');
+          if (rightSidebarEl) {
+            rightSidebarEl.classList.remove('open');
+            rightSidebarEl.classList.remove('sidebar-open');
+          }
+          if (sidebarBackdropEl) sidebarBackdropEl.classList.remove('visible');
+          if (overlayEl && overlayEl !== sidebarBackdropEl) overlayEl.classList.remove('visible');
+          document.body.classList.remove('no-scroll');
+          document.body.classList.remove('sidebar-right-open');
+          if (toggleRightEl) {
+            try { toggleRightEl.setAttribute('aria-expanded', 'false'); } catch (e) {}
+          }
+          if (overlayEl) {
+            try { overlayEl.setAttribute('aria-hidden', 'true'); } catch (e) {}
+          }
+        } else {
+          // Open left sidebar
+          if (legacySidebarEl) legacySidebarEl.classList.add('sidebar-open');
+          if (sidebarBackdropEl) sidebarBackdropEl.classList.add('visible');
         }
-        if (sidebarBackdropEl) sidebarBackdropEl.classList.remove('visible');
-        if (overlayEl && overlayEl !== sidebarBackdropEl) overlayEl.classList.remove('visible');
-        document.body.classList.remove('no-scroll');
-        document.body.classList.remove('sidebar-right-open');
-        if (toggleRightEl) {
-          try { toggleRightEl.setAttribute('aria-expanded', 'false'); } catch (e) {}
-        }
-        if (overlayEl) {
-          try { overlayEl.setAttribute('aria-hidden', 'true'); } catch (e) {}
-        }
-      } else {
-        // Open left sidebar
-        if (legacySidebarEl) legacySidebarEl.classList.add('sidebar-open');
-        if (sidebarBackdropEl) sidebarBackdropEl.classList.add('visible');
-      }
-    });
+      });
+    }
   }
-}
 
 const btnCancelPrompt = $('#btnCancelPrompt');
 if (btnCancelPrompt) {
@@ -4971,7 +5042,7 @@ function initKeyboardShortcuts() {
 function showShortcutsHelp() {
   const helpText = `
     <h3>Keyboard Shortcuts</h3>
-    <ul style="list-style: none; padding: 0;">
+    <ul class="unstyled-list">
       <li><kbd>Ctrl+E</kbd> - Export session data (JSON)</li>
       <li><kbd>Ctrl+Shift+E</kbd> - Export as CSV</li>
       <li><kbd>Ctrl+L</kbd> - Clear logs</li>
@@ -4995,7 +5066,7 @@ function showShortcutsHelp() {
     <div class="modal-backdrop"></div>
     <div class="modal-content">
       ${helpText}
-      <button class="btn btn-primary" onclick="this.closest('.modal').classList.add('hidden')">Close</button>
+      <button class="btn btn-primary" data-action="modal-hide">Close</button>
     </div>
   `;
   document.body.appendChild(modal);
@@ -6298,9 +6369,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   function syncNavOverflow() {
-    if (!navMoreDropdown || !navLinks.length) return;
+    if (!navMoreDropdown) return;
+    // Recompute links dynamically so changes to the DOM are reflected.
+    const currentLinks = Array.from(document.querySelectorAll('.navbar-links .nav-link'));
+    if (!currentLinks.length) {
+      // ensure dropdown is inert/hidden when nothing to show
+      setHiddenWithInert(navMoreDropdown, true);
+      navMoreDropdown.innerHTML = '';
+      return;
+    }
     navMoreDropdown.innerHTML = '';
-    navLinks.forEach((link) => {
+    currentLinks.forEach((link) => {
       try {
         const clone = /** @type {HTMLElement} */ (link.cloneNode(true));
         clone.addEventListener('click', closeNavDropdown);
@@ -6315,6 +6394,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (navMoreToggle && navMoreDropdown) {
     syncNavOverflow();
+    // Observe changes to the navbar links container so overflow stays in sync
+    try {
+      /**
+       * @typedef {Element & { _navOverflowObserver?: MutationObserver }} NavLinksContainer
+       */
+      const navbarLinksContainer = document.querySelector('.navbar-links');
+      if (navbarLinksContainer && typeof MutationObserver !== 'undefined') {
+        const mo = new MutationObserver(debounce(() => {
+          try { syncNavOverflow(); } catch (e) { /* ignore */ }
+        }, 120));
+        mo.observe(navbarLinksContainer, { childList: true, subtree: true, attributes: true });
+        // store reference for potential teardown/debugging
+        try { /** @type {NavLinksContainer} */ (navbarLinksContainer)._navOverflowObserver = mo; } catch (e) { /* ignore */ }
+      }
+    } catch (e) {
+      /* ignore observer failures */
+    }
     navMoreToggle.addEventListener('click', (e) => {
       e.preventDefault();
       toggleNavDropdown();
@@ -6329,10 +6425,86 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeNavDropdown();
     });
+    const debouncedSyncNavOverflow = debounce(syncNavOverflow, 200);
     window.addEventListener('resize', () => {
+      try { debouncedSyncNavOverflow(); } catch (e) {}
       if (window.innerWidth > 720) closeNavDropdown();
     });
+    // Also handle orientation changes on mobile
+    window.addEventListener('orientationchange', () => {
+      try { debouncedSyncNavOverflow(); } catch (e) {}
+    });
   }
+
+  // -------------------------------
+  // Card row height sync (JS resize sync)
+  // -------------------------------
+  function syncCardHeights() {
+    try {
+      const grid = document.querySelector('.results-grid');
+      if (!grid) return;
+
+      // Unwrap any previously created row wrappers to avoid nesting
+      const prevRows = Array.from(grid.querySelectorAll(':scope > .results-row'));
+      prevRows.forEach((row) => {
+        try {
+          while (row.firstChild) grid.insertBefore(row.firstChild, row);
+          row.remove();
+        } catch (e) { /* ignore */ }
+      });
+
+      const cards = Array.from(grid.querySelectorAll(':scope > .result-card'));
+      if (!cards.length) return;
+
+      // Group cards by their visual top offset
+      const rows = new Map();
+      cards.forEach((c) => {
+        const top = Math.round((/** @type {HTMLElement} */ (c)).getBoundingClientRect().top);
+        const list = rows.get(top) || [];
+        list.push(c);
+        rows.set(top, list);
+      });
+
+      // Sort row keys to preserve visual order
+      const sortedTops = Array.from(rows.keys()).sort((a,b) => a - b);
+      sortedTops.forEach((top) => {
+        const rowCards = rows.get(top) || [];
+        let max = 0;
+        rowCards.forEach((c) => { max = Math.max(max, /** @type {HTMLElement} */ (c).offsetHeight); });
+
+        // Create a wrapper that will carry the CSS custom property for the row
+        const wrapper = document.createElement('div');
+        wrapper.className = 'results-row';
+        // use display: contents to avoid adding an extra box to layout while still providing inheritance
+        wrapper.style.display = 'contents';
+        wrapper.style.setProperty('--row-min-height', max + 'px');
+
+        // Append wrapper and move row cards into it in order
+        grid.appendChild(wrapper);
+        rowCards.forEach((c) => { wrapper.appendChild(c); });
+      });
+    } catch (e) {
+      /* ignore measurement errors */
+    }
+  }
+
+  const debouncedSyncCardHeights = debounce(syncCardHeights, 120);
+  // initial run
+  try { syncCardHeights(); } catch (e) {}
+  // wire to resize/orientation
+  window.addEventListener('resize', () => { try { debouncedSyncCardHeights(); } catch (e) {} });
+  window.addEventListener('orientationchange', () => { try { debouncedSyncCardHeights(); } catch (e) {} });
+
+  // Observe DOM changes in the results grid to re-run sync (e.g., cards added/removed)
+  try {
+    const resultsGrid = document.querySelector('.results-grid');
+    if (resultsGrid && typeof MutationObserver !== 'undefined') {
+      /** @typedef {Element & { _cardSizeObserver?: MutationObserver }} ResultsGridContainer */
+      const ro = new MutationObserver(debounce(() => { try { syncCardHeights(); } catch (e) {} }, 120));
+      ro.observe(resultsGrid, { childList: true, subtree: true, attributes: true });
+      try { /** @type {ResultsGridContainer} */ (resultsGrid)._cardSizeObserver = ro; } catch (e) {}
+    }
+  } catch (e) { /* ignore observer failures */ }
 
   // Ensure navbar action buttons reliably trigger expected behaviors.
   // Uses event delegation on `.navbar-actions` so buttons that are moved in the DOM

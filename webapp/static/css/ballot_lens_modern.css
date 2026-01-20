@@ -42,6 +42,8 @@
 
   /* Layout sizing */
   --navbar-height: 72px;
+  /* Max content width for centered layout */
+  --content-max-width: 1200px;
 
   /* Sidebar sizing - reduced to prevent clutter */
   --sidebar-left-min: 240px;
@@ -185,6 +187,39 @@ small {
   color: var(--text-muted);
 }
 
+/* Data table heading moved from inline styles to class */
+.data-table-heading {
+  padding: 1rem;
+  margin: 0 0 8px 0;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-radius: 4px 4px 0 0;
+}
+
+/* Loading cell for tables */
+.data-table-loading {
+  text-align: center;
+  padding: 2rem;
+}
+
+/* Truncate table cells consistently via a class rather than inline style */
+.td-truncated {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Utility classes moved from inline styles in generated HTML */
+.w-110 { width: 110px; }
+.flex-col-gap-start { display:flex; gap:8px; flex-direction:column; align-items:flex-start; }
+.flex-row-gap-center { display:flex; gap:8px; align-items:center; }
+.pre-wrap { white-space: pre-wrap; }
+.no-margin { margin: 0 !important; }
+.modal-large-max { max-width: 600px; }
+.mt-6px { margin-top: 6px !important; }
+.unstyled-list { list-style: none; padding: 0; margin: 0; }
+
 .text-center {
   text-align: center;
 }
@@ -215,6 +250,10 @@ hr {
   align-items: center;
   gap: var(--spacing-lg);
   min-width: 0;
+  /* Constrain and center navbar content to match main content */
+  max-width: var(--content-max-width);
+  width: calc(100% - 48px);
+  margin: 0 auto;
 }
 
 .navbar-title {
@@ -226,11 +265,12 @@ hr {
 .navbar-links {
   display: flex;
   gap: var(--spacing-md);
-  flex: 1;
+  flex: 1 1 auto;
   align-items: center;
   min-width: 0;
   overflow: hidden;
-  flex-wrap: wrap;
+  flex-wrap: nowrap; /* keep links on a single line, allow overflow handling */
+  justify-content: center; /* center the link bar horizontally */
 }
 
 .nav-link {
@@ -242,6 +282,7 @@ hr {
   font-size: 0.95rem;
   transition: all var(--transition-fast);
   white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 /* Safari support for match-parent text alignment used in some user agents */
@@ -672,8 +713,11 @@ th {
     padding: 8px 12px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center; /* center inner content */
   }
+
+  /* Footer inner container that aligns with navbar/main content width */
+  footer#sessionFooter .footer-inner { width: 100%; max-width: var(--content-max-width); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
 
   footer#sessionFooter .footer-full { display: none; }
   footer#sessionFooter.minimized .footer-preview { display: flex; gap: 8px; align-items: center; }
@@ -764,6 +808,102 @@ th {
   padding: 0.25rem;
   margin-left: 0.25rem;
   transition: color var(--transition-fast);
+}
+
+/* Results grid: ensure it sits below sticky navbar and is responsive */
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  align-items: stretch; /* ensure cards stretch to same row height */
+  grid-auto-rows: 1fr; /* make rows equal height so cards align vertically */
+  padding: 16px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+  /* keep content clear of sticky navbar */
+  margin-top: calc(var(--navbar-height) + 12px);
+}
+
+.result-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 140px;
+  height: 100%; /* stretch to fill grid row */
+  box-shadow: 0 6px 14px rgba(0,0,0,0.12);
+}
+
+.card-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.card-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.04));
+  font-size: 1.25rem;
+}
+
+.card-title { flex: 1 1 auto; min-width: 0; }
+.card-name { font-weight: 600; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-type-badge { font-size: 0.75rem; color: var(--text-muted); margin-left: 6px; }
+
+.card-stats { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+.card-stat { display:flex; flex-direction:column; }
+.stat-label { font-size: 0.75rem; color: var(--text-muted); }
+.stat-value { font-weight:600; }
+.high-confidence { color: var(--accent-success); }
+.medium-confidence { color: var(--accent-warning); }
+
+.card-preview { font-family: monospace; white-space: pre-wrap; color: var(--text-muted); background: rgba(255,255,255,0.01); padding: 8px; border-radius: 6px; }
+.card-preview { flex: 1 1 auto; min-height: 48px; overflow: auto; }
+
+.card-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top: auto; }
+.card-actions .btn-sm { padding:6px 8px; font-size:0.9rem; }
+.card-checkbox { margin-left: 6px; transform: scale(1.05); }
+
+/* Per-row wrapper (created by JS) - use display:contents so grid layout remains controlled by cards
+  and provide a row-level CSS variable for min-height. */
+.results-row { display: contents; }
+.results-row > .result-card { min-height: var(--row-min-height, 0); }
+
+/* Make icons stack fractally by allowing vertical stacking when space is tight */
+@media (max-width: 520px) {
+  .results-grid { grid-template-columns: 1fr; padding: 12px; }
+  .card-actions { flex-direction: column; align-items: stretch; }
+  .card-actions .btn-sm { width: 100%; }
+}
+
+/* Centered tool window for right sidebar on desktop */
+.sidebar-right.centered-tool-window {
+  position: fixed !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  top: 10% !important;
+  max-width: 900px !important;
+  width: calc(100% - 48px) !important;
+  height: auto !important;
+  max-height: 80vh !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.25) !important;
+  z-index: 1200 !important;
+  overflow: auto !important;
+}
+
+/* On narrow screens, keep standard right-slide behavior */
+@media (max-width: 1023px) {
+  .sidebar-right.centered-tool-window { position: fixed !important; left: auto !important; transform: none !important; right: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0 !important; }
 }
 
 .modal-restore-banner .restore-dismiss:hover {
