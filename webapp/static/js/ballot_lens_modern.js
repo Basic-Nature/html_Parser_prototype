@@ -2259,7 +2259,7 @@ try {
 
 // Diagnostic: expose layout metrics for headless runs
 try {
-  window.dumpLayoutMetrics = function(){
+  (/** @type {any} */ (window)).dumpLayoutMetrics = function(){
     /** @param {string} sel */
     const snap = (sel) => {
       const el = document.querySelector(sel);
@@ -3552,26 +3552,28 @@ $('#btnBulkExport')?.addEventListener('click', () => {
   }, 1000);
 });
 
-{
-  const btn = $('#btnRefreshResults');
-  if (btn) {
-    btn.addEventListener('click', () => {
-      // Guard against accidental double-fire while an async refresh is in flight.
-      if (btn.dataset.busy === '1') return;
-      btn.dataset.busy = '1';
-      btn.classList.add('is-loading');
-      // Slight delay on the toast to avoid blink perception on fast refreshes
-      const toastTimer = setTimeout(() => showToast('Refreshing results...', 'info'), 180);
-      // In production, fetch updated results from API
-      setTimeout(() => {
-        btn.dataset.busy = '0';
-        btn.classList.remove('is-loading');
-        clearTimeout(toastTimer);
-        showToast('Results refreshed', 'success');
-      }, 420);
-    });
+  {
+    const btn = $('#btnRefreshResults');
+    if (btn) {
+      btn.addEventListener('click', (ev) => {
+        // Ignore synthetic/programmatic clicks; accept only user-initiated events
+        try { if (ev && ev.isTrusted === false) return; } catch (e) { /* ignore */ }
+        // Guard against accidental double-fire while an async refresh is in flight.
+        if (btn.dataset.busy === '1') return;
+        btn.dataset.busy = '1';
+        btn.classList.add('is-loading');
+        // Slight delay on the toast to avoid blink perception on fast refreshes
+        const toastTimer = setTimeout(() => showToast('Refreshing results...', 'info'), 180);
+        // In production, fetch updated results from API
+        setTimeout(() => {
+          btn.dataset.busy = '0';
+          btn.classList.remove('is-loading');
+          clearTimeout(toastTimer);
+          showToast('Results refreshed', 'success');
+        }, 420);
+      });
+    }
   }
-}
 
 // ============================================
 // File Operations (Stubs for Production)
@@ -4384,8 +4386,12 @@ document.addEventListener('DOMContentLoaded', () => {
   initSessionActions();
   initKeyboardShortcuts(); // Consolidated keyboard shortcuts
   
-  // Run integration tests in development
-  if (window.location.hostname === 'localhost') {
+  // Run integration tests only when explicitly enabled (dev flag or query param)
+  const shouldRunIntegrationTests = (
+    window.location.hostname === 'localhost'
+    && ((/** @type {any} */ (window)).__ENABLE_INTEGRATION_TESTS__ === true || window.location.search.includes('runTests=1'))
+  );
+  if (shouldRunIntegrationTests) {
     runIntegrationTests().catch(e => ErrorBoundary.logError(e, 'Integration Tests'));
   }
   
@@ -5131,14 +5137,41 @@ function showShortcutsHelp() {
 }
 
 // ============================================
-// Data Loading: Real API + Fallback Sample Data
+// Data Loading: Real API (no sample fixtures)
 // ============================================
+
+const pulseLoaderEl = $('#pulseLoader');
+const pulseLoaderSubtitleEl = $('#pulseLoaderSubtitle');
+
+function setLoadingState(isLoading, subtitleText = '') {
+  if (!pulseLoaderEl) return;
+  const grid = $('#resultsGrid');
+  const emptyState = $('#emptyState');
+
+  if (isLoading) {
+    if (grid) grid.classList.add('hidden');
+    if (emptyState) emptyState.classList.add('hidden');
+    pulseLoaderEl.classList.remove('hidden');
+    pulseLoaderEl.setAttribute('aria-hidden', 'false');
+    pulseLoaderEl.setAttribute('aria-busy', 'true');
+    if (subtitleText && pulseLoaderSubtitleEl) {
+      pulseLoaderSubtitleEl.textContent = subtitleText;
+    }
+    document.body.classList.add('pulse-loading');
+  } else {
+    pulseLoaderEl.classList.add('hidden');
+    pulseLoaderEl.setAttribute('aria-hidden', 'true');
+    pulseLoaderEl.setAttribute('aria-busy', 'false');
+    document.body.classList.remove('pulse-loading');
+  }
+}
 
 /**
  * Fetch results from warehouse API and transform to UI format.
- * Gracefully falls back to sample data if API unavailable.
+ * If API returns no rows, show empty state; never inject demo fixtures.
  */
 async function loadRealData() {
+  setLoadingState(true, 'Calibrating election pulse...');
   try {
     console.log('[API] Fetching results from warehouse...');
     const response = await fetch('/api/warehouse_election_results?limit=50', {
@@ -5155,8 +5188,10 @@ async function loadRealData() {
     const items = Array.isArray(data.items) ? data.items : [];
 
     if (items.length === 0) {
-      console.warn('[API] No results found in warehouse, using sample data');
-      loadSampleData();
+      console.warn('[API] No results found in warehouse');
+      state.results = [];
+      renderResults();
+      showToast('No results available yet.', 'info');
       return;
     }
 
@@ -5197,21 +5232,32 @@ async function loadRealData() {
     /** @type {WarehouseItem[]} */
     const warehouseItems = /** @type {any} */ (items);
 
-    /** @type {UIResult[]} */
-    const mappedResults = warehouseItems.map((item, idx) => ({
-      id: String(item.id || idx + 1),
-      name: item.contest || item.county || `Result #${idx + 1}`,
-      type: (item.format || 'csv').toLowerCase(),
-      rows: item.row_count || 0,
-      columns: item.column_count || 0,
-      confidence: item.confidence_score ? Number(item.confidence_score) * 100 : 85.0,
-      state: item.state || 'N/A',
-      county: item.county || '',
-      handler: item.handler_name || 'unknown',
-      timestamp: item.created_at ? new Date(item.created_at).getTime() : Date.now(),
-      source_url: item.source_url || '',
-      preview: item.preview_html || item.preview_text || '(No preview available)',
-    }));
+    /** @type {number} */
+    const minConfidence = Number((state.filters && state.filters.confidence) || 0);
+
+    const mappedResults = warehouseItems.map((item, idx) => {
+      let confidence = null;
+      if (item.confidence_score !== undefined && item.confidence_score !== null && !Number.isNaN(Number(item.confidence_score))) {
+        confidence = Number(item.confidence_score);
+        // If service returns 0-1, scale to percentage; if already 0-100, keep as-is.
+        if (confidence <= 1) confidence = confidence * 100;
+      }
+
+      return {
+        id: String(item.id || idx + 1),
+        name: item.contest || item.county || `Result #${idx + 1}`,
+        type: (item.format || 'csv').toLowerCase(),
+        rows: item.row_count || 0,
+        columns: item.column_count || 0,
+        confidence: confidence === null ? 0 : confidence,
+        state: item.state || 'N/A',
+        county: item.county || '',
+        handler: item.handler_name || 'unknown',
+        timestamp: item.created_at ? new Date(item.created_at).getTime() : Date.now(),
+        source_url: item.source_url || '',
+        preview: item.preview_html || item.preview_text || '(No preview available)',
+      };
+    }).filter(r => (r.confidence || 0) >= minConfidence);
 
     state.results = mappedResults;
 
@@ -5219,60 +5265,12 @@ async function loadRealData() {
     renderResults();
   } catch (/** @type {any} */ error) {
     console.error('[API] Failed to load real data:', error);
-    showToast(`Failed to load results: ${error.message}. Using sample data.`, 'warning');
-    loadSampleData();
+    state.results = [];
+    renderResults();
+    showToast(`Failed to load results: ${error.message}`, 'warning');
+  } finally {
+    setLoadingState(false);
   }
-}
-
-/**
- * Fallback: Sample data for development & testing
- */
-function loadSampleData() {
-  console.log('[Sample Data] Loading development fixtures...');
-  state.results = [
-    {
-      id: '1',
-      name: 'Alameda County - General 2026',
-      type: 'csv',
-      rows: 1234,
-      columns: 5,
-      confidence: 94.5,
-      state: 'CA',
-      county: 'Alameda',
-      handler: 'ca_handler',
-      timestamp: Date.now() - 3600000,
-      preview: 'Candidate | Votes\nJohn Doe | 45,234\nJane Smith | 41,123',
-    },
-    {
-      id: '2',
-      name: 'San Francisco County Results',
-      type: 'json',
-      rows: 987,
-      columns: 4,
-      confidence: 91.2,
-      state: 'CA',
-      county: 'San Francisco',
-      handler: 'generic_json',
-      timestamp: Date.now() - 7200000,
-      preview: '{ "contest": "County Attorney", "candidates": [...] }',
-    },
-    {
-      id: '3',
-      name: 'Santa Clara County Export',
-      type: 'xlsx',
-      rows: 2156,
-      columns: 6,
-      confidence: 89.7,
-      state: 'CA',
-      county: 'Santa Clara',
-      handler: 'xlsx_handler',
-      timestamp: Date.now() - 10800000,
-      preview: 'Sheet 1: Statewide Results\nSheet 2: County Breakdown\nSheet 3: Precincts',
-    },
-  ];
-  
-  console.log('[Sample Data] Loaded 3 fixture results');
-  renderResults();
 }
 
 // ============================================

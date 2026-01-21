@@ -48,7 +48,7 @@
                 <a href="/history" class="nav-link" title="Run History">History</a>
                 <!-- Overflow "More" toggle (populated by JS when links overflow) -->
                 <button id="btnNavMore" class="nav-more-toggle" aria-haspopup="true" aria-controls="navMoreDropdown" aria-expanded="false" title="More" aria-label="More navigation">⋯</button>
-                <div id="navMoreDropdown" class="nav-more-dropdown" role="menu" aria-hidden="true" tabindex="-1"></div>
+                <div id="navMoreDropdown" class="nav-more-dropdown" role="menu" aria-hidden="true" tabindex="-1" data-anchor-id="btnNavMore"></div>
               </div>
                 <div class="navbar-actions">
                   <!-- Left sidebar dropdown toggle -->
@@ -150,9 +150,9 @@
                   </div>
 
                   <!-- Right-side parser tools: a single toggle opens an accessible popover with tool buttons -->
-                  <div class="parser-tools">
+                    <div class="parser-tools">
                     <button type="button" class="btn-icon" id="btnToggleRightSidebar" aria-haspopup="true" aria-controls="parserToolsDropdown" aria-expanded="false" title="Tools" aria-label="Open parser tools">⚙️</button>
-                    <div id="parserToolsDropdown" class="parser-tools-dropdown nav-dropdown overlay" role="dialog" aria-hidden="true" tabindex="-1" data-focus-trap="true">
+                    <div id="parserToolsDropdown" class="parser-tools-dropdown nav-dropdown overlay" role="dialog" aria-hidden="true" tabindex="-1" data-focus-trap="true" data-anchor-id="btnToggleRightSidebar">
                       <div role="none">
                         <button type="button" class="btn-icon" id="btnCommandPalette" role="menuitem" title="Command Palette (Ctrl+Shift+P)" aria-label="Open command palette">⌘</button>
                         <button type="button" class="btn-icon" id="btnNotifications" role="menuitem" title="Notifications" aria-label="Notifications">🔔</button>
@@ -178,6 +178,16 @@
                   <div class="results-actions">
                   <input type="text" id="searchResults" class="search-box" placeholder="Search results...">
                   <button type="button" class="btn-primary" id="btnRefreshResults" aria-label="Refresh results">🔄 Refresh</button>
+                </div>
+              </div>
+              <div class="pulse-loader hidden" id="pulseLoader" aria-live="polite" aria-busy="true" aria-hidden="true">
+                <div class="pulse-loader-card">
+                  <div class="pulse-loader-icon">🗳️</div>
+                  <div class="pulse-loader-title">Ballot Pulse</div>
+                  <p class="pulse-loader-subtitle" id="pulseLoaderSubtitle">Calibrating election lenses...</p>
+                  <div class="pulse-loader-bars" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span>
+                  </div>
                 </div>
               </div>
               <div class="results-grid" id="resultsGrid"></div>
@@ -372,16 +382,18 @@
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot_lens_modern.js') }}?v={{ static_version }}" defer></script>
 
     <footer id="sessionFooter" class="minimized">
+      <div class="footer-inner">
         <div class="footer-preview" id="footerPreview">
-            <span class="footer-heading">Active Sessions</span>
-            <span id="sessionCount" class="session-count"></span>
-            <span class="footer-hint">(Hover to expand)</span>
+          <span class="footer-heading">Active Sessions</span>
+          <span id="sessionCount" class="session-count"></span>
+          <span class="footer-hint">(Hover to expand)</span>
         </div>
         <div class="footer-full" id="footerFull">
-            <div class="footer-heading">Active Sessions</div>
-            <div id="sessionList" class="session-list"></div>
-            <button type="button" id="addSessionBtn" class="session-btn ms-1em">+ New Session</button>
+          <div class="footer-heading">Active Sessions</div>
+          <div id="sessionList" class="session-list"></div>
+          <button type="button" id="addSessionBtn" class="session-btn ms-1em">+ New Session</button>
         </div>
+      </div>
     </footer>
 </body>
 </html>
