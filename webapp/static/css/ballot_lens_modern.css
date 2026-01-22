@@ -82,19 +82,20 @@
 }
 
 :root[data-theme="light"] {
-  --surface-0: #f6f8fc;
-  --surface-1: #ffffff;
-  --surface-2: #e9edf5;
-  --surface-3: #d9e1ee;
-  --text-strong: #0f172a;
-  --text-subtle: #1f2937;
-  --text-muted-base: #4b5563;
-  --border-weak: #cbd5e1;
-  --accent-1: #2563eb;
-  --accent-2: #3b82f6;
-  --accent-success-strong: #059669;
-  --accent-warning-strong: #d97706;
-  --accent-danger-strong: #dc2626;
+  /* Light theme: lighter tints of the dark brand colors */
+  --surface-0: #e8ecf3;  /* Very light blue-gray background (lighter tint of #0f1419) */
+  --surface-1: #f0f3f8;  /* Slightly lighter panels (lighter tint of #1a232a) */
+  --surface-2: #d8dfe9;  /* Light card backgrounds (lighter tint of #2a3642) */
+  --surface-3: #c5ccd9;  /* Light borders/dividers (lighter tint of #334155) */
+  --text-strong: #0f172a;  /* Dark text for readability */
+  --text-subtle: #1f2937;  /* Slightly lighter text */
+  --text-muted-base: #4b5563;  /* Muted text */
+  --border-weak: #b8c1d0;  /* Lighter borders */
+  --accent-1: #2563eb;  /* Keep primary accent */
+  --accent-2: #3b82f6;  /* Keep secondary accent */
+  --accent-success-strong: #059669;  /* Success green */
+  --accent-warning-strong: #d97706;  /* Warning orange */
+  --accent-danger-strong: #dc2626;  /* Danger red */
 }
 }
 

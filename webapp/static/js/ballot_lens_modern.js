@@ -5610,6 +5610,133 @@ const ThemeManager = (() => {
 })();
 
 // ============================================
+// Swipe Gesture Handler for Sidebars
+// ============================================
+
+const SwipeHandler = (() => {
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchStartTime = 0;
+  let isSwiping = false;
+  
+  const SWIPE_THRESHOLD = 50; // Minimum distance for a swipe
+  const SWIPE_TIME_LIMIT = 300; // Maximum time for a swipe (ms)
+  const SWIPE_VELOCITY_THRESHOLD = 0.3; // Minimum velocity (pixels/ms)
+  
+  /**
+   * Handle touch start event
+   * @param {TouchEvent} e
+   * @param {HTMLElement} sidebar
+   */
+  function handleTouchStart(e, sidebar) {
+    if (!e.touches || e.touches.length === 0) return;
+    
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchStartTime = Date.now();
+    isSwiping = false;
+  }
+  
+  /**
+   * Handle touch move event
+   * @param {TouchEvent} e
+   * @param {HTMLElement} sidebar
+   */
+  function handleTouchMove(e, sidebar) {
+    if (!e.touches || e.touches.length === 0) return;
+    
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    
+    // Detect if this is a horizontal swipe (not vertical scroll)
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+      isSwiping = true;
+    }
+  }
+  
+  /**
+   * Handle touch end event
+   * @param {TouchEvent} e
+   * @param {HTMLElement} sidebar
+   * @param {string} sidebarType - 'left' or 'right'
+   */
+  function handleTouchEnd(e, sidebar, sidebarType) {
+    if (!isSwiping) return;
+    
+    const touch = e.changedTouches && e.changedTouches[0];
+    if (!touch) return;
+    
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    const deltaTime = Date.now() - touchStartTime;
+    const velocity = Math.abs(deltaX) / deltaTime;
+    
+    // Check if it's a valid swipe
+    const isHorizontalSwipe = Math.abs(deltaX) > Math.abs(deltaY);
+    const meetsThreshold = Math.abs(deltaX) > SWIPE_THRESHOLD;
+    const withinTimeLimit = deltaTime < SWIPE_TIME_LIMIT;
+    const meetsVelocity = velocity > SWIPE_VELOCITY_THRESHOLD;
+    
+    if (isHorizontalSwipe && (meetsThreshold || meetsVelocity) && withinTimeLimit) {
+      // Right sidebar: swipe right to close
+      if (sidebarType === 'right' && deltaX > 0) {
+        closeSidebar(sidebar);
+      }
+      // Left sidebar: swipe left to close
+      else if (sidebarType === 'left' && deltaX < 0) {
+        closeSidebar(sidebar);
+      }
+    }
+    
+    // Reset
+    isSwiping = false;
+  }
+  
+  /**
+   * Close a sidebar
+   * @param {HTMLElement} sidebar
+   */
+  function closeSidebar(sidebar) {
+    if (!sidebar) return;
+    
+    sidebar.classList.remove('open', 'sidebar-open', 'centered-tool-window');
+    document.body.classList.remove('no-scroll', 'sidebar-right-open');
+    
+    // Update toggle button aria-expanded
+    const toggleBtn = document.getElementById('btnToggleRightSidebar');
+    if (toggleBtn) {
+      toggleBtn.setAttribute('aria-expanded', 'false');
+    }
+  }
+  
+  /**
+   * Initialize swipe handlers for sidebars
+   */
+  function init() {
+    const rightSidebar = document.querySelector('.sidebar-right');
+    const leftSidebar = document.querySelector('.sidebar-left');
+    
+    if (rightSidebar) {
+      rightSidebar.addEventListener('touchstart', (e) => handleTouchStart(e, rightSidebar), { passive: true });
+      rightSidebar.addEventListener('touchmove', (e) => handleTouchMove(e, rightSidebar), { passive: true });
+      rightSidebar.addEventListener('touchend', (e) => handleTouchEnd(e, rightSidebar, 'right'), { passive: true });
+    }
+    
+    if (leftSidebar) {
+      leftSidebar.addEventListener('touchstart', (e) => handleTouchStart(e, leftSidebar), { passive: true });
+      leftSidebar.addEventListener('touchmove', (e) => handleTouchMove(e, leftSidebar), { passive: true });
+      leftSidebar.addEventListener('touchend', (e) => handleTouchEnd(e, leftSidebar, 'left'), { passive: true });
+    }
+  }
+  
+  return {
+    init
+  };
+})();
+
+// ============================================
 // Pipeline Phase System (from classic)
 // ============================================
 
@@ -6880,6 +7007,9 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialize theme manager
   ThemeManager.init();
+  
+  // Initialize swipe gesture handler for sidebars
+  SwipeHandler.init();
   
   // Initialize pipeline phase system
   PipelineManager.init();
