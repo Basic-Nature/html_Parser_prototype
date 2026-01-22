@@ -1808,8 +1808,10 @@ footer#sessionFooter {
 
 .dashboard-grid {
   display: grid;
-  /* 2-column layout: main content (flexible) + right sidebar (fixed width) */
-  grid-template-columns: 1fr minmax(var(--sidebar-right-min), var(--sidebar-right-max));
+  /* 3-column layout: left sidebar | main content (flexible) | right sidebar */
+  grid-template-columns: minmax(var(--sidebar-left-min), var(--sidebar-left-max)) 
+                         1fr 
+                         minmax(var(--sidebar-right-min), var(--sidebar-right-max));
   grid-template-rows: minmax(0, 1fr);
   flex: 1;
   overflow: visible;
@@ -3718,7 +3720,9 @@ code {
     --sidebar-right-max: 280px;
   }
   .dashboard-grid {
-    grid-template-columns: 1fr minmax(var(--sidebar-right-min), var(--sidebar-right-max));
+    grid-template-columns: minmax(var(--sidebar-left-min), var(--sidebar-left-max)) 
+                           1fr 
+                           minmax(var(--sidebar-right-min), var(--sidebar-right-max));
     gap: 0.75rem;
   }
   
@@ -3740,7 +3744,9 @@ code {
     --sidebar-right-max: 260px;
   }
   .dashboard-grid {
-    grid-template-columns: 1fr minmax(var(--sidebar-right-min), var(--sidebar-right-max));
+    grid-template-columns: minmax(var(--sidebar-left-min), var(--sidebar-left-max)) 
+                           1fr 
+                           minmax(var(--sidebar-right-min), var(--sidebar-right-max));
     gap: 0.5rem;
     padding: 0 var(--content-padding);
   }
