@@ -1036,6 +1036,40 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "Fal
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
 
 @app.before_request
+def redirect_to_https_www():
+    """
+    Enforce HTTPS and www subdomain for production domain.
+    - Redirects http:// to https://
+    - Redirects electionpulse.org to www.electionpulse.org
+    """
+    # Skip redirects for local development
+    if request.host.startswith('localhost') or request.host.startswith('127.0.0.1'):
+        return None
+    
+    # Get the current scheme and host
+    scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+    host = request.host
+    
+    # Determine if redirect is needed
+    needs_redirect = False
+    target_url = None
+    
+    # Check if we need to redirect to www
+    if host == 'electionpulse.org':
+        needs_redirect = True
+        target_url = f"https://www.electionpulse.org{request.full_path.rstrip('?')}"
+    
+    # Check if we need to force HTTPS (for www subdomain)
+    elif host == 'www.electionpulse.org' and scheme != 'https':
+        needs_redirect = True
+        target_url = f"https://www.electionpulse.org{request.full_path.rstrip('?')}"
+    
+    if needs_redirect:
+        return redirect(target_url, code=301)
+    
+    return None
+
+@app.before_request
 def _csp_nonce():  # noqa: F401  (used via Flask decorator)
     # Generate nonce only if we are likely to serve HTML (skip static + pure API JSON)
     endpoint = (request.endpoint or "").lower()
