@@ -299,72 +299,32 @@
 
   document.addEventListener('DOMContentLoaded', function(){
     const toggle = document.getElementById('btnToggleRightSidebar');
-    const dropdown = document.getElementById('parserToolsDropdown');
     const rightSidebar = document.querySelector('.sidebar-right');
-    const toolHost = document.getElementById('toolActions');
-    if(!toggle || !dropdown) return;
+    if(!toggle || !rightSidebar) return;
 
     // initialize attributes
     toggle.setAttribute('aria-expanded', 'false');
-    dropdown.setAttribute('aria-hidden','true');
 
     toggle.addEventListener('click', function(ev){
       // Prevent bubbling to outer listeners that might instantly close the panel
       try { ev.preventDefault(); ev.stopPropagation(); } catch (e) {}
 
-      // If the modern right sidebar exists, toggle it directly (desktop + mobile) and keep aria in sync
-      if (rightSidebar) {
-        const isOpen = rightSidebar.classList.contains('open') || rightSidebar.classList.contains('sidebar-open');
-        if (isOpen) {
-          rightSidebar.classList.remove('open','sidebar-open','centered-tool-window');
-          document.body.classList.remove('no-scroll','sidebar-right-open');
-          toggle.setAttribute('aria-expanded','false');
-        } else {
-          if (window.innerWidth >= 1024) {
-            rightSidebar.classList.add('centered-tool-window');
-          } else {
-            rightSidebar.classList.remove('centered-tool-window');
-          }
-          rightSidebar.classList.add('open','sidebar-open');
-          document.body.classList.add('no-scroll','sidebar-right-open');
-          toggle.setAttribute('aria-expanded','true');
-        }
-        return;
-      }
-
-      // Fallback: legacy parser tools dropdown
-      const open = toggle.getAttribute('aria-expanded') === 'true';
-      if(open){ closeParserTools(dropdown,toggle); }
-      else { openParserTools(dropdown,toggle); }
-    });
-
-    // If a tool host exists in the right sidebar, move the tool buttons into it and hide the legacy dropdown
-    if (rightSidebar && toolHost) {
-      const toolButtons = Array.from(dropdown.querySelectorAll('button'));
-      toolButtons.forEach(btn => toolHost.appendChild(btn));
-      dropdown.setAttribute('hidden', 'true');
-      dropdown.setAttribute('aria-hidden', 'true');
-    }
-
-    // close when clicking outside
-    /** @param {MouseEvent} e */
-    document.addEventListener('click', function(e){
-      if(dropdown.getAttribute('aria-hidden') === 'true') return;
-      const tgt = (e && e.target && (e.target instanceof Node)) ? e.target : null;
-      if ((/** @type {any} */ (window)).__tl_helpers.nodeContains(toggle, tgt) || (/** @type {any} */ (window)).__tl_helpers.nodeContains(dropdown, tgt)) return;
-      closeParserTools(dropdown,toggle);
-    }, true);
-
-    // wire close button inside menu
-    const closeBtn = document.getElementById('btnToggleRightSidebarClose');
-    if(closeBtn) closeBtn.addEventListener('click', function(){
-      if (rightSidebar) {
+      // Toggle the modern right sidebar directly (desktop + mobile) and keep aria in sync
+      const isOpen = rightSidebar.classList.contains('open') || rightSidebar.classList.contains('sidebar-open');
+      if (isOpen) {
         rightSidebar.classList.remove('open','sidebar-open','centered-tool-window');
         document.body.classList.remove('no-scroll','sidebar-right-open');
         toggle.setAttribute('aria-expanded','false');
-        return;
+      } else {
+        if (window.innerWidth >= 1024) {
+          rightSidebar.classList.add('centered-tool-window');
+        } else {
+          rightSidebar.classList.remove('centered-tool-window');
+        }
+        rightSidebar.classList.add('open','sidebar-open');
+        document.body.classList.add('no-scroll','sidebar-right-open');
+        toggle.setAttribute('aria-expanded','true');
       }
-      closeParserTools(dropdown,toggle);
     });
   });
 })();
@@ -5576,10 +5536,6 @@ async function loadRealData() {
 
 const ThemeManager = (() => {
   const THEME_KEY = 'parser_theme';
-  const THEME_ICONS = {
-    light: '☀️',  // Sun when in light mode (click to go dark)
-    dark: '🌙'   // Moon when in dark mode (click to go light)
-  };
   
   function getCurrentTheme() {
     return localStorage.getItem(THEME_KEY) || 'dark';
@@ -5605,31 +5561,25 @@ const ThemeManager = (() => {
     const validTheme = theme === 'light' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', validTheme);
     localStorage.setItem(THEME_KEY, validTheme);
-    updateThemeIcon(validTheme);
+    updateThemeToggle(validTheme);
   }
   
   /**
-   * ThemeName typedef consolidated above; use that instead of redeclaring.
-   */
-
-  /**
-   * Map of theme name to icon string.
-   * @typedef {Object.<ThemeName, string>} ThemeIconsMap
-   */
-
-  /** @typedef {HTMLButtonElement} ThemeButtonElement */
-
-  /**
-   * Update the theme icon button's visual content and tooltip.
+   * Update the theme toggle button's visual state and label.
    * @param {ThemeName|string} theme
    * @returns {void}
    */
-  function updateThemeIcon(theme) {
-    /** @type {ThemeButtonElement | null} */
-    const btn = /** @type {ThemeButtonElement | null} */ (document.getElementById('btnTheme'));
-    if (btn) {
-      btn.textContent = THEME_ICONS[theme];
-      btn.title = `Switch to ${theme === 'light' ? 'dark' : 'light'} theme`;
+  function updateThemeToggle(theme) {
+    const toggleBtn = document.getElementById('themeToggle');
+    const themeLabel = document.getElementById('themeLabel');
+    
+    if (toggleBtn) {
+      toggleBtn.classList.toggle('theme-light', theme === 'light');
+      toggleBtn.classList.toggle('theme-dark', theme === 'dark');
+    }
+    
+    if (themeLabel) {
+      themeLabel.textContent = theme === 'dark' ? 'Dark' : 'Light';
     }
   }
   
@@ -5644,9 +5594,10 @@ const ThemeManager = (() => {
     const savedTheme = getCurrentTheme();
     setTheme(savedTheme);
     
-    const btn = document.getElementById('btnTheme');
-    if (btn) {
-      btn.addEventListener('click', toggleTheme);
+    // Wire up the new theme toggle button in the right sidebar
+    const toggleBtn = document.getElementById('themeToggle');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', toggleTheme);
     }
   }
   
