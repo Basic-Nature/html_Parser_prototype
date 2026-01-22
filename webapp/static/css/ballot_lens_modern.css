@@ -53,10 +53,15 @@
   --transition-normal: 300ms ease;
 
   /* Z-index */
-  --z-drawer: 100;
-  --z-modal: 200;
-  --z-command: 300;
-  --z-toast: 400;
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-drawer: 200;
+  --z-sidebar-backdrop: 300;
+  --z-sidebar: 301;
+  --z-modal-backdrop: 400;
+  --z-modal: 401;
+  --z-toast: 500;
+  --z-navbar: 600;
 
   /* Layout sizing */
   --navbar-height: 72px;
@@ -74,10 +79,6 @@
   
   /* Dynamic drawer offset (synced via JS with legacy sidebar width) */
   --drawer-left-offset: 300px;
-  /* High z-index layers for overlays/sidebars to avoid stacking context issues */
-  --z-sidebar-backdrop: 12000;
-  --z-sidebar: 12001;
-  --z-navbar: 13000;
 }
 
 :root[data-theme="light"] {
@@ -94,6 +95,14 @@
   --accent-success-strong: #059669;
   --accent-warning-strong: #d97706;
   --accent-danger-strong: #dc2626;
+}
+}
+
+@layer base {
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 }
 
@@ -617,9 +626,13 @@ th {
 .source-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-md) var(--spacing-md) var(--spacing-lg);
-  box-shadow: 0 10px 26px rgba(0,0,0,0.16);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
 }
 
 .source-card-header {
@@ -1267,13 +1280,14 @@ footer#sessionFooter {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 12px;
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--spacing-sm);
   min-height: 140px;
   height: 100%; /* stretch to fill grid row */
-  box-shadow: 0 6px 14px rgba(0,0,0,0.12);
 }
 
 .card-header {
@@ -1426,83 +1440,191 @@ footer#sessionFooter {
   .flagged-table th, .flagged-table td { font-size: 12px; }
 }
 
-/* Mobile compatibility tweaks */
+/* Mobile devices (up to 768px) - Consolidated mobile breakpoint */
 @media (max-width: 768px) {
-  .dashboard-grid { grid-template-columns: 1fr !important; padding: 0 0.75rem 48px 0.75rem; }
-  .sidebar-right { display: none; }
+  :root {
+    --navbar-height: 60px;
+    --footer-height: 56px;
+    --content-padding: 12px;
+  }
+
+  /* Ensure proper stacking and spacing */
+  .dashboard-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1rem !important;
+    padding: 0 var(--content-padding) calc(var(--footer-height) + 16px);
+  }
+
+  /* Fix sidebar for mobile */
+  .sidebar-left,
+  .sidebar-right {
+    position: fixed;
+    top: var(--navbar-height);
+    bottom: 0;
+    width: 85vw;
+    max-width: 320px;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    z-index: var(--z-sidebar);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sidebar-left.sidebar-open,
+  .sidebar-right.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-right {
+    left: auto;
+    right: 0;
+    transform: translateX(100%);
+  }
+
+  .sidebar-right.sidebar-open {
+    transform: translateX(0);
+  }
+
+  /* Mobile backdrop */
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: calc(var(--z-sidebar) - 1);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+
+  .sidebar-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Fix button positioning and touch targets */
+  .sidebar-toggle,
+  #btnToggleRightSidebar {
+    position: fixed;
+    bottom: calc(var(--footer-height) + 80px);
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-primary);
+    color: white;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: calc(var(--z-sidebar) + 1);
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .sidebar-toggle {
+    left: 16px;
+  }
+
+  #btnToggleRightSidebar {
+    right: 16px;
+  }
+
+  /* Fix log drawer positioning */
+  .log-drawer {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(var(--footer-height) + 16px);
+    width: auto;
+    max-width: none;
+    border-radius: 8px;
+    z-index: calc(var(--z-drawer) + 100);
+  }
+
+  .log-drawer.minimized {
+    height: 48px;
+    padding: 8px 12px;
+  }
+
+  /* Ensure cards stack properly */
+  .result-card,
+  .source-card {
+    width: 100% !important;
+    margin-bottom: var(--spacing-md);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Fix modal sizing */
+  .modal-content {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    margin: auto;
+    max-height: 90vh;
+  }
+
+  /* Fix navbar */
+  .navbar-modern {
+    padding: 8px 12px;
+    height: var(--navbar-height);
+  }
+
+  .navbar-title {
+    font-size: 1rem;
+  }
+
+  .navbar-actions {
+    gap: 8px;
+  }
+
+  /* Ensure main content doesn't overlap */
+  .main-content {
+    padding: var(--spacing-md) var(--content-padding);
+    padding-bottom: calc(var(--footer-height) + 120px);
+    min-height: calc(100vh - var(--navbar-height));
+  }
+
+  /* Additional legacy mobile rules */
   .sidebar-toggle { display: block !important; }
   body { overflow: auto; height: auto; }
   /* Ensure modals fit in viewport */
   .flagged-modal-content { max-height: 92vh; }
-}
-
-@media (max-width: 640px) {
-  :root { --navbar-height: 60px; }
-  .navbar-modern { padding: 10px 12px; }
+  
+  /* Navbar adjustments */
   .navbar-content { flex-wrap: wrap; gap: 8px; }
-  .navbar-title { font-size: 1.1rem; }
   .navbar-actions { width: 100%; justify-content: flex-end; gap: 6px; }
   .navbar-links { display: none; }
   .nav-more-toggle { display: inline-flex; }
-  .sidebar-toggle { top: 10px; right: 10px; }
   .pipeline-hint { margin-top: 6px; font-size: 0.9rem; }
-}
-
-/* Mobile: floating log drawer and slide-in right sidebar */
-@media (max-width: 700px) {
-  .log-drawer {
-    position: fixed;
-    right: 12px;
-    bottom: calc(var(--footer-height) + 32px);
-    width: calc(100% - 24px);
-    max-width: 640px;
-    border-radius: 10px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
-    overflow: hidden;
-    z-index: 12500;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-  }
-  .log-drawer.minimized { height: 52px; padding: 6px 8px; }
+  
+  /* Drawer toolbar and actions */
   .log-drawer .drawer-content { max-height: 60vh; overflow: auto; display: flex; flex-direction: column; }
   .drawer-toolbar { display:flex; align-items:center; justify-content:space-between; gap:8px; padding: 8px 12px; }
   .drawer-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; max-width:100%; overflow:auto; }
-
-  /* Ensure the right-sidebar toggle is visible and appears near the drawer on mobile */
-  #btnToggleRightSidebar {
-    position: fixed;
-    right: 24px;
-    bottom: calc(var(--footer-height) + 44px);
-    z-index: 12600;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    border-radius: 8px;
-    background: var(--accent-primary);
-    color: white;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.25);
-  }
-
+  
   /* Floating left toggle helper (used when JS creates a floating control) */
   .sidebar-toggle.sidebar-toggle-floating {
     position: fixed !important;
     left: 12px !important;
     top: 12px !important;
-    z-index: 12600 !important;
+    z-index: calc(var(--z-sidebar) + 1) !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    width: 44px !important;
-    height: 44px !important;
-    border-radius: 8px !important;
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 50% !important;
     background: var(--accent-primary) !important;
     color: #fff !important;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.25) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
   }
-
-  /* Guarantee visibility and hit-target sizing for sidebar toggles in headless/mobile */
+  
+  /* Guarantee visibility and hit-target sizing for sidebar toggles */
   .sidebar-toggle,
   #btnToggleRightSidebar {
     display: inline-flex !important;
@@ -1510,36 +1632,49 @@ footer#sessionFooter {
     pointer-events: auto !important;
     touch-action: manipulation !important;
   }
-
-  /* Slide-in right sidebar overlay behavior */
-  .sidebar-right {
-    position: fixed;
-    top: var(--navbar-height);
-    right: -100%;
-    bottom: 0;
-    width: 92%;
-    max-width: 420px;
-    transition: right var(--transition-normal);
-    z-index: 12002;
-    background: var(--bg-secondary);
-    box-shadow: -8px 0 24px rgba(0,0,0,0.35);
-    border-left: 1px solid var(--border-color);
-  }
-  .sidebar-right.open, .sidebar-right.sidebar-open { right: 0; }
-
+  
   /* Mobile overlay backdrop (controlled via JS by toggling .visible) */
   #mobileSidebarOverlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.45);
-    z-index: 12001;
+    background: rgba(0,0,0,0.5);
+    z-index: calc(var(--z-sidebar) - 1);
     display: none;
     transition: opacity var(--transition-normal);
   }
   #mobileSidebarOverlay.visible { display: block; opacity: 1; }
-
+  
   /* When sidebar is open, prevent background scroll where possible */
   body.sidebar-right-open, body.no-scroll { overflow: hidden !important; touch-action: none !important; }
+}
+
+/* Small mobile (up to 480px) */
+@media (max-width: 480px) {
+  :root {
+    --spacing-sm: 0.375rem;
+    --spacing-md: 0.75rem;
+    --spacing-lg: 1rem;
+  }
+
+  .sidebar-toggle,
+  #btnToggleRightSidebar {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    bottom: calc(var(--footer-height) + 64px);
+  }
+
+  .log-drawer {
+    bottom: calc(var(--footer-height) + 12px);
+    left: 8px;
+    right: 8px;
+  }
+
+  .main-content {
+    padding: var(--spacing-sm);
+    padding-bottom: calc(var(--footer-height) + 100px);
+  }
 }
 
 /* Ensure sidebars/backdrop stack properly on mobile */
