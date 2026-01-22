@@ -436,7 +436,26 @@ class SharedLogger(logging.Logger):
         if self.mode == "webapp" and self.socketio_emit_func:
             try:
                 if isinstance(msg, dict):
-                    payload_txt = orjson.dumps(msg).decode("utf-8")
+                    # Ensure quality metrics bubble through parser_output for UI badges/pills
+                    payload_obj = dict(msg)
+                    try:
+                        if context and isinstance(context, dict):
+                            qm = context.get("quality_metrics") or context.get("qualityMetrics")
+                            if qm and isinstance(qm, dict):
+                                payload_obj.setdefault("quality_metrics", qm)
+                                if "extraction_confidence" not in payload_obj and "extractionConfidence" not in payload_obj:
+                                    if "extraction_confidence" in qm:
+                                        payload_obj["extraction_confidence"] = qm.get("extraction_confidence")
+                                    elif "extractionConfidence" in qm:
+                                        payload_obj["extraction_confidence"] = qm.get("extractionConfidence")
+                        # Also copy a top-level extraction_confidence if present in context
+                        if context and isinstance(context, dict):
+                            if "extraction_confidence" in context and "extraction_confidence" not in payload_obj:
+                                payload_obj["extraction_confidence"] = context.get("extraction_confidence")
+                    except Exception:
+                        pass
+
+                    payload_txt = orjson.dumps(payload_obj).decode("utf-8")
                     self.socketio_emit_func(payload_txt)
                     if self.console_echo_webapp:
                         log_method(payload_txt)

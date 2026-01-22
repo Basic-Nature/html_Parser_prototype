@@ -300,17 +300,51 @@
   document.addEventListener('DOMContentLoaded', function(){
     const toggle = document.getElementById('btnToggleRightSidebar');
     const dropdown = document.getElementById('parserToolsDropdown');
+    const rightSidebar = document.querySelector('.sidebar-right');
+    const toolHost = document.getElementById('toolActions');
     if(!toggle || !dropdown) return;
 
     // initialize attributes
     toggle.setAttribute('aria-expanded', 'false');
     dropdown.setAttribute('aria-hidden','true');
 
-    toggle.addEventListener('click', function(){
+    toggle.addEventListener('click', function(ev){
+      // Prevent bubbling to outer listeners that might instantly close the panel
+      try { ev.preventDefault(); ev.stopPropagation(); } catch (e) {}
+
+      // If the modern right sidebar exists, toggle it directly (desktop + mobile) and keep aria in sync
+      if (rightSidebar) {
+        const isOpen = rightSidebar.classList.contains('open') || rightSidebar.classList.contains('sidebar-open');
+        if (isOpen) {
+          rightSidebar.classList.remove('open','sidebar-open','centered-tool-window');
+          document.body.classList.remove('no-scroll','sidebar-right-open');
+          toggle.setAttribute('aria-expanded','false');
+        } else {
+          if (window.innerWidth >= 1024) {
+            rightSidebar.classList.add('centered-tool-window');
+          } else {
+            rightSidebar.classList.remove('centered-tool-window');
+          }
+          rightSidebar.classList.add('open','sidebar-open');
+          document.body.classList.add('no-scroll','sidebar-right-open');
+          toggle.setAttribute('aria-expanded','true');
+        }
+        return;
+      }
+
+      // Fallback: legacy parser tools dropdown
       const open = toggle.getAttribute('aria-expanded') === 'true';
       if(open){ closeParserTools(dropdown,toggle); }
       else { openParserTools(dropdown,toggle); }
     });
+
+    // If a tool host exists in the right sidebar, move the tool buttons into it and hide the legacy dropdown
+    if (rightSidebar && toolHost) {
+      const toolButtons = Array.from(dropdown.querySelectorAll('button'));
+      toolButtons.forEach(btn => toolHost.appendChild(btn));
+      dropdown.setAttribute('hidden', 'true');
+      dropdown.setAttribute('aria-hidden', 'true');
+    }
 
     // close when clicking outside
     /** @param {MouseEvent} e */
@@ -323,7 +357,15 @@
 
     // wire close button inside menu
     const closeBtn = document.getElementById('btnToggleRightSidebarClose');
-    if(closeBtn) closeBtn.addEventListener('click', function(){ closeParserTools(dropdown,toggle); });
+    if(closeBtn) closeBtn.addEventListener('click', function(){
+      if (rightSidebar) {
+        rightSidebar.classList.remove('open','sidebar-open','centered-tool-window');
+        document.body.classList.remove('no-scroll','sidebar-right-open');
+        toggle.setAttribute('aria-expanded','false');
+        return;
+      }
+      closeParserTools(dropdown,toggle);
+    });
   });
 })();
 
@@ -1896,6 +1938,8 @@ socket.on('parser_output', /** @param {ParserOutputEvent} data */ (data) => {
       fullData: data
     });
 
+    ingestQualityMetrics(data);
+
     addLog(data);
     handlePromptLog(data);
     SessionRestore.saveState(data); // P2.4: Save state for recovery
@@ -1938,6 +1982,7 @@ socket.on('session_state', /** @param {SessionStatePayload} data */ (data) => {
     /** @type {() => void} */ (() => {
       console.log('[Session State]', data);
       updateProgressCard(data);
+      updateOverviewStrip(data);
       updateSessionsList();
     }),
     'socket:session_state'
@@ -3047,6 +3092,159 @@ function updateProgressCard(sessionData) {
   }
 }
 
+/**
+ * Update overview strip (run summary + expected artifacts badge).
+ * @param {SessionStatePayload | null | undefined} sessionData
+ */
+function updateOverviewStrip(sessionData) {
+  const meta = (sessionData && typeof sessionData === 'object') ? (sessionData.metadata || {}) : {};
+  /** @type {HTMLElement | null} */
+  const sessionEl = /** @type {HTMLElement | null} */ (document.getElementById('summarySessionId'));
+  /** @type {HTMLElement | null} */
+  const sourceEl = /** @type {HTMLElement | null} */ (document.getElementById('summarySource'));
+  /** @type {HTMLElement | null} */
+  const bypassEl = /** @type {HTMLElement | null} */ (document.getElementById('summaryBypass'));
+  /** @type {HTMLElement | null} */
+  const modeEl = /** @type {HTMLElement | null} */ (document.getElementById('summaryMode'));
+  /** @type {HTMLElement | null} */
+  const batchEl = /** @type {HTMLElement | null} */ (document.getElementById('summaryBatch'));
+  /** @type {HTMLElement | null} */
+  const runBadge = /** @type {HTMLElement | null} */ (document.getElementById('runModeBadge'));
+  /** @type {HTMLElement | null} */
+  const artifactBadge = /** @type {HTMLElement | null} */ (document.getElementById('artifactGuideBadge'));
+
+  const sessionId = sessionData?.session_id || meta.session_id || currentSessionId || '—';
+  const source = meta.manual_source || meta.manualSource || meta.manual_source_origin || (/** @type {HTMLInputElement | null} */ (document.querySelector('input[name="fileSource"]:checked')))?.value || 'input';
+  const bypass = typeof meta.output_bypass === 'boolean' ? meta.output_bypass : !!(/** @type {HTMLInputElement | null} */ (document.getElementById('outputBypass')))?.checked;
+  const mode = (meta.output_mode || meta.mode || 'live').toString().toLowerCase();
+  const batch = typeof meta.batch_mode === 'boolean' ? meta.batch_mode : !!(/** @type {HTMLInputElement | null} */ (document.getElementById('batchMode')))?.checked;
+
+  if (sessionEl) sessionEl.textContent = sessionId || '—';
+  if (sourceEl) sourceEl.textContent = source || 'input';
+  if (bypassEl) bypassEl.textContent = bypass ? 'on' : 'off';
+  if (modeEl) modeEl.textContent = batch ? 'batch' : (mode || 'live');
+  if (batchEl) batchEl.textContent = batch ? 'on' : 'off';
+
+  const resetBadge = (el) => {
+    if (!el) return;
+    el.classList.remove('badge-live', 'badge-batch', 'badge-source-input', 'badge-source-uploads');
+    el.classList.add('badge-soft');
+  };
+
+  if (runBadge) {
+    resetBadge(runBadge);
+    runBadge.textContent = batch ? 'batch' : (mode || 'live');
+    runBadge.classList.add(batch ? 'badge-batch' : 'badge-live');
+  }
+
+  if (artifactBadge) {
+    resetBadge(artifactBadge);
+    const sourceVariant = (source || '').toLowerCase() === 'uploads' ? 'badge-source-uploads' : 'badge-source-input';
+    artifactBadge.classList.add(sourceVariant);
+    artifactBadge.textContent = (source || 'input');
+
+    // Micro metric: highlight when quality metrics are present in metadata
+    if (meta && typeof meta === 'object' && meta.quality_metrics && typeof meta.quality_metrics === 'object') {
+      const q = meta.quality_metrics;
+      const conf = (typeof q.extraction_confidence === 'number') ? `${q.extraction_confidence.toFixed(1)}%` : null;
+      if (conf) artifactBadge.textContent = `${artifactBadge.textContent} • ${conf}`;
+      if (typeof q.extraction_confidence === 'number') {
+        setQualityPill(Number(q.extraction_confidence));
+      }
+    } else if (typeof meta?.extraction_confidence === 'number') {
+      const confNum = Number(meta.extraction_confidence);
+      artifactBadge.textContent = `${artifactBadge.textContent} • ${confNum.toFixed(1)}%`;
+      setQualityPill(confNum);
+    }
+  }
+}
+
+/**
+ * Extract quality metrics (extraction_confidence) from various log shapes.
+ * @param {any} source
+ * @returns {{quality_metrics?: any, extraction_confidence?: number} | null}
+ */
+function coerceQualityPayload(source) {
+  if (!source || typeof source !== 'object') return null;
+  const qm = source.quality_metrics || source.qualityMetrics || null;
+  const conf = source.extraction_confidence ?? source.extractionConfidence ?? (qm && (qm.extraction_confidence ?? qm.extractionConfidence));
+  const confNum = (typeof conf === 'number' && Number.isFinite(conf)) ? conf : null;
+  if (qm || confNum !== null) {
+    return {
+      quality_metrics: qm || (confNum !== null ? { extraction_confidence: confNum } : undefined),
+      extraction_confidence: confNum !== null ? confNum : undefined,
+    };
+  }
+  return null;
+}
+
+/**
+ * Merge quality metrics into SessionMirror + overview pill from parser_output events.
+ * @param {ParserOutputEvent} log
+ */
+function ingestQualityMetrics(log) {
+  const sid = log?.session_id || currentSessionId;
+  if (!sid) return;
+
+  /** @type {{quality_metrics?: any, extraction_confidence?: number} | null} */
+  let payload = coerceQualityPayload(log);
+  if (!payload) payload = coerceQualityPayload(log?.context);
+  if (!payload) payload = coerceQualityPayload(log?.metadata);
+
+  if (!payload) {
+    const msg = log?.message;
+    if (msg && typeof msg === 'object') {
+      payload = coerceQualityPayload(msg);
+    } else if (typeof msg === 'string' && msg.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(msg);
+        payload = coerceQualityPayload(parsed);
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+
+  if (!payload) return;
+
+  const merged = {
+    session_id: sid,
+    quality_metrics: payload.quality_metrics || SessionMirror.get(sid)?.quality_metrics,
+    extraction_confidence: payload.extraction_confidence ?? SessionMirror.get(sid)?.extraction_confidence,
+  };
+
+  SessionMirror.upsert(merged);
+  updateOverviewStrip({ session_id: sid, metadata: merged });
+  if (payload.extraction_confidence !== undefined) {
+    setQualityPill(payload.extraction_confidence);
+  }
+}
+
+/**
+ * Ensure a confidence pill with mini-meter is rendered in the Expected Artifacts card.
+ * @param {number} confidence
+ */
+function setQualityPill(confidence) {
+  const body = document.querySelector('article[aria-label="Expected artifacts"] .artifact-card-body');
+  if (!body) return;
+  let pill = document.getElementById('qualityPill');
+  if (!pill) {
+    pill = document.createElement('div');
+    pill.id = 'qualityPill';
+    pill.className = 'quality-pill';
+    pill.innerHTML = '<span class="pill-label">Confidence</span><span class="pill-value">–</span><span class="mini-meter"><span class="mini-meter-fill"></span></span>';
+    body.appendChild(pill);
+  }
+  const val = Math.max(0, Math.min(100, Number(confidence) || 0));
+  const valueEl = pill.querySelector('.pill-value');
+  const fillEl = pill.querySelector('.mini-meter-fill');
+  if (valueEl) valueEl.textContent = `${val.toFixed(1)}%`;
+  if (fillEl instanceof HTMLElement) {
+    fillEl.style.width = `${val}%`;
+    fillEl.style.opacity = '1';
+  }
+}
+
 // ============================================
 // Event Listeners: Sidebar Controls
 // ============================================
@@ -3222,6 +3420,15 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
   const overlay = $('#mobileSidebarOverlay') || sidebarBackdrop;
 
   /**
+   * Keep the toggle's aria-expanded in sync with the sidebar state.
+   */
+  function syncToggleAria() {
+    if (!toggleRightBtn || !rightSidebar) return;
+    const isOpen = rightSidebar.classList.contains('open') || rightSidebar.classList.contains('sidebar-open');
+    toggleRightBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  }
+
+  /**
    * @typedef {HTMLElement} OverlayElement
    */
 
@@ -3249,18 +3456,24 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
     } catch (e) {}
   }
 
+  // Ensure initial state starts closed and aria matches
+  if (rightSidebar) {
+    rightSidebar.classList.remove('open', 'sidebar-open', 'centered-tool-window');
+    document.body.classList.remove('sidebar-right-open', 'no-scroll');
+    syncToggleAria();
+  }
+
   function closeAll() {
     if (legacySidebar) legacySidebar.classList.remove('sidebar-open');
     if (rightSidebar) {
       rightSidebar.classList.remove('open');
       rightSidebar.classList.remove('sidebar-open');
+      rightSidebar.classList.remove('centered-tool-window');
     }
     setOverlayVisible(false);
     document.body.classList.remove('no-scroll');
     document.body.classList.remove('sidebar-right-open');
-    if (toggleRightBtn) {
-      try { toggleRightBtn.setAttribute('aria-expanded', 'false'); } catch (e) {}
-    }
+    syncToggleAria();
     if (toggleLeftBtn) {
       try { toggleLeftBtn.setAttribute('aria-expanded', 'false'); } catch (e) {}
     }
@@ -3280,22 +3493,12 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
     if (!rightSidebar) return;
     rightSidebar.classList.add('open');
     rightSidebar.classList.add('sidebar-open');
-    // Center as a tool window on wide screens; full/right slide on small screens
-    try {
-      if (window.innerWidth >= 1024) {
-        rightSidebar.classList.add('centered-tool-window');
-      } else {
-        rightSidebar.classList.remove('centered-tool-window');
-      }
-    } catch (e) {
-      // ignore
-    }
+    // Always dock to the right; keep the centered overlay class off for predictable layout
+    rightSidebar.classList.remove('centered-tool-window');
     setOverlayVisible(true);
     document.body.classList.add('no-scroll');
     document.body.classList.add('sidebar-right-open');
-    if (toggleRightBtn) {
-      try { toggleRightBtn.setAttribute('aria-expanded', 'true'); } catch (e) {}
-    }
+    syncToggleAria();
   }
 
   // Left sidebar toggle is handled by the consolidated controller below; keep right sidebar bindings here.
@@ -3304,9 +3507,11 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
   if (toggleRightBtn) {
     toggleRightBtn.addEventListener('click', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       if (!rightSidebar) return;
       const isOpen = rightSidebar.classList.contains('open');
       if (isOpen) closeAll(); else openRight();
+      syncToggleAria();
     });
   }
 
@@ -3354,11 +3559,13 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
         if (isOpen) {
           rs.classList.remove('open', 'sidebar-open', 'centered-tool-window');
           document.body.classList.remove('no-scroll', 'sidebar-right-open');
+          syncToggleAria();
           if (isLocal && console && console.debug) console.debug('[health] right sidebar closed via delegate');
         } else {
-          if (window.innerWidth >= 1024) rs.classList.add('centered-tool-window');
-          rs.classList.add('open', 'sidebar-open');
+            rs.classList.remove('centered-tool-window');
+            rs.classList.add('open', 'sidebar-open');
           document.body.classList.add('no-scroll', 'sidebar-right-open');
+          syncToggleAria();
           if (isLocal && console && console.debug) console.debug('[health] right sidebar opened via delegate');
         }
         return;
@@ -3396,6 +3603,31 @@ try {
   window.addEventListener('resize', () => {
     if (window.innerWidth > 1024) closeAll();
   });
+
+  // Observe sidebar class changes (e.g., external scripts) to keep aria-expanded honest
+  try {
+    if (rightSidebar && typeof MutationObserver !== 'undefined') {
+      const mo = new MutationObserver(syncToggleAria);
+      mo.observe(rightSidebar, { attributes: true, attributeFilter: ['class'] });
+    }
+  } catch (e) { /* ignore */ }
+
+  // Final sync on load
+  syncToggleAria();
+
+  // Defensive: close on outside click when sidebar is open and user taps/tabs away
+  document.addEventListener('click', (ev) => {
+    if (!rightSidebar || !toggleRightBtn) return;
+    const isOpen = rightSidebar.classList.contains('open');
+    if (!isOpen) return;
+    const target = ev.target;
+    const insideToggle = (target instanceof Node) && toggleRightBtn.contains(target);
+    const insideSidebar = (target instanceof Node) && rightSidebar.contains(target);
+    if (!insideToggle && !insideSidebar) {
+      closeAll();
+      syncToggleAria();
+    }
+  }, true);
   // Expose control hooks for automated tests and debug consoles
   try {
     window.openLeft = openLeft;
@@ -5442,13 +5674,24 @@ const PipelineManager = (() => {
   }
   
   function init() {
-    // Create pipeline hint element if it doesn't exist
-    const navbar = document.querySelector('.navbar-modern');
-    if (navbar && !pipelineHintEl) {
+    // Create pipeline hint element if it doesn't exist (prefer host container instead of navbar)
+    if (!pipelineHintEl) {
+      pipelineHintEl = document.querySelector('.pipeline-hint');
+    }
+
+    if (!pipelineHintEl) {
+      const host = document.getElementById('pipelineHintHost')
+        || document.querySelector('.content-shell')
+        || document.querySelector('.modern-layout');
       pipelineHintEl = document.createElement('div');
       pipelineHintEl.className = 'pipeline-hint';
       if (pipelineHintEl instanceof HTMLElement) pipelineHintEl.setAttribute('data-level', 'info');
-      navbar.appendChild(pipelineHintEl);
+      if (host) {
+        host.appendChild(pipelineHintEl);
+      } else {
+        const navbar = document.querySelector('.navbar-modern');
+        navbar?.appendChild(pipelineHintEl);
+      }
     }
     
     setPhase('prepare');
@@ -5646,50 +5889,166 @@ const ModalRestoreBanner = (() => {
 
 const UrlListManager = (() => {
   let cachedUrls = [];
-  
-  function renderUrlList(urls, filter = '') {
+  let cachedMeta = [];
+  let selectedState = '';
+  let selectedCounty = '';
+  let lastSearch = '';
+
+  /**
+   * Extract state/county hints from a URL using lightweight heuristics.
+   * @param {string} url
+   * @returns {{ url: string, state: string|null, county: string|null }}
+   */
+  function extractMeta(url) {
+    const lower = url.toLowerCase();
+    let state = null;
+    let county = null;
+
+    // State detection: query param ?state=XX or path token XX where XX is a known state code
+    const qsState = lower.match(/[?&]state=([a-z]{2})/i);
+    if (qsState && qsState[1]) {
+      const cand = qsState[1].toUpperCase();
+      if (STATES.includes(cand)) state = cand;
+    }
+    if (!state) {
+      const tokens = url.split(/[^A-Za-z0-9]+/).filter(Boolean);
+      const found = tokens.find(t => {
+        const upper = t.toUpperCase();
+        return upper.length === 2 && STATES.includes(upper);
+      });
+      if (found) state = found.toUpperCase();
+    }
+
+    // County detection: query param county=, tokens containing "county", or path segment preceding "county"
+    const qsCounty = lower.match(/[?&]county=([^&#\/]*)/i);
+    if (qsCounty && qsCounty[1]) {
+      county = qsCounty[1];
+    } else {
+      const countyToken = lower.match(/([a-z0-9]+)[-_]?county/);
+      if (countyToken && countyToken[1]) county = countyToken[1];
+      if (!county) {
+        const parts = lower.split(/\//).filter(Boolean);
+        const countyIdx = parts.findIndex(p => p.includes('county'));
+        if (countyIdx > 0 && parts[countyIdx - 1]) {
+          county = parts[countyIdx - 1];
+        }
+      }
+    }
+
+    const tidyCounty = county
+      ? county.split(/[_\-\s]+/).map(p => p ? p[0].toUpperCase() + p.slice(1) : '').join(' ').trim()
+      : null;
+
+    return { url, state, county: tidyCounty || null };
+  }
+
+  function populateTaxonomy(meta) {
+    const stateSelect = $('#urlStateFilter');
+    const countySelect = $('#urlCountyFilter');
+    if (!stateSelect || !(stateSelect instanceof HTMLSelectElement) || !countySelect || !(countySelect instanceof HTMLSelectElement)) return;
+
+    const statesSeen = Array.from(new Set(meta.map(m => m.state).filter(Boolean))).sort();
+
+    // Reset state options
+    stateSelect.innerHTML = '<option value="">— Filter by state —</option>';
+    statesSeen.forEach(st => {
+      const opt = document.createElement('option');
+      opt.value = st;
+      opt.textContent = st;
+      stateSelect.appendChild(opt);
+    });
+
+    // Reset county options
+    countySelect.innerHTML = '<option value="">— Select a state first —</option>';
+    countySelect.disabled = !selectedState;
+
+    if (selectedState) {
+      const counties = Array.from(new Set(meta.filter(m => m.state === selectedState && m.county).map(m => m.county))).sort();
+      if (counties.length) {
+        countySelect.innerHTML = '<option value="">— Filter by county —</option>';
+        counties.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c;
+          opt.textContent = c;
+          countySelect.appendChild(opt);
+        });
+        countySelect.disabled = false;
+      } else {
+        countySelect.innerHTML = `<option value="">No counties detected for ${selectedState}</option>`;
+        countySelect.disabled = true;
+      }
+    }
+
+    // Restore selections if still present
+    if (selectedState) {
+      stateSelect.value = selectedState;
+    }
+    if (selectedCounty) {
+      const match = Array.from(countySelect.options).some(o => o.value === selectedCounty);
+      countySelect.value = match ? selectedCounty : '';
+      if (!match) selectedCounty = '';
+    }
+  }
+
+  function renderUrlList(meta, filter = '', stateFilter = '', countyFilter = '') {
     const listBox = $('#urlLinesBox');
     if (!listBox) return;
-    
-    let filtered = urls;
+
+    let filtered = meta;
+
+    if (stateFilter) filtered = filtered.filter(m => m.state === stateFilter);
+    if (countyFilter) filtered = filtered.filter(m => m.county === countyFilter);
+
     const q = filter.trim().toLowerCase();
-    
     if (q) {
       if (q.startsWith('state:')) {
         const stateQuery = q.slice(6).trim();
-        filtered = urls.filter(u => u.toLowerCase().includes(stateQuery));
+        filtered = filtered.filter(m => (m.state || '').toLowerCase().includes(stateQuery));
       } else if (q.startsWith('county:')) {
         const countyQuery = q.slice(7).trim();
-        filtered = urls.filter(u => u.toLowerCase().includes(countyQuery));
+        filtered = filtered.filter(m => (m.county || '').toLowerCase().includes(countyQuery));
       } else {
-        filtered = urls.filter(u => u.toLowerCase().includes(q));
+        filtered = filtered.filter(m => m.url.toLowerCase().includes(q));
       }
     }
-    
+
     const maxDisplay = 40;
-    const items = filtered.slice(0, maxDisplay).map((url, index) => {
+    const items = filtered.slice(0, maxDisplay).map((metaItem, index) => {
+      const url = metaItem.url;
       const short = url.length > 60 ? url.slice(0, 57) + '…' : url;
-      return `<div class="url-sidebar-item" title="${escapeHtml(url)}" data-url="${encodeURIComponent(url)}" role="button" tabindex="0">[${index + 1}] ${escapeHtml(short)}</div>`;
+      const metaLabel = [metaItem.state, metaItem.county].filter(Boolean).join(' • ');
+      const badge = metaLabel ? `<span class="url-meta">${escapeHtml(metaLabel)}</span>` : '';
+      return `<div class="url-sidebar-item" title="${escapeHtml(url)}" data-url="${encodeURIComponent(url)}" role="button" tabindex="0">[${index + 1}] ${escapeHtml(short)} ${badge}</div>`;
     }).join('');
-    
-    const more = filtered.length > maxDisplay 
-      ? `<div class="url-sidebar-more">...and ${filtered.length - maxDisplay} more URLs</div>` 
+
+    const more = filtered.length > maxDisplay
+      ? `<div class="url-sidebar-more">...and ${filtered.length - maxDisplay} more URLs</div>`
       : '';
-    
+
     listBox.innerHTML = items + more;
-    
+
     // Attach click handlers
     listBox.querySelectorAll('.url-sidebar-item').forEach(el => {
       el.addEventListener('click', () => {
         const url = decodeURIComponent(el.getAttribute('data-url'));
-        // Use direct URL field if available
-        const directUrlField = $('#directUrlField');
-        if (directUrlField) {
-          (/** @type {any} */ (window)).__tl_helpers.setElValue(directUrlField, url);
-          try { directUrlField.dispatchEvent(new Event('input', { bubbles: true })); } catch (/** @type {any} */ _e) { /* noop */ }
+        const directUrlTextarea = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('directUrlTextarea'));
+        const directRadio = document.querySelector('input[name="fileSource"][value="direct"]');
+        if (directUrlTextarea && directRadio instanceof HTMLInputElement && directRadio.checked) {
+          const lines = directUrlTextarea.value.split(/\r?\n/).filter(Boolean);
+          if (!lines.includes(url)) {
+            lines.push(url);
+            directUrlTextarea.value = lines.join('\n');
+          }
+          try { directUrlTextarea.dispatchEvent(new Event('input', { bubbles: true })); } catch (/** @type {any} */ _e) { /* noop */ }
+        } else {
+          const directUrlField = $('#directUrlField');
+          if (directUrlField) {
+            (/** @type {any} */ (window)).__tl_helpers.setElValue(directUrlField, url);
+            try { directUrlField.dispatchEvent(new Event('input', { bubbles: true })); } catch (/** @type {any} */ _e) { /* noop */ }
+          }
         }
       });
-      
+
       // Keyboard accessibility
       el.addEventListener('keydown', (e) => {
         const ke = /** @type {KeyboardEvent} */ (e);
@@ -5700,39 +6059,64 @@ const UrlListManager = (() => {
       });
     });
   }
-  
+
   async function fetchUrls() {
     try {
       const response = await fetch('/api/urls');
       const data = await response.json();
       cachedUrls = data.urls || [];
-      renderUrlList(cachedUrls);
+      cachedMeta = cachedUrls.map(extractMeta);
+      populateTaxonomy(cachedMeta);
+      renderUrlList(cachedMeta, lastSearch, selectedState, selectedCounty);
       return cachedUrls;
     } catch (/** @type {any} */ error) {
       console.error('[UrlListManager] Failed to fetch URLs:', error);
-      renderUrlList([]);
+      cachedUrls = [];
+      cachedMeta = [];
+      renderUrlList([], lastSearch, selectedState, selectedCounty);
       return [];
     }
   }
-  
+
   function init() {
     const searchBox = $('.url-search-box');
     const refreshBtn = $('#refreshUrlListBtn');
     const collapseBtn = $('#btnCollapseUrls');
     const urlsContainer = $('.urls-container');
-    
+    const stateSelect = $('#urlStateFilter');
+    const countySelect = $('#urlCountyFilter');
+
     if (searchBox) {
       searchBox.addEventListener('input', (e) => {
-        renderUrlList(cachedUrls, (/** @type {any} */ (window)).__tl_helpers.targetValue(e));
+        lastSearch = (/** @type {any} */ (window)).__tl_helpers.targetValue(e);
+        renderUrlList(cachedMeta, lastSearch, selectedState, selectedCounty);
       });
     }
-    
+
+    if (stateSelect && stateSelect instanceof HTMLSelectElement) {
+      stateSelect.addEventListener('change', (e) => {
+        selectedState = (/** @type {any} */ (window)).__tl_helpers.targetValue(e) || '';
+        selectedCounty = '';
+        populateTaxonomy(cachedMeta);
+        const currentSearch = searchBox instanceof HTMLInputElement ? searchBox.value : '';
+        renderUrlList(cachedMeta, currentSearch, selectedState, selectedCounty);
+      });
+    }
+
+    if (countySelect && countySelect instanceof HTMLSelectElement) {
+      countySelect.addEventListener('change', (e) => {
+        selectedCounty = (/** @type {any} */ (window)).__tl_helpers.targetValue(e) || '';
+        const currentSearch = searchBox instanceof HTMLInputElement ? searchBox.value : '';
+        renderUrlList(cachedMeta, currentSearch, selectedState, selectedCounty);
+      });
+    }
+
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => {
         fetchUrls();
       });
     }
-    
+
     // URL section collapse toggle (default to collapsed)
     if (collapseBtn && urlsContainer) {
       const urlsCollapsed = localStorage.getItem('urlsCollapsed') !== 'false'; // Default to collapsed
@@ -5748,7 +6132,7 @@ const UrlListManager = (() => {
         localStorage.setItem('urlsCollapsed', String(isCollapsed));
       });
     }
-    
+
     // Initial load
     fetchUrls();
   }
@@ -5759,6 +6143,183 @@ const UrlListManager = (() => {
     refresh: fetchUrls,
     getUrls: () => [...cachedUrls]
   };
+})();
+
+// ============================================
+// Artifact Panels (Input/Output/Uploads)
+// ============================================
+
+const ArtifactPanels = (() => {
+  const ROOT_CONFIG = {
+    input: { allowDownload: true, label: 'input' },
+    output: { allowDownload: true, label: 'output' },
+    uploads: { allowDownload: false, label: 'uploads' },
+  };
+  const DISPLAY_LIMIT = 5;
+  const SEARCH_LIMIT = 25;
+  const entriesByRoot = new Map();
+  const searchTimers = new Map();
+
+  function sortEntries(entries) {
+    return [...entries].sort((a, b) => {
+      const ma = typeof a.modified === 'number' ? a.modified : 0;
+      const mb = typeof b.modified === 'number' ? b.modified : 0;
+      if (mb !== ma) return mb - ma;
+      return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+    });
+  }
+
+  function updatePreview(root, entries) {
+    const itemsEl = document.getElementById(`${root}PreviewItems`);
+    if (!itemsEl) return;
+    if (!entries || !entries.length) {
+      itemsEl.textContent = 'none yet';
+      return;
+    }
+    const names = entries.slice(0, DISPLAY_LIMIT).map(e => e.name).filter(Boolean);
+    itemsEl.textContent = names.length ? names.join(' • ') : 'none yet';
+  }
+
+  function formatBytes(bytes) {
+    if (typeof bytes !== 'number' || isNaN(bytes) || bytes < 0) return '';
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k)));
+    return `${Math.round((bytes / Math.pow(k, i)) * 10) / 10} ${sizes[i]}`;
+  }
+
+  function buildDownloadLink(root, path, name) {
+    const query = new URLSearchParams({ root, path: path || '', name });
+    return `/download_fs?${query.toString()}`;
+  }
+
+  function renderPanel(panelEl, entries, config, root, path, options) {
+    if (!panelEl) return;
+    const limit = (options && typeof options.limit === 'number') ? options.limit : DISPLAY_LIMIT;
+    const list = document.createElement('div');
+    list.className = 'folder-list';
+
+    if (!entries.length) {
+      const empty = document.createElement('div');
+      empty.className = 'folder-row muted';
+      empty.textContent = 'No files yet';
+      list.appendChild(empty);
+      panelEl.innerHTML = '';
+      panelEl.appendChild(list);
+      return;
+    }
+
+    entries.slice(0, limit).forEach((entry) => {
+      const row = document.createElement('div');
+      row.className = 'folder-row';
+      row.setAttribute('data-type', entry.type || 'file');
+      const icon = entry.type === 'dir' ? '📁' : '📄';
+      const sizeText = entry.type === 'file' ? formatBytes(entry.size) : 'Folder';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'folder-name';
+      nameSpan.textContent = entry.name;
+
+      const metaSpan = document.createElement('span');
+      metaSpan.className = 'folder-meta';
+      metaSpan.textContent = sizeText || '';
+
+      const actions = document.createElement('span');
+      actions.className = 'folder-actions';
+      if (config.allowDownload && entry.type === 'file') {
+        const link = document.createElement('a');
+        link.href = buildDownloadLink(root, path, entry.name);
+        link.textContent = 'Download';
+        link.rel = 'noopener noreferrer';
+        link.className = 'folder-link';
+        actions.appendChild(link);
+      } else if (entry.type === 'file') {
+        const badge = document.createElement('span');
+        badge.className = 'badge badge-alert';
+        badge.textContent = 'blocked';
+        actions.appendChild(badge);
+      }
+
+      row.innerHTML = `${icon}`;
+      row.appendChild(nameSpan);
+      row.appendChild(metaSpan);
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+
+    if (entries.length > limit) {
+      const more = document.createElement('div');
+      more.className = 'folder-row muted';
+      more.textContent = `...and ${entries.length - limit} more`;
+      list.appendChild(more);
+    }
+
+    panelEl.innerHTML = '';
+    panelEl.appendChild(list);
+  }
+
+  async function loadPanel(panelEl) {
+    if (!panelEl) return;
+    const root = panelEl.getAttribute('data-root');
+    if (!root) return;
+    const path = panelEl.getAttribute('data-path') || '';
+    const config = ROOT_CONFIG[root] || { allowDownload: false, label: root || '' };
+
+    try {
+      const resp = await fetch(`/api/fs/list?root=${encodeURIComponent(root || '')}&path=${encodeURIComponent(path)}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const entries = sortEntries(Array.isArray(data.entries) ? data.entries : []);
+      entriesByRoot.set(root, entries);
+      updatePreview(root, entries);
+      renderPanel(panelEl, entries, config, root || '', path, { limit: DISPLAY_LIMIT });
+    } catch (e) {
+      console.error('[ArtifactPanels] Failed to load panel', e);
+      panelEl.innerHTML = '<div class="folder-row muted">Unable to load</div>';
+    }
+  }
+
+  function applySearch(root, query) {
+    if (!root) return;
+    const entries = entriesByRoot.get(root) || [];
+    const panel = document.querySelector(`.folder-panel[data-root="${root}"]`);
+    if (!panel) return;
+    const config = ROOT_CONFIG[root] || { allowDownload: false, label: root || '' };
+    const path = panel.getAttribute('data-path') || '';
+    const normalized = (query || '').trim().toLowerCase();
+    const filtered = normalized
+      ? entries.filter((e) => {
+          const name = String(e.name || '').toLowerCase();
+          const meta = String(e.type || '').toLowerCase();
+          return name.includes(normalized) || meta.includes(normalized);
+        })
+      : entries;
+    renderPanel(panel, filtered, config, root, path, { limit: normalized ? SEARCH_LIMIT : DISPLAY_LIMIT });
+  }
+
+  function init() {
+    const panels = Array.from(document.querySelectorAll('.folder-panel'));
+    if (!panels.length) return;
+    panels.forEach((panel) => {
+      // Preserve locked styling for uploads
+      const root = panel.getAttribute('data-root');
+      if (root === 'uploads') panel.classList.add('locked');
+      loadPanel(panel);
+    });
+
+    ['input', 'output'].forEach((root) => {
+      const input = document.getElementById(`${root}ArtifactSearch`);
+      if (!(input instanceof HTMLInputElement)) return;
+      input.addEventListener('input', () => {
+        if (searchTimers.has(root)) clearTimeout(searchTimers.get(root));
+        const timer = setTimeout(() => applySearch(root, input.value), 250);
+        searchTimers.set(root, timer);
+      });
+    });
+  }
+
+  return { init, refreshAll: init, refreshPanel: loadPanel };
 })();
 
 // ============================================
@@ -6029,6 +6590,7 @@ const FolderBrowser = (() => {
     
     const { titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = modal;
     const label = ROOT_LABELS[root] || root;
+    const isUploads = root === 'uploads';
     
     let cwd = initialPath || '';
     let allEntries = [];
@@ -6137,20 +6699,22 @@ const FolderBrowser = (() => {
         const sizeText = entry.size !== null && entry.type === 'file'
           ? `<small class="text-muted ms-2">${formatBytes(entry.size)}</small>`
           : '';
-        
-        item.innerHTML = `${icon} <b>${escapeHtml(entry.name)}</b>${sizeText}`;
+        const blocked = isUploads && entry.type === 'file';
+        const blockedBadge = blocked ? ' <span class="badge badge-alert ms-2">blocked</span>' : '';
+
+        item.innerHTML = `${icon} <b>${escapeHtml(entry.name)}</b>${sizeText}${blockedBadge}`;
         
         item.addEventListener('click', () => {
           if (entry.type === 'dir') {
             cwd = cwd ? `${cwd}/${entry.name}` : entry.name;
             refresh();
-          } else {
+          } else if (!blocked) {
             finish({ root, path: cwd, name: entry.name, fullPath: cwd ? `${cwd}/${entry.name}` : entry.name });
           }
         });
 
         item.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' && item instanceof HTMLElement) {
+          if (e.key === 'Enter' && item instanceof HTMLElement && !blocked) {
             item.click();
           }
         });
@@ -6172,7 +6736,7 @@ const FolderBrowser = (() => {
     }
     
     titleEl.textContent = `Browse ${label}`;
-    summaryDiv.textContent = '';
+      summaryDiv.textContent = isUploads ? 'Downloads are disabled in uploads; use uploads only for staging.' : '';
     searchEl.value = '';
     searchEl.addEventListener('input', (e) => renderList((/** @type {any} */ (window)).__tl_helpers.targetValue(e)));
     if (closeBtn instanceof Element) closeBtn.addEventListener('click', () => finish(null));
@@ -6310,6 +6874,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize URL list
   UrlListManager.init();
 
+  // Initialize artifact folder panels (input/output/uploads)
+  ArtifactPanels.init();
+
   // Navigation overflow ("More" menu) for small screens
   const navLinks = Array.from(document.querySelectorAll('.navbar-links .nav-link'));
   const navMoreToggle = document.getElementById('btnNavMore');
@@ -6396,6 +6963,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {}
     // Use inert/tabindex management to avoid focusable children inside aria-hidden
     try { setHiddenWithInert(navMoreDropdown, !open); } catch (e) {}
+    try { navMoreDropdown.toggleAttribute('hidden', !open); } catch (e) {}
     navMoreToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
   function toggleNavDropdown() {
@@ -6425,15 +6993,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function syncNavOverflow() {
     if (!navMoreDropdown) return;
+    // Clear first so previously cloned links are not re-counted on resize/rerender.
+    navMoreDropdown.innerHTML = '';
     // Recompute links dynamically so changes to the DOM are reflected.
-    const currentLinks = Array.from(document.querySelectorAll('.navbar-links .nav-link'));
+    const navbarLinksContainer = document.querySelector('.navbar-links');
+    const currentLinks = navbarLinksContainer
+      ? Array.from(navbarLinksContainer.querySelectorAll(':scope > .nav-link'))
+      : Array.from(document.querySelectorAll('.navbar-links .nav-link')).filter((link) => !(navMoreDropdown && navMoreDropdown.contains(link)));
     if (!currentLinks.length) {
       // ensure dropdown is inert/hidden when nothing to show
       setHiddenWithInert(navMoreDropdown, true);
-      navMoreDropdown.innerHTML = '';
       return;
     }
-    navMoreDropdown.innerHTML = '';
     currentLinks.forEach((link) => {
       try {
         const clone = /** @type {HTMLElement} */ (link.cloneNode(true));
@@ -6490,6 +7061,15 @@ document.addEventListener('DOMContentLoaded', () => {
       try { debouncedSyncNavOverflow(); } catch (e) {}
     });
   }
+
+  // Expose helpers for headless checks and legacy scripts
+  try {
+    if (typeof window !== 'undefined') {
+      const w = /** @type {any} */ (window);
+      w.syncNavOverflow = syncNavOverflow;
+      w.closeNavDropdown = closeNavDropdown;
+    }
+  } catch (e) { /* ignore */ }
 
   // -------------------------------
   // Card row height sync (JS resize sync)
@@ -6651,6 +7231,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (data && data.metadata) {
       SessionMirror.upsert(data.metadata);
     }
+    updateOverviewStrip(data);
   });
   
   socket.on('session_deleted', (data) => {

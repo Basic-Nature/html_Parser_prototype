@@ -14,8 +14,8 @@ Comprehensive pipeline audit for `webapp/parser/`.
 
 ## Overview
 
-- **Total Modules Audited:** 52
-- **Total Connections:** 69
+- **Total Modules Audited:** 54
+- **Total Connections:** 73
 - **Clusters:** Entry, Pipeline, Routing, State Handlers, Format Handlers,
 Shared Handlers, Services, Utils, Context Integration, Health
 - **Audit Scope:** All `webapp/parser/` files with full context, imports,
@@ -37,9 +37,11 @@ graph TD
     rockland["rockland"]
   end
   subgraph Format_Handlers["Format Handlers"]
-    pdf_handler["pdf_handler"]
-    html_handler["html_handler"]
     json_handler["json_handler"]
+    pdf_handler["pdf_handler"]
+    csv_handler["csv_handler"]
+    html_handler["html_handler"]
+    xlsx_handler["xlsx_handler"]
   end
   subgraph Services["Services"]
     election_data_services["election_data_services"]
@@ -47,7 +49,6 @@ graph TD
   subgraph Utils["Utils"]
     browser_utils["browser_utils"]
     contest_selector["contest_selector"]
-    db_utils["db_utils"]
     detect["detect"]
     dynamic_table_extractor["dynamic_table_extractor"]
     format_router["format_router"]
@@ -63,9 +64,9 @@ graph TD
   subgraph Context_Integration["Context Integration"]
     Integrity_check["Integrity_check"]
     context_coordinator["context_coordinator"]
-    context_organizer["context_organizer"]
     librarian["librarian"]
     constants["constants"]
+    context_organizer["context_organizer"]
   end
   subgraph Health["Health"]
     manual_correction_bot["manual_correction_bot"]
@@ -86,15 +87,15 @@ graph TD
   pattern_extractor -->|7| browser_utils
   election_data_services -->|6| models
   html_scanner -->|6| context_coordinator
+  pdf_handler -->|4| config
   table_builder -->|4| pivot
   table_builder -->|4| context_coordinator
   html_election_parser -->|3| Integrity_check
+  json_handler -->|3| config
   shared_logic -->|3| format_router
   html_election_parser -->|2| pdf_handler
   html_election_parser -->|2| context_coordinator
   state_router -->|2| context_coordinator
-  context_organizer -->|2| html_scanner
-  context_organizer -->|2| db_utils
 ```
 
 **✨ Legend:** Colors indicate module categories with metallic accents. Click
@@ -134,6 +135,7 @@ changes.
 - Utils → Utils: 122 edges (intra-cluster flow to monitor.)
 - Health → Context Integration: 39 edges (cross-cluster flow to monitor.)
 - Utils → Context Integration: 38 edges (cross-cluster flow to monitor.)
+- Format Handlers → Other: 11 edges (cross-cluster flow to monitor.)
 - Health → Entry: 7 edges (cross-cluster flow to monitor.)
 - Services → Utils: 6 edges (cross-cluster flow to monitor.)
 - Entry → Context Integration: 5 edges (cross-cluster flow to monitor.)
@@ -141,7 +143,6 @@ changes.
 - State Handlers → Context Integration: 3 edges (cross-cluster flow to
 monitor.)
 - Utils → Health: 3 edges (cross-cluster flow to monitor.)
-- Entry → Format Handlers: 2 edges (cross-cluster flow to monitor.)
 
 ## File Connection Map
 
@@ -200,24 +201,26 @@ Click to expand each module for full audit details.
 
 #### 🔧 Key Functions & Classes (Context_Integration_Integrity_check)
 
-- `_ensure_alerts_table` (function, line 39)
-- `find_date_anomalies` (function, line 46)
-- `detect_anomalies_with_ml` (function, line 54)
-- `election_integrity_checks` (function, line 105)
-- `advanced_cross_field_validation` (function, line 126)
-- `summarize_context_entities` (function, line 135)
-- `analyze_contests` (function, line 144)
-- `auto_tune_contamination` (function, line 159)
-- `print_issues_table` (function, line 180)
-- `print_entity_summary` (function, line 200)
-- `print_ml_anomalies` (function, line 208)
-- `print_date_anomalies` (function, line 238)
-- `print_auto_tune_result` (function, line 256)
-- `print_analyze_contests` (function, line 262)
-- `monitor_db_for_alerts` (function, line 274)
-- `log_integrity_issues` (function, line 320)
-- `detect_statistical_outliers` (function, line 336)
-- `print_integrity_summary` (function, line 372)
+- `_trim_monitor_log` (function, line 46)
+- `log_integrity_monitor` (function, line 69)
+- `_ensure_alerts_table` (function, line 79)
+- `find_date_anomalies` (function, line 86)
+- `detect_anomalies_with_ml` (function, line 94)
+- `election_integrity_checks` (function, line 145)
+- `advanced_cross_field_validation` (function, line 166)
+- `summarize_context_entities` (function, line 175)
+- `analyze_contests` (function, line 184)
+- `auto_tune_contamination` (function, line 207)
+- `print_issues_table` (function, line 228)
+- `print_entity_summary` (function, line 248)
+- `print_ml_anomalies` (function, line 256)
+- `print_date_anomalies` (function, line 286)
+- `print_auto_tune_result` (function, line 304)
+- `print_analyze_contests` (function, line 310)
+- `monitor_db_for_alerts` (function, line 322)
+- `log_integrity_issues` (function, line 368)
+- `detect_statistical_outliers` (function, line 384)
+- `print_integrity_summary` (function, line 420)
 
 #### 📦 Key Imports (Context_Integration_Integrity_check)
 
@@ -480,8 +483,10 @@ rescanning...")
 - `get_subprocess_env` (function, line 242)
 - `get_supported_formats` (function, line 251)
 - `get_sqlalchemy_engine` (function, line 287)
-- `get_ocr_config_dict` (function, line 519)
-- `log_ocr_config_summary` (function, line 571)
+- `get_ocr_config_dict` (function, line 521)
+- `log_ocr_config_summary` (function, line 573)
+- `build_extraction_quality_metrics` (function, line 591)
+- `log_extraction_quality` (function, line 786)
 
 #### 📦 Key Imports (config)
 
@@ -494,6 +499,11 @@ rescanning...")
 - `azure.identity`
 - `sqlalchemy`
 - `utils.logger_singleton`
+
+#### ⚠️ Task markers (config)
+
+- L816 **WARNING**: ({
+- L817 **WARNING**: ",
 
 ### config/\_ocr\_helpers.py {#webapp-parser-config-ocr-helpers-py}
 
@@ -586,7 +596,7 @@ rescanning...")
 #### 🔧 Key Functions & Classes (handlers_formats_csv_handler)
 
 - `parse_csv_election_results` (function, line 42)
-- `parse` (function, line 316)
+- `parse` (function, line 323)
 
 #### 📦 Key Imports (handlers_formats_csv_handler)
 
@@ -668,8 +678,8 @@ Closest matches: {matches}")
 - `_extract_first_str` (function, line 329)
 - `_derive_location_metadata` (function, line 337)
 - `_fastpath_county_results` (function, line 365)
-- `parse_json_election_results` (function, line 976)
-- `parse` (function, line 1343)
+- `parse_json_election_results` (function, line 983)
+- `parse` (function, line 1357)
 
 #### 📦 Key Imports (handlers_formats_json_handler)
 
@@ -705,31 +715,31 @@ Closest matches: {matches}")
 
 #### 🔧 Key Functions & Classes (handlers_formats_pdf_handler)
 
-- `_env_truthy` (function, line 183)
-- `PDFParseCancelled` (class, line 205)
-- `_sanitize_cache_get` (function, line 210)
-- `_sanitize_cache_set` (function, line 221)
-- `_normalize_angle` (function, line 232)
-- `_quantize_angle` (function, line 240)
-- `_collect_page_orientation` (function, line 250)
-- `_get_page_orientation_map` (function, line 330)
-- `_log_orientation_application` (function, line 394)
-- `_apply_page_orientation` (function, line 407)
-- `_expand_focus_windows` (function, line 438)
-- `_normalize_contest_key` (function, line 464)
-- `_contest_title_tokens` (function, line 471)
-- `_ensure_not_cancelled` (function, line 477)
-- `_cancelled_result` (function, line 538)
-- `_estimate_ocr_time_budgets` (function, line 563)
-- `_refine_focus_windows_for_contest` (function, line 574)
-- `_focus_windows_from_line_records` (function, line 617)
-- `_merge_focus_windows` (function, line 675)
-- `_autopick_contest_from_probe` (function, line 702)
-- `_compute_sample_page_indices` (function, line 751)
-- `_contest_probe_scan` (function, line 783)
-- `_yield_full_pass_batches` (function, line 883)
-- `_camelot_signal_sets` (function, line 955)
-- `_split_ws_blocks` (function, line 998)
+- `_env_truthy` (function, line 191)
+- `PDFParseCancelled` (class, line 213)
+- `_cleanup_pdf_resources` (function, line 217)
+- `_register_pdf_cleanup` (function, line 262)
+- `_sanitize_cache_get` (function, line 271)
+- `_sanitize_cache_set` (function, line 282)
+- `_normalize_angle` (function, line 293)
+- `_quantize_angle` (function, line 301)
+- `_collect_page_orientation` (function, line 311)
+- `_get_page_orientation_map` (function, line 391)
+- `_log_orientation_application` (function, line 455)
+- `_apply_page_orientation` (function, line 468)
+- `_expand_focus_windows` (function, line 499)
+- `_normalize_contest_key` (function, line 525)
+- `_contest_title_tokens` (function, line 532)
+- `_ensure_not_cancelled` (function, line 538)
+- `_cancelled_result` (function, line 599)
+- `_estimate_ocr_time_budgets` (function, line 624)
+- `_refine_focus_windows_for_contest` (function, line 635)
+- `_focus_windows_from_line_records` (function, line 678)
+- `_merge_focus_windows` (function, line 736)
+- `_autopick_contest_from_probe` (function, line 763)
+- `_compute_sample_page_indices` (function, line 812)
+- `_contest_probe_scan` (function, line 844)
+- `_yield_full_pass_batches` (function, line 944)
 
 #### 📦 Key Imports (handlers_formats_pdf_handler)
 
@@ -743,6 +753,9 @@ Closest matches: {matches}")
 - `shutil`
 - `importlib`
 - `hashlib`
+- `atexit`
+- `gc`
+- `tempfile`
 - `typing`
 - `collections`
 - `collections`
@@ -750,36 +763,33 @@ Closest matches: {matches}")
 - `concurrent.futures`
 - `PIL`
 - `PIL`
-- `PIL`
-- `PIL`
-- `Context_Integration.location_inference`
 
 #### ⚠️ Task markers (handlers_formats_pdf_handler)
 
-- L944 **WARNING**: ({
-- L945 **WARNING**: ",
-- L947 **WARN**: \] Skipping page {page*index} during OCR batch render:
+- L1005 **WARNING**: ({
+- L1006 **WARNING**: ",
+- L1008 **WARN**: \] Skipping page {page*index} during OCR batch render:
 {exc}",
-- L1100 **WARNING**: ({
-- L1101 **WARNING**: ",
-- L1104 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
+- L1161 **WARNING**: ({
+- L1162 **WARNING**: ",
+- L1165 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
 parser instability."
-- L2696 **WARNING**: ({
-- L2697 **WARNING**: ",
-- L2699 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
+- L2757 **WARNING**: ({
+- L2758 **WARNING**: ",
+- L2760 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
 using PyMuPDF fallback.",
-- L2719 **WARNING**: ({
-- L2720 **WARNING**: ",
-- L2723 **WARN**: \] pdf2image conversion failed; "
-- L3090 **WARNING**: ({
-- L3091 **WARNING**: ",
-- L3093 **WARN**: \] Skipping full-document OCR pass due to expired sample
+- L2800 **WARNING**: ({
+- L2801 **WARNING**: ",
+- L2804 **WARN**: \] pdf2image conversion failed; "
+- L3188 **WARNING**: ({
+- L3189 **WARNING**: ",
+- L3191 **WARN**: \] Skipping full-document OCR pass due to expired sample
 budget.",
-- L3141 **WARNING**: ({
-- L3142 **WARNING**: ",
-- L3144 **WARN**: \] Aborting full-document OCR pass due to timeout budget.",
-- L3171 **WARNING**: ({
-- L3172 **WARNING**: ",
+- L3239 **WARNING**: ({
+- L3240 **WARNING**: ",
+- L3242 **WARN**: \] Aborting full-document OCR pass due to timeout budget.",
+- L3269 **WARNING**: ({
+- L3270 **WARNING**: ",
 
 ### handlers/formats/txt\_handler.py {#webapp-parser-handlers-formats-txt-handler-py}
 
@@ -818,7 +828,7 @@ budget.",
 
 - `_dataframe_to_records` (function, line 46)
 - `parse_xlsx_election_results` (function, line 63)
-- `parse` (function, line 344)
+- `parse` (function, line 350)
 
 #### 📦 Key Imports (handlers_formats_xlsx_handler)
 
@@ -1523,9 +1533,9 @@ may remain.")
 - `_read_text_file_with_fallback` (function, line 651)
 - `_extract_text_blocks` (function, line 667)
 - `generate_generic_html_result` (function, line 855)
-- `orchestrate_url` (function, line 1073)
-- `_orchestrate_url_worker` (function, line 1475)
-- `main` (function, line 1492)
+- `orchestrate_url` (function, line 1081)
+- `_orchestrate_url_worker` (function, line 1483)
+- `main` (function, line 1500)
 
 #### 📦 Key Imports (html_election_parser)
 
@@ -1566,12 +1576,12 @@ may remain.")
 - L957 **WARNING**: ",
 - L1010 **WARNING**: ({
 - L1011 **WARNING**: ",
-- L1117 **WARNING**: ",
-- L1122 **WARNING**: (payload)
-- L1156 **WARNING**: ({
-- L1157 **WARNING**: ",
-- L1237 **WARNING**: ({
-- L1238 **WARNING**: ",
+- L1125 **WARNING**: ",
+- L1130 **WARNING**: (payload)
+- L1164 **WARNING**: ({
+- L1165 **WARNING**: ",
+- L1245 **WARNING**: ({
+- L1246 **WARNING**: ",
 
 ### navigator/\_\_init\_\_.py {#webapp-parser-navigator-init-py}
 
@@ -2063,11 +2073,11 @@ not be fully loaded.")
 - L646 **WARNING**: (entry)
 - L1039 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
 contests", session*id=session*id,
-- L1626 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
+- L1709 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
 "Empty search term", "session*id": session*id})
-- L1631 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
+- L1714 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
 matches for '{term}'", "session*id": session*id})
-- L1703 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
+- L1786 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
 match; try again.", "session*id": session*id})
 
 ### utils/coordinator\_protocol.py {#webapp-parser-utils-coordinator-protocol-py}
@@ -2511,12 +2521,12 @@ session*id, error=str(e))
 - L405 **WARN**: \] Unsupported format requested: {format*str}",
 - L409 **WARNING**: ({
 - L410 **WARNING**: ",
-- L667 **WARNING**: ({
-- L668 **WARNING**: ",
-- L887 **WARNING**: ({
-- L888 **WARNING**: ",
-- L965 **WARNING**: ({
-- L966 **WARNING**: ",
+- L672 **WARNING**: ({
+- L673 **WARNING**: ",
+- L892 **WARNING**: ({
+- L893 **WARNING**: ",
+- L970 **WARNING**: ({
+- L971 **WARNING**: ",
 
 ### utils/header\_utils.py {#webapp-parser-utils-header-utils-py}
 
@@ -2929,8 +2939,8 @@ Running without embeddings. Error: {e}")
 'Unknown'.\[/yellow\]")
 - L131 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified.
 Using 'unknown*contests'.\[/yellow\]")
-- L569 **WARNING**: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
-- L645 **WARNING**: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
+- L602 **WARNING**: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
+- L678 **WARNING**: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
 
 ### utils/pattern\_extractor.py {#webapp-parser-utils-pattern-extractor-py}
 
@@ -3275,29 +3285,29 @@ warnings; check markers and path.")
 
 - `_get_nlp` (function, line 25)
 - `extract_entities` (function, line 43)
-- `get_sentences` (function, line 61)
-- `clean_text` (function, line 68)
-- `extract_entities_from_list` (function, line 71)
-- `extract_entity_labels` (function, line 74)
-- `is_location_entity` (function, line 81)
-- `extract_locations` (function, line 84)
-- `extract_dates` (function, line 91)
-- `filter_entities_by_type` (function, line 98)
-- `entity_frequency` (function, line 105)
-- `get_entity_context` (function, line 117)
-- `similarity_score` (function, line 127)
-- `extract_persons` (function, line 137)
-- `extract_organizations` (function, line 144)
-- `extract_money` (function, line 151)
-- `extract_emails` (function, line 158)
-- `extract_urls` (function, line 161)
-- `load_known_states_counties` (function, line 167)
-- `normalize_location` (function, line 178)
-- `is_known_state` (function, line 186)
-- `is_known_county` (function, line 189)
-- `detect_noisy_or_ambiguous_entities` (function, line 192)
-- `canonicalize_entity` (function, line 212)
-- `validate_contest` (function, line 218)
+- `get_sentences` (function, line 92)
+- `clean_text` (function, line 99)
+- `extract_entities_from_list` (function, line 102)
+- `extract_entity_labels` (function, line 105)
+- `is_location_entity` (function, line 112)
+- `extract_locations` (function, line 115)
+- `extract_dates` (function, line 122)
+- `filter_entities_by_type` (function, line 129)
+- `entity_frequency` (function, line 136)
+- `get_entity_context` (function, line 148)
+- `similarity_score` (function, line 158)
+- `extract_persons` (function, line 168)
+- `extract_organizations` (function, line 175)
+- `extract_money` (function, line 182)
+- `extract_emails` (function, line 189)
+- `extract_urls` (function, line 192)
+- `load_known_states_counties` (function, line 198)
+- `normalize_location` (function, line 209)
+- `is_known_state` (function, line 217)
+- `is_known_county` (function, line 220)
+- `detect_noisy_or_ambiguous_entities` (function, line 223)
+- `canonicalize_entity` (function, line 243)
+- `validate_contest` (function, line 249)
 
 #### 📦 Key Imports (utils_spacy_utils)
 
@@ -3596,11 +3606,11 @@ user.\[/yellow\]")
 
 #### 🔧 Key Functions & Classes (web_pipeline)
 
-- `CancellationManager` (class, line 18)
-- `heartbeat` (function, line 93)
-- `save_pipeline_report` (function, line 107)
-- `process_urls_for_web` (function, line 118)
-- `cancel_processing` (function, line 276)
+- `CancellationManager` (class, line 19)
+- `heartbeat` (function, line 94)
+- `save_pipeline_report` (function, line 108)
+- `process_urls_for_web` (function, line 119)
+- `cancel_processing` (function, line 478)
 
 #### 📦 Key Imports (web_pipeline)
 
@@ -3609,6 +3619,7 @@ user.\[/yellow\]")
 - `time`
 - `traceback`
 - `orjson`
+- `config`
 - `config`
 - `config`
 - `config`
@@ -3621,9 +3632,11 @@ user.\[/yellow\]")
 
 #### ⚠️ Task markers (web_pipeline)
 
-- L49 **WARNING**: ({
-- L50 **WARNING**: ",
-- L66 **WARNING**: ({
-- L67 **WARNING**: ",
-- L83 **WARNING**: ({
-- L84 **WARNING**: ",
+- L50 **WARNING**: ({
+- L51 **WARNING**: ",
+- L67 **WARNING**: ({
+- L68 **WARNING**: ",
+- L84 **WARNING**: ({
+- L85 **WARNING**: ",
+- L459 **WARNING**: ({
+- L460 **WARNING**: ",

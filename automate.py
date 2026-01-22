@@ -162,6 +162,34 @@ def run_self_check():
         return False
 
 
+def run_ballot_lens_check():
+    """Run the Playwright Ballot Lens visibility check (tools/pw_check_ballot_lens.py)."""
+    logger.info("[AUTOMATE] Running Ballot Lens headless check (tools/pw_check_ballot_lens.py)...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "tools/pw_check_ballot_lens.py"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        logger.debug(f"[AUTOMATE] Ballot Lens stdout: {result.stdout}")
+        logger.debug(f"[AUTOMATE] Ballot Lens stderr: {result.stderr}")
+        if result.returncode == 0:
+            logger.info("[AUTOMATE] Ballot Lens check passed.")
+            return True
+        logger.error(f"[AUTOMATE] Ballot Lens check failed with code {result.returncode}")
+        print(result.stdout)
+        print(result.stderr)
+        return False
+    except subprocess.TimeoutExpired:
+        logger.error("[AUTOMATE] Ballot Lens check timed out.")
+        return False
+    except Exception as e:
+        logger.error(f"[AUTOMATE] Ballot Lens check failed: {e}")
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run all automated scripts for Smart Elections Parser.")
     parser.add_argument("--skip-web", action="store_true", help="Skip web asset checks")
@@ -169,6 +197,7 @@ def main():
     parser.add_argument("--skip-tests", action="store_true", help="Skip automated tests")
     parser.add_argument("--skip-webapp-check", action="store_true", help="Skip webapp startup validation")
     parser.add_argument("--self-check", action="store_true", help="Run headless self-check (tools/ci_headless_check.py) after other checks")
+    parser.add_argument("--ballot-lens-check", action="store_true", help="Run Ballot Lens Playwright visibility check (tools/pw_check_ballot_lens.py)")
 
     args = parser.parse_args()
 
@@ -210,6 +239,12 @@ def main():
     else:
         results['self_check'] = None
 
+    # Optional Ballot Lens check
+    if args.ballot_lens_check:
+        results['ballot_lens_check'] = run_ballot_lens_check()
+    else:
+        results['ballot_lens_check'] = None
+
     # Validate webapp unless skipped
     if not args.skip_webapp_check:
         results["webapp_validation"] = validate_webapp_startup()
@@ -233,6 +268,9 @@ def main():
         sc = results.get('self_check')
         if sc is False:
             critical_failures.append('self_check')
+    # Treat Ballot Lens check as critical only when requested
+    if args.ballot_lens_check and results.get('ballot_lens_check') is False:
+        critical_failures.append('ballot_lens_check')
     if critical_failures:
         print(f"[AUTOMATE] Critical failures in: {', '.join(critical_failures)}")
         logger.error(f"[AUTOMATE] Critical failures in: {', '.join(critical_failures)}")

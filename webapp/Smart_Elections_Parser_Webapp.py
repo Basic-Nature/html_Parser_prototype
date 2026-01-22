@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import os
 
 # ============================================
@@ -19,6 +20,19 @@ _SOCKETIO_ENGINE_OPTIONS = {
 }
 
 _SOCKETIO_CLIENT_TRANSPORTS = ["polling"]
+
+# Env-driven allowlist; avoid wildcard in production. Defaults cover local dev.
+_RAW_SOCKETIO_ORIGINS = os.environ.get(
+    "SOCKETIO_ALLOWED_ORIGINS",
+    "http://localhost:5000,http://127.0.0.1:5000,http://localhost:3000,http://127.0.0.1:3000",
+)
+SOCKETIO_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in _RAW_SOCKETIO_ORIGINS.split(",")
+    if origin.strip()
+]
+if not SOCKETIO_ALLOWED_ORIGINS:
+    SOCKETIO_ALLOWED_ORIGINS = ["http://localhost:5000", "http://127.0.0.1:5000"]
 
 SOCKETIO_CLIENT_CONFIG = {
     "transports": _SOCKETIO_CLIENT_TRANSPORTS,
@@ -130,6 +144,10 @@ from webapp.parser.web_pipeline import (
     cancel_processing,
 )
 
+# Health task security controls
+ENABLE_HEALTH_TASKS = os.environ.get("ENABLE_HEALTH_TASKS", "false").lower() in {"1", "true", "yes"}
+HEALTH_TASK_TOKEN = os.environ.get("HEALTH_TASK_TOKEN")
+
 # Local, non-DB monitoring log for DB usage/events
 DB_MONITOR_FILE = LOG_DIR / "db_monitor.jsonl"
 try:
@@ -142,7 +160,7 @@ app = Flask(__name__)
 socketio = SocketIO(
     app,
     async_mode=_SOCKETIO_ASYNC_MODE,
-    cors_allowed_origins="*",
+    cors_allowed_origins=SOCKETIO_ALLOWED_ORIGINS,
     **_SOCKETIO_ENGINE_OPTIONS,
 )
 
@@ -203,6 +221,30 @@ _HEALTH_TASK_LOCK = threading.Lock()
 _HEALTH_TASK_RUNS: dict[str, dict] = {}
 _HEALTH_TASK_HISTORY_LIMIT = 20
 _HEALTH_TASK_LOG_LIMIT = 20000
+
+
+def _require_health_auth():
+    """Guard health endpoints with enable flag and optional bearer token."""
+    if not ENABLE_HEALTH_TASKS:
+        return False, (jsonify({"error": "Health tasks disabled"}), 403)
+
+    if HEALTH_TASK_TOKEN:
+        auth_header = request.headers.get("Authorization", "") or ""
+        token = None
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+        if not token:
+            token = request.args.get("token", "")
+        if token and hmac.compare_digest(token, HEALTH_TASK_TOKEN):
+            return True, None
+        return False, (jsonify({"error": "Unauthorized"}), 401)
+
+    return True, None
+
+
+def _health_auth_response():
+    allowed, resp = _require_health_auth()
+    return None if allowed else resp
 
 
 def _public_health_task_definitions() -> list[dict]:
@@ -355,6 +397,14 @@ def ensure_utf8(resp: Response) -> Response:
         media_type = ct.split(";")[0].strip()
         resp.headers["Content-Type"] = f"{media_type}; charset=utf-8"
     return resp
+
+
+def _is_request_secure() -> bool:
+    """Detect HTTPS even when behind a reverse proxy/front door."""
+    if request.is_secure:
+        return True
+    forwarded = (request.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+    return forwarded == "https"
 WEBAPP_CONSOLE_LEVELS = set(os.environ.get("WEBAPP_CONSOLE_LEVELS", "ERROR,WARNING").upper().split(","))
 
 class EnsureWsSecurityHeaders:
@@ -1136,7 +1186,7 @@ def add_headers(response: Response) -> Response:
         vary_tokens.add("Cookie")
         response.headers["Vary"] = ", ".join(sorted(vary_tokens))
 
-    if request.is_secure:
+    if _is_request_secure():
         response.headers.setdefault(
             "Strict-Transport-Security",
             "max-age=63072000; includeSubDomains; preload"
@@ -1284,6 +1334,9 @@ def data_framework():
 
 @app.route("/azure_health", methods=["GET"])
 def azure_health_page():
+    auth_error = _health_auth_response()
+    if auth_error:
+        return auth_error
     runtime_hints = {
         "async_mode": _SOCKETIO_ASYNC_MODE,
         "async_framework": "threading (native Python)",
@@ -1302,11 +1355,17 @@ def azure_health_page():
 
 @app.route("/api/health_tasks", methods=["GET"])
 def api_list_health_tasks():
+    auth_error = _health_auth_response()
+    if auth_error:
+        return auth_error
     return jsonify({"tasks": _get_health_tasks()})
 
 
 @app.route("/api/health_tasks", methods=["POST"])
 def api_start_health_task():
+    auth_error = _health_auth_response()
+    if auth_error:
+        return auth_error
     data = request.get_json(silent=True) or {}
     task_key = str(data.get("task") or "").strip()
     if not task_key:
@@ -1319,6 +1378,9 @@ def api_start_health_task():
 
 @app.route("/api/health_tasks/<task_id>", methods=["GET"])
 def api_health_task_detail(task_id: str):
+    auth_error = _health_auth_response()
+    if auth_error:
+        return auth_error
     record = _get_health_task(task_id)
     if not record:
         return jsonify({"error": "Task not found."}), 404
