@@ -1042,29 +1042,28 @@ def redirect_to_https_www():
     - Redirects http:// to https://
     - Redirects electionpulse.org to www.electionpulse.org
     """
-    # Skip redirects for local development
-    if request.host.startswith('localhost') or request.host.startswith('127.0.0.1'):
+    # Skip redirects for local development (handle localhost with/without port, IPv4, IPv6)
+    host = request.host
+    if (host in ('localhost', '127.0.0.1', '::1') or 
+        host.startswith('localhost:') or 
+        host.startswith('127.0.0.1:')):
         return None
     
-    # Get the current scheme and host
+    # Get the current scheme (check X-Forwarded-Proto for proxy setups like Azure)
     scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
-    host = request.host
     
-    # Determine if redirect is needed
-    needs_redirect = False
-    target_url = None
+    # Production domain configuration
+    PRODUCTION_APEX = 'electionpulse.org'
+    PRODUCTION_WWW = 'www.electionpulse.org'
     
-    # Check if we need to redirect to www
-    if host == 'electionpulse.org':
-        needs_redirect = True
-        target_url = f"https://www.electionpulse.org{request.full_path.rstrip('?')}"
-    
-    # Check if we need to force HTTPS (for www subdomain)
-    elif host == 'www.electionpulse.org' and scheme != 'https':
-        needs_redirect = True
-        target_url = f"https://www.electionpulse.org{request.full_path.rstrip('?')}"
-    
-    if needs_redirect:
+    # Check if we need to redirect to www or HTTPS
+    if host == PRODUCTION_APEX:
+        # Redirect apex domain to www with HTTPS
+        target_url = f"https://{PRODUCTION_WWW}{request.full_path.rstrip('?')}"
+        return redirect(target_url, code=301)
+    elif host == PRODUCTION_WWW and scheme != 'https':
+        # Force HTTPS for www subdomain
+        target_url = f"https://{PRODUCTION_WWW}{request.full_path.rstrip('?')}"
         return redirect(target_url, code=301)
     
     return None
