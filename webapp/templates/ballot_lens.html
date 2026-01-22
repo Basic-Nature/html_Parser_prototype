@@ -54,6 +54,19 @@
                   <!-- Mobile sidebar toggle (shown on small screens) -->
                   <button type="button" id="sidebarToggleBtn" class="sidebar-toggle btn-icon" aria-label="Toggle menu" title="Menu">☰</button>
 
+                  <!-- Right-side parser tools: a single toggle opens an accessible popover with tool buttons -->
+                    <div class="parser-tools">
+                    <button type="button" class="btn-icon" id="btnToggleRightSidebar" aria-haspopup="true" aria-controls="parserToolsDropdown" aria-expanded="false" title="Tools" aria-label="Open parser tools">⚙️</button>
+                    <div id="parserToolsDropdown" class="parser-tools-dropdown nav-dropdown overlay" role="dialog" aria-hidden="true" tabindex="-1" data-focus-trap="true" data-anchor-id="btnToggleRightSidebar">
+                      <div role="none">
+                        <button type="button" class="btn-icon" id="btnCommandPalette" role="menuitem" title="Command Palette (Ctrl+Shift+P)" aria-label="Open command palette">⌘</button>
+                        <button type="button" class="btn-icon" id="btnNotifications" role="menuitem" title="Notifications" aria-label="Notifications">🔔</button>
+                        <button type="button" class="btn-icon" id="btnTheme" role="menuitem" title="Toggle Theme" aria-label="Toggle theme">🌙</button>
+                        <button type="button" class="btn-icon" id="btnToggleRightSidebarClose" role="menuitem" title="Close tools" aria-label="Close tools">✕</button>
+                      </div>
+                    </div>
+                  </div>
+
                   <!-- Single Tools button (opens right sidebar on mobile) -->
                   <button type="button" id="btnToggleRightSidebar" class="btn-icon tools-toggle" aria-label="Open tools and settings" title="Tools">⚙️</button>
                 </div>
