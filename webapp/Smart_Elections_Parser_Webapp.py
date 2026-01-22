@@ -1044,9 +1044,10 @@ def redirect_to_https_www():
     """
     # Skip redirects for local development (handle localhost with/without port, IPv4, IPv6)
     host = request.host
-    if (host in ('localhost', '127.0.0.1', '::1') or 
+    if (host in ('localhost', '127.0.0.1', '::1', '[::1]') or 
         host.startswith('localhost:') or 
-        host.startswith('127.0.0.1:')):
+        host.startswith('127.0.0.1:') or
+        host.startswith('[::1]:')):
         return None
     
     # Get the current scheme (check X-Forwarded-Proto for proxy setups like Azure)
