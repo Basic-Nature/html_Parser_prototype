@@ -1050,24 +1050,29 @@ function initSidebarMobile() {
       sidebar.classList.add('sidebar-open');
       if (backdrop) backdrop.classList.add('visible');
       document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
     }
     function closeSidebar() {
       sidebar.classList.remove('sidebar-open');
       if (backdrop) backdrop.classList.remove('visible');
       document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
     }
 
-    // Click/backdrop handling is managed by the unified sidebar controller below; keep only touch-close support here.
-
-    // Touch swipe to close (when sidebar open)
+    // Improved touch handling with proper passive: false for preventDefault
     let touchStartX = 0;
+    let touchStartY = 0;
     let touchCurrentX = 0;
     let tracking = false;
+
     sidebar.addEventListener('touchstart', (ev) => {
       if (!sidebar.classList.contains('sidebar-open')) return;
       const t = ev.touches && ev.touches[0];
       if (!t) return;
       touchStartX = t.clientX;
+      touchStartY = t.clientY;
       tracking = true;
     }, { passive: true });
 
@@ -1077,23 +1082,52 @@ function initSidebarMobile() {
       if (!t) return;
       touchCurrentX = t.clientX;
       const dx = touchCurrentX - touchStartX;
-      // allow slight drag but do not move DOM; threshold handled on end
-    }, { passive: true });
+      const dy = Math.abs(t.clientY - touchStartY);
+      
+      // Only prevent default if horizontal swipe is dominant
+      if (Math.abs(dx) > dy && Math.abs(dx) > 10) {
+        ev.preventDefault();
+      }
+    }, { passive: false }); // Must be non-passive to use preventDefault
 
     sidebar.addEventListener('touchend', (ev) => {
       if (!tracking) return;
       tracking = false;
       const dx = touchCurrentX - touchStartX;
-      // swipe left to close (threshold 60px)
-      if (dx < -60) closeSidebar();
-      touchStartX = touchCurrentX = 0;
-    });
+      
+      // Swipe threshold: 60px
+      if (Math.abs(dx) > 60) {
+        // Left sidebar: swipe left to close
+        // Right sidebar: swipe right to close
+        const isRightSidebar = sidebar.classList.contains('sidebar-right');
+        if ((dx < 0 && !isRightSidebar) || (dx > 0 && isRightSidebar)) {
+          closeSidebar();
+        }
+      }
+      touchStartX = touchCurrentX = touchStartY = 0;
+    }, { passive: true });
 
-    // init state based on viewport
+    // Backdrop click to close
+    if (backdrop) {
+      backdrop.addEventListener('click', closeSidebar);
+    }
+
+    // Toggle button handling
+    if (toggle) {
+      toggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (sidebar.classList.contains('sidebar-open')) {
+          closeSidebar();
+        } else {
+          openSidebar();
+        }
+      });
+    }
+
+    // Initialize state
     if (window.innerWidth <= 768) {
-      // ensure sidebar is hidden initially
-      sidebar.classList.remove('sidebar-open');
-      if (backdrop) backdrop.classList.remove('visible');
+      closeSidebar();
     }
   } catch (e) {
     ErrorBoundary.logError(e, 'initSidebarMobile');
@@ -1104,6 +1138,37 @@ function initSidebarMobile() {
 document.addEventListener('DOMContentLoaded', () => {
   initSidebarMobile();
 });
+
+// Calculate actual viewport height (accounts for mobile browser chrome)
+function setViewportHeight() {
+  const vh = window.innerHeight * 0.01;
+  document.documentElement.style.setProperty('--vh', `${vh}px`);
+}
+
+// Debounced resize handler for viewport height and sidebar state
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    setViewportHeight();
+    // Re-check sidebar state
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar && window.innerWidth > 768) {
+      sidebar.classList.remove('sidebar-open');
+      const backdrop = document.querySelector('.sidebar-backdrop') || document.querySelector('.mobile-sidebar-overlay');
+      if (backdrop) backdrop.classList.remove('visible');
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+    }
+  }, 250);
+});
+
+// Update on orientation change
+window.addEventListener('orientationchange', setViewportHeight);
+
+// Initialize viewport height
+setViewportHeight();
 
 // Show flagged details in a dedicated modal with simple filters
 /**
