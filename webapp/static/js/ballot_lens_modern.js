@@ -299,72 +299,32 @@
 
   document.addEventListener('DOMContentLoaded', function(){
     const toggle = document.getElementById('btnToggleRightSidebar');
-    const dropdown = document.getElementById('parserToolsDropdown');
     const rightSidebar = document.querySelector('.sidebar-right');
-    const toolHost = document.getElementById('toolActions');
-    if(!toggle || !dropdown) return;
+    if(!toggle || !rightSidebar) return;
 
     // initialize attributes
     toggle.setAttribute('aria-expanded', 'false');
-    dropdown.setAttribute('aria-hidden','true');
 
     toggle.addEventListener('click', function(ev){
       // Prevent bubbling to outer listeners that might instantly close the panel
       try { ev.preventDefault(); ev.stopPropagation(); } catch (e) {}
 
-      // If the modern right sidebar exists, toggle it directly (desktop + mobile) and keep aria in sync
-      if (rightSidebar) {
-        const isOpen = rightSidebar.classList.contains('open') || rightSidebar.classList.contains('sidebar-open');
-        if (isOpen) {
-          rightSidebar.classList.remove('open','sidebar-open','centered-tool-window');
-          document.body.classList.remove('no-scroll','sidebar-right-open');
-          toggle.setAttribute('aria-expanded','false');
-        } else {
-          if (window.innerWidth >= 1024) {
-            rightSidebar.classList.add('centered-tool-window');
-          } else {
-            rightSidebar.classList.remove('centered-tool-window');
-          }
-          rightSidebar.classList.add('open','sidebar-open');
-          document.body.classList.add('no-scroll','sidebar-right-open');
-          toggle.setAttribute('aria-expanded','true');
-        }
-        return;
-      }
-
-      // Fallback: legacy parser tools dropdown
-      const open = toggle.getAttribute('aria-expanded') === 'true';
-      if(open){ closeParserTools(dropdown,toggle); }
-      else { openParserTools(dropdown,toggle); }
-    });
-
-    // If a tool host exists in the right sidebar, move the tool buttons into it and hide the legacy dropdown
-    if (rightSidebar && toolHost) {
-      const toolButtons = Array.from(dropdown.querySelectorAll('button'));
-      toolButtons.forEach(btn => toolHost.appendChild(btn));
-      dropdown.setAttribute('hidden', 'true');
-      dropdown.setAttribute('aria-hidden', 'true');
-    }
-
-    // close when clicking outside
-    /** @param {MouseEvent} e */
-    document.addEventListener('click', function(e){
-      if(dropdown.getAttribute('aria-hidden') === 'true') return;
-      const tgt = (e && e.target && (e.target instanceof Node)) ? e.target : null;
-      if ((/** @type {any} */ (window)).__tl_helpers.nodeContains(toggle, tgt) || (/** @type {any} */ (window)).__tl_helpers.nodeContains(dropdown, tgt)) return;
-      closeParserTools(dropdown,toggle);
-    }, true);
-
-    // wire close button inside menu
-    const closeBtn = document.getElementById('btnToggleRightSidebarClose');
-    if(closeBtn) closeBtn.addEventListener('click', function(){
-      if (rightSidebar) {
+      // Toggle the modern right sidebar directly (desktop + mobile) and keep aria in sync
+      const isOpen = rightSidebar.classList.contains('open') || rightSidebar.classList.contains('sidebar-open');
+      if (isOpen) {
         rightSidebar.classList.remove('open','sidebar-open','centered-tool-window');
         document.body.classList.remove('no-scroll','sidebar-right-open');
         toggle.setAttribute('aria-expanded','false');
-        return;
+      } else {
+        if (window.innerWidth >= 1024) {
+          rightSidebar.classList.add('centered-tool-window');
+        } else {
+          rightSidebar.classList.remove('centered-tool-window');
+        }
+        rightSidebar.classList.add('open','sidebar-open');
+        document.body.classList.add('no-scroll','sidebar-right-open');
+        toggle.setAttribute('aria-expanded','true');
       }
-      closeParserTools(dropdown,toggle);
     });
   });
 })();
@@ -5576,10 +5536,6 @@ async function loadRealData() {
 
 const ThemeManager = (() => {
   const THEME_KEY = 'parser_theme';
-  const THEME_ICONS = {
-    light: '☀️',  // Sun when in light mode (click to go dark)
-    dark: '🌙'   // Moon when in dark mode (click to go light)
-  };
   
   function getCurrentTheme() {
     return localStorage.getItem(THEME_KEY) || 'dark';
@@ -5605,31 +5561,25 @@ const ThemeManager = (() => {
     const validTheme = theme === 'light' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', validTheme);
     localStorage.setItem(THEME_KEY, validTheme);
-    updateThemeIcon(validTheme);
+    updateThemeToggle(validTheme);
   }
   
   /**
-   * ThemeName typedef consolidated above; use that instead of redeclaring.
-   */
-
-  /**
-   * Map of theme name to icon string.
-   * @typedef {Object.<ThemeName, string>} ThemeIconsMap
-   */
-
-  /** @typedef {HTMLButtonElement} ThemeButtonElement */
-
-  /**
-   * Update the theme icon button's visual content and tooltip.
+   * Update the theme toggle button's visual state and label.
    * @param {ThemeName|string} theme
    * @returns {void}
    */
-  function updateThemeIcon(theme) {
-    /** @type {ThemeButtonElement | null} */
-    const btn = /** @type {ThemeButtonElement | null} */ (document.getElementById('btnTheme'));
-    if (btn) {
-      btn.textContent = THEME_ICONS[theme];
-      btn.title = `Switch to ${theme === 'light' ? 'dark' : 'light'} theme`;
+  function updateThemeToggle(theme) {
+    const toggleBtn = document.getElementById('themeToggle');
+    const themeLabel = document.getElementById('themeLabel');
+    
+    if (toggleBtn) {
+      toggleBtn.classList.toggle('theme-light', theme === 'light');
+      toggleBtn.classList.toggle('theme-dark', theme === 'dark');
+    }
+    
+    if (themeLabel) {
+      themeLabel.textContent = theme === 'dark' ? 'Dark' : 'Light';
     }
   }
   
@@ -5644,9 +5594,10 @@ const ThemeManager = (() => {
     const savedTheme = getCurrentTheme();
     setTheme(savedTheme);
     
-    const btn = document.getElementById('btnTheme');
-    if (btn) {
-      btn.addEventListener('click', toggleTheme);
+    // Wire up the new theme toggle button in the right sidebar
+    const toggleBtn = document.getElementById('themeToggle');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', toggleTheme);
     }
   }
   
@@ -5655,6 +5606,133 @@ const ThemeManager = (() => {
     toggleTheme,
     getCurrentTheme,
     setTheme
+  };
+})();
+
+// ============================================
+// Swipe Gesture Handler for Sidebars
+// ============================================
+
+const SwipeHandler = (() => {
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchStartTime = 0;
+  let isSwiping = false;
+  
+  const SWIPE_THRESHOLD = 50; // Minimum distance for a swipe
+  const SWIPE_TIME_LIMIT = 300; // Maximum time for a swipe (ms)
+  const SWIPE_VELOCITY_THRESHOLD = 0.3; // Minimum velocity (pixels/ms)
+  
+  /**
+   * Handle touch start event
+   * @param {TouchEvent} e
+   * @param {HTMLElement} sidebar
+   */
+  function handleTouchStart(e, sidebar) {
+    if (!e.touches || e.touches.length === 0) return;
+    
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchStartTime = Date.now();
+    isSwiping = false;
+  }
+  
+  /**
+   * Handle touch move event
+   * @param {TouchEvent} e
+   * @param {HTMLElement} sidebar
+   */
+  function handleTouchMove(e, sidebar) {
+    if (!e.touches || e.touches.length === 0) return;
+    
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    
+    // Detect if this is a horizontal swipe (not vertical scroll)
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+      isSwiping = true;
+    }
+  }
+  
+  /**
+   * Handle touch end event
+   * @param {TouchEvent} e
+   * @param {HTMLElement} sidebar
+   * @param {string} sidebarType - 'left' or 'right'
+   */
+  function handleTouchEnd(e, sidebar, sidebarType) {
+    if (!isSwiping) return;
+    
+    const touch = e.changedTouches && e.changedTouches[0];
+    if (!touch) return;
+    
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    const deltaTime = Date.now() - touchStartTime;
+    const velocity = Math.abs(deltaX) / deltaTime;
+    
+    // Check if it's a valid swipe
+    const isHorizontalSwipe = Math.abs(deltaX) > Math.abs(deltaY);
+    const meetsThreshold = Math.abs(deltaX) > SWIPE_THRESHOLD;
+    const withinTimeLimit = deltaTime < SWIPE_TIME_LIMIT;
+    const meetsVelocity = velocity > SWIPE_VELOCITY_THRESHOLD;
+    
+    if (isHorizontalSwipe && (meetsThreshold || meetsVelocity) && withinTimeLimit) {
+      // Right sidebar: swipe right to close
+      if (sidebarType === 'right' && deltaX > 0) {
+        closeSidebar(sidebar);
+      }
+      // Left sidebar: swipe left to close
+      else if (sidebarType === 'left' && deltaX < 0) {
+        closeSidebar(sidebar);
+      }
+    }
+    
+    // Reset
+    isSwiping = false;
+  }
+  
+  /**
+   * Close a sidebar
+   * @param {HTMLElement} sidebar
+   */
+  function closeSidebar(sidebar) {
+    if (!sidebar) return;
+    
+    sidebar.classList.remove('open', 'sidebar-open', 'centered-tool-window');
+    document.body.classList.remove('no-scroll', 'sidebar-right-open');
+    
+    // Update toggle button aria-expanded
+    const toggleBtn = document.getElementById('btnToggleRightSidebar');
+    if (toggleBtn) {
+      toggleBtn.setAttribute('aria-expanded', 'false');
+    }
+  }
+  
+  /**
+   * Initialize swipe handlers for sidebars
+   */
+  function init() {
+    const rightSidebar = document.querySelector('.sidebar-right');
+    const leftSidebar = document.querySelector('.sidebar-left');
+    
+    if (rightSidebar) {
+      rightSidebar.addEventListener('touchstart', (e) => handleTouchStart(e, rightSidebar), { passive: true });
+      rightSidebar.addEventListener('touchmove', (e) => handleTouchMove(e, rightSidebar), { passive: true });
+      rightSidebar.addEventListener('touchend', (e) => handleTouchEnd(e, rightSidebar, 'right'), { passive: true });
+    }
+    
+    if (leftSidebar) {
+      leftSidebar.addEventListener('touchstart', (e) => handleTouchStart(e, leftSidebar), { passive: true });
+      leftSidebar.addEventListener('touchmove', (e) => handleTouchMove(e, leftSidebar), { passive: true });
+      leftSidebar.addEventListener('touchend', (e) => handleTouchEnd(e, leftSidebar, 'left'), { passive: true });
+    }
+  }
+  
+  return {
+    init
   };
 })();
 
@@ -6929,6 +7007,9 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialize theme manager
   ThemeManager.init();
+  
+  // Initialize swipe gesture handler for sidebars
+  SwipeHandler.init();
   
   // Initialize pipeline phase system
   PipelineManager.init();

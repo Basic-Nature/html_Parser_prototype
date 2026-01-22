@@ -156,5 +156,8 @@ tests/
 scripts/install_poppler_ubuntu.sh
 scripts/install_poppler_ubuntu.sh
 
+# Test documentation (temporary)
+test_navbar_changes.md
+
 # Windows temp
 %TEMP%/

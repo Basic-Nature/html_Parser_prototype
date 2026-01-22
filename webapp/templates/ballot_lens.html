@@ -67,9 +67,10 @@
                     </div>
                   </div>
 
+                  <!-- Single Tools button (opens right sidebar on mobile) -->
+                  <button type="button" id="btnToggleRightSidebar" class="btn-icon tools-toggle" aria-label="Open tools and settings" title="Tools">⚙️</button>
                 </div>
               </div>
-            </div>
           </nav>
 
           {% with messages = get_flashed_messages(with_categories=true) %}
@@ -313,8 +314,24 @@
               </section>
               <section class="sidebar-section tool-section" aria-label="Quick tools">
                 <h3 class="sidebar-header">🛠️ Tools</h3>
-                <div class="tool-actions" id="toolActions" role="group" aria-label="Parser tools"></div>
-                <small class="text-muted">Command palette, notifications, and theme toggle now live here.</small>
+                
+                <!-- Theme Toggle -->
+                <div class="control-group">
+                  <label for="themeToggle" class="control-label">
+                    <span class="label-icon">🌓</span>
+                    <span class="label-text">Theme</span>
+                  </label>
+                  <div class="theme-toggle-wrapper">
+                    <button type="button" id="themeToggle" class="theme-toggle" aria-label="Toggle theme" title="Switch theme">
+                      <span class="theme-icon-light">☀️</span>
+                      <span class="theme-icon-dark">🌙</span>
+                    </button>
+                    <span class="theme-label" id="themeLabel">Dark</span>
+                  </div>
+                </div>
+                
+                <!-- Other tool actions (populated by JS if needed) -->
+                <div class="tool-actions" id="toolActions" role="group" aria-label="Tool actions"></div>
               </section>
               <hr class="sidebar-divider">
               <section class="sidebar-section">
