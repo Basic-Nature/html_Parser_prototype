@@ -7,20 +7,25 @@
 
 @layer tokens {
 :root {
+  /* Brand colors */
+  --brand-blue: #45818e;
+  --brand-red: #eb4f43;
+  --brand-bg: #1a232a;
+  
   /* Semantic palette (dark default) */
   --surface-0: #0f1419;
-  --surface-1: #1a232a;
+  --surface-1: var(--brand-bg);  /* #1a232a - main brand background */
   --surface-2: #2a3642;
   --surface-3: #334155;
   --text-strong: #e2e8f0;
   --text-subtle: #cbd5e1;
   --text-muted-base: #94a3b8;
   --border-weak: #334155;
-  --accent-1: #2563eb;
-  --accent-2: #3b82f6;
+  --accent-1: var(--brand-blue);  /* #45818e - main brand blue */
+  --accent-2: #6ba5b0;  /* Lighter variant of brand blue */
   --accent-success-strong: #10b981;
   --accent-warning-strong: #f59e0b;
-  --accent-danger-strong: #ef4444;
+  --accent-danger-strong: var(--brand-red);  /* #eb4f43 - main brand red */
 
   /* Legacy mapped tokens (keep existing variable names) */
   --bg-primary: var(--surface-0);
@@ -82,20 +87,20 @@
 }
 
 :root[data-theme="light"] {
-  /* Light theme: lighter tints of the dark brand colors */
-  --surface-0: #e8ecf3;  /* Very light blue-gray background (lighter tint of #0f1419) */
-  --surface-1: #f0f3f8;  /* Slightly lighter panels (lighter tint of #1a232a) */
-  --surface-2: #d8dfe9;  /* Light card backgrounds (lighter tint of #2a3642) */
-  --surface-3: #c5ccd9;  /* Light borders/dividers (lighter tint of #334155) */
+  /* Light theme: lighter tints of the brand colors */
+  --surface-0: #dfe6e8;  /* Very light tint of brand-bg for backgrounds */
+  --surface-1: #e9eef0;  /* Lighter panels - tint of #1a232a */
+  --surface-2: #cfe0e4;  /* Light card backgrounds - tint of brand-blue */
+  --surface-3: #b8d3d8;  /* Light borders/dividers - lighter tint of brand-blue */
   --text-strong: #0f172a;  /* Dark text for readability */
   --text-subtle: #1f2937;  /* Slightly lighter text */
   --text-muted-base: #4b5563;  /* Muted text */
-  --border-weak: #b8c1d0;  /* Lighter borders */
-  --accent-1: #2563eb;  /* Keep primary accent */
-  --accent-2: #3b82f6;  /* Keep secondary accent */
+  --border-weak: #a8c5cb;  /* Lighter borders - very light tint of brand-blue */
+  --accent-1: var(--brand-blue);  /* Keep brand blue */
+  --accent-2: #6ba5b0;  /* Lighter variant of brand blue */
   --accent-success-strong: #059669;  /* Success green */
   --accent-warning-strong: #d97706;  /* Warning orange */
-  --accent-danger-strong: #dc2626;  /* Danger red */
+  --accent-danger-strong: #f08981;  /* Lighter tint of brand red for better contrast */
 }
 }
 
