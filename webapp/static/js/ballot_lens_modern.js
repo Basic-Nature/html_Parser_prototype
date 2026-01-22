@@ -1046,20 +1046,20 @@ function initSidebarMobile() {
     const backdrop = document.querySelector('.sidebar-backdrop') || document.querySelector('.mobile-sidebar-overlay');
     if (!sidebar) return;
 
-    function openSidebar() {
+    const openSidebar = () => {
       sidebar.classList.add('sidebar-open');
       if (backdrop) backdrop.classList.add('visible');
       document.body.style.overflow = 'hidden';
       document.body.style.position = 'fixed';
       document.body.style.width = '100%';
-    }
-    function closeSidebar() {
+    };
+    const closeSidebar = () => {
       sidebar.classList.remove('sidebar-open');
       if (backdrop) backdrop.classList.remove('visible');
       document.body.style.overflow = '';
       document.body.style.position = '';
       document.body.style.width = '';
-    }
+    };
 
     // Improved touch handling with proper passive: false for preventDefault
     let touchStartX = 0;
@@ -1090,7 +1090,7 @@ function initSidebarMobile() {
       }
     }, { passive: false }); // Must be non-passive to use preventDefault
 
-    sidebar.addEventListener('touchend', (ev) => {
+    sidebar.addEventListener('touchend', () => {
       if (!tracking) return;
       tracking = false;
       const dx = touchCurrentX - touchStartX;
