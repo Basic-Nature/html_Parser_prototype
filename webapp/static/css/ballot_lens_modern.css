@@ -608,7 +608,7 @@ th {
 .source-toolbar {
   margin: var(--spacing-sm) 0 var(--spacing-md);
   display: grid;
-  grid-template-columns: minmax(240px, 1.618fr) minmax(220px, 1fr);
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
   gap: var(--spacing-md);
   align-items: start;
   width: 100%;
