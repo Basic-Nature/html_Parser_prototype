@@ -514,7 +514,7 @@ hr {
 .navbar-modern {
   background: transparent;
   border-bottom: none;
-  padding: var(--spacing-sm) var(--content-padding);
+  padding: var(--spacing-sm) 0;
   position: sticky;
   top: 0;
   z-index: var(--z-navbar);
@@ -1668,7 +1668,7 @@ footer#sessionFooter {
   min-width: 0;
   width: 100%;
   margin: 0 auto;
-  padding: 0;
+  padding: 0 var(--content-padding) var(--spacing-sm);
 }
 
 .dashboard-grid {
