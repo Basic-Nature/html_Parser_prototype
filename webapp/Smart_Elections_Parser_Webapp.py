@@ -1036,6 +1036,40 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "Fal
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
 
 @app.before_request
+def redirect_to_https_www():
+    """
+    Enforce HTTPS and www subdomain for production domain.
+    - Redirects http:// to https://
+    - Redirects electionpulse.org to www.electionpulse.org
+    """
+    # Skip redirects for local development (handle localhost with/without port, IPv4, IPv6)
+    host = request.host
+    if (host in ('localhost', '127.0.0.1', '::1', '[::1]') or 
+        host.startswith('localhost:') or 
+        host.startswith('127.0.0.1:') or
+        host.startswith('[::1]:')):
+        return None
+    
+    # Get the current scheme (check X-Forwarded-Proto for proxy setups like Azure)
+    scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+    
+    # Production domain configuration
+    PRODUCTION_APEX = 'electionpulse.org'
+    PRODUCTION_WWW = 'www.electionpulse.org'
+    
+    # Check if we need to redirect to www or HTTPS
+    if host == PRODUCTION_APEX:
+        # Redirect apex domain to www with HTTPS
+        target_url = f"https://{PRODUCTION_WWW}{request.full_path.rstrip('?')}"
+        return redirect(target_url, code=301)
+    elif host == PRODUCTION_WWW and scheme != 'https':
+        # Force HTTPS for www subdomain
+        target_url = f"https://{PRODUCTION_WWW}{request.full_path.rstrip('?')}"
+        return redirect(target_url, code=301)
+    
+    return None
+
+@app.before_request
 def _csp_nonce():  # noqa: F401  (used via Flask decorator)
     # Generate nonce only if we are likely to serve HTML (skip static + pure API JSON)
     endpoint = (request.endpoint or "").lower()
