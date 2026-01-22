@@ -193,6 +193,7 @@ jobs:
               PLAYWRIGHT_BROWSERS_PATH="0" \
               FLASK_SECRET_KEY="${{ secrets.FLASK_SECRET_KEY }}" \
               FLASK_COOKIE_SECURE="True" \
+              SOCKETIO_ALLOWED_ORIGINS="https://www.electionpulse.org,https://electionpulse.org" \
               DATA_API_URL="/api/ballotlens-database" \
               CSP_MODE="STRICT" \
               HEADLESS_DEFAULT="True" \
