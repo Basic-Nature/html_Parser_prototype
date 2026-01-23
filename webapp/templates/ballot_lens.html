@@ -50,27 +50,13 @@
                 <button id="btnNavMore" class="nav-more-toggle" aria-haspopup="true" aria-controls="navMoreDropdown" aria-expanded="false" title="More" aria-label="More navigation">⋯</button>
                 <div id="navMoreDropdown" class="nav-more-dropdown" role="menu" aria-hidden="true" tabindex="-1" data-anchor-id="btnNavMore" hidden></div>
               </div>
-                <div class="navbar-actions">
-                  <!-- Mobile sidebar toggle (shown on small screens) -->
-                  <button type="button" id="sidebarToggleBtn" class="sidebar-toggle btn-icon" aria-label="Toggle menu" title="Menu">☰</button>
-
-                  <!-- Right-side parser tools: a single toggle opens an accessible popover with tool buttons -->
-                    <div class="parser-tools">
-                    <button type="button" class="btn-icon" id="btnToggleRightSidebar" aria-haspopup="true" aria-controls="parserToolsDropdown" aria-expanded="false" title="Tools" aria-label="Open parser tools">⚙️</button>
-                    <div id="parserToolsDropdown" class="parser-tools-dropdown nav-dropdown overlay" role="dialog" aria-hidden="true" tabindex="-1" data-focus-trap="true" data-anchor-id="btnToggleRightSidebar">
-                      <div role="none">
-                        <button type="button" class="btn-icon" id="btnCommandPalette" role="menuitem" title="Command Palette (Ctrl+Shift+P)" aria-label="Open command palette">⌘</button>
-                        <button type="button" class="btn-icon" id="btnNotifications" role="menuitem" title="Notifications" aria-label="Notifications">🔔</button>
-                        <button type="button" class="btn-icon" id="btnTheme" role="menuitem" title="Toggle Theme" aria-label="Toggle theme">🌙</button>
-                        <button type="button" class="btn-icon" id="btnToggleRightSidebarClose" role="menuitem" title="Close tools" aria-label="Close tools">✕</button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Single Tools button (opens right sidebar on mobile) -->
-                  <button type="button" id="btnToggleRightSidebar" class="btn-icon tools-toggle" aria-label="Open tools and settings" title="Tools">⚙️</button>
-                </div>
+              <div class="navbar-actions">
+                <!-- Mobile sidebar toggle (shown on small screens) -->
+                <button type="button" id="sidebarToggleBtn" class="sidebar-toggle btn-icon" aria-label="Toggle menu" title="Menu">☰</button>
+                <!-- Single Tools button (opens right sidebar) -->
+                <button type="button" id="btnToggleRightSidebar" class="btn-icon tools-toggle" aria-label="Open tools and settings" title="Tools">⚙️</button>
               </div>
+            </div>
           </nav>
 
           {% with messages = get_flashed_messages(with_categories=true) %}
@@ -128,80 +114,102 @@
                 <section class="sidebar-section">
                   <h3 class="sidebar-header">🔗 URLs & Files</h3>
                   
-                  <!-- URLs Card -->
-                  <div class="source-card urls-card">
-                    <div class="source-card-header">
-                      <div class="source-title">📋 URL Library</div>
-                      <div class="source-actions">
-                        <button type="button" class="btn-icon-small" id="btnAddUrl" aria-label="Add URL">+</button>
-                        <button type="button" class="btn-icon-small collapse-toggle" id="btnCollapseUrls" title="Minimize URLs" aria-expanded="false" aria-controls="urlLinesBox" aria-label="Toggle URLs section">▼</button>
-                      </div>
+                  <div class="source-carousel" id="sourceCarousel" aria-label="Source chooser">
+                    <div class="source-carousel-dots" role="tablist" aria-label="Source options">
+                      <button type="button" class="source-dot is-active" data-index="0" role="tab" aria-selected="true" aria-controls="sourceCarouselSlideUrls">
+                        <span class="visually-hidden">URL Library</span>
+                      </button>
+                      <button type="button" class="source-dot" data-index="1" role="tab" aria-selected="false" aria-controls="sourceCarouselSlideUploads">
+                        <span class="visually-hidden">Manual Uploads</span>
+                      </button>
                     </div>
-                    <div class="source-body">
-                      <div class="source-instructions" aria-label="Parser quickstart">
-                        <h4 class="source-instructions-title">How to run the parser</h4>
-                        <ol class="source-instructions-list">
-                          <li>Select your source: URL Library (below), Manual Uploads, or Direct URLs.</li>
-                          <li>Pick a URL or upload file; the selection fills the current session.</li>
-                          <li>Adjust options on the right: batch mode, output bypass, direct URLs.</li>
-                          <li>Press "BallotLens" to start; watch the Debug Console for prompts.</li>
-                          <li>Review outputs in the Output card; download CSV/metadata if saved.</li>
-                        </ol>
-                        <p class="source-instructions-note">Tip: Collapse the list after picking a URL to keep the workspace compact.</p>
-                      </div>
-                      <div class="urls-container" id="urlsContainerTop">
-                        <label for="urlSearchBox" class="visually-hidden">Search URLs</label>
-                        <input type="search" id="urlSearchBox" class="url-search-box" placeholder="Search state, county, or URL..." aria-label="Search URLs">
-                        <div class="url-taxonomy-panel" aria-label="State and county shortcuts">
-                          <div class="taxonomy-grid">
-                            <div class="taxonomy-field">
-                              <label for="urlStateFilter" class="form-label">State</label>
-                              <select id="urlStateFilter" class="form-control-sm"><option value="">— Filter by state —</option><option value="GA">GA</option><option value="NY">NY</option><option value="OR">OR</option><option value="PA">PA</option></select>
+                    <div class="source-carousel-viewport">
+                      <div class="source-carousel-track" id="sourceCarouselTrack">
+                        <div class="source-carousel-slide is-active" id="sourceCarouselSlideUrls" data-source="urls" aria-hidden="false">
+                          <!-- URLs Card -->
+                          <div class="source-card urls-card">
+                            <div class="source-card-header">
+                              <div class="source-title">📋 URL Library</div>
+                              <div class="source-actions">
+                                <button type="button" class="btn-icon-small" id="btnAddUrl" aria-label="Add URL">+</button>
+                                <button type="button" class="btn-icon-small collapse-toggle collapsed" id="btnCollapseUrls" title="Minimize URLs" aria-expanded="false" aria-controls="urlLinesBox" aria-label="Toggle URLs section">▼</button>
+                              </div>
                             </div>
-                            <div class="taxonomy-field">
-                              <label for="urlCountyFilter" class="form-label">County</label>
-                              <select id="urlCountyFilter" class="form-control-sm" disabled><option value="">— Select a state first —</option></select>
+                            <div class="source-body">
+                              <div class="source-instructions" aria-label="Parser quickstart">
+                                <h4 class="source-instructions-title">How to run the parser</h4>
+                                <ol class="source-instructions-list">
+                                  <li>Select your source: URL Library (below), Manual Uploads, or Direct URLs.</li>
+                                  <li>Pick a URL or upload file; the selection fills the current session.</li>
+                                  <li>Adjust options on the right: batch mode, output bypass, direct URLs.</li>
+                                  <li>Press "BallotLens" to start; watch the Debug Console for prompts.</li>
+                                  <li>Review outputs in the Output card; download CSV/metadata if saved.</li>
+                                </ol>
+                                <p class="source-instructions-note">Tip: Collapse the list after picking a URL to keep the workspace compact.</p>
+                              </div>
+                              <div class="urls-container collapsed" id="urlsContainerTop">
+                                <label for="urlSearchBox" class="visually-hidden">Search URLs</label>
+                                <input type="search" id="urlSearchBox" class="url-search-box" placeholder="Search state, county, or URL..." aria-label="Search URLs">
+                                <div class="url-taxonomy-panel" aria-label="State and county shortcuts">
+                                  <div class="taxonomy-grid">
+                                    <div class="taxonomy-field">
+                                      <label for="urlStateFilter" class="form-label">State</label>
+                                      <select id="urlStateFilter" class="form-control-sm">
+                                        <option value="">— Filter by state —</option>
+                                      </select>
+                                    </div>
+                                    <div class="taxonomy-field">
+                                      <label for="urlCountyFilter" class="form-label">County</label>
+                                      <select id="urlCountyFilter" class="form-control-sm" disabled>
+                                        <option value="">— Select a state first —</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                  <small class="text-muted">Populated from the URL library so you can jump straight to a state/county slice.</small>
+                                </div>
+                                <div class="url-lines" id="urlLinesBox"></div>
+                                <form id="addUrlForm" class="flex-wrap-row mb-1em mt-1em">
+                                  <input type="url" id="newUrl" class="url-add-input" placeholder="Paste new election results URL here" required aria-label="New URL">
+                                  <button type="submit" class="btn btn-success url-add-btn">Add URL</button>
+                                  <button type="button" class="btn btn-primary ms-1em" id="refreshUrlListBtn" title="Refresh URL list">⟳</button>
+                                </form>
+                              </div>
                             </div>
                           </div>
-                          <small class="text-muted">Populated from the URL library so you can jump straight to a state/county slice.</small>
                         </div>
-                        <div class="url-lines" id="urlLinesBox"><div class="url-sidebar-item" title="https://results.arizona.vote/default.html" data-url="https%3A%2F%2Fresults.arizona.vote%2Fdefault.html" role="button" tabindex="0">[1] https://results.arizona.vote/default.html </div><div class="url-sidebar-item" title="https://app.enhancedvoting.com/results/public/rockland-county-ny/elections/GE2024Results" data-url="https%3A%2F%2Fapp.enhancedvoting.com%2Fresults%2Fpublic%2Frockland-county-ny%2Felections%2FGE2024Results" role="button" tabindex="0">[2] https://app.enhancedvoting.com/results/public/rockland-co… <span class="url-meta">NY • Rockland</span></div><div class="url-sidebar-item" title="https://www.electionreturns.pa.gov/Home/SummaryResults" data-url="https%3A%2F%2Fwww.electionreturns.pa.gov%2FHome%2FSummaryResults" role="button" tabindex="0">[3] https://www.electionreturns.pa.gov/Home/SummaryResults <span class="url-meta">PA</span></div><div class="url-sidebar-item" title="https://results.enr.clarityelections.com/GA/Fulton/105430/web.264614/#/summary" data-url="https%3A%2F%2Fresults.enr.clarityelections.com%2FGA%2FFulton%2F105430%2Fweb.264614%2F%23%2Fsummary" role="button" tabindex="0">[4] https://results.enr.clarityelections.com/GA/Fulton/105430… <span class="url-meta">GA</span></div><div class="url-sidebar-item" title="https://flelectionfiles.floridados.gov/enightfilespublic/20250401_ElecResultsFL.xls" data-url="https%3A%2F%2Fflelectionfiles.floridados.gov%2Fenightfilespublic%2F20250401_ElecResultsFL.xls" role="button" tabindex="0">[5] https://flelectionfiles.floridados.gov/enightfilespublic/… </div><div class="url-sidebar-item" title="https://results.elections.myflorida.com/" data-url="https%3A%2F%2Fresults.elections.myflorida.com%2F" role="button" tabindex="0">[6] https://results.elections.myflorida.com/ </div><div class="url-sidebar-item" title="https://www.vote.nyc/page/election-results-summary" data-url="https%3A%2F%2Fwww.vote.nyc%2Fpage%2Felection-results-summary" role="button" tabindex="0">[7] https://www.vote.nyc/page/election-results-summary </div><div class="url-sidebar-item" title="https://records.sos.state.or.us/ORSOSWebDrawer/Recordhtml/6873777" data-url="https%3A%2F%2Frecords.sos.state.or.us%2FORSOSWebDrawer%2FRecordhtml%2F6873777" role="button" tabindex="0">[8] https://records.sos.state.or.us/ORSOSWebDrawer/Recordhtml… <span class="url-meta">OR</span></div></div>
-                        <form id="addUrlForm" class="flex-wrap-row mb-1em mt-1em">
-                          <input type="url" id="newUrl" class="url-add-input" placeholder="Paste new election results URL here" required aria-label="New URL">
-                          <button type="submit" class="btn btn-success url-add-btn">Add URL</button>
-                          <button type="button" class="btn btn-primary ms-1em" id="refreshUrlListBtn" title="Refresh URL list">⟳</button>
-                        </form>
+
+                        <div class="source-carousel-slide" id="sourceCarouselSlideUploads" data-source="uploads" aria-hidden="true">
+                          <!-- Manual Uploads Card -->
+                          <div class="source-card uploads-card">
+                            <div class="source-card-header">
+                              <div class="source-title">📤 Manual Uploads</div>
+                            </div>
+                            <div class="source-body">
+                              <form method="POST" action="{{ url_for('upload_to_uploads') }}" enctype="multipart/form-data" class="mb-1em">
+                                <label for="uploadsFile" class="visually-hidden">Choose file for uploads folder</label>
+                                <div class="upload-row">
+                                  <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">
+                                  <button type="submit" class="btn btn-upload">Upload</button>
+                                </div>
+                              </form>
+
+                              <div class="manual-upload-controls">
+                                <label for="manualUploadSelect" class="form-label manual-upload-label">Select File to Parse</label>
+                                <select id="manualUploadSelect" class="form-control manual-upload-select">
+                                  <option value="">-- Choose a file --</option>
+                                </select>
+                                <div class="manual-upload-actions">
+                                  <button type="button" id="manualUploadRefreshBtn" class="btn btn-sm">↻ Refresh</button>
+                                  <button type="button" id="manualUploadClearBtn" class="btn btn-sm">× Clear</button>
+                                </div>
+                                <div id="manualUploadSummary" class="manual-upload-summary"></div>
+                              </div>
+
+                              <div class="sidebar-note danger">Uploads are sandboxed; downloads are blocked for safety. Use the artifacts below to review server-side lists.</div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-
-                  <!-- Manual Uploads Card -->
-                  <div class="source-card uploads-card">
-                    <div class="source-card-header">
-                      <div class="source-title">📤 Manual Uploads</div>
-                    </div>
-                    <div class="source-body">
-                      <form method="POST" action="{{ url_for('upload_to_uploads') }}" enctype="multipart/form-data" class="mb-1em">
-                        <label for="uploadsFile" class="visually-hidden">Choose file for uploads folder</label>
-                        <div class="upload-row">
-                          <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">
-                          <button type="submit" class="btn btn-upload">Upload</button>
-                        </div>
-                      </form>
-
-                      <div class="manual-upload-controls">
-                        <label for="manualUploadSelect" class="form-label manual-upload-label">Select File to Parse</label>
-                        <select id="manualUploadSelect" class="form-control manual-upload-select">
-                          <option value="">-- Choose a file --</option>
-                        </select>
-                        <div class="manual-upload-actions">
-                          <button type="button" id="manualUploadRefreshBtn" class="btn btn-sm">↻ Refresh</button>
-                          <button type="button" id="manualUploadClearBtn" class="btn btn-sm">× Clear</button>
-                        </div>
-                        <div id="manualUploadSummary" class="manual-upload-summary"></div>
-                      </div>
-
-                      <div class="sidebar-note danger">Uploads are sandboxed; downloads are blocked for safety. Use the artifacts below to review server-side lists.</div>
                     </div>
                   </div>
                 </section>
@@ -210,6 +218,33 @@
 
             <!-- MAIN CONTENT -->
             <main class="main-content">
+              <div class="results-header">
+                <div>
+                  <h2>Parsed Results</h2>
+                  <p class="text-muted"><span id="resultCount">0</span> results • Last updated: <span id="lastUpdated">now</span></p>
+                </div>
+                  <div class="results-actions">
+                  <input type="text" id="searchResults" class="search-box" placeholder="Search results...">
+                  <button type="button" class="btn-primary" id="btnRefreshResults" aria-label="Refresh results">🔄 Refresh</button>
+                </div>
+              </div>
+              <div class="pulse-loader hidden" id="pulseLoader" aria-live="polite" aria-busy="true" aria-hidden="true">
+                <div class="pulse-loader-card">
+                  <div class="pulse-loader-icon">🗳️</div>
+                  <div class="pulse-loader-title">Ballot Pulse</div>
+                  <p class="pulse-loader-subtitle" id="pulseLoaderSubtitle">Calibrating election lenses...</p>
+                  <div class="pulse-loader-bars" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="results-grid" id="resultsGrid"></div>
+              <div class="empty-state" id="emptyState">
+                <div class="empty-state-icon">📊</div>
+                <h3>No results yet</h3>
+                <p>Run the parser or select files from the sidebar to view results.</p>
+              </div>
+
               <section class="artifact-hub" aria-label="Data artifacts">
                 <details class="artifact-card collapsible-card" id="inputArtifacts">
                   <summary class="artifact-card-header">
@@ -252,55 +287,12 @@
                 </details>
 
               </section>
-
-              <div class="results-header">
-                <div>
-                  <h2>Parsed Results</h2>
-                  <p class="text-muted"><span id="resultCount">0</span> results • Last updated: <span id="lastUpdated">now</span></p>
-                </div>
-                  <div class="results-actions">
-                  <input type="text" id="searchResults" class="search-box" placeholder="Search results...">
-                  <button type="button" class="btn-primary" id="btnRefreshResults" aria-label="Refresh results">🔄 Refresh</button>
-                </div>
-              </div>
-              <div class="pulse-loader hidden" id="pulseLoader" aria-live="polite" aria-busy="true" aria-hidden="true">
-                <div class="pulse-loader-card">
-                  <div class="pulse-loader-icon">🗳️</div>
-                  <div class="pulse-loader-title">Ballot Pulse</div>
-                  <p class="pulse-loader-subtitle" id="pulseLoaderSubtitle">Calibrating election lenses...</p>
-                  <div class="pulse-loader-bars" aria-hidden="true">
-                    <span></span><span></span><span></span><span></span>
-                  </div>
-                </div>
-              </div>
-              <div class="results-grid" id="resultsGrid"></div>
-              <div class="empty-state" id="emptyState">
-                <div class="empty-state-icon">📊</div>
-                <h3>No results yet</h3>
-                <p>Run the parser or select files from the sidebar to view results.</p>
-              </div>
             </main>
 
             <!-- RIGHT SIDEBAR -->
             <aside class="sidebar-right" role="complementary" aria-label="Controls">
               <section class="sidebar-section">
                 <h3 class="sidebar-header">⚙️ Controls</h3>
-                <div class="control-group">
-                  <fieldset class="radio-fieldset">
-                    <legend class="sidebar-header">File Source</legend>
-                    <div class="radio-group" role="radiogroup" aria-label="File Source">
-                      <label class="radio-label"><input type="radio" id="fileSourceInput" name="fileSource" value="input" checked> <span>Input Folder</span></label>
-                      <label class="radio-label"><input type="radio" id="fileSourceUploads" name="fileSource" value="uploads"> <span>Manual Upload</span></label>
-                      <label class="radio-label"><input type="radio" id="fileSourceDirect" name="fileSource" value="direct"> <span>Direct URLs</span></label>
-                    </div>
-                  </fieldset>
-                </div>
-                <div class="control-group advanced-option" data-source="direct">
-                  <label for="directUrlTextarea">URLs (one per line, max 20)</label>
-                  <textarea id="directUrlTextarea" class="form-control" rows="4" placeholder="https://example.com/results1&#10;https://example.com/results2" aria-label="Direct URLs"></textarea>
-                  <small id="directUrlFeedback" class="text-muted">Enter one URL per line.</small>
-                  <button type="button" class="btn-sm btn-ghost" id="directUrlClearBtn" title="Clear URLs">Clear</button>
-                </div>
                 <div class="control-group">
                   <label class="checkbox-label"><input type="checkbox" id="outputBypass"> Bypass Output Files</label>
                   <small>Don't save CSV to disk</small>

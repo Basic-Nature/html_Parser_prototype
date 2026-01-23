@@ -166,20 +166,97 @@
 /** @callback EmitPromptFn */
 /** @callback SubmitPromptFn */
 
+const __tl_window = /** @type {any} */ (typeof window !== 'undefined' ? window : {});
+
+// Use the unified sidebar controller; legacy sidebar handlers should no-op.
+try {
+  __tl_window.__tl_sidebarUnified = true;
+} catch (e) {
+  /* noop */
+}
+
 
 // Fallback handlers for drawer and sidebar toggles (ensure mobile buttons work)
 (function(){
   document.addEventListener('DOMContentLoaded', function(){
+    function initSourceCarousel(){
+      var carousel = document.getElementById('sourceCarousel');
+      if (!carousel) return;
+      var track = document.getElementById('sourceCarouselTrack');
+      if (!track) return;
+      var slides = Array.prototype.slice.call(carousel.querySelectorAll('.source-carousel-slide'));
+      var dots = Array.prototype.slice.call(carousel.querySelectorAll('.source-dot'));
+      if (!slides.length || !dots.length) return;
+      var index = 0;
+
+      function setActive(nextIndex){
+        index = Math.max(0, Math.min(nextIndex, slides.length - 1));
+        track.style.transform = 'translateX(' + (-index * 100) + '%)';
+        slides.forEach(function(slide, idx){
+          var isActive = idx === index;
+          slide.classList.toggle('is-active', isActive);
+          slide.setAttribute('aria-hidden', String(!isActive));
+        });
+        dots.forEach(function(dot, idx){
+          var isActive = idx === index;
+          dot.classList.toggle('is-active', isActive);
+          dot.setAttribute('aria-selected', String(isActive));
+        });
+      }
+
+      dots.forEach(function(dot){
+        dot.addEventListener('click', function(){
+          var idx = parseInt(dot.getAttribute('data-index') || '0', 10);
+          if (!Number.isNaN(idx)) setActive(idx);
+        });
+      });
+
+      var startX = 0;
+      var startY = 0;
+      var dragging = false;
+
+      function onTouchStart(evt){
+        var target = evt.target;
+        if (target && (target.closest('input, textarea, select, button, a') || target.isContentEditable)) return;
+        var touch = evt.touches && evt.touches[0];
+        if (!touch) return;
+        dragging = true;
+        startX = touch.clientX;
+        startY = touch.clientY;
+      }
+
+      function onTouchEnd(evt){
+        if (!dragging) return;
+        dragging = false;
+        var touch = (evt.changedTouches && evt.changedTouches[0]) || (evt.touches && evt.touches[0]);
+        if (!touch) return;
+        var dx = touch.clientX - startX;
+        var dy = touch.clientY - startY;
+        if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+        if (dx < 0) {
+          setActive(index + 1);
+        } else {
+          setActive(index - 1);
+        }
+      }
+
+      carousel.addEventListener('touchstart', onTouchStart, {passive: true});
+      carousel.addEventListener('touchend', onTouchEnd, {passive: true});
+      setActive(0);
+    }
+
     function attachDrawerHandle(){
+      if (__tl_window.__tl_sidebarUnified) return;
       var dh = document.getElementById('drawerHandle') || document.querySelector('.drawer-handle');
       if(!dh) return;
       dh.addEventListener('click', function(){
         var targetId = dh.getAttribute('aria-controls') || 'logDrawer';
         var drawer = document.getElementById(targetId) || document.querySelector('#logDrawer');
         if(drawer){
-          var isOpen = dh.getAttribute('aria-expanded') === 'true';
-          dh.setAttribute('aria-expanded', String(!isOpen));
-          drawer.classList.toggle('open', !isOpen);
+          var isExpanded = dh.getAttribute('aria-expanded') === 'true';
+          dh.setAttribute('aria-expanded', String(!isExpanded));
+          drawer.classList.toggle('minimized', isExpanded);
+          drawer.classList.toggle('expanded', !isExpanded);
         } else if (typeof window.openRight === 'function'){
           try{ window.openRight(); }catch(e){ console.debug(e); }
         }
@@ -187,8 +264,11 @@
     }
 
     function attachSidebarToggle(){
+      if (__tl_window.__tl_sidebarUnified) return;
       var st = document.getElementById('sidebarToggleBtn');
-      if(!st) return;
+      var stAny = /** @type {any} */ (st);
+      if(!st || stAny.__tlLeftBound) return;
+      stAny.__tlLeftBound = true;
       st.addEventListener('click', function(){
         var sidebar = document.getElementById('sidebar') || document.querySelector('.sidebar-left, .sidebar');
         if(sidebar){
@@ -212,6 +292,7 @@
 
     attachDrawerHandle();
     attachSidebarToggle();
+    initSourceCarousel();
     compactDrawerCheck();
     window.addEventListener('resize', compactDrawerCheck);
   });
@@ -303,29 +384,11 @@
     if(!toggle || !rightSidebar) return;
 
     // initialize attributes
-    toggle.setAttribute('aria-expanded', 'false');
-
-    toggle.addEventListener('click', function(ev){
-      // Prevent bubbling to outer listeners that might instantly close the panel
-      try { ev.preventDefault(); ev.stopPropagation(); } catch (e) {}
-
-      // Toggle the modern right sidebar directly (desktop + mobile) and keep aria in sync
+    try {
+      const isCollapsed = document.body.classList.contains('right-sidebar-collapsed');
       const isOpen = rightSidebar.classList.contains('open') || rightSidebar.classList.contains('sidebar-open');
-      if (isOpen) {
-        rightSidebar.classList.remove('open','sidebar-open','centered-tool-window');
-        document.body.classList.remove('no-scroll','sidebar-right-open');
-        toggle.setAttribute('aria-expanded','false');
-      } else {
-        if (window.innerWidth >= 1024) {
-          rightSidebar.classList.add('centered-tool-window');
-        } else {
-          rightSidebar.classList.remove('centered-tool-window');
-        }
-        rightSidebar.classList.add('open','sidebar-open');
-        document.body.classList.add('no-scroll','sidebar-right-open');
-        toggle.setAttribute('aria-expanded','true');
-      }
-    });
+      toggle.setAttribute('aria-expanded', (isOpen || !isCollapsed) ? 'true' : 'false');
+    } catch (e) {}
   });
 })();
 
@@ -1001,6 +1064,7 @@ function enhanceAccessibility() {
 // Mobile sidebar toggle and touch-to-close support
 function initSidebarMobile() {
   try {
+    if (__tl_window.__tl_sidebarUnified) return;
     const toggle = document.querySelector('.sidebar-toggle');
     const sidebar = document.getElementById('sidebar');
     const backdrop = document.querySelector('.sidebar-backdrop') || document.querySelector('.mobile-sidebar-overlay');
@@ -3401,13 +3465,9 @@ if (drawerHandle) {
     const width = legacySidebar.offsetWidth;
     if (width > 0) {
       root.style.setProperty('--drawer-left-offset', width + 'px');
-      if (window.innerWidth > 1024) {
-        // On desktop: use CSS var for grid-based layout
-        logDrawer.style.left = 'var(--sidebar-left-max)';
-      } else {
-        // On mobile: stretch full width
-        logDrawer.style.left = '0';
-      }
+      // Keep the drawer full-width; do not offset into the main grid.
+      logDrawer.style.left = '';
+      logDrawer.style.right = '';
     }
   }
   
@@ -3439,10 +3499,51 @@ if (drawerHandle) {
 document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars(){
   const legacySidebar = document.getElementById('sidebar');
   const rightSidebar = document.querySelector('.sidebar-right');
-  const sidebarBackdrop = $('#sidebarBackdrop');
+  const sidebarBackdrop = null;
   const toggleLeftBtn = $('#sidebarToggleBtn');
   const toggleRightBtn = $('#btnToggleRightSidebar');
-  const overlay = $('#mobileSidebarOverlay') || sidebarBackdrop;
+  const overlay = $('#mobileSidebarOverlay');
+  const isDesktop = () => window.innerWidth > 768;
+
+  function setRightCollapsed(collapsed){
+    if (!rightSidebar) return;
+    const rs = /** @type {HTMLElement} */ (rightSidebar);
+    if (collapsed) {
+      document.body.classList.add('right-sidebar-collapsed');
+      rightSidebar.classList.add('is-collapsed');
+      rightSidebar.classList.remove('open', 'sidebar-open', 'centered-tool-window');
+      document.body.classList.remove('sidebar-right-open', 'no-scroll');
+      if (isDesktop()) {
+        setOverlayVisible(false);
+      }
+      try { document.body.style.overflow = ''; } catch (e) {}
+      try {
+        rs.style.width = '';
+        rs.style.maxWidth = '';
+        rs.style.padding = '';
+        rs.style.opacity = '';
+        rs.style.transform = '';
+        rs.style.pointerEvents = '';
+        rs.style.overflow = '';
+      } catch (e) {}
+    } else {
+      document.body.classList.remove('right-sidebar-collapsed');
+      rightSidebar.classList.remove('is-collapsed');
+      if (isDesktop()) {
+        setOverlayVisible(false);
+      }
+      try { document.body.style.overflow = ''; } catch (e) {}
+      try {
+        rs.style.width = '';
+        rs.style.maxWidth = '';
+        rs.style.padding = '';
+        rs.style.opacity = '';
+        rs.style.transform = '';
+        rs.style.pointerEvents = '';
+        rs.style.overflow = '';
+      } catch (e) {}
+    }
+  }
 
   /**
    * Keep the toggle's aria-expanded in sync with the sidebar state.
@@ -3463,10 +3564,23 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
    * @returns {void}
    */
   function setOverlayVisible(visible) {
+    if (isDesktop()) {
+      /** @type {OverlayElement[]} */
+      const targets = [];
+      if (overlay) targets.push(/** @type {OverlayElement} */ (overlay));
+      targets.forEach((el) => {
+        try {
+          el.classList.remove('visible');
+          el.setAttribute('aria-hidden', 'true');
+        } catch (e) {}
+      });
+      try { document.body.classList.remove('no-scroll'); } catch (e) {}
+      try { document.body.style.overflow = ''; } catch (e) {}
+      return;
+    }
     /** @type {OverlayElement[]} */
     const targets = [];
-    if (sidebarBackdrop) targets.push(/** @type {OverlayElement} */ (sidebarBackdrop));
-    if (overlay && overlay !== sidebarBackdrop) targets.push(/** @type {OverlayElement} */ (overlay));
+    if (overlay) targets.push(/** @type {OverlayElement} */ (overlay));
     targets.forEach((el) => {
       try {
         if (visible) el.classList.add('visible'); else el.classList.remove('visible');
@@ -3487,6 +3601,10 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
     document.body.classList.remove('sidebar-right-open', 'no-scroll');
     syncToggleAria();
   }
+  if (isDesktop()) {
+    setRightCollapsed(false);
+    syncToggleAria();
+  }
 
   function closeAll() {
     if (legacySidebar) legacySidebar.classList.remove('sidebar-open');
@@ -3494,6 +3612,9 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
       rightSidebar.classList.remove('open');
       rightSidebar.classList.remove('sidebar-open');
       rightSidebar.classList.remove('centered-tool-window');
+    }
+    if (isDesktop()) {
+      setRightCollapsed(true);
     }
     setOverlayVisible(false);
     document.body.classList.remove('no-scroll');
@@ -3516,6 +3637,7 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
 
   function openRight() {
     if (!rightSidebar) return;
+    setRightCollapsed(false);
     rightSidebar.classList.add('open');
     rightSidebar.classList.add('sidebar-open');
     // Always dock to the right; keep the centered overlay class off for predictable layout
@@ -3530,31 +3652,57 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
 
   // Modern right sidebar toggle
   if (toggleRightBtn) {
-    toggleRightBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!rightSidebar) return;
-      const isOpen = rightSidebar.classList.contains('open');
-      if (isOpen) closeAll(); else openRight();
-      syncToggleAria();
-    });
+    const rightBtnAny = /** @type {any} */ (toggleRightBtn);
+    if (!rightBtnAny.__tlRightBound) {
+      rightBtnAny.__tlRightBound = true;
+      toggleRightBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!rightSidebar) return;
+        if (isDesktop()) {
+          const isCollapsed = document.body.classList.contains('right-sidebar-collapsed');
+          setRightCollapsed(!isCollapsed);
+          try { toggleRightBtn.setAttribute('aria-expanded', isCollapsed ? 'true' : 'false'); } catch (e) {}
+          syncToggleAria();
+          return;
+        }
+        const isOpen = rightSidebar.classList.contains('open');
+        if (isOpen) closeAll(); else openRight();
+        syncToggleAria();
+      });
+    }
   }
 
   // Left sidebar toggle (ensure it always toggles the unified controller)
   if (toggleLeftBtn) {
-    toggleLeftBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (!legacySidebar) return;
-      const isOpen = legacySidebar.classList.contains('sidebar-open');
-      if (isOpen) closeAll(); else openLeft();
-    });
+    const leftBtnAny = /** @type {any} */ (toggleLeftBtn);
+    if (!leftBtnAny.__tlLeftBound) {
+      leftBtnAny.__tlLeftBound = true;
+      toggleLeftBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!legacySidebar) return;
+        const isOpen = legacySidebar.classList.contains('sidebar-open');
+        if (isOpen) closeAll(); else openLeft();
+      });
+    }
   }
 
-  // Backdrop/overlay clicks close all (ensure both elements are covered)
-  if (sidebarBackdrop) {
-    sidebarBackdrop.addEventListener('click', closeAll);
+  function syncRightSidebarMode() {
+    if (!rightSidebar) return;
+    if (isDesktop()) {
+      return;
+    }
+    // On mobile, never keep the desktop-collapsed state.
+    setRightCollapsed(false);
+    rightSidebar.classList.remove('is-collapsed');
+    document.body.classList.remove('right-sidebar-collapsed');
   }
-  if (overlay && overlay !== sidebarBackdrop) {
+
+  syncRightSidebarMode();
+  window.addEventListener('resize', syncRightSidebarMode);
+
+  // Backdrop/overlay clicks close all (ensure both elements are covered)
+  if (overlay) {
     overlay.addEventListener('click', closeAll);
   }
 
@@ -3568,6 +3716,7 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
   // exposed open/close helpers to keep behavior robust against DOM replacements.
   document.addEventListener('click', function delegatedSidebarToggle(e) {
     try {
+      if (__tl_window.__tl_sidebarUnified) return;
       const tgt = /** @type {any} */ (e.target);
       const btn = (tgt && tgt.closest) ? tgt.closest('#btnToggleRightSidebar, #sidebarToggleBtn') : null;
       if (!btn) return;
@@ -3626,7 +3775,7 @@ try {
 
   // Auto-close on resize to desktop
   window.addEventListener('resize', () => {
-    if (window.innerWidth > 1024) closeAll();
+    if (window.innerWidth > 768) closeAll();
   });
 
   // Observe sidebar class changes (e.g., external scripts) to keep aria-expanded honest
@@ -3725,19 +3874,46 @@ if (btnToggleScroll) {
 // Event Listeners: Modal
 // ============================================
 
+function hidePreviewModal(options) {
+  const opts = options || {};
+  const showRestore = !!opts.showRestore;
+  const previewModal = $('#previewModal');
+  if (previewModal) previewModal.classList.add('hidden');
+  if (showRestore && state.currentFile) {
+    try {
+      if (typeof ModalRestoreBanner !== 'undefined') {
+        ModalRestoreBanner.show('preview', {
+          title: 'Preview hidden',
+          detail: state.currentFile.name || 'Reopen last preview',
+          buttonLabel: 'Reopen preview',
+          onRestore: () => {
+            if (state.currentFile) {
+              previewFile(state.currentFile.id);
+            }
+          }
+        });
+      }
+    } catch (e) { /* noop */ }
+  } else {
+    try {
+      if (typeof ModalRestoreBanner !== 'undefined') {
+        ModalRestoreBanner.clear('preview');
+      }
+    } catch (e) { /* noop */ }
+  }
+}
+
 const btnClosePreview = $('#btnClosePreview');
 if (btnClosePreview) {
   btnClosePreview.addEventListener('click', () => {
-    const previewModal = $('#previewModal');
-    if (previewModal) previewModal.classList.add('hidden');
+    hidePreviewModal({ showRestore: true });
   });
 }
 
 const btnClosePreviewAlt = $('#btnClosePreviewAlt');
 if (btnClosePreviewAlt) {
   btnClosePreviewAlt.addEventListener('click', () => {
-    const previewModal = $('#previewModal');
-    if (previewModal) previewModal.classList.add('hidden');
+    hidePreviewModal({ showRestore: true });
   });
 }
 
@@ -3944,11 +4120,11 @@ document.addEventListener('keydown', (e) => {
     if (commandPalette) commandPalette.classList.add('hidden');
     const previewModal = $('#previewModal');
     if (previewModal && !previewModal.classList.contains('hidden')) {
-      previewModal.classList.add('hidden');
+      hidePreviewModal({ showRestore: true });
     }
     const promptModal = $('#promptModal');
     if (promptModal && !promptModal.classList.contains('hidden')) {
-      promptModal.classList.add('hidden');
+      hidePrompt({ preserveState: true, showRestore: true, reason: 'close' });
     }
   }
   
@@ -4460,6 +4636,11 @@ function updateSelectionSummary() {
 
 function showPrompt({ title = 'Action required', message = '', options = [], placeholder = '' }) {
   ErrorBoundary.safeExecute(() => {
+    try {
+      if (typeof ModalRestoreBanner !== 'undefined') {
+        ModalRestoreBanner.clear('prompt');
+      }
+    } catch (e) { /* noop */ }
     activePromptMessage = message;
     activePromptOptions = Array.isArray(options) ? options : [];
 
@@ -4538,19 +4719,58 @@ function submitPrompt(/** @type {string|number|undefined|null} */ forcedValue) {
       session_id: currentSessionId,
       value,
     }));
-    hidePrompt();
+    hidePrompt({ preserveState: false, showRestore: false, reason: 'submit' });
   }, 'submitPrompt');
 }
 
-function hidePrompt() {
+function hidePrompt(options) {
   ErrorBoundary.safeExecute(() => {
+    const opts = options || {};
+    const preserveState = !!opts.preserveState;
+    const showRestore = !!opts.showRestore;
+    const reason = opts.reason || 'close';
+    const snapshot = showRestore ? {
+      title: promptTitleEl ? promptTitleEl.textContent : 'Action required',
+      message: activePromptMessage || (promptMessageEl ? promptMessageEl.textContent : ''),
+      options: Array.isArray(activePromptOptions) ? activePromptOptions.slice() : [],
+      placeholder: (promptInputEl instanceof HTMLInputElement) ? promptInputEl.placeholder : ''
+    } : null;
     const promptModal = $('#promptModal');
     if (promptModal) promptModal.classList.add('hidden');
     document.body.classList.remove('no-scroll');
-    activePromptMessage = null;
-    activePromptOptions = [];
-    selectedPromptOptions.clear();
-    bundleExpandedState.clear();
+    if (showRestore && snapshot && (snapshot.message || (snapshot.options && snapshot.options.length))) {
+      try {
+        if (typeof ModalRestoreBanner !== 'undefined') {
+          ModalRestoreBanner.show('prompt', {
+            title: 'Prompt hidden',
+            detail: snapshot.message || 'Reopen to continue',
+            buttonLabel: 'Reopen prompt',
+            onRestore: () => {
+              activePromptMessage = snapshot.message || '';
+              activePromptOptions = snapshot.options || [];
+              showPrompt({
+                title: snapshot.title || 'Action required',
+                message: snapshot.message || '',
+                options: snapshot.options || [],
+                placeholder: snapshot.placeholder || ''
+              });
+            }
+          });
+        }
+      } catch (e) { /* noop */ }
+    } else if (reason !== 'close') {
+      try {
+        if (typeof ModalRestoreBanner !== 'undefined') {
+          ModalRestoreBanner.clear('prompt');
+        }
+      } catch (e) { /* noop */ }
+    }
+    if (!preserveState) {
+      activePromptMessage = null;
+      activePromptOptions = [];
+      selectedPromptOptions.clear();
+      bundleExpandedState.clear();
+    }
   }, 'hidePrompt');
 }
 
@@ -4604,7 +4824,7 @@ if (btnCancelPrompt) {
 
 const btnClosePrompt = $('#btnClosePrompt');
 if (btnClosePrompt) {
-  btnClosePrompt.addEventListener('click', hidePrompt);
+  btnClosePrompt.addEventListener('click', () => hidePrompt({ preserveState: true, showRestore: true, reason: 'close' }));
 }
 
 const promptInputField = $('#promptInput');
@@ -5718,16 +5938,16 @@ const SwipeHandler = (() => {
     const rightSidebar = document.querySelector('.sidebar-right');
     const leftSidebar = document.querySelector('.sidebar-left');
     
-    if (rightSidebar) {
-      rightSidebar.addEventListener('touchstart', (e) => handleTouchStart(e, rightSidebar), { passive: true });
-      rightSidebar.addEventListener('touchmove', (e) => handleTouchMove(e, rightSidebar), { passive: true });
-      rightSidebar.addEventListener('touchend', (e) => handleTouchEnd(e, rightSidebar, 'right'), { passive: true });
+    if (rightSidebar instanceof HTMLElement) {
+      rightSidebar.addEventListener('touchstart', (e) => handleTouchStart(/** @type {TouchEvent} */(e), rightSidebar), { passive: true });
+      rightSidebar.addEventListener('touchmove', (e) => handleTouchMove(/** @type {TouchEvent} */(e), rightSidebar), { passive: true });
+      rightSidebar.addEventListener('touchend', (e) => handleTouchEnd(/** @type {TouchEvent} */(e), rightSidebar, 'right'), { passive: true });
     }
     
-    if (leftSidebar) {
-      leftSidebar.addEventListener('touchstart', (e) => handleTouchStart(e, leftSidebar), { passive: true });
-      leftSidebar.addEventListener('touchmove', (e) => handleTouchMove(e, leftSidebar), { passive: true });
-      leftSidebar.addEventListener('touchend', (e) => handleTouchEnd(e, leftSidebar, 'left'), { passive: true });
+    if (leftSidebar instanceof HTMLElement) {
+      leftSidebar.addEventListener('touchstart', (e) => handleTouchStart(/** @type {TouchEvent} */(e), leftSidebar), { passive: true });
+      leftSidebar.addEventListener('touchmove', (e) => handleTouchMove(/** @type {TouchEvent} */(e), leftSidebar), { passive: true });
+      leftSidebar.addEventListener('touchend', (e) => handleTouchEnd(/** @type {TouchEvent} */(e), leftSidebar, 'left'), { passive: true });
     }
   }
   
@@ -6226,6 +6446,9 @@ const UrlListManager = (() => {
     const refreshBtn = $('#refreshUrlListBtn');
     const collapseBtn = $('#btnCollapseUrls');
     const urlsContainer = $('.urls-container');
+    const instructionsEl = document.querySelector('.source-instructions');
+    let urlsPlaceholder = null;
+    let instructionsWrapper = null;
     const stateSelect = $('#urlStateFilter');
     const countySelect = $('#urlCountyFilter');
 
@@ -6262,10 +6485,30 @@ const UrlListManager = (() => {
 
     // URL section collapse toggle (default to collapsed)
     if (collapseBtn && urlsContainer) {
+      if (instructionsEl && !instructionsWrapper) {
+        instructionsWrapper = document.createElement('div');
+        instructionsWrapper.className = 'source-instructions-content';
+        while (instructionsEl.firstChild) {
+          instructionsWrapper.appendChild(instructionsEl.firstChild);
+        }
+        instructionsEl.appendChild(instructionsWrapper);
+      }
+      if (!urlsPlaceholder) {
+        urlsPlaceholder = document.createElement('div');
+        urlsPlaceholder.className = 'urls-container-placeholder';
+        urlsContainer.parentNode && urlsContainer.parentNode.insertBefore(urlsPlaceholder, urlsContainer);
+      }
+
       const urlsCollapsed = localStorage.getItem('urlsCollapsed') !== 'false'; // Default to collapsed
       if (urlsCollapsed) {
         urlsContainer.classList.add('collapsed');
         collapseBtn.classList.add('collapsed');
+        if (instructionsWrapper) {
+          instructionsWrapper.classList.add('hidden');
+        }
+        if (instructionsEl && urlsContainer.parentNode !== instructionsEl) {
+          instructionsEl.appendChild(urlsContainer);
+        }
       }
       
       collapseBtn.addEventListener('click', (e) => {
@@ -6273,6 +6516,21 @@ const UrlListManager = (() => {
         const isCollapsed = urlsContainer.classList.toggle('collapsed');
         collapseBtn.classList.toggle('collapsed');
         localStorage.setItem('urlsCollapsed', String(isCollapsed));
+        if (isCollapsed) {
+          if (instructionsWrapper) {
+            instructionsWrapper.classList.add('hidden');
+          }
+          if (instructionsEl && urlsContainer.parentNode !== instructionsEl) {
+            instructionsEl.appendChild(urlsContainer);
+          }
+        } else {
+          if (instructionsWrapper) {
+            instructionsWrapper.classList.remove('hidden');
+          }
+          if (urlsPlaceholder && urlsContainer.parentNode !== urlsPlaceholder.parentNode) {
+            urlsPlaceholder.parentNode && urlsPlaceholder.parentNode.insertBefore(urlsContainer, urlsPlaceholder);
+          }
+        }
       });
     }
 

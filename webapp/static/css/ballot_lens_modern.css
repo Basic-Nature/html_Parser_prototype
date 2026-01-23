@@ -60,7 +60,7 @@
   /* Z-index */
   --z-base: 0;
   --z-dropdown: 100;
-  --z-drawer: 200;
+  --z-drawer: 350;
   --z-sidebar-backdrop: 300;
   --z-sidebar: 301;
   --z-modal-backdrop: 400;
@@ -79,8 +79,8 @@
   /* Sidebar sizing - reduced to prevent clutter */
   --sidebar-left-min: 240px;
   --sidebar-left-max: 280px;
-  --sidebar-right-min: 260px;
-  --sidebar-right-max: 320px;
+  --sidebar-right-min: 240px;
+  --sidebar-right-max: 280px;
   
   /* Dynamic drawer offset (synced via JS with legacy sidebar width) */
   --drawer-left-offset: 300px;
@@ -781,6 +781,10 @@ th {
   pointer-events: none;
 }
 
+.nav-more-dropdown[hidden] {
+  display: none !important;
+}
+
 .nav-more-dropdown.open { display: block; pointer-events: auto; }
 
 /* Parser tools dropdown (anchored to gear button) */
@@ -1082,26 +1086,7 @@ th {
     padding-bottom: calc(var(--footer-height) + 48px); /* room for sticky footer */
   }
 
-  /* Keep right sidebar in normal flow on small screens; leave off-canvas behavior to later rules
-     (removes conflicting display:none/position:static which interfered with slide-in overlay). */
-  .sidebar-right {
-    display: block !important;
-    position: relative !important;
-    width: 100% !important;
-  }
-
-  /* Show sidebar toggle (off-canvas) */
-  .sidebar-toggle {
-    display: block !important;
-    position: fixed;
-    top: 12px;
-    right: 12px;
-    z-index: 12000;
-  }
-
-  .sidebar-backdrop.visible {
-    display: block;
-  }
+  /* Keep sidebar behavior aligned with the 768px off-canvas rules. */
 
   /* Results grid: stack cards vertically and make them full-width */
   .results-grid {
@@ -1612,6 +1597,11 @@ footer#sessionFooter {
   .log-drawer .drawer-content { max-height: 60vh; overflow: auto; display: flex; flex-direction: column; }
   .drawer-toolbar { display:flex; align-items:center; justify-content:space-between; gap:8px; padding: 8px 12px; }
   .drawer-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; max-width:100%; overflow:auto; }
+  .log-drawer.expanded { height: 70vh; max-height: 70vh; }
+  .log-output { font-size: 0.875rem; line-height: 1.65; }
+  .log-line { flex-direction: column; align-items: flex-start; }
+  .log-timestamp, .log-level, .log-type-badge { width: auto; }
+  .log-message { flex: 1 1 auto; min-width: 100%; }
   
   /* Floating left toggle helper (used when JS creates a floating control) */
   .sidebar-toggle.sidebar-toggle-floating {
@@ -1856,6 +1846,12 @@ footer#sessionFooter {
   min-width: 0;
 }
 
+.sidebar-left {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .sidebar-right {
   border-right: none;
   border-left: 1px solid var(--border-color);
@@ -1864,17 +1860,126 @@ footer#sessionFooter {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  transform-origin: top right;
+  transition: transform var(--transition-normal), opacity var(--transition-normal), width var(--transition-normal), padding var(--transition-normal), border-color var(--transition-normal);
 }
 
 .sidebar-content {
-  max-height: calc(92vh - 56px);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding-bottom: var(--spacing-lg);
   -webkit-overflow-scrolling: touch;
 }
 
+body.right-sidebar-collapsed .dashboard-grid {
+  grid-template-columns: minmax(var(--sidebar-left-min), var(--sidebar-left-max)) 1fr;
+}
+
+body.right-sidebar-collapsed .sidebar-right {
+  max-width: 0;
+  min-width: 0;
+  width: 0;
+  padding: 0;
+  border-left-color: transparent;
+  opacity: 0;
+  transform: translate(32px, -24px) scale(0.2);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+@media (max-width: 1024px) {
+  body.right-sidebar-collapsed .sidebar-right {
+    width: 100%;
+    max-width: 320px;
+    min-width: 0;
+    padding: var(--spacing-md);
+    border-left-color: var(--border-color);
+    opacity: 0;
+    transform: translateX(100%);
+    pointer-events: none;
+  }
+  body.right-sidebar-collapsed .sidebar-right.open,
+  body.right-sidebar-collapsed .sidebar-right.sidebar-open {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+}
+
+body.right-sidebar-collapsed .sidebar-right * {
+  pointer-events: none;
+}
+
 .sidebar-section {
   margin-bottom: var(--spacing-lg);
+}
+
+.source-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--spacing-md);
+}
+
+/* ============================================
+   Source Carousel (Left Sidebar)
+   ============================================ */
+
+.source-carousel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.source-carousel-viewport {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  padding: 8px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(15, 23, 42, 0.3));
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 10px 24px rgba(0, 0, 0, 0.25);
+}
+
+.source-carousel-track {
+  display: flex;
+  transition: transform var(--transition-normal);
+  will-change: transform;
+}
+
+.source-carousel-slide {
+  min-width: 100%;
+  flex: 0 0 100%;
+  padding: 2px;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+}
+
+.source-carousel-slide.is-active {
+  opacity: 1;
+}
+
+.source-carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.source-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 99, 235, 0.5);
+  background: rgba(148, 163, 184, 0.35);
+  box-shadow: 0 0 0 2px transparent;
+  transition: transform var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.source-dot.is-active {
+  background: var(--accent-primary);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.2);
+  transform: scale(1.1);
 }
 
 .tool-section .tool-actions {
@@ -3033,7 +3138,8 @@ code {
 }
 
 .log-drawer.expanded {
-  height: 300px;
+  height: 60vh;
+  max-height: 60vh;
 }
 
 .drawer-handle {
@@ -3148,15 +3254,18 @@ code {
   overflow-y: auto;
   overflow-x: hidden;
   font-family: 'Courier New', monospace;
-  font-size: 0.75rem;
-  line-height: 1.5;
+  font-size: 0.8125rem;
+  line-height: 1.6;
   min-height: 0;
 }
 
 .log-line {
   padding: var(--spacing-xs) 0;
   display: flex;
-  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: var(--spacing-md);
+  row-gap: var(--spacing-xs);
 }
 
 .log-timestamp {
@@ -3184,7 +3293,11 @@ code {
 }
 
 .log-message {
-  flex: 1;
+  flex: 1 1 320px;
+  min-width: 240px;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   word-break: break-word;
 }
 
@@ -4387,6 +4500,11 @@ code {
   margin-bottom: 2px;
   border-radius: 2px;
   transition: all var(--transition-fast);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: var(--spacing-md);
+  row-gap: var(--spacing-xs);
 }
 
 .log-line:hover {
