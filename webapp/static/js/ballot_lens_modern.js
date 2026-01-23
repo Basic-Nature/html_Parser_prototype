@@ -1071,119 +1071,101 @@ function initSidebarMobile() {
     
     if (!leftSidebar && !rightSidebar) return;
     
-    // Process both sidebars
+    // Helper functions
+    const closeSidebar = (sidebar, backdrop) => {
+      if (!sidebar) return;
+      
+      sidebar.classList.remove('sidebar-open');
+      if (backdrop) backdrop.classList.remove('visible');
+      
+      // Re-enable body scroll
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      
+      // Update ARIA
+      const toggle = sidebar.classList.contains('sidebar-right')
+        ? document.getElementById('btnToggleRightSidebar')
+        : document.querySelector('.sidebar-toggle');
+      
+      if (toggle) {
+        toggle.setAttribute('aria-expanded', 'false');
+      }
+    };
+    
+    const openSidebar = (sidebar, backdrop) => {
+      if (!sidebar) return;
+      
+      sidebar.classList.add('sidebar-open');
+      if (backdrop) backdrop.classList.add('visible');
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+      
+      // Update ARIA
+      const toggle = sidebar.classList.contains('sidebar-right')
+        ? document.getElementById('btnToggleRightSidebar')
+        : document.querySelector('.sidebar-toggle');
+      
+      if (toggle) {
+        toggle.setAttribute('aria-expanded', 'true');
+      }
+    };
+    
+    // ✅ CRITICAL: Only add swipe to BACKDROP, not sidebar content
+    if (backdrop) {
+      let touchStartX = 0;
+      let touchCurrentX = 0;
+      let tracking = false;
+      
+      backdrop.addEventListener('touchstart', (ev) => {
+        const t = ev.touches && ev.touches[0];
+        if (!t) return;
+        touchStartX = t.clientX;
+        tracking = true;
+      }, { passive: true });
+      
+      backdrop.addEventListener('touchmove', (ev) => {
+        if (!tracking) return;
+        const t = ev.touches && ev.touches[0];
+        if (!t) return;
+        touchCurrentX = t.clientX;
+      }, { passive: true });
+      
+      backdrop.addEventListener('touchend', () => {
+        if (!tracking) return;
+        tracking = false;
+        
+        const dx = touchCurrentX - touchStartX;
+        const threshold = 80;
+        
+        // Swipe on backdrop closes appropriate sidebar
+        if (Math.abs(dx) > threshold) {
+          const openSidebar = document.querySelector('.sidebar-left.sidebar-open, .sidebar-right.sidebar-open');
+          if (openSidebar) {
+            closeSidebar(openSidebar, backdrop);
+          }
+        }
+        
+        touchStartX = touchCurrentX = 0;
+      }, { passive: true });
+      
+      // Click backdrop to close
+      backdrop.addEventListener('click', () => {
+        const openSidebar = document.querySelector('.sidebar-left.sidebar-open, .sidebar-right.sidebar-open');
+        if (openSidebar) {
+          closeSidebar(openSidebar, backdrop);
+        }
+      });
+    }
+    
+    // ✅ NO touch handlers on sidebar itself - let native scroll work
+    
+    // Toggle button handling
     [leftSidebar, rightSidebar].forEach(sidebar => {
       if (!sidebar) return;
       
       const isRightSidebar = sidebar.classList.contains('sidebar-right');
-      
-      let touchStartX = 0;
-      let touchStartY = 0;
-      let touchCurrentX = 0;
-      let tracking = false;
-      let swipeTarget = null;
-      
-      // INTERACTIVE ELEMENTS that should NOT trigger swipe-to-close
-      const interactiveSelectors = [
-        'input',
-        'textarea',
-        'select',
-        'button',
-        'a',
-        '.url-sidebar-item',
-        '.source-card',
-        '.control-group',
-        '.form-control',
-        '.btn',
-        '[role="button"]',
-        '[tabindex="0"]'
-      ].join(', ');
-      
-      const openSidebar = () => {
-        sidebar.classList.add('sidebar-open');
-        if (backdrop) backdrop.classList.add('visible');
-        document.body.style.overflow = 'hidden';
-        document.body.style.position = 'fixed';
-        document.body.style.width = '100%';
-      };
-      
-      const closeSidebar = () => {
-        sidebar.classList.remove('sidebar-open');
-        if (backdrop) backdrop.classList.remove('visible');
-        document.body.style.overflow = '';
-        document.body.style.position = '';
-        document.body.style.width = '';
-      };
-      
-      sidebar.addEventListener('touchstart', (ev) => {
-        if (!sidebar.classList.contains('sidebar-open')) return;
-        
-        const t = /** @type {TouchEvent} */(ev).touches && /** @type {TouchEvent} */(ev).touches[0];
-        if (!t) return;
-        
-        // Check if touch started on interactive element
-        swipeTarget = /** @type {TouchEvent} */(ev).target;
-        const isInteractive = /** @type {HTMLElement} */(swipeTarget).closest(interactiveSelectors);
-        
-        // Only track swipe if NOT on interactive element
-        if (!isInteractive) {
-          touchStartX = t.clientX;
-          touchStartY = t.clientY;
-          tracking = true;
-        } else {
-          tracking = false;
-        }
-      }, { passive: true });
-      
-      sidebar.addEventListener('touchmove', (ev) => {
-        if (!tracking) return;
-        
-        const t = /** @type {TouchEvent} */(ev).touches && /** @type {TouchEvent} */(ev).touches[0];
-        if (!t) return;
-        
-        touchCurrentX = t.clientX;
-        const dx = touchCurrentX - touchStartX;
-        const dy = t.clientY - touchStartY;
-        
-        // Only prevent scroll if swipe is clearly horizontal
-        const isHorizontalSwipe = Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 15;
-        
-        if (isHorizontalSwipe) {
-          // Check swipe direction matches sidebar position
-          const swipingLeft = dx < 0;
-          const swipingRight = dx > 0;
-          
-          const shouldClose = (isRightSidebar && swipingRight) || (!isRightSidebar && swipingLeft);
-          
-          if (shouldClose) {
-            ev.preventDefault(); // Only prevent if we're going to close
-          }
-        }
-      }, { passive: false });
-      
-      sidebar.addEventListener('touchend', () => {
-        if (!tracking) return;
-        
-        tracking = false;
-        const dx = touchCurrentX - touchStartX;
-        
-        // Threshold: 80px (increased for reliability)
-        if (Math.abs(dx) > 80) {
-          const swipingLeft = dx < 0;
-          const swipingRight = dx > 0;
-          
-          const shouldClose = (isRightSidebar && swipingRight) || (!isRightSidebar && swipingLeft);
-          
-          if (shouldClose) {
-            closeSidebar();
-          }
-        }
-        
-        touchStartX = touchCurrentX = touchStartY = 0;
-        swipeTarget = null;
-      }, { passive: true });
-      
-      // Toggle button handling for this sidebar
       const toggle = isRightSidebar 
         ? document.getElementById('btnToggleRightSidebar')
         : document.querySelector('.sidebar-toggle');
@@ -1193,32 +1175,18 @@ function initSidebarMobile() {
           e.preventDefault();
           e.stopPropagation();
           if (sidebar.classList.contains('sidebar-open')) {
-            closeSidebar();
+            closeSidebar(sidebar, backdrop);
           } else {
-            openSidebar();
+            openSidebar(sidebar, backdrop);
           }
         });
       }
       
       // Initialize state
-      if (window.innerWidth <= 768) {
-        closeSidebar();
+      if (window.innerWidth <= 1024) {
+        closeSidebar(sidebar, backdrop);
       }
     });
-    
-    // Backdrop click to close
-    if (backdrop) {
-      backdrop.addEventListener('click', () => {
-        const openSidebar = document.querySelector('.sidebar-left.sidebar-open, .sidebar-right.sidebar-open');
-        if (openSidebar) {
-          openSidebar.classList.remove('sidebar-open');
-          backdrop.classList.remove('visible');
-          document.body.style.overflow = '';
-          document.body.style.position = '';
-          document.body.style.width = '';
-        }
-      });
-    }
     
     // Keyboard shortcut: Escape to close any open sidebar
     document.addEventListener('keydown', (e) => {
@@ -1226,11 +1194,7 @@ function initSidebarMobile() {
         const openSidebar = document.querySelector('.sidebar-left.sidebar-open, .sidebar-right.sidebar-open');
         if (openSidebar) {
           e.preventDefault();
-          openSidebar.classList.remove('sidebar-open');
-          if (backdrop) backdrop.classList.remove('visible');
-          document.body.style.overflow = '';
-          document.body.style.position = '';
-          document.body.style.width = '';
+          closeSidebar(openSidebar, backdrop);
         }
       }
     });
@@ -1360,6 +1324,12 @@ document.addEventListener('DOMContentLoaded', () => {
   initSidebarMobile();
   initScrollIndicators();
   initResultsPreviewBar();
+  
+  // Collapse Results card (inputArtifacts) by default
+  const resultsCard = document.getElementById('inputArtifacts');
+  if (resultsCard && resultsCard.tagName === 'DETAILS') {
+    resultsCard.removeAttribute('open'); // Start collapsed
+  }
 });
 
 // Calculate actual viewport height (accounts for mobile browser chrome)
@@ -3412,6 +3382,19 @@ function updateOverviewStrip(sessionData) {
   if (bypassEl) bypassEl.textContent = bypass ? 'on' : 'off';
   if (modeEl) modeEl.textContent = batch ? 'batch' : (mode || 'live');
   if (batchEl) batchEl.textContent = batch ? 'on' : 'off';
+  
+  // Also update instructions section if present
+  const sessionInstrEl = /** @type {HTMLElement | null} */ (document.getElementById('sessionIdInstructions'));
+  const sourceInstrEl = /** @type {HTMLElement | null} */ (document.getElementById('sourceInstructions'));
+  const bypassInstrEl = /** @type {HTMLElement | null} */ (document.getElementById('bypassInstructions'));
+  const modeInstrEl = /** @type {HTMLElement | null} */ (document.getElementById('modeInstructions'));
+  const batchInstrEl = /** @type {HTMLElement | null} */ (document.getElementById('batchInstructions'));
+  
+  if (sessionInstrEl) sessionInstrEl.textContent = sessionId || '—';
+  if (sourceInstrEl) sourceInstrEl.textContent = source || 'input';
+  if (bypassInstrEl) bypassInstrEl.textContent = bypass ? 'on' : 'off';
+  if (modeInstrEl) modeInstrEl.textContent = batch ? 'batch' : (mode || 'live');
+  if (batchInstrEl) batchInstrEl.textContent = batch ? 'on' : 'off';
 
   const resetBadge = (el) => {
     if (!el) return;
