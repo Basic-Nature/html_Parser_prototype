@@ -1498,11 +1498,17 @@ th {
     flex-direction: column;
     min-height: min-content;
     padding: var(--spacing-md);
-    padding-bottom: calc(var(--spacing-lg) + 60px);
+    padding-bottom: calc(var(--spacing-lg) + 80px);
     max-height: calc(100vh - var(--navbar-height));
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
+  }
+
+  /* Ensure last sidebar section has extra bottom margin */
+  .sidebar-left .sidebar-section:last-child,
+  .sidebar-right .sidebar-section:last-child {
+    margin-bottom: var(--spacing-xl);
   }
 
   .sidebar-right {
@@ -3383,41 +3389,42 @@ code {
 }
 
 /* Log Level Color Classes (CSP-compliant alternative to inline styles) */
+/* Improved contrast for better readability */
 .log-level-error,
 .log-entry.log-level-error {
-  background: #3d1a1a;
-  border-left: 3px solid #dc2626;
-  color: #fca5a5;
+  background: #4a1f1f;
+  border-left: 3px solid #ef4444;
+  color: #fecaca;
 }
 
 .log-level-critical {
-  background: #3d1a1a;
-  border-left: 3px solid #991b1b;
-  color: #fca5a5;
+  background: #4a1f1f;
+  border-left: 3px solid #dc2626;
+  color: #fecaca;
 }
 
 .log-level-warning {
-  background: #3d2a1a;
-  border-left: 3px solid #ea580c;
-  color: #fdba74;
+  background: #4a3520;
+  border-left: 3px solid #f59e0b;
+  color: #fde68a;
 }
 
 .log-level-info {
-  background: #1a2a3d;
-  border-left: 3px solid #3b82f6;
-  color: #93c5fd;
+  background: #1e3a5f;
+  border-left: 3px solid #60a5fa;
+  color: #bfdbfe;
 }
 
 .log-level-debug {
-  background: #1a2a2a;
-  border-left: 3px solid #10b981;
-  color: #6ee7b7;
+  background: #1e3e3e;
+  border-left: 3px solid #34d399;
+  color: #a7f3d0;
 }
 
 .log-level-trace {
-  background: #2a1a3d;
-  border-left: 3px solid #8b5cf6;
-  color: #c4b5fd;
+  background: #3a2a5f;
+  border-left: 3px solid #a78bfa;
+  color: #ddd6fe;
 }
 
 /* Log Type Badge Color Classes (CSP-compliant, no inline styles) */
