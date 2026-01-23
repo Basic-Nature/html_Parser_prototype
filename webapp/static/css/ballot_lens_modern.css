@@ -930,29 +930,82 @@ th {
   padding: var(--spacing-md);
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  gap: var(--spacing-sm);
 }
 
 .source-instructions-title {
-  margin: 0;
+  margin: 0 0 var(--spacing-sm) 0;
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text-muted-strong);
 }
 
+.instructions-subtitle {
+  margin: var(--spacing-md) 0 var(--spacing-xs) 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.instructions-subtitle:first-of-type {
+  margin-top: 0;
+}
+
+.source-instructions p {
+  margin: 0 0 var(--spacing-sm) 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
 .source-instructions-list {
-  margin: 0;
+  margin: 0 0 var(--spacing-sm) 0;
   padding-left: 1.25rem;
   color: var(--text-muted);
   display: grid;
   gap: 2px;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .source-instructions-note {
-  margin: 0;
+  margin: var(--spacing-md) 0 0 0;
+  padding: var(--spacing-sm);
+  background: rgba(37, 99, 235, 0.1);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-size: 0.86rem;
+  font-size: 0.8125rem;
+}
+
+.info-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--spacing-xs) var(--spacing-sm);
+  margin: var(--spacing-sm) 0;
+  font-size: 0.8125rem;
+}
+
+.info-list dt {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.info-list dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.artifact-checklist {
+  margin: var(--spacing-sm) 0;
+  padding-left: var(--spacing-lg);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.artifact-checklist li {
+  margin-bottom: var(--spacing-xs);
+  color: var(--text-muted);
 }
 
 @media (max-width: 840px) {
@@ -1584,7 +1637,7 @@ th {
   .main-content {
     width: 100% !important;
     margin: 0 !important;
-    padding-bottom: calc(var(--footer-height) + 48px);
+    padding-bottom: calc(var(--footer-height) + 80px); /* ✅ Increased bottom space */
   }
 
   /* Results grid: stack cards vertically and make them full-width */
@@ -1680,19 +1733,24 @@ th {
     position: fixed;
     left: 0;
     top: var(--navbar-height);
-    bottom: var(--footer-height);
-    height: auto;
-    max-height: calc(100vh - var(--navbar-height) - var(--footer-height));
+    bottom: 0; /* ✅ Stretch to bottom */
+    height: auto; /* ✅ Let top/bottom define height */
+    max-height: calc(100vh - var(--navbar-height)); /* ✅ Explicit max-height */
     width: 85vw;
-    max-width: 320px;
+    max-width: 340px;
     transform: translateX(-100%);
-    transition: transform 0.3s ease;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     z-index: var(--z-sidebar);
-    overflow-y: auto;
+    
+    /* CRITICAL: Force scroll behavior for mobile */
+    overflow-y: auto; /* ✅ Show scrollbar only when needed */
     overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch; /* ✅ iOS momentum */
+    overscroll-behavior-y: contain; /* ✅ Prevent body scroll */
+    scrollbar-width: thin; /* Thin scrollbar on Firefox */
+    
+    padding: 0; /* ✅ Remove padding from sidebar itself */
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
   }
 
   .sidebar-left.sidebar-open,
@@ -1702,15 +1760,12 @@ th {
 
   .sidebar-left .sidebar-content,
   .sidebar-right .sidebar-content {
+    padding: var(--spacing-md); /* ✅ Padding goes on content wrapper */
+    padding-bottom: calc(var(--spacing-xl) + 120px); /* ✅ Extra bottom space to prevent cutoff */
     display: flex;
     flex-direction: column;
-    min-height: min-content;
-    padding: var(--spacing-md);
-    padding-bottom: calc(var(--spacing-lg) + 80px);
-    max-height: calc(100vh - var(--navbar-height));
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
+    gap: var(--spacing-md);
+    min-height: min-content; /* ✅ Content determines height */
   }
 
   /* Ensure last sidebar section has extra bottom margin */
@@ -1784,6 +1839,22 @@ th {
   .sidebar-backdrop.visible {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /* iOS Safari specific fixes */
+  @supports (-webkit-touch-callout: none) {
+    .sidebar-left,
+    .sidebar-right {
+      /* iOS viewport height fix */
+      max-height: calc(100vh - var(--navbar-height)) !important;
+      height: calc(100vh - var(--navbar-height)) !important;
+    }
+    
+    .sidebar-content {
+      /* Ensure content can be scrolled */
+      min-height: 100%;
+      padding-bottom: 100px !important; /* ✅ Extra space for iOS */
+    }
   }
 
   /* Fix button positioning and touch targets */
@@ -1869,7 +1940,7 @@ th {
   /* Ensure main content doesn't overlap */
   .main-content {
     padding: var(--spacing-md) var(--content-padding);
-    padding-bottom: calc(var(--footer-height) + 120px);
+    padding-bottom: calc(var(--footer-height) + 160px); /* ✅ Increased to prevent cutoff */
     min-height: calc(100vh - var(--navbar-height));
   }
 
