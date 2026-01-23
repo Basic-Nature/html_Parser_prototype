@@ -1065,102 +1065,186 @@ function enhanceAccessibility() {
 function initSidebarMobile() {
   try {
     if (__tl_window.__tl_sidebarUnified) return;
-    const toggle = document.querySelector('.sidebar-toggle');
-    const sidebar = document.getElementById('sidebar');
+    const leftSidebar = document.querySelector('.sidebar-left, #sidebar');
+    const rightSidebar = document.querySelector('.sidebar-right');
     const backdrop = document.querySelector('.sidebar-backdrop') || document.querySelector('.mobile-sidebar-overlay');
-    if (!sidebar) return;
-
-    const openSidebar = () => {
-      sidebar.classList.add('sidebar-open');
-      if (backdrop) backdrop.classList.add('visible');
-      document.body.style.overflow = 'hidden';
-      document.body.style.position = 'fixed';
-      document.body.style.width = '100%';
-    };
-    const closeSidebar = () => {
-      sidebar.classList.remove('sidebar-open');
-      if (backdrop) backdrop.classList.remove('visible');
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
-    };
-
-    // Improved touch handling with proper passive: false for preventDefault
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchCurrentX = 0;
-    let tracking = false;
-
-    sidebar.addEventListener('touchstart', (ev) => {
-      if (!sidebar.classList.contains('sidebar-open')) return;
-      const t = ev.touches && ev.touches[0];
-      if (!t) return;
-      touchStartX = t.clientX;
-      touchStartY = t.clientY;
-      tracking = true;
-    }, { passive: true });
-
-    sidebar.addEventListener('touchmove', (ev) => {
-      if (!tracking) return;
-      const t = ev.touches && ev.touches[0];
-      if (!t) return;
-      touchCurrentX = t.clientX;
-      const dx = touchCurrentX - touchStartX;
-      const dy = Math.abs(t.clientY - touchStartY);
+    
+    if (!leftSidebar && !rightSidebar) return;
+    
+    // Process both sidebars
+    [leftSidebar, rightSidebar].forEach(sidebar => {
+      if (!sidebar) return;
       
-      // Only prevent default if horizontal swipe is dominant
-      if (Math.abs(dx) > dy && Math.abs(dx) > 10) {
-        ev.preventDefault();
-      }
-    }, { passive: false }); // Must be non-passive to use preventDefault
-
-    sidebar.addEventListener('touchend', () => {
-      if (!tracking) return;
-      tracking = false;
-      const dx = touchCurrentX - touchStartX;
+      const isRightSidebar = sidebar.classList.contains('sidebar-right');
       
-      // Swipe threshold: 60px
-      if (Math.abs(dx) > 60) {
-        // Left sidebar: swipe left to close
-        // Right sidebar: swipe right to close
-        const isRightSidebar = sidebar.classList.contains('sidebar-right');
-        if ((dx < 0 && !isRightSidebar) || (dx > 0 && isRightSidebar)) {
-          closeSidebar();
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let touchCurrentX = 0;
+      let tracking = false;
+      let swipeTarget = null;
+      
+      // INTERACTIVE ELEMENTS that should NOT trigger swipe-to-close
+      const interactiveSelectors = [
+        'input',
+        'textarea',
+        'select',
+        'button',
+        'a',
+        '.url-sidebar-item',
+        '.source-card',
+        '.control-group',
+        '.form-control',
+        '.btn',
+        '[role="button"]',
+        '[tabindex="0"]'
+      ].join(', ');
+      
+      const openSidebar = () => {
+        sidebar.classList.add('sidebar-open');
+        if (backdrop) backdrop.classList.add('visible');
+        document.body.style.overflow = 'hidden';
+        document.body.style.position = 'fixed';
+        document.body.style.width = '100%';
+      };
+      
+      const closeSidebar = () => {
+        sidebar.classList.remove('sidebar-open');
+        if (backdrop) backdrop.classList.remove('visible');
+        document.body.style.overflow = '';
+        document.body.style.position = '';
+        document.body.style.width = '';
+      };
+      
+      sidebar.addEventListener('touchstart', (ev) => {
+        if (!sidebar.classList.contains('sidebar-open')) return;
+        
+        const t = /** @type {TouchEvent} */(ev).touches && /** @type {TouchEvent} */(ev).touches[0];
+        if (!t) return;
+        
+        // Check if touch started on interactive element
+        swipeTarget = /** @type {TouchEvent} */(ev).target;
+        const isInteractive = /** @type {HTMLElement} */(swipeTarget).closest(interactiveSelectors);
+        
+        // Only track swipe if NOT on interactive element
+        if (!isInteractive) {
+          touchStartX = t.clientX;
+          touchStartY = t.clientY;
+          tracking = true;
+        } else {
+          tracking = false;
         }
+      }, { passive: true });
+      
+      sidebar.addEventListener('touchmove', (ev) => {
+        if (!tracking) return;
+        
+        const t = /** @type {TouchEvent} */(ev).touches && /** @type {TouchEvent} */(ev).touches[0];
+        if (!t) return;
+        
+        touchCurrentX = t.clientX;
+        const dx = touchCurrentX - touchStartX;
+        const dy = t.clientY - touchStartY;
+        
+        // Only prevent scroll if swipe is clearly horizontal
+        const isHorizontalSwipe = Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 15;
+        
+        if (isHorizontalSwipe) {
+          // Check swipe direction matches sidebar position
+          const swipingLeft = dx < 0;
+          const swipingRight = dx > 0;
+          
+          const shouldClose = (isRightSidebar && swipingRight) || (!isRightSidebar && swipingLeft);
+          
+          if (shouldClose) {
+            ev.preventDefault(); // Only prevent if we're going to close
+          }
+        }
+      }, { passive: false });
+      
+      sidebar.addEventListener('touchend', () => {
+        if (!tracking) return;
+        
+        tracking = false;
+        const dx = touchCurrentX - touchStartX;
+        
+        // Threshold: 80px (increased for reliability)
+        if (Math.abs(dx) > 80) {
+          const swipingLeft = dx < 0;
+          const swipingRight = dx > 0;
+          
+          const shouldClose = (isRightSidebar && swipingRight) || (!isRightSidebar && swipingLeft);
+          
+          if (shouldClose) {
+            closeSidebar();
+          }
+        }
+        
+        touchStartX = touchCurrentX = touchStartY = 0;
+        swipeTarget = null;
+      }, { passive: true });
+      
+      // Toggle button handling for this sidebar
+      const toggle = isRightSidebar 
+        ? document.getElementById('btnToggleRightSidebar')
+        : document.querySelector('.sidebar-toggle');
+      
+      if (toggle) {
+        toggle.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (sidebar.classList.contains('sidebar-open')) {
+            closeSidebar();
+          } else {
+            openSidebar();
+          }
+        });
       }
-      touchStartX = touchCurrentX = touchStartY = 0;
-    }, { passive: true });
-
+      
+      // Initialize state
+      if (window.innerWidth <= 768) {
+        closeSidebar();
+      }
+    });
+    
     // Backdrop click to close
     if (backdrop) {
-      backdrop.addEventListener('click', closeSidebar);
-    }
-
-    // Toggle button handling
-    if (toggle) {
-      toggle.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (sidebar.classList.contains('sidebar-open')) {
-          closeSidebar();
-        } else {
-          openSidebar();
+      backdrop.addEventListener('click', () => {
+        const openSidebar = document.querySelector('.sidebar-left.sidebar-open, .sidebar-right.sidebar-open');
+        if (openSidebar) {
+          openSidebar.classList.remove('sidebar-open');
+          backdrop.classList.remove('visible');
+          document.body.style.overflow = '';
+          document.body.style.position = '';
+          document.body.style.width = '';
         }
       });
     }
-
-    // Initialize state
-    if (window.innerWidth <= 768) {
-      closeSidebar();
-    }
+    
   } catch (e) {
     ErrorBoundary.logError(e, 'initSidebarMobile');
   }
 }
 
+// Initialize scroll indicators for sidebars
+function initScrollIndicators() {
+  const sidebars = document.querySelectorAll('.sidebar-left, .sidebar-right');
+  
+  sidebars.forEach(sidebar => {
+    function updateScrollIndicator() {
+      const hasScroll = sidebar.scrollHeight > sidebar.clientHeight;
+      sidebar.classList.toggle('has-scroll', hasScroll);
+    }
+    
+    sidebar.addEventListener('scroll', updateScrollIndicator);
+    window.addEventListener('resize', updateScrollIndicator);
+    updateScrollIndicator();
+  });
+}
+
 // Initialize mobile sidebar handlers on DOMContentLoaded
 document.addEventListener('DOMContentLoaded', () => {
   initSidebarMobile();
+  initScrollIndicators();
 });
 
 // Calculate actual viewport height (accounts for mobile browser chrome)
