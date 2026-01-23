@@ -1182,7 +1182,8 @@ function initSidebarMobile() {
         });
       }
       
-      // Initialize state
+      // Initialize state on mobile/tablet (<=1024px)
+      // Note: Breakpoint at 1024px ensures tablets get mobile behavior
       if (window.innerWidth <= 1024) {
         closeSidebar(sidebar, backdrop);
       }

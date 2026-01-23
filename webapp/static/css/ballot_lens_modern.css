@@ -1782,11 +1782,12 @@ details[open] .summary-icon {
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     z-index: var(--z-sidebar);
     
-    /* CRITICAL: Force scroll */
-    overflow-y: scroll; /* ✅ ALWAYS show scrollbar area */
+    /* CRITICAL: Force scroll behavior for mobile */
+    overflow-y: auto; /* ✅ Show scrollbar only when needed */
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch; /* ✅ iOS momentum */
     overscroll-behavior-y: contain; /* ✅ Prevent body scroll */
+    scrollbar-width: thin; /* Thin scrollbar on Firefox */
     
     padding: 0; /* ✅ Remove padding from sidebar itself */
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
