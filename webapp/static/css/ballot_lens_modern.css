@@ -1050,143 +1050,8 @@ th {
 }
 
 /* ============================================
-   Mobile responsiveness tweaks (phones 320–700px)
-   Improves dashboard grid stacking, sidebar collapse, card stacking,
-   and sticky footer behavior on small screens.
+   Mobile responsiveness tweaks (consolidated into the 768px breakpoint)
    ============================================ */
-
-@media (max-width: 700px) {
-  /* allow vertical flow on mobile instead of two-column layout */
-  body {
-    flex-direction: column;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-.results-header {
-  position: sticky;
-  top: calc(var(--navbar-height) + 8px);
-  z-index: calc(var(--z-navbar) - 1);
-  background: var(--bg-primary);
-  box-shadow: 0 10px 24px rgba(0,0,0,0.25);
-  padding-top: var(--spacing-sm);
-  padding-bottom: var(--spacing-sm);
-    margin-bottom: var(--spacing-md);
-  }
-
-  .dashboard-grid {
-    display: block !important;
-    padding: 12px !important;
-  }
-
-  /* Main content should take full width; reserve bottom space for footer */
-  .main-content {
-    width: 100% !important;
-    margin: 0 !important;
-    padding-bottom: calc(var(--footer-height) + 48px); /* room for sticky footer */
-  }
-
-  /* Keep sidebar behavior aligned with the 768px off-canvas rules. */
-
-  /* Results grid: stack cards vertically and make them full-width */
-  .results-grid {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 12px !important;
-  }
-
-  .result-card {
-    width: 100% !important;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 12px;
-    border-radius: var(--radius-md);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-  }
-
-  .card-header {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-  }
-
-
-  .card-stats {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-
-  .card-preview {
-    white-space: pre-wrap;
-    overflow: hidden;
-    max-height: 6.5rem;
-    text-overflow: ellipsis;
-    color: var(--text-muted);
-  }
-
-  .card-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-
-  .card-actions .btn-sm,
-  .card-actions .btn-primary,
-  .card-actions .btn-ghost {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-
-  /* Footer: make it sticky and compact; expand when .expanded is set */
-footer#sessionFooter {
-  position: fixed !important;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 12000;
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-color);
-  padding: 8px 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--footer-height);
-}
-
-  footer#sessionFooter .footer-full { display: none; }
-  footer#sessionFooter.minimized .footer-preview { display: flex; gap: 8px; align-items: center; }
-
-  /* When JS toggles .expanded, show full session list as overlay panel above footer */
-  footer#sessionFooter.expanded {
-    align-items: flex-start;
-    padding: 12px;
-    max-height: 60vh;
-    overflow: auto;
-  }
-  footer#sessionFooter.expanded .footer-full {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 100%;
-  }
-
-  /* Ensure inputs and controls remain usable on small widths */
-  .results-actions { display: flex; gap: 8px; margin-top: 8px; }
-  .search-box { flex: 1 1 auto; min-width: 0; }
-  .card-title {
-    min-width: 0;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    overflow: hidden;
-  }
-
-  .results-header { flex-direction: column; align-items: stretch; gap: 8px; }
-}
 
 /* Extra-small screens: tighten spacing, enlarge tap targets, and ensure tables scroll */
 @media (max-width: 480px) {
@@ -1216,8 +1081,13 @@ footer#sessionFooter {
   .results-actions { flex-direction: column; align-items: stretch; }
   .search-box, .results-actions .btn { width: 100% !important; }
 
-  /* Sidebar toggle adjustments */
-  .sidebar-toggle { top: 8px; right: 8px; padding: 8px; }
+  /* Sidebar toggle adjustments (floating left toggle only) */
+  .sidebar-toggle.sidebar-toggle-floating {
+    top: calc(var(--navbar-height) + 6px) !important;
+    left: 12px !important;
+    width: 44px !important;
+    height: 44px !important;
+  }
 
   /* Table responsiveness: allow horizontal scroll with smooth touch scrolling */
   .table-responsive, .table-preview-container { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -1439,6 +1309,24 @@ footer#sessionFooter {
     --content-padding: 12px;
   }
 
+  /* allow vertical flow on mobile instead of two-column layout */
+  body {
+    flex-direction: column;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .results-header {
+    position: sticky;
+    top: calc(var(--navbar-height) + 8px);
+    z-index: calc(var(--z-navbar) - 1);
+    background: var(--bg-primary);
+    box-shadow: 0 10px 24px rgba(0,0,0,0.25);
+    padding-top: var(--spacing-sm);
+    padding-bottom: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+  }
+
   /* Ensure proper stacking and spacing */
   .dashboard-grid {
     display: flex !important;
@@ -1446,6 +1334,100 @@ footer#sessionFooter {
     gap: 1rem !important;
     padding: 0 var(--content-padding) calc(var(--footer-height) + 16px);
   }
+
+  /* Main content should take full width; reserve bottom space for footer */
+  .main-content {
+    width: 100% !important;
+    margin: 0 !important;
+    padding-bottom: calc(var(--footer-height) + 48px);
+  }
+
+  /* Results grid: stack cards vertically and make them full-width */
+  .results-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .card-header {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .card-stats {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .card-preview {
+    white-space: pre-wrap;
+    overflow: hidden;
+    max-height: 6.5rem;
+    text-overflow: ellipsis;
+    color: var(--text-muted);
+  }
+
+  .card-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .card-actions .btn-sm,
+  .card-actions .btn-primary,
+  .card-actions .btn-ghost {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Footer: make it sticky and compact; expand when .expanded is set */
+  footer#sessionFooter {
+    position: fixed !important;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 12000;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    padding: 8px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--footer-height);
+  }
+
+  footer#sessionFooter .footer-full { display: none; }
+  footer#sessionFooter.minimized .footer-preview { display: flex; gap: 8px; align-items: center; }
+
+  /* When JS toggles .expanded, show full session list as overlay panel above footer */
+  footer#sessionFooter.expanded {
+    align-items: flex-start;
+    padding: 12px;
+    max-height: 60vh;
+    overflow: auto;
+  }
+  footer#sessionFooter.expanded .footer-full {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  /* Ensure inputs and controls remain usable on small widths */
+  .results-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .search-box { flex: 1 1 auto; min-width: 0; }
+  .card-title {
+    min-width: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .results-header { flex-direction: column; align-items: stretch; gap: 8px; }
 
   /* Fix sidebar for mobile */
   .sidebar-left,
@@ -1460,11 +1442,21 @@ footer#sessionFooter {
     z-index: var(--z-sidebar);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
   }
 
   .sidebar-left.sidebar-open,
   .sidebar-right.sidebar-open {
     transform: translateX(0);
+  }
+
+  .sidebar-left .sidebar-content,
+  .sidebar-right .sidebar-content {
+    max-height: calc(100vh - var(--navbar-height));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
   .sidebar-right {
@@ -1607,7 +1599,9 @@ footer#sessionFooter {
   .sidebar-toggle.sidebar-toggle-floating {
     position: fixed !important;
     left: 12px !important;
-    top: 12px !important;
+    top: calc(var(--navbar-height) + 8px) !important;
+    right: auto !important;
+    bottom: auto !important;
     z-index: calc(var(--z-sidebar) + 1) !important;
     display: inline-flex !important;
     align-items: center !important;
@@ -3956,79 +3950,6 @@ code {
   .sidebar-left,
   .sidebar-right {
     padding: var(--spacing-sm);
-  }
-}
-
-@media (max-width: 1024px) {
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .sidebar-left,
-  .sidebar-right,
-  #sidebar {
-    display: none;
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    z-index: var(--z-sidebar);
-    max-width: 320px;
-    background: var(--bg-secondary);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-    transition: transform var(--transition-normal), opacity var(--transition-normal);
-    transform: translateX(100%);
-    opacity: 0;
-    pointer-events: none;
-    -webkit-overflow-scrolling: touch;
-    max-height: 92vh;
-  }
-  
-  .sidebar-left,
-  #sidebar {
-    left: 0;
-    border-right: 1px solid var(--border-color);
-    transform: translateX(-100%);
-  }
-  
-  .sidebar-right {
-    right: 0;
-    left: auto;
-    border-left: 1px solid var(--border-color);
-    border-right: none;
-  }
-  
-  .sidebar-left.open,
-  .sidebar-right.open,
-  .sidebar-left.sidebar-open,
-  .sidebar-right.sidebar-open,
-  #sidebar.sidebar-open {
-    display: flex;
-    flex-direction: column;
-    transform: translateX(0);
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .mobile-sidebar-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: var(--z-sidebar-backdrop);
-    display: none;
-  }
-  .mobile-sidebar-overlay.visible { display: block; }
-  
-  .log-drawer {
-    left: 0;
-    right: 0;
-  }
-  
-  .results-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .progress-stats {
-    grid-template-columns: 1fr;
   }
 }
 

@@ -3555,6 +3555,27 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
   }
 
   /**
+   * Toggle floating state for the left menu button when the left sidebar is off-canvas.
+   */
+  function syncLeftToggleFloating() {
+    if (!toggleLeftBtn) return;
+    const btn = /** @type {HTMLElement} */ (toggleLeftBtn);
+    const sidebar = legacySidebar;
+    let presented = false;
+    if (sidebar && typeof sidebar.getBoundingClientRect === 'function') {
+      const rect = sidebar.getBoundingClientRect();
+      const styles = window.getComputedStyle(sidebar);
+      const hiddenByStyle = styles.display === 'none' || styles.visibility === 'hidden' || styles.opacity === '0' || styles.pointerEvents === 'none';
+      const zeroSize = rect.width <= 0 || rect.height <= 0;
+      const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+      const offCanvas = rect.right <= 0 || rect.left >= vw;
+      presented = !hiddenByStyle && !zeroSize && !offCanvas;
+    }
+    const shouldFloat = !presented;
+    btn.classList.toggle('sidebar-toggle-floating', shouldFloat);
+  }
+
+  /**
    * @typedef {HTMLElement} OverlayElement
    */
 
@@ -3605,6 +3626,7 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
     setRightCollapsed(false);
     syncToggleAria();
   }
+  syncLeftToggleFloating();
 
   function closeAll() {
     if (legacySidebar) legacySidebar.classList.remove('sidebar-open');
@@ -3623,6 +3645,7 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
     if (toggleLeftBtn) {
       try { toggleLeftBtn.setAttribute('aria-expanded', 'false'); } catch (e) {}
     }
+    syncLeftToggleFloating();
   }
 
   function openLeft() {
@@ -3633,6 +3656,7 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
     if (toggleLeftBtn) {
       try { toggleLeftBtn.setAttribute('aria-expanded', 'true'); } catch (e) {}
     }
+    syncLeftToggleFloating();
   }
 
   function openRight() {
@@ -3680,6 +3704,10 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
       leftBtnAny.__tlLeftBound = true;
       toggleLeftBtn.addEventListener('click', (e) => {
         e.preventDefault();
+        try {
+          e.stopPropagation();
+          /** @type {any} */ (e).__tlSidebarHandled = true;
+        } catch (err) {}
         if (!legacySidebar) return;
         const isOpen = legacySidebar.classList.contains('sidebar-open');
         if (isOpen) closeAll(); else openLeft();
@@ -3700,6 +3728,14 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
 
   syncRightSidebarMode();
   window.addEventListener('resize', syncRightSidebarMode);
+  window.addEventListener('resize', syncLeftToggleFloating);
+
+  if (legacySidebar && typeof MutationObserver !== 'undefined') {
+    const leftObserver = new MutationObserver(() => {
+      try { syncLeftToggleFloating(); } catch (e) {}
+    });
+    leftObserver.observe(legacySidebar, { attributes: true, attributeFilter: ['style', 'class'] });
+  }
 
   // Backdrop/overlay clicks close all (ensure both elements are covered)
   if (overlay) {
@@ -3718,7 +3754,7 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
     try {
       if (__tl_window.__tl_sidebarUnified) return;
       const tgt = /** @type {any} */ (e.target);
-      const btn = (tgt && tgt.closest) ? tgt.closest('#btnToggleRightSidebar, #sidebarToggleBtn') : null;
+      const btn = (tgt && tgt.closest) ? tgt.closest('#btnToggleRightSidebar') : null;
       if (!btn) return;
       e.preventDefault();
       // Dev-only health logging: only on localhost to avoid noise in prod
@@ -3743,21 +3779,6 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
           if (isLocal && console && console.debug) console.debug('[health] right sidebar opened via delegate');
         }
         return;
-      }
-      if (btn.id === 'sidebarToggleBtn') {
-        if (typeof window.openLeft === 'function') return window.openLeft();
-        const ls = document.getElementById('sidebar');
-        if (!ls) return;
-        const isOpen = ls.classList.contains('sidebar-open');
-        if (isOpen) {
-          ls.classList.remove('sidebar-open');
-          document.body.classList.remove('no-scroll');
-          if (isLocal && console && console.debug) console.debug('[health] left sidebar closed via delegate');
-        } else {
-          ls.classList.add('sidebar-open');
-          document.body.classList.add('no-scroll');
-          if (isLocal && console && console.debug) console.debug('[health] left sidebar opened via delegate');
-        }
       }
     } catch (err) {
       /* noop */
@@ -4777,42 +4798,6 @@ function hidePrompt(options) {
 const btnSubmitPrompt = $('#btnSubmitPrompt');
   if (btnSubmitPrompt) {
     btnSubmitPrompt.addEventListener('click', () => submitPrompt());
-    // Left sidebar toggle (legacy file/URL sidebar)
-    // Resolve element at runtime to avoid stale null from early queries
-    const toggleLeft = document.getElementById('sidebarToggleBtn');
-    if (toggleLeft) {
-      toggleLeft.addEventListener('click', (e) => {
-        e.preventDefault();
-        const legacySidebarEl = document.getElementById('sidebar');
-        const rightSidebarEl = document.querySelector('.sidebar-right');
-        const sidebarBackdropEl = document.getElementById('sidebarBackdrop');
-        const overlayEl = document.getElementById('mobileSidebarOverlay');
-        const toggleRightEl = document.getElementById('btnToggleRightSidebar');
-        const isOpen = legacySidebarEl && legacySidebarEl.classList.contains('sidebar-open');
-        if (isOpen) {
-          // Close behavior (local, avoids calling outer-scope helpers)
-          if (legacySidebarEl) legacySidebarEl.classList.remove('sidebar-open');
-          if (rightSidebarEl) {
-            rightSidebarEl.classList.remove('open');
-            rightSidebarEl.classList.remove('sidebar-open');
-          }
-          if (sidebarBackdropEl) sidebarBackdropEl.classList.remove('visible');
-          if (overlayEl && overlayEl !== sidebarBackdropEl) overlayEl.classList.remove('visible');
-          document.body.classList.remove('no-scroll');
-          document.body.classList.remove('sidebar-right-open');
-          if (toggleRightEl) {
-            try { toggleRightEl.setAttribute('aria-expanded', 'false'); } catch (e) {}
-          }
-          if (overlayEl) {
-            try { overlayEl.setAttribute('aria-hidden', 'true'); } catch (e) {}
-          }
-        } else {
-          // Open left sidebar
-          if (legacySidebarEl) legacySidebarEl.classList.add('sidebar-open');
-          if (sidebarBackdropEl) sidebarBackdropEl.classList.add('visible');
-        }
-      });
-    }
   }
 
 const btnCancelPrompt = $('#btnCancelPrompt');
@@ -7573,14 +7558,6 @@ document.addEventListener('DOMContentLoaded', () => {
             try { ThemeManager.toggleTheme(); } catch (err) { console.debug('Theme toggle failed', err); }
             break;
           }
-          case 'sidebarToggleBtn': {
-            // Prefer programmatic API if present
-            if (typeof (/** @type {any} */ (window)).openLeft === 'function') { try { (/** @type {any} */ (window)).openLeft(); } catch (e) { /* swallow */ } } else {
-              // fallback to existing click handler
-              try { btn.click(); } catch (err) { console.debug('sidebarToggle click fallback failed', err); }
-            }
-            break;
-          }
           case 'btnToggleRightSidebar': {
             if (typeof (/** @type {any} */ (window)).openRight === 'function') { try { (/** @type {any} */ (window)).openRight(); } catch (e) { /* swallow */ } } else { try { btn.click(); } catch (err) {} }
             break;
@@ -7681,6 +7658,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   
     // Sidebar toggle (off-canvas) behavior for small screens
+    if ((/** @type {any} */ (window)).__tl_sidebarUnified) {
+      // Unified sidebar controller active; skip legacy toggle wiring to avoid conflicts.
+      updateSessionsList();
+      console.log('[Parser UI] Initialization complete');
+      return;
+    }
     const sidebarToggle = document.querySelector('.sidebar-toggle');
     const sidebarRight = document.querySelector('.sidebar-right');
     const sidebarEl = document.getElementById('sidebar') || sidebarRight;
