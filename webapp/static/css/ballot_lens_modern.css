@@ -696,12 +696,97 @@ th {
   max-height: 70vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  animation: slideDown 0.3s ease-out;
+}
+
+/* Smooth slide-down animation for preview content */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 70vh;
+  }
+}
+
+/* New results indicator badge */
+.results-preview-meta .badge.has-new-results {
+  position: relative;
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+.results-preview-meta .badge.has-new-results::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  background: var(--accent-success);
+  border-radius: 50%;
+  border: 2px solid var(--bg-secondary);
+  animation: pulseDot 2s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0);
+  }
+}
+
+@keyframes pulseDot {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+/* Focus visible styles for accessibility */
+.results-preview-summary:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  background: var(--bg-tertiary);
+}
+
+/* Keyboard hint for power users */
+.results-preview-bar::before {
+  content: 'Press R to toggle';
+  position: absolute;
+  right: calc(var(--content-padding) + 60px);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  pointer-events: none;
+}
+
+.results-preview-bar:hover::before {
+  opacity: 0.6;
+}
+
+.results-preview-bar[open]::before {
+  content: 'Press R or Esc to close';
 }
 
 /* Mobile adjustments for results preview bar */
 @media (max-width: 768px) {
   .results-preview-bar {
     top: var(--navbar-height);
+  }
+
+  .results-preview-bar::before {
+    display: none; /* Hide keyboard hint on mobile */
   }
 
   .results-preview-summary {

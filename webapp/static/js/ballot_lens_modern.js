@@ -1220,6 +1220,21 @@ function initSidebarMobile() {
       });
     }
     
+    // Keyboard shortcut: Escape to close any open sidebar
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const openSidebar = document.querySelector('.sidebar-left.sidebar-open, .sidebar-right.sidebar-open');
+        if (openSidebar) {
+          e.preventDefault();
+          openSidebar.classList.remove('sidebar-open');
+          if (backdrop) backdrop.classList.remove('visible');
+          document.body.style.overflow = '';
+          document.body.style.position = '';
+          document.body.style.width = '';
+        }
+      }
+    });
+    
   } catch (e) {
     ErrorBoundary.logError(e, 'initSidebarMobile');
   }
@@ -1250,12 +1265,24 @@ function initResultsPreviewBar() {
   
   if (!previewBar) return;
   
+  let previousCount = 0;
+  
   // Sync result count and last updated time
   function updateResultsPreview() {
     if (resultsGrid && resultCountBadge) {
       const resultCards = resultsGrid.querySelectorAll('.result-card, .card');
       const count = resultCards.length;
       resultCountBadge.textContent = `${count} result${count !== 1 ? 's' : ''}`;
+      
+      // Add "new results" indicator if count increased
+      if (count > previousCount && previousCount > 0) {
+        resultCountBadge.classList.add('has-new-results');
+        // Remove after 5 seconds
+        setTimeout(() => {
+          resultCountBadge.classList.remove('has-new-results');
+        }, 5000);
+      }
+      previousCount = count;
     }
     
     if (lastUpdatedPreview) {
@@ -1288,6 +1315,38 @@ function initResultsPreviewBar() {
     });
     gridObserver.observe(resultsGrid, { childList: true, subtree: true });
   }
+  
+  // Keyboard shortcuts for power users
+  document.addEventListener('keydown', (e) => {
+    // 'R' key to toggle results preview (when not typing in input)
+    if (e.key === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const activeEl = document.activeElement;
+      const isTyping = activeEl && (
+        activeEl.tagName === 'INPUT' || 
+        activeEl.tagName === 'TEXTAREA' || 
+        activeEl.isContentEditable
+      );
+      
+      if (!isTyping) {
+        e.preventDefault();
+        previewBar.open = !previewBar.open;
+        // Focus the summary for accessibility
+        if (previewBar.open) {
+          previewBar.querySelector('summary')?.focus();
+        }
+      }
+    }
+    
+    // 'Escape' key to close results preview
+    if (e.key === 'Escape' && previewBar.open) {
+      const focusWithinPreview = previewBar.contains(document.activeElement);
+      if (focusWithinPreview) {
+        e.preventDefault();
+        previewBar.open = false;
+        previewBar.querySelector('summary')?.focus();
+      }
+    }
+  });
   
   // Initial update
   updateResultsPreview();
