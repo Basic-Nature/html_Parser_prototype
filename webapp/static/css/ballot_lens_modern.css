@@ -1637,7 +1637,7 @@ th {
   .main-content {
     width: 100% !important;
     margin: 0 !important;
-    padding-bottom: calc(var(--footer-height) + 48px);
+    padding-bottom: calc(var(--footer-height) + 80px); /* ✅ Increased bottom space */
   }
 
   /* Results grid: stack cards vertically and make them full-width */
@@ -1761,7 +1761,7 @@ th {
   .sidebar-left .sidebar-content,
   .sidebar-right .sidebar-content {
     padding: var(--spacing-md); /* ✅ Padding goes on content wrapper */
-    padding-bottom: calc(var(--spacing-xl) + 80px); /* ✅ Extra bottom space */
+    padding-bottom: calc(var(--spacing-xl) + 120px); /* ✅ Extra bottom space to prevent cutoff */
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
@@ -1940,7 +1940,7 @@ th {
   /* Ensure main content doesn't overlap */
   .main-content {
     padding: var(--spacing-md) var(--content-padding);
-    padding-bottom: calc(var(--footer-height) + 120px);
+    padding-bottom: calc(var(--footer-height) + 160px); /* ✅ Increased to prevent cutoff */
     min-height: calc(100vh - var(--navbar-height));
   }
 
