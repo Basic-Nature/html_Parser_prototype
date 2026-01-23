@@ -69,6 +69,45 @@
           {% endif %}
           {% endwith %}
 
+          <!-- Results Preview Bar (Collapsible) -->
+          <details class="results-preview-bar" id="resultsPreviewBar" aria-label="Results preview">
+            <summary class="results-preview-summary">
+              <div class="results-preview-header">
+                <div class="results-preview-title">
+                  <span class="results-preview-icon">📊</span>
+                  <h2>Parsed Results</h2>
+                </div>
+                <div class="results-preview-meta">
+                  <span class="badge" id="resultCountBadge">0 results</span>
+                  <span class="text-muted-inline">Updated: <span id="lastUpdatedPreview">now</span></span>
+                </div>
+              </div>
+              <span class="results-preview-toggle" aria-hidden="true">▼</span>
+            </summary>
+            <div class="results-preview-content">
+              <div class="results-actions">
+                <input type="text" id="searchResults" class="search-box" placeholder="Search results...">
+                <button type="button" class="btn-primary" id="btnRefreshResults" aria-label="Refresh results">🔄 Refresh</button>
+              </div>
+              <div class="pulse-loader hidden" id="pulseLoader" aria-live="polite" aria-busy="true" aria-hidden="true">
+                <div class="pulse-loader-card">
+                  <div class="pulse-loader-icon">🗳️</div>
+                  <div class="pulse-loader-title">Ballot Pulse</div>
+                  <p class="pulse-loader-subtitle" id="pulseLoaderSubtitle">Calibrating election lenses...</p>
+                  <div class="pulse-loader-bars" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="results-grid" id="resultsGrid"></div>
+              <div class="empty-state" id="emptyState">
+                <div class="empty-state-icon">📊</div>
+                <h3>No results yet</h3>
+                <p>Run the parser or select files from the sidebar to view results.</p>
+              </div>
+            </div>
+          </details>
+
           <div class="content-shell">
             <div id="pipelineHintHost" class="pipeline-hint-row">
               <div class="pipeline-hint" data-level="info">Review inputs and choose your data source. Press Run when ready.</div>
@@ -218,33 +257,6 @@
 
             <!-- MAIN CONTENT -->
             <main class="main-content">
-              <div class="results-header">
-                <div>
-                  <h2>Parsed Results</h2>
-                  <p class="text-muted"><span id="resultCount">0</span> results • Last updated: <span id="lastUpdated">now</span></p>
-                </div>
-                  <div class="results-actions">
-                  <input type="text" id="searchResults" class="search-box" placeholder="Search results...">
-                  <button type="button" class="btn-primary" id="btnRefreshResults" aria-label="Refresh results">🔄 Refresh</button>
-                </div>
-              </div>
-              <div class="pulse-loader hidden" id="pulseLoader" aria-live="polite" aria-busy="true" aria-hidden="true">
-                <div class="pulse-loader-card">
-                  <div class="pulse-loader-icon">🗳️</div>
-                  <div class="pulse-loader-title">Ballot Pulse</div>
-                  <p class="pulse-loader-subtitle" id="pulseLoaderSubtitle">Calibrating election lenses...</p>
-                  <div class="pulse-loader-bars" aria-hidden="true">
-                    <span></span><span></span><span></span><span></span>
-                  </div>
-                </div>
-              </div>
-              <div class="results-grid" id="resultsGrid"></div>
-              <div class="empty-state" id="emptyState">
-                <div class="empty-state-icon">📊</div>
-                <h3>No results yet</h3>
-                <p>Run the parser or select files from the sidebar to view results.</p>
-              </div>
-
               <section class="artifact-hub" aria-label="Data artifacts">
                 <details class="artifact-card collapsible-card" id="inputArtifacts">
                   <summary class="artifact-card-header">

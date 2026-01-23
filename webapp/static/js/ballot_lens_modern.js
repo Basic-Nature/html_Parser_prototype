@@ -1241,10 +1241,66 @@ function initScrollIndicators() {
   });
 }
 
+// Initialize results preview bar functionality
+function initResultsPreviewBar() {
+  const previewBar = document.getElementById('resultsPreviewBar');
+  const resultCountBadge = document.getElementById('resultCountBadge');
+  const lastUpdatedPreview = document.getElementById('lastUpdatedPreview');
+  const resultsGrid = document.getElementById('resultsGrid');
+  
+  if (!previewBar) return;
+  
+  // Sync result count and last updated time
+  function updateResultsPreview() {
+    if (resultsGrid && resultCountBadge) {
+      const resultCards = resultsGrid.querySelectorAll('.result-card, .card');
+      const count = resultCards.length;
+      resultCountBadge.textContent = `${count} result${count !== 1 ? 's' : ''}`;
+    }
+    
+    if (lastUpdatedPreview) {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      lastUpdatedPreview.textContent = timeStr;
+    }
+  }
+  
+  // Auto-expand when parser runs (when pulse loader shows)
+  const pulseLoader = document.getElementById('pulseLoader');
+  if (pulseLoader) {
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          const isLoading = !pulseLoader.classList.contains('hidden');
+          if (isLoading && !previewBar.open) {
+            previewBar.open = true;
+          }
+        }
+      });
+    });
+    observer.observe(pulseLoader, { attributes: true });
+  }
+  
+  // Watch for results grid changes
+  if (resultsGrid) {
+    const gridObserver = new MutationObserver(() => {
+      updateResultsPreview();
+    });
+    gridObserver.observe(resultsGrid, { childList: true, subtree: true });
+  }
+  
+  // Initial update
+  updateResultsPreview();
+  
+  // Update time every minute
+  setInterval(updateResultsPreview, 60000);
+}
+
 // Initialize mobile sidebar handlers on DOMContentLoaded
 document.addEventListener('DOMContentLoaded', () => {
   initSidebarMobile();
   initScrollIndicators();
+  initResultsPreviewBar();
 });
 
 // Calculate actual viewport height (accounts for mobile browser chrome)
