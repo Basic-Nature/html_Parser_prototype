@@ -175,51 +175,47 @@
                               </div>
                             </div>
                             <div class="source-body">
-                              <!-- COLLAPSIBLE INSTRUCTIONS (collapsed by default) -->
-                              <details class="instructions-collapsible" id="urlInstructions">
-                                <summary class="instructions-summary">
-                                  <span class="summary-icon">▶</span>
-                                  <span class="summary-text">How to run the parser</span>
-                                </summary>
-                                <div class="instructions-content">
-                                  <h4>Run Overview</h4>
-                                  <p>Track the current session, source, and mode before launching the parser.</p>
+                              <!-- INSTRUCTIONS (visible by default, toggles with URL container) -->
+                              <div class="source-instructions" id="urlInstructions" aria-label="Parser quickstart">
+                                <h4 class="source-instructions-title">How to run the parser</h4>
+                                
+                                <h5 class="instructions-subtitle">Run Overview</h5>
+                                <p>Track the current session, source, and mode before launching the parser.</p>
+                                
+                                <dl class="info-list">
+                                  <dt>Session:</dt>
+                                  <dd><span id="sessionIdInstructions" class="mono">–</span></dd>
                                   
-                                  <dl class="info-list">
-                                    <dt>Session:</dt>
-                                    <dd><span id="sessionIdInstructions" class="mono">–</span></dd>
-                                    
-                                    <dt>Source:</dt>
-                                    <dd><span id="sourceInstructions" class="mono">input</span> • Output bypass: <span id="bypassInstructions" class="mono">off</span></dd>
-                                    
-                                    <dt>Mode:</dt>
-                                    <dd><span id="modeInstructions" class="mono">live</span> • Batch: <span id="batchInstructions" class="mono">off</span></dd>
-                                  </dl>
+                                  <dt>Source:</dt>
+                                  <dd><span id="sourceInstructions" class="mono">input</span> • Output bypass: <span id="bypassInstructions" class="mono">off</span></dd>
                                   
-                                  <h4>Expected Artifacts & Checks</h4>
-                                  <p>Each parse should yield structured CSV + metadata with quality metrics.</p>
-                                  <ul class="artifact-checklist">
-                                    <li><strong>Inputs:</strong> chosen URL, uploads, or direct list</li>
-                                    <li><strong>Outputs:</strong> CSV + metadata (contest, state/county, quality metrics)</li>
-                                    <li><strong>Preview:</strong> table or text blocks visible in the Results grid</li>
-                                    <li><strong>Storage:</strong> outputs listed under "Output" artifacts for download</li>
-                                  </ul>
-                                  
-                                  <h4>How to Use</h4>
-                                  <ol>
-                                    <li>Select your source: URL Library (below), Manual Uploads, or Direct URLs.</li>
-                                    <li>Pick a URL or upload file; the selection fills the current session.</li>
-                                    <li>Adjust options on the right: batch mode, output bypass, direct URLs.</li>
-                                    <li>Press "BallotLens" to start; watch the Debug Console for prompts.</li>
-                                    <li>Review outputs in the Output card; download CSV/metadata if saved.</li>
-                                  </ol>
-                                  
-                                  <p class="tip-text">💡 <strong>Tip:</strong> Collapse this section after picking a URL to keep the workspace compact.</p>
-                                </div>
-                              </details>
+                                  <dt>Mode:</dt>
+                                  <dd><span id="modeInstructions" class="mono">live</span> • Batch: <span id="batchInstructions" class="mono">off</span></dd>
+                                </dl>
+                                
+                                <h5 class="instructions-subtitle">Expected Artifacts & Checks</h5>
+                                <p>Each parse should yield structured CSV + metadata with quality metrics.</p>
+                                <ul class="artifact-checklist">
+                                  <li><strong>Inputs:</strong> chosen URL, uploads, or direct list</li>
+                                  <li><strong>Outputs:</strong> CSV + metadata (contest, state/county, quality metrics)</li>
+                                  <li><strong>Preview:</strong> table or text blocks visible in the Results grid</li>
+                                  <li><strong>Storage:</strong> outputs listed under "Output" artifacts for download</li>
+                                </ul>
+                                
+                                <h5 class="instructions-subtitle">How to Use</h5>
+                                <ol class="source-instructions-list">
+                                  <li>Select your source: URL Library (below), Manual Uploads, or Direct URLs.</li>
+                                  <li>Pick a URL or upload file; the selection fills the current session.</li>
+                                  <li>Adjust options on the right: batch mode, output bypass, direct URLs.</li>
+                                  <li>Press "BallotLens" to start; watch the Debug Console for prompts.</li>
+                                  <li>Review outputs in the Output card; download CSV/metadata if saved.</li>
+                                </ol>
+                                
+                                <p class="source-instructions-note">💡 <strong>Tip:</strong> Click the ▼ button above to access the URL list and search tools.</p>
+                              </div>
                               
-                              <!-- URL SEARCH & LIST (immediately visible) -->
-                              <div class="urls-container" id="urlsContainerTop">
+                              <!-- URL SEARCH & LIST (hidden by default, toggles with instructions) -->
+                              <div class="urls-container collapsed" id="urlsContainerTop">
                                 <label for="urlSearchBox" class="visually-hidden">Search URLs</label>
                                 <input type="search" id="urlSearchBox" class="url-search-box" placeholder="Search state, county, or URL..." aria-label="Search URLs">
                                 <div class="url-taxonomy-panel" aria-label="State and county shortcuts">

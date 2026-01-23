@@ -930,86 +930,52 @@ th {
   padding: var(--spacing-md);
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  gap: var(--spacing-sm);
 }
 
 .source-instructions-title {
-  margin: 0;
+  margin: 0 0 var(--spacing-sm) 0;
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text-muted-strong);
 }
 
+.instructions-subtitle {
+  margin: var(--spacing-md) 0 var(--spacing-xs) 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.instructions-subtitle:first-of-type {
+  margin-top: 0;
+}
+
+.source-instructions p {
+  margin: 0 0 var(--spacing-sm) 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
 .source-instructions-list {
-  margin: 0;
+  margin: 0 0 var(--spacing-sm) 0;
   padding-left: 1.25rem;
   color: var(--text-muted);
   display: grid;
   gap: 2px;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .source-instructions-note {
-  margin: 0;
+  margin: var(--spacing-md) 0 0 0;
+  padding: var(--spacing-sm);
+  background: rgba(37, 99, 235, 0.1);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-size: 0.86rem;
-}
-
-/* Collapsible Instructions */
-.instructions-collapsible {
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--spacing-md);
-  background: var(--bg-primary);
-  overflow: hidden;
-}
-
-.instructions-summary {
-  padding: var(--spacing-sm) var(--spacing-md);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-  user-select: none;
-  transition: background var(--transition-fast);
-  list-style: none; /* Remove default marker */
-}
-
-.instructions-summary::-webkit-details-marker {
-  display: none; /* Hide default marker in WebKit */
-}
-
-.instructions-summary:hover {
-  background: var(--bg-tertiary);
-}
-
-.summary-icon {
-  transition: transform var(--transition-fast);
-  font-size: 0.75rem;
-}
-
-details[open] .summary-icon {
-  transform: rotate(90deg); /* ▶ becomes ▼ */
-}
-
-.instructions-content {
-  padding: var(--spacing-md);
-  border-top: 1px solid var(--border-color);
-  font-size: 0.875rem;
-  line-height: 1.6;
-}
-
-.instructions-content h4 {
-  font-size: 0.875rem;
-  font-weight: 600;
-  margin: var(--spacing-md) 0 var(--spacing-xs) 0;
-  color: var(--accent-primary);
-}
-
-.instructions-content h4:first-child {
-  margin-top: 0;
+  font-size: 0.8125rem;
 }
 
 .info-list {
@@ -1033,19 +999,13 @@ details[open] .summary-icon {
 .artifact-checklist {
   margin: var(--spacing-sm) 0;
   padding-left: var(--spacing-lg);
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .artifact-checklist li {
   margin-bottom: var(--spacing-xs);
-}
-
-.tip-text {
-  background: rgba(37, 99, 235, 0.1);
-  border-left: 3px solid var(--accent-primary);
-  padding: var(--spacing-sm);
-  margin: var(--spacing-md) 0 0 0;
-  font-size: 0.8125rem;
-  border-radius: var(--radius-sm);
+  color: var(--text-muted);
 }
 
 @media (max-width: 840px) {

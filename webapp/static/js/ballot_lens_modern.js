@@ -6614,9 +6614,6 @@ const UrlListManager = (() => {
     const refreshBtn = $('#refreshUrlListBtn');
     const collapseBtn = $('#btnCollapseUrls');
     const urlsContainer = $('.urls-container');
-    const instructionsEl = document.querySelector('.source-instructions');
-    let urlsPlaceholder = null;
-    let instructionsWrapper = null;
     const stateSelect = $('#urlStateFilter');
     const countySelect = $('#urlCountyFilter');
 
@@ -6651,53 +6648,43 @@ const UrlListManager = (() => {
       });
     }
 
-    // URL section collapse toggle (default to collapsed)
+    // URL section collapse toggle
+    // Default: show instructions, hide URL container
+    // When toggled: hide instructions, show URL container
     if (collapseBtn && urlsContainer) {
-      if (instructionsEl && !instructionsWrapper) {
-        instructionsWrapper = document.createElement('div');
-        instructionsWrapper.className = 'source-instructions-content';
-        while (instructionsEl.firstChild) {
-          instructionsWrapper.appendChild(instructionsEl.firstChild);
-        }
-        instructionsEl.appendChild(instructionsWrapper);
-      }
-      if (!urlsPlaceholder) {
-        urlsPlaceholder = document.createElement('div');
-        urlsPlaceholder.className = 'urls-container-placeholder';
-        urlsContainer.parentNode && urlsContainer.parentNode.insertBefore(urlsPlaceholder, urlsContainer);
-      }
-
-      const urlsCollapsed = localStorage.getItem('urlsCollapsed') !== 'false'; // Default to collapsed
-      if (urlsCollapsed) {
+      const instructionsEl = document.querySelector('.source-instructions');
+      
+      // Initialize state from localStorage (default: instructions visible, URLs hidden)
+      const showUrls = localStorage.getItem('urlsExpanded') === 'true';
+      
+      if (showUrls) {
+        // Show URLs, hide instructions
+        urlsContainer.classList.remove('collapsed');
+        collapseBtn.classList.remove('collapsed');
+        if (instructionsEl) instructionsEl.style.display = 'none';
+      } else {
+        // Show instructions, hide URLs (default)
         urlsContainer.classList.add('collapsed');
         collapseBtn.classList.add('collapsed');
-        if (instructionsWrapper) {
-          instructionsWrapper.classList.add('hidden');
-        }
-        if (instructionsEl && urlsContainer.parentNode !== instructionsEl) {
-          instructionsEl.appendChild(urlsContainer);
-        }
+        if (instructionsEl) instructionsEl.style.display = 'flex';
       }
       
       collapseBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        const isCollapsed = urlsContainer.classList.toggle('collapsed');
-        collapseBtn.classList.toggle('collapsed');
-        localStorage.setItem('urlsCollapsed', String(isCollapsed));
-        if (isCollapsed) {
-          if (instructionsWrapper) {
-            instructionsWrapper.classList.add('hidden');
-          }
-          if (instructionsEl && urlsContainer.parentNode !== instructionsEl) {
-            instructionsEl.appendChild(urlsContainer);
-          }
+        const isExpanded = !urlsContainer.classList.contains('collapsed');
+        
+        if (isExpanded) {
+          // Currently showing URLs, switch to instructions
+          urlsContainer.classList.add('collapsed');
+          collapseBtn.classList.add('collapsed');
+          if (instructionsEl) instructionsEl.style.display = 'flex';
+          localStorage.setItem('urlsExpanded', 'false');
         } else {
-          if (instructionsWrapper) {
-            instructionsWrapper.classList.remove('hidden');
-          }
-          if (urlsPlaceholder && urlsContainer.parentNode !== urlsPlaceholder.parentNode) {
-            urlsPlaceholder.parentNode && urlsPlaceholder.parentNode.insertBefore(urlsContainer, urlsPlaceholder);
-          }
+          // Currently showing instructions, switch to URLs
+          urlsContainer.classList.remove('collapsed');
+          collapseBtn.classList.remove('collapsed');
+          if (instructionsEl) instructionsEl.style.display = 'none';
+          localStorage.setItem('urlsExpanded', 'true');
         }
       });
     }
