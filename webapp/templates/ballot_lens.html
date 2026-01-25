@@ -72,15 +72,19 @@
           <!-- Results Preview Bar (Collapsible) -->
           <details class="results-preview-bar" id="resultsPreviewBar" aria-label="Results preview">
             <summary class="results-preview-summary">
-              <div class="results-preview-header">
+              <div class="results-preview-instructions">
                 <div class="results-preview-title">
-                  <span class="results-preview-icon">📊</span>
-                  <h2>Parsed Results</h2>
+                  <span class="results-preview-icon">🧭</span>
+                  <h2>How to Use</h2>
                 </div>
-                <div class="results-preview-meta">
-                  <span class="badge" id="resultCountBadge">0 results</span>
-                  <span class="text-muted-inline">Updated: <span id="lastUpdatedPreview">now</span></span>
-                </div>
+                <ol class="results-preview-steps">
+                  <li>Select your source: URL Library (below), Manual Uploads, or Direct URLs.</li>
+                  <li>Pick a URL or upload file; the selection fills the current session.</li>
+                  <li>Adjust options on the right: batch mode, output bypass, direct URLs.</li>
+                  <li>Press “BallotLens” to start; watch the Debug Console for prompts.</li>
+                  <li>Review outputs in the Output card; download CSV/metadata if saved.</li>
+                </ol>
+                <p class="results-preview-tip">💡 Tip: Click the ▼ button above to access the URL list and search tools.</p>
               </div>
               <span class="results-preview-toggle" aria-hidden="true">▼</span>
             </summary>

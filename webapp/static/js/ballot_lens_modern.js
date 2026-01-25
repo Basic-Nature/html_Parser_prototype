@@ -1061,150 +1061,6 @@ function enhanceAccessibility() {
   console.log('[Accessibility] Enhanced with keyboard nav and ARIA labels');
 }
 
-// Mobile sidebar toggle and touch-to-close support
-function initSidebarMobile() {
-  try {
-    if (__tl_window.__tl_sidebarUnified) return;
-    const leftSidebar = document.querySelector('.sidebar-left, #sidebar');
-    const rightSidebar = document.querySelector('.sidebar-right');
-    const backdrop = document.querySelector('.sidebar-backdrop') || document.querySelector('.mobile-sidebar-overlay');
-    
-    if (!leftSidebar && !rightSidebar) return;
-    
-    // Helper functions
-    const closeSidebar = (sidebar, backdrop) => {
-      if (!sidebar) return;
-      
-      sidebar.classList.remove('sidebar-open');
-      if (backdrop) backdrop.classList.remove('visible');
-      
-      // Re-enable body scroll
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
-      
-      // Update ARIA
-      const toggle = sidebar.classList.contains('sidebar-right')
-        ? document.getElementById('btnToggleRightSidebar')
-        : document.querySelector('.sidebar-toggle');
-      
-      if (toggle) {
-        toggle.setAttribute('aria-expanded', 'false');
-      }
-    };
-    
-    const openSidebar = (sidebar, backdrop) => {
-      if (!sidebar) return;
-      
-      sidebar.classList.add('sidebar-open');
-      if (backdrop) backdrop.classList.add('visible');
-      document.body.style.overflow = 'hidden';
-      document.body.style.position = 'fixed';
-      document.body.style.width = '100%';
-      
-      // Update ARIA
-      const toggle = sidebar.classList.contains('sidebar-right')
-        ? document.getElementById('btnToggleRightSidebar')
-        : document.querySelector('.sidebar-toggle');
-      
-      if (toggle) {
-        toggle.setAttribute('aria-expanded', 'true');
-      }
-    };
-    
-    // ✅ CRITICAL: Only add swipe to BACKDROP, not sidebar content
-    if (backdrop) {
-      let touchStartX = 0;
-      let touchCurrentX = 0;
-      let tracking = false;
-      
-      backdrop.addEventListener('touchstart', (ev) => {
-        const t = ev.touches && ev.touches[0];
-        if (!t) return;
-        touchStartX = t.clientX;
-        tracking = true;
-      }, { passive: true });
-      
-      backdrop.addEventListener('touchmove', (ev) => {
-        if (!tracking) return;
-        const t = ev.touches && ev.touches[0];
-        if (!t) return;
-        touchCurrentX = t.clientX;
-      }, { passive: true });
-      
-      backdrop.addEventListener('touchend', () => {
-        if (!tracking) return;
-        tracking = false;
-        
-        const dx = touchCurrentX - touchStartX;
-        const threshold = 80;
-        
-        // Swipe on backdrop closes appropriate sidebar
-        if (Math.abs(dx) > threshold) {
-          const openSidebar = document.querySelector('.sidebar-left.sidebar-open, .sidebar-right.sidebar-open');
-          if (openSidebar) {
-            closeSidebar(openSidebar, backdrop);
-          }
-        }
-        
-        touchStartX = touchCurrentX = 0;
-      }, { passive: true });
-      
-      // Click backdrop to close
-      backdrop.addEventListener('click', () => {
-        const openSidebar = document.querySelector('.sidebar-left.sidebar-open, .sidebar-right.sidebar-open');
-        if (openSidebar) {
-          closeSidebar(openSidebar, backdrop);
-        }
-      });
-    }
-    
-    // ✅ NO touch handlers on sidebar itself - let native scroll work
-    
-    // Toggle button handling
-    [leftSidebar, rightSidebar].forEach(sidebar => {
-      if (!sidebar) return;
-      
-      const isRightSidebar = sidebar.classList.contains('sidebar-right');
-      const toggle = isRightSidebar 
-        ? document.getElementById('btnToggleRightSidebar')
-        : document.querySelector('.sidebar-toggle');
-      
-      if (toggle) {
-        toggle.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (sidebar.classList.contains('sidebar-open')) {
-            closeSidebar(sidebar, backdrop);
-          } else {
-            openSidebar(sidebar, backdrop);
-          }
-        });
-      }
-      
-      // Initialize state on mobile/tablet (<=1024px)
-      // Note: Breakpoint at 1024px ensures tablets get mobile behavior
-      if (window.innerWidth <= 1024) {
-        closeSidebar(sidebar, backdrop);
-      }
-    });
-    
-    // Keyboard shortcut: Escape to close any open sidebar
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        const openSidebar = document.querySelector('.sidebar-left.sidebar-open, .sidebar-right.sidebar-open');
-        if (openSidebar) {
-          e.preventDefault();
-          closeSidebar(openSidebar, backdrop);
-        }
-      }
-    });
-    
-  } catch (e) {
-    ErrorBoundary.logError(e, 'initSidebarMobile');
-  }
-}
-
 // Initialize scroll indicators for sidebars
 function initScrollIndicators() {
   const sidebars = document.querySelectorAll('.sidebar-left, .sidebar-right');
@@ -1223,12 +1079,16 @@ function initScrollIndicators() {
 
 // Initialize results preview bar functionality
 function initResultsPreviewBar() {
-  const previewBar = document.getElementById('resultsPreviewBar');
+  const previewBar = /** @type {HTMLDetailsElement|null} */ (document.getElementById('resultsPreviewBar'));
   const resultCountBadge = document.getElementById('resultCountBadge');
   const lastUpdatedPreview = document.getElementById('lastUpdatedPreview');
   const resultsGrid = document.getElementById('resultsGrid');
   
   if (!previewBar) return;
+
+  // Start collapsed by default
+  previewBar.removeAttribute('open');
+  previewBar.open = false;
   
   let previousCount = 0;
   
@@ -1286,10 +1146,11 @@ function initResultsPreviewBar() {
     // 'R' key to toggle results preview (when not typing in input)
     if (e.key === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const activeEl = document.activeElement;
-      const isTyping = activeEl && (
-        activeEl.tagName === 'INPUT' || 
-        activeEl.tagName === 'TEXTAREA' || 
-        activeEl.isContentEditable
+      const activeHtml = activeEl instanceof HTMLElement ? activeEl : null;
+      const isTyping = activeHtml && (
+        activeHtml.tagName === 'INPUT' || 
+        activeHtml.tagName === 'TEXTAREA' || 
+        activeHtml.isContentEditable
       );
       
       if (!isTyping) {
@@ -1322,7 +1183,6 @@ function initResultsPreviewBar() {
 
 // Initialize mobile sidebar handlers on DOMContentLoaded
 document.addEventListener('DOMContentLoaded', () => {
-  initSidebarMobile();
   initScrollIndicators();
   initResultsPreviewBar();
   
@@ -1345,6 +1205,9 @@ window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
     setViewportHeight();
+    if (__tl_window.__tl_sidebarUnified) {
+      return;
+    }
     // Re-check sidebar state
     const sidebar = document.getElementById('sidebar');
     if (sidebar && window.innerWidth > 768) {
@@ -6652,7 +6515,7 @@ const UrlListManager = (() => {
     // Default: show instructions, hide URL container
     // When toggled: hide instructions, show URL container
     if (collapseBtn && urlsContainer) {
-      const instructionsEl = document.querySelector('.source-instructions');
+      const instructionsEl = /** @type {HTMLElement | null} */ (document.querySelector('.source-instructions'));
       
       // Initialize state from localStorage (default: instructions visible, URLs hidden)
       const showUrls = localStorage.getItem('urlsExpanded') === 'true';

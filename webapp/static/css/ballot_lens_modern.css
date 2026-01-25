@@ -627,7 +627,7 @@ th {
   padding: var(--spacing-md) var(--content-padding);
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--spacing-md);
   user-select: none;
   transition: background var(--transition-fast);
@@ -641,11 +641,10 @@ th {
   background: var(--bg-tertiary);
 }
 
-.results-preview-header {
+.results-preview-instructions {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--spacing-md);
+  flex-direction: column;
+  gap: var(--spacing-xs);
   flex: 1;
   min-width: 0;
 }
@@ -665,6 +664,22 @@ th {
 
 .results-preview-icon {
   font-size: 1.5rem;
+}
+
+.results-preview-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--text-muted);
+  display: grid;
+  gap: 2px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.results-preview-tip {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
 }
 
 .results-preview-meta {
@@ -793,10 +808,8 @@ th {
     padding: var(--spacing-sm) var(--spacing-md);
   }
 
-  .results-preview-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--spacing-xs);
+  .results-preview-instructions {
+    gap: 6px;
   }
 
   .results-preview-title h2 {
@@ -1276,13 +1289,14 @@ th {
 
   #sidebar {
     position: fixed;
-    top: 0;
+    top: calc(var(--navbar-height) + env(safe-area-inset-top));
     left: -100%;
     bottom: 0;
-    width: 280px;
-    max-width: 100%;
+    width: min(92vw, 360px);
+    max-width: 360px;
     transition: left var(--transition-normal);
     z-index: var(--z-sidebar);  /* Above backdrop */
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
   }
 
   #sidebar.sidebar-open {
@@ -1732,12 +1746,12 @@ th {
   .sidebar-right {
     position: fixed;
     left: 0;
-    top: var(--navbar-height);
+    top: calc(var(--navbar-height) + env(safe-area-inset-top));
     bottom: 0; /* ✅ Stretch to bottom */
     height: auto; /* ✅ Let top/bottom define height */
     max-height: calc(100vh - var(--navbar-height)); /* ✅ Explicit max-height */
-    width: 85vw;
-    max-width: 340px;
+    width: min(92vw, 360px);
+    max-width: 360px;
     transform: translateX(-100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     z-index: var(--z-sidebar);
@@ -1761,7 +1775,8 @@ th {
   .sidebar-left .sidebar-content,
   .sidebar-right .sidebar-content {
     padding: var(--spacing-md); /* ✅ Padding goes on content wrapper */
-    padding-bottom: calc(var(--spacing-xl) + 120px); /* ✅ Extra bottom space to prevent cutoff */
+    padding-top: calc(var(--spacing-md) + env(safe-area-inset-top));
+    padding-bottom: calc(var(--spacing-xl) + 120px + env(safe-area-inset-bottom)); /* ✅ Extra bottom space to prevent cutoff */
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
