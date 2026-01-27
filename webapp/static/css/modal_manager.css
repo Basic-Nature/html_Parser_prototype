@@ -1,0 +1,14 @@
+/* Minimal styles for Modal Manager scaffold */
+#modal-manager-root { position: relative; z-index: 9999; }
+.mm-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; padding:16px; }
+.mm-wrapper { background: var(--bg, #fff); color: var(--text,#111); max-width:720px; width:100%; border-radius:8px; box-shadow:0 8px 32px rgba(0,0,0,0.4); padding:18px; transform:translateY(0); }
+.mm-title { margin:0 0 8px 0; font-size:1.125rem; }
+.mm-body { margin-bottom:12px; font-size:0.95rem; line-height:1.4; }
+.mm-actions { display:flex; gap:8px; justify-content:flex-end; }
+.mm-action-btn { padding:8px 12px; border-radius:6px; border:1px solid rgba(0,0,0,0.08); background:var(--btn,#f3f4f6); cursor:pointer; }
+.mm-action-btn.mm-default { background: var(--primary,#2563eb); color:#fff; border-color:transparent; }
+@media (prefers-color-scheme: dark) {
+  .mm-wrapper { background: #0f1720; color: #e6eef8; }
+  .mm-action-btn { background:#111827; color:#e6eef8; border-color:rgba(255,255,255,0.04); }
+  .mm-action-btn.mm-default { background: #1d4ed8; }
+}

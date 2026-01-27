@@ -113,6 +113,45 @@
     W.__tl_helpers.safeClick = function(el) {
       try { if (el && typeof /** @type {any} */ (el).click === 'function') /** @type {any} */ (el).click(); } catch (/** @type {any} */ e) { /* noop */ }
     };
+    // Placeholder migration helpers using a WeakMap to avoid attaching properties
+    // directly to DOM elements (prevents collisions and non-configurable issues).
+    // Stored on a window-scoped map so dev reloads reuse the same store.
+    /** @type {WeakMap<Element, Comment>} */
+    const _mmPlaceholderGlobal = (function() {
+      try {
+        if (typeof window !== 'undefined') {
+          // eslint-disable-next-line no-underscore-dangle
+          window.__mm_placeholder_map = window.__mm_placeholder_map || new WeakMap();
+          // @ts-ignore - intentionally using a window-scoped store for migration
+          return window.__mm_placeholder_map;
+        }
+      } catch (e) {
+        /* noop */
+      }
+      return new WeakMap();
+    })();
+
+    function _getPlaceholder(el) {
+      try {
+        if (!el) return null;
+        // Migrate legacy property if present
+        if (el.__mm_placeholder) {
+          try { _mmPlaceholderGlobal.set(el, el.__mm_placeholder); } catch (e) { /* noop */ }
+          try { delete el.__mm_placeholder; } catch (e) { el.__mm_placeholder = null; }
+        }
+        return /** @type {Comment|null} */ (_mmPlaceholderGlobal.get(el) || null);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function _setPlaceholder(el, ph) {
+      try { if (el) _mmPlaceholderGlobal.set(el, ph); } catch (e) { /* noop */ }
+    }
+
+    function _deletePlaceholder(el) {
+      try { if (el) _mmPlaceholderGlobal.delete(el); } catch (e) { /* noop */ }
+    }
     /**
      * Safely set disabled on buttons/inputs
      * @param {Element|null|undefined} el
@@ -131,6 +170,30 @@
     W.__tl_helpers.getBound = function(el, prop) { try { return el && typeof el === 'object' ? el[prop] : undefined; } catch (/** @type {any} */ e) { return undefined; } };
   } catch (/** @type {any} */ e) { /* ignore helper install errors */ }
 })();
+
+// Expose placeholder helpers in outer scope for rest of file (delegates to window map when available)
+function _getPlaceholder(el) {
+  try {
+    if (!el) return null;
+    if (typeof window !== 'undefined' && window.__mm_placeholder_map) {
+      // migrate legacy prop if present
+      if (el.__mm_placeholder) {
+        try { window.__mm_placeholder_map.set(el, el.__mm_placeholder); } catch (e) { /* noop */ }
+        try { delete el.__mm_placeholder; } catch (e) { el.__mm_placeholder = null; }
+      }
+      return window.__mm_placeholder_map.get(el) || null;
+    }
+    return null;
+  } catch (e) { return null; }
+}
+
+function _setPlaceholder(el, ph) {
+  try { if (!el) return; if (typeof window !== 'undefined' && window.__mm_placeholder_map) { window.__mm_placeholder_map.set(el, ph); } } catch (e) { /* noop */ }
+}
+
+function _deletePlaceholder(el) {
+  try { if (!el) return; if (typeof window !== 'undefined' && window.__mm_placeholder_map) { window.__mm_placeholder_map.delete(el); } } catch (e) { /* noop */ }
+}
 
 /* --------------------------------------------------------------------------
  * Canonical typedefs -- single source of truth to avoid duplicate JSDoc defs
@@ -4776,14 +4839,58 @@ function showPrompt({ title = 'Action required', message = '', options = [], pla
     renderPromptOptions('');
 
     const promptModal = $('#promptModal');
-    if (promptModal) {
-      promptModal.classList.remove('hidden');
-      console.debug('[showPrompt] Modal made visible');
-    }
-    if (promptSearchEl) {
-      promptSearchEl.focus();
-    } else if (promptInputEl) {
-      promptInputEl.focus();
+    try {
+      if (window.modalManager && promptModal instanceof HTMLElement) {
+        // Move existing prompt DOM into modalManager body to preserve event handlers
+        try {
+          // store placeholder for restoration (migrate legacy prop into WeakMap)
+          if (!_getPlaceholder(promptModal)) {
+            const ph = document.createComment('promptModal-placeholder');
+            promptModal.parentNode && promptModal.parentNode.insertBefore(ph, promptModal);
+            _setPlaceholder(promptModal, ph);
+          }
+        } catch (e) { /* noop */ }
+
+        // Show via modalManager, body as the promptModal node (moved)
+        window.modalManager.showModal({
+          id: 'promptModal',
+          title: promptTitleEl ? (promptTitleEl.textContent || 'Action required') : 'Action required',
+          body: promptModal,
+          blocking: true,
+          actions: [
+            { id: 'submit', label: 'Submit', isDefault: true },
+            { id: 'cancel', label: 'Cancel' }
+          ]
+        }).then((result) => {
+          try {
+            if (result && result.actionId === 'submit') {
+              submitPrompt();
+            } else if (result && (result.actionId === 'cancel' || result.actionId === 'dismiss')) {
+              // preserve state and show restore
+              hidePrompt({ preserveState: true, showRestore: true, reason: 'cancel' });
+            }
+          } catch (e) { /* noop */ }
+        }).catch(() => { /* noop */ });
+
+        // ensure focus lands on search/input
+        setTimeout(() => {
+          if (promptSearchEl) promptSearchEl.focus(); else if (promptInputEl) promptInputEl.focus();
+        }, 30);
+      } else {
+        if (promptModal) {
+          promptModal.classList.remove('hidden');
+          console.debug('[showPrompt] Modal made visible (legacy)');
+        }
+        if (promptSearchEl) {
+          promptSearchEl.focus();
+        } else if (promptInputEl) {
+          promptInputEl.focus();
+        }
+      }
+    } catch (e) {
+      // fallback to legacy behavior
+      if (promptModal) promptModal.classList.remove('hidden');
+      if (promptSearchEl) promptSearchEl.focus(); else if (promptInputEl) promptInputEl.focus();
     }
   }, 'showPrompt');
 }
@@ -4841,7 +4948,29 @@ function hidePrompt(options) {
       placeholder: (promptInputEl instanceof HTMLInputElement) ? promptInputEl.placeholder : ''
     } : null;
     const promptModal = $('#promptModal');
-    if (promptModal) promptModal.classList.add('hidden');
+    // If modalManager is managing the prompt, ask it to close first
+    try {
+      if (window.modalManager && typeof window.modalManager.closeModal === 'function') {
+        try { window.modalManager.closeModal('promptModal'); } catch (e) { /* noop */ }
+      }
+    } catch (e) { /* noop */ }
+
+    // If promptModal was moved into modalManager, rely on modalManager to close it
+    try {
+      if (promptModal && _getPlaceholder(promptModal) && window.modalManager) {
+        // modalManager will have already removed the element; restore to placeholder
+        const ph = _getPlaceholder(promptModal);
+        if (ph && ph.parentNode) {
+          ph.parentNode.insertBefore(promptModal, ph);
+          ph.parentNode.removeChild(ph);
+        }
+        _deletePlaceholder(promptModal);
+      } else if (promptModal) {
+        promptModal.classList.add('hidden');
+      }
+    } catch (e) {
+      try { if (promptModal) promptModal.classList.add('hidden'); } catch (e2) {}
+    }
     document.body.classList.remove('no-scroll');
     if (showRestore && snapshot && (snapshot.message || (snapshot.options && snapshot.options.length))) {
       try {

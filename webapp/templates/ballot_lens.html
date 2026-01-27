@@ -31,6 +31,7 @@
 
   <!-- Modern dashboard interface -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/ballot_lens_modern.css') }}?v={{ static_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modal_manager.css') }}?v={{ static_version }}">
 </head>
 <body data-page="run-parser" data-allow-style="1">
   <!-- Init script moved to external file (CSP-friendly) -->
@@ -592,6 +593,39 @@
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot_lens_init.js') }}?v={{ static_version }}" defer></script>
     <!-- htmllint-enable -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/nav_guard.js') }}?v={{ static_version }}" defer></script>
+    <!-- Modal manager (lightweight demo scaffold) -->
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/modal_manager.js') }}?v={{ static_version }}"></script>
+    <script nonce="{{ g.csp_nonce }}">
+    document.addEventListener('DOMContentLoaded', function(){
+      try{
+        if(window.modalManager){
+          const btn = document.getElementById('schemaBuildBtn');
+          if(btn){
+            btn.addEventListener('click', async function(e){
+              // Demo confirmation modal; does not prevent other handlers.
+              try{
+                const res = await window.modalManager.showModal({
+                  id: 'confirm_build',
+                  type: 'confirm',
+                  title: 'Confirm Build Row',
+                  body: 'Proceed to build the normalized row from current fields?',
+                  actions: [
+                    { id: 'build', label: 'Build', isDefault: true },
+                    { id: 'cancel', label: 'Cancel' }
+                  ],
+                  blocking: true
+                });
+                // simple demo: log result
+                console.debug('modalManager result', res);
+              } catch (err) {
+                console.debug('modal dismissed', err);
+              }
+            }, {capture:false});
+          }
+        }
+      }catch(e){/* noop */}
+    });
+    </script>
     <!-- Modern dashboard interface (includes all features) -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot_lens_modern.js') }}?v={{ static_version }}" defer></script>
 
