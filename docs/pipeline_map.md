@@ -3192,8 +3192,8 @@ candidate column extraction.")
 - L369 **WARNING**: (self, msg, context=None, exc*info=None):
 - L371 **WARNING**: ", msg, context, color="yellow")
 - L385 **WARNING**: ": "yellow",
-- L598 **WARNING**: (f"Log directory does not exist: {log*dir}")
-- L615 **WARNING**: (f"Corrupt line in {path}: {e}")
+- L617 **WARNING**: (f"Log directory does not exist: {log*dir}")
+- L634 **WARNING**: (f"Corrupt line in {path}: {e}")
 
 ### utils/shared\_logic.py {#webapp-parser-utils-shared-logic-py}
 

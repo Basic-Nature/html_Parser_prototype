@@ -72,23 +72,39 @@
           <!-- Results Preview Bar (Collapsible) -->
           <details class="results-preview-bar" id="resultsPreviewBar" aria-label="Results preview">
             <summary class="results-preview-summary">
-              <div class="results-preview-instructions">
+              <div class="results-preview-header">
                 <div class="results-preview-title">
                   <span class="results-preview-icon">🧭</span>
-                  <h2>How to Use</h2>
+                  <div class="results-preview-text">
+                    <h2>Results Preview</h2>
+                    <p class="results-preview-tip">Live snapshot of parser output. Auto-opens when a run starts; collapse when you need space.</p>
+                  </div>
                 </div>
-                <ol class="results-preview-steps">
-                  <li>Select your source: URL Library (below), Manual Uploads, or Direct URLs.</li>
-                  <li>Pick a URL or upload file; the selection fills the current session.</li>
-                  <li>Adjust options on the right: batch mode, output bypass, direct URLs.</li>
-                  <li>Press “BallotLens” to start; watch the Debug Console for prompts.</li>
-                  <li>Review outputs in the Output card; download CSV/metadata if saved.</li>
-                </ol>
-                <p class="results-preview-tip">💡 Tip: Click the ▼ button above to access the URL list and search tools.</p>
+                <div class="results-preview-meta" aria-live="polite">
+                  <span id="resultCountBadge" class="badge badge-soft">0 results</span>
+                  <span class="meta-sep" aria-hidden="true">•</span>
+                  <span id="lastUpdatedPreview" class="meta-muted" aria-label="Last updated time">—</span>
+                </div>
               </div>
               <span class="results-preview-toggle" aria-hidden="true">▼</span>
             </summary>
             <div class="results-preview-content">
+              <div class="results-progress-card" id="progressCard" role="status" aria-live="polite">
+                <div class="progress-card-head">
+                  <div class="progress-label">Pipeline heartbeat</div>
+                  <div class="progress-meta">
+                    <span class="progress-session" id="progressSessionId">—</span>
+                    <span class="progress-sep" aria-hidden="true">•</span>
+                    <span class="progress-status" id="progressStatus">IDLE</span>
+                  </div>
+                </div>
+                <div class="progress-track" id="progressStages" aria-label="Pipeline stages">
+                  <div class="stage">PREPARE</div>
+                  <div class="stage">SOURCE</div>
+                  <div class="stage">RUN</div>
+                  <div class="stage">REVIEW</div>
+                </div>
+              </div>
               <div class="results-actions">
                 <input type="text" id="searchResults" class="search-box" placeholder="Search results...">
                 <button type="button" class="btn-primary" id="btnRefreshResults" aria-label="Refresh results">🔄 Refresh</button>
@@ -114,8 +130,10 @@
 
           <div class="content-shell">
             <div id="pipelineHintHost" class="pipeline-hint-row">
-              <div class="pipeline-hint" data-level="info">Review inputs and choose your data source. Press Run when ready.</div>
+              <div class="pipeline-hint" data-level="info" role="status" aria-live="polite" aria-atomic="true" tabindex="-1">Review inputs and choose your data source. Press Run when ready.</div>
             </div>
+            <div class="visually-hidden" aria-live="polite" aria-atomic="true" id="statusLiveRegion"></div>
+            <div class="visually-hidden" aria-live="assertive" aria-atomic="true" id="statusAlertRegion"></div>
 
             <!-- Overview strip: compact summary of what happens in a run -->
             <section class="dashboard-row" aria-label="Run overview">
@@ -244,7 +262,61 @@
                                   <input type="url" id="newUrl" class="url-add-input" placeholder="Paste new election results URL here" required aria-label="New URL">
                                   <button type="submit" class="btn btn-success url-add-btn">Add URL</button>
                                   <button type="button" class="btn btn-primary ms-1em" id="refreshUrlListBtn" title="Refresh URL list">⟳</button>
+                                  <div id="addUrlStatus" class="form-text" role="status" aria-live="polite"></div>
                                 </form>
+
+                                <!-- Schema Helper: normalize entries for urls.txt -->
+                                <div class="schema-helper-card" id="schemaHelperCard" aria-label="Schema helper for urls.txt">
+                                  <div class="schema-helper-head">
+                                    <div>
+                                      <div class="schema-title">Schema Helper</div>
+                                      <p class="schema-subtitle">Build a normalized row for urls.txt and copy it in one click.</p>
+                                    </div>
+                                    <div class="schema-pill" aria-hidden="true">year • contest • state • scope • format • notes • url</div>
+                                  </div>
+                                  <div class="schema-fields">
+                                    <label for="schemaYear" class="schema-label">Year
+                                      <input type="number" id="schemaYear" name="schemaYear" min="1990" max="2100" inputmode="numeric" placeholder="2024" required>
+                                    </label>
+                                    <label for="schemaContest" class="schema-label">Contest
+                                      <input type="text" id="schemaContest" name="schemaContest" placeholder="President" required>
+                                    </label>
+                                    <label for="schemaState" class="schema-label">State (2-letter)
+                                      <input type="text" id="schemaState" name="schemaState" maxlength="2" placeholder="CA">
+                                    </label>
+                                    <label for="schemaScope" class="schema-label">County / Scope
+                                      <input type="text" id="schemaScope" name="schemaScope" placeholder="statewide or county name">
+                                    </label>
+                                    <label for="schemaFormat" class="schema-label">Format
+                                      <select id="schemaFormat" name="schemaFormat" required>
+                                        <option value="">— Select format —</option>
+                                        <option value="HTML">HTML</option>
+                                        <option value="PDF">PDF</option>
+                                        <option value="CSV">CSV</option>
+                                        <option value="Excel">Excel</option>
+                                        <option value="TXT">TXT</option>
+                                        <option value="JSON">JSON</option>
+                                        <option value="Google Sheets">Google Sheets</option>
+                                        <option value="Dropbox">Dropbox</option>
+                                        <option value="TBD">TBD</option>
+                                      </select>
+                                    </label>
+                                    <label for="schemaNotes" class="schema-label">Notes
+                                      <input type="text" id="schemaNotes" name="schemaNotes" placeholder="Official results portal">
+                                    </label>
+                                    <label for="schemaUrl" class="schema-label">URL
+                                      <input type="url" id="schemaUrl" name="schemaUrl" placeholder="https://..." required>
+                                    </label>
+                                  </div>
+                                  <div class="schema-actions">
+                                    <button type="button" class="btn btn-sm" id="schemaAutofillBtn">Autofill from URL</button>
+                                    <button type="button" class="btn-primary btn-sm" id="schemaBuildBtn">Build row</button>
+                                    <button type="button" class="btn btn-sm" id="schemaCopyBtn" disabled>Copy row</button>
+                                    <div id="schemaStatus" class="schema-status" role="status" aria-live="polite"></div>
+                                  </div>
+                                  <label for="schemaPreview" class="schema-label preview-label">Preview row (tab-separated)</label>
+                                  <textarea id="schemaPreview" class="schema-preview" rows="3" readonly spellcheck="false" aria-describedby="schemaStatus"></textarea>
+                                </div>
                               </div>
                             </div>
                           </div>

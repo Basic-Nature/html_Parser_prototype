@@ -329,7 +329,7 @@ try {
    * @param {ParserToolsToggle | null | undefined} toggle
    * @returns {void}
    */
-  function closeParserTools(
+  function _closeParserTools(
     /** @type {ParserToolsDropdown | null | undefined} */ dropdown,
     /** @type {ParserToolsToggle | null | undefined} */ toggle
   ){
@@ -343,7 +343,7 @@ try {
     if(ddAny && ddAny._onKey) { document.removeEventListener('keydown', ddAny._onKey); try { delete ddAny._onKey; } catch (/** @type {any} */ e) {} }
   }
 
-  function openParserTools(
+  function _openParserTools(
     /** @type {ParserToolsDropdown | null | undefined} */ dropdown,
     /** @type {ParserToolsToggle | null | undefined} */ toggle
   ){
@@ -358,7 +358,7 @@ try {
     /** @param {KeyboardEvent} e */
     function onKey(e){
       if(e.key === 'Escape'){
-        closeParserTools(dropdown,toggle);
+        _closeParserTools(dropdown,toggle);
       }
       if(e.key === 'Tab'){
         const focusables = focusableDescendants(dropdown);
@@ -414,7 +414,7 @@ const CONFIG = {
 };
 
 // Accessor to get left toggle element when needed (avoid early DOM query)
-function getToggleLeftBtn() { return document.getElementById('sidebarToggleBtn'); }
+function _getToggleLeftBtn() { return document.getElementById('sidebarToggleBtn'); }
 
 // Defensive guard: ensure `document.addEventListener` exists and is callable.
 // Some injected or third-party code can accidentally overwrite it; avoid a hard crash
@@ -849,7 +849,7 @@ const VirtualScroll = (() => {
 // PHASE 2: Table Preview (P2.3)
 // ============================================
 
-const TablePreview = (() => {
+const _TablePreview = (() => {
   /* PreviewRow/PreviewData typedefs consolidated at top of file. */
   /**
    * @interface RenderPreviewOptions
@@ -943,10 +943,10 @@ const SessionRestore = (() => {
 
   /**
    * Save a lightweight restore snapshot to sessionStorage.
-   * @param {any} data
+  * @param {any} _data
    * @returns {void}
    */
-  function saveState(data) {
+  function saveState(_data) {
     try {
       /** @type {SessionRestoreState} */
       const state = {
@@ -1061,6 +1061,50 @@ function enhanceAccessibility() {
   console.log('[Accessibility] Enhanced with keyboard nav and ARIA labels');
 }
 
+// ============================================
+// Live region announcer (status + alert)
+// ============================================
+
+const LiveMessenger = (() => {
+  const polite = /** @type {HTMLElement|null} */ (document.getElementById('statusLiveRegion'));
+  const alertEl = /** @type {HTMLElement|null} */ (document.getElementById('statusAlertRegion'));
+
+  /**
+   * Update a live region and optionally focus a target node.
+   * @param {HTMLElement|null} el
+   * @param {string} message
+   * @param {HTMLElement|string|null} [focusTarget]
+   */
+  function updateRegion(el, message, focusTarget) {
+    if (!el) return;
+    el.textContent = '';
+    queueMicrotask(() => {
+      el.textContent = message;
+      if (focusTarget) {
+        const node = typeof focusTarget === 'string' ? document.querySelector(focusTarget) : focusTarget;
+        if (node instanceof HTMLElement) {
+          try { node.focus({ preventScroll: false }); } catch (/** @type {any} */ _e) { /* ignore */ }
+        }
+      }
+    });
+  }
+
+  return {
+    /**
+     * Polite announcement.
+     * @param {string} msg
+     * @param {{ focusTarget?: HTMLElement|string|null }} [opts]
+     */
+    announce(msg, opts) { updateRegion(polite, msg, opts?.focusTarget ?? null); },
+    /**
+     * Assertive announcement.
+     * @param {string} msg
+     * @param {{ focusTarget?: HTMLElement|string|null }} [opts]
+     */
+    alert(msg, opts) { updateRegion(alertEl, msg, opts?.focusTarget ?? null); }
+  };
+})();
+
 // Initialize scroll indicators for sidebars
 function initScrollIndicators() {
   const sidebars = document.querySelectorAll('.sidebar-left, .sidebar-right');
@@ -1083,11 +1127,11 @@ function initResultsPreviewBar() {
   const resultCountBadge = document.getElementById('resultCountBadge');
   const lastUpdatedPreview = document.getElementById('lastUpdatedPreview');
   const resultsGrid = document.getElementById('resultsGrid');
+  const pulseLoader = document.getElementById('pulseLoader');
   
   if (!previewBar) return;
 
-  // Start collapsed by default
-  previewBar.removeAttribute('open');
+  // Ensure the bar starts collapsed; it will open on click or when loader activates
   previewBar.open = false;
   
   let previousCount = 0;
@@ -1099,14 +1143,22 @@ function initResultsPreviewBar() {
       const count = resultCards.length;
       resultCountBadge.textContent = `${count} result${count !== 1 ? 's' : ''}`;
       
+      const changed = count !== previousCount;
+      const increased = count > previousCount && previousCount > 0;
+
       // Add "new results" indicator if count increased
-      if (count > previousCount && previousCount > 0) {
+      if (increased) {
         resultCountBadge.classList.add('has-new-results');
         // Remove after 5 seconds
         setTimeout(() => {
           resultCountBadge.classList.remove('has-new-results');
         }, 5000);
       }
+
+      if (changed) {
+        LiveMessenger.announce(`Results updated: ${count} item${count !== 1 ? 's' : ''} available.`, { focusTarget: increased ? previewBar : null });
+      }
+
       previousCount = count;
     }
     
@@ -1118,12 +1170,16 @@ function initResultsPreviewBar() {
   }
   
   // Auto-expand when parser runs (when pulse loader shows)
-  const pulseLoader = document.getElementById('pulseLoader');
   if (pulseLoader) {
+    let initialized = false;
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
           const isLoading = !pulseLoader.classList.contains('hidden');
+          if (!initialized) {
+            initialized = true;
+            return; // ignore first mutation to avoid initial auto-open on page load
+          }
           if (isLoading && !previewBar.open) {
             previewBar.open = true;
           }
@@ -1141,38 +1197,7 @@ function initResultsPreviewBar() {
     gridObserver.observe(resultsGrid, { childList: true, subtree: true });
   }
   
-  // Keyboard shortcuts for power users
-  document.addEventListener('keydown', (e) => {
-    // 'R' key to toggle results preview (when not typing in input)
-    if (e.key === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      const activeEl = document.activeElement;
-      const activeHtml = activeEl instanceof HTMLElement ? activeEl : null;
-      const isTyping = activeHtml && (
-        activeHtml.tagName === 'INPUT' || 
-        activeHtml.tagName === 'TEXTAREA' || 
-        activeHtml.isContentEditable
-      );
-      
-      if (!isTyping) {
-        e.preventDefault();
-        previewBar.open = !previewBar.open;
-        // Focus the summary for accessibility
-        if (previewBar.open) {
-          previewBar.querySelector('summary')?.focus();
-        }
-      }
-    }
-    
-    // 'Escape' key to close results preview
-    if (e.key === 'Escape' && previewBar.open) {
-      const focusWithinPreview = previewBar.contains(document.activeElement);
-      if (focusWithinPreview) {
-        e.preventDefault();
-        previewBar.open = false;
-        previewBar.querySelector('summary')?.focus();
-      }
-    }
-  });
+  // Keyboard shortcuts removed: toggle via click for predictability
   
   // Initial update
   updateResultsPreview();
@@ -1302,7 +1327,7 @@ function showFlaggedModal(flagged, report_path) {
      * @param {string} key
      * @returns {string|number}
      */
-    function getSortValue(item, key) {
+    const getSortValue = (item, key) => {
       if (key === 'url') return (item.url || '').toLowerCase();
       if (key === 'status') return (item.status || '').toLowerCase();
       if (key === 'reasons') return (Array.isArray(item.reasons) ? item.reasons.join(' ') : (item.reasons || '')).toLowerCase();
@@ -1312,13 +1337,13 @@ function showFlaggedModal(flagged, report_path) {
       }
       if (key === 'metadata') return JSON.stringify(item.metadata_excerpt || {}).toLowerCase();
       return '';
-    }
+    };
 
     /**
      * Render provided rows into table body.
      * @param {FlaggedItem[]} list
      */
-    function renderRows(list) {
+    const renderRows = (list) => {
       if (!tbody) return;
       tbody.innerHTML = '';
       // apply sort
@@ -1348,7 +1373,7 @@ function showFlaggedModal(flagged, report_path) {
         let openLinkHtml = '';
         const possibleFile = rowMeta.output_file || rowMeta.output_file_path || rowMeta.output_path || rowMeta.output_filename || '';
         if (possibleFile) {
-          const base = String(possibleFile).split(/[\\\\\/]/).pop();
+          const base = String(possibleFile).split(/[\\/]/).pop();
           openLinkHtml = `<a class="btn btn-xs" href="/download_fs?root=output&path=&name=${encodeURIComponent(base)}" target="_blank" rel="noopener">Open output</a>`;
         }
         let jumpBtnHtml = '';
@@ -1421,7 +1446,7 @@ function showFlaggedModal(flagged, report_path) {
         }
         if (meta && (meta.output_file || meta.output_file_path || meta.output_filename)) {
           const possibleFile = meta.output_file || meta.output_file_path || meta.output_filename || '';
-          const base = String(possibleFile).split(/[\\\/]/).pop();
+          const base = String(possibleFile).split(/[\\/]/).pop();
           // call server to locate viewer page (build index if needed)
           fetch(`/csv_locate?root=output&path=&name=${encodeURIComponent(base)}&row=${encodeURIComponent(rowIdx)}`)
             .then(r => r.json())
@@ -1454,13 +1479,13 @@ function showFlaggedModal(flagged, report_path) {
      * @param {string} text
      * @param {Element} targetBtn
      */
-    function promptCopyFallback(text, targetBtn) {
+    const promptCopyFallback = (text, targetBtn) => {
       const ta = document.createElement('textarea');
       ta.value = text; document.body.appendChild(ta);
       ta.select();
       try { document.execCommand('copy'); targetBtn.textContent = 'Copied'; setTimeout(()=> targetBtn.textContent = 'Copy', 1200); } catch (e) { alert('Copy failed — open the metadata and copy manually.'); }
       ta.remove();
-    }
+    };
 
     // initial render
     renderRows(flagged);
@@ -1470,7 +1495,7 @@ function showFlaggedModal(flagged, report_path) {
     const filterInput = modal.querySelector('#flaggedFilter');
     /** @type {HTMLInputElement | null} */
     const confInput = modal.querySelector('#flaggedMinConf');
-    function applyFilter() {
+    const applyFilter = () => {
       const q = (filterInput instanceof HTMLInputElement ? (filterInput.value || '') : '').toLowerCase().trim();
       const minConf = parseFloat(confInput instanceof HTMLInputElement ? confInput.value : 'NaN');
       const filtered = flagged.filter(f => {
@@ -1488,12 +1513,12 @@ function showFlaggedModal(flagged, report_path) {
         return ok;
       });
       renderRows(filtered);
-    }
+    };
     filterInput.addEventListener('input', debounce(applyFilter, 150));
     confInput.addEventListener('input', debounce(applyFilter, 150));
 
     // header sort handlers + UI indicators
-    function updateHeaderIndicators() {
+    const updateHeaderIndicators = () => {
       modal.querySelectorAll('.flagged-table thead th').forEach(th => {
         if (!(th instanceof HTMLElement)) return;
         const k = th.getAttribute('data-key') || '';
@@ -1506,7 +1531,7 @@ function showFlaggedModal(flagged, report_path) {
         }
         th.style.cursor = k ? 'pointer' : '';
       });
-    }
+    };
 
     modal.querySelectorAll('.flagged-table thead th').forEach(th => {
       if (!(th instanceof HTMLElement)) return;
@@ -1523,16 +1548,16 @@ function showFlaggedModal(flagged, report_path) {
     updateHeaderIndicators();
 
     // export handlers
-    function exportJSON() {
+    const exportJSON = () => {
       const payload = JSON.stringify(flagged, null, 2);
       const blob = new Blob([/** @type {any} */ (payload)], { type: 'application/json' });
       const name = reportName ? `${reportName.replace(/\.json$/,'')}_flagged.json` : `flagged_${Date.now()}.json`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    }
+    };
 
-    function exportCSV() {
+    const exportCSV = () => {
       const keys = new Set();
       flagged.forEach(f => { Object.keys(f.metadata_excerpt || {}).forEach(k=>keys.add(k)); });
       const metaKeys = Array.from(keys);
@@ -1548,7 +1573,7 @@ function showFlaggedModal(flagged, report_path) {
       const name = reportName ? `${reportName.replace(/\.json$/,'')}_flagged.csv` : `flagged_${Date.now()}.csv`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    }
+    };
 
     const exCSV = modal.querySelector('#flaggedExportCSV');
     if (exCSV) exCSV.addEventListener('click', exportCSV);
@@ -1626,7 +1651,7 @@ async function runIntegrationTests() {
  * P3.1: Color-Coded Logs
  * Apply color coding to log entries based on level
  */
-const LogColorCoding = (() => {
+const _LogColorCoding = (() => {
   const levelColors = {
     'ERROR': { bg: '#3d1a1a', border: '#dc2626', text: '#fca5a5' },
     'CRITICAL': { bg: '#3d1a1a', border: '#991b1b', text: '#fca5a5' },
@@ -2106,6 +2131,18 @@ socket.on('session_state', /** @param {SessionStatePayload} data */ (data) => {
       updateProgressCard(data);
       updateOverviewStrip(data);
       updateSessionsList();
+
+      const stateVal = String(data?.state || '').toUpperCase();
+      const hintTarget = /** @type {HTMLElement|null} */ (
+        document.querySelector('#pipelineHintHost .pipeline-hint')
+      );
+      if (stateVal === 'COMPLETED') {
+        LiveMessenger.announce('Parser run completed. Review outputs in the Output panel.', { focusTarget: hintTarget });
+      } else if (stateVal === 'ERROR') {
+        LiveMessenger.alert('Parser run failed. Check the Debug Console for details.', { focusTarget: hintTarget });
+      } else if (stateVal === 'CANCELLED') {
+        LiveMessenger.alert('Parsing cancelled.', { focusTarget: hintTarget });
+      }
     }),
     'socket:session_state'
   );
@@ -2688,7 +2725,7 @@ function escapeHtml(text) {
  * @param {number} bytes
  * @returns {string}
  */
-function formatBytes(bytes) {
+function _formatBytes(bytes) {
   if (bytes === 0) return '0 B';
   /** @type {number} */
   const k = 1024;
@@ -2930,10 +2967,10 @@ function attachResultHandlers() {
      */
 
     /** @type {ResultCardCheckbox} */
-    const cbEl = /** @type {ResultCardCheckbox} */ (cb);
+    const _cbEl = /** @type {ResultCardCheckbox} */ (cb);
 
     /** @type {string} */
-    const checkboxResultId = String(id);
+    const _checkboxResultId = String(id);
     /**
      * @typedef {(e: Event) => void} ChangeHandler
      */
@@ -3040,10 +3077,10 @@ function loadFilePreview(result) {
 
 /**
  * Display a simple table preview for a result.
- * @param {FilePreviewResult} result
+ * @param {FilePreviewResult} _result
  * @returns {void}
  */
-function displayTablePreview(result) {
+function displayTablePreview(_result) {
   // Simulated data - in production, load actual file
   /** @type {TableData} */
   const sampleData = [
@@ -3084,10 +3121,10 @@ function displayTablePreview(result) {
 
 /**
  * Display a JSON preview for a result.
- * @param {FilePreviewResult} result
+ * @param {FilePreviewResult} _result
  * @returns {void}
  */
-function displayJsonPreview(result) {
+function displayJsonPreview(_result) {
   /** @type {HTMLElement | null} */
   const tabContent = /** @type {HTMLElement | null} */ ($('#tabPreview'));
   /** @type {JsonPreviewData} */
@@ -3202,11 +3239,13 @@ function updateProgressCard(sessionData) {
   if (progressStagesEl) {
     /** @type {string[]} */
     const phases = ['PREPARE', 'SOURCE', 'RUN', 'REVIEW'];
+    /** @type {string} */
+    const activePhase = (sessionData.phase && phases.includes(sessionData.phase)) ? sessionData.phase : 'PREPARE';
     const stagesHtml = phases.map(phase => {
       /** @type {string} */
       let className = '';
-      if (phase === sessionData.phase) className = 'active';
-      else if (phases.indexOf(phase) < phases.indexOf(sessionData.phase)) className = 'completed';
+      if (phase === activePhase) className = 'active';
+      else if (phases.indexOf(phase) < phases.indexOf(activePhase)) className = 'completed';
       return `<div class="stage ${className}">${phase}</div>`;
     }).join('');
 
@@ -3545,7 +3584,6 @@ if (drawerHandle) {
 document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars(){
   const legacySidebar = document.getElementById('sidebar');
   const rightSidebar = document.querySelector('.sidebar-right');
-  const sidebarBackdrop = null;
   const toggleLeftBtn = $('#sidebarToggleBtn');
   const toggleRightBtn = $('#btnToggleRightSidebar');
   const overlay = $('#mobileSidebarOverlay');
@@ -4512,7 +4550,7 @@ function renderGroupElement(group, key) {
 }
 
 // Stub for old rendering (replaced above)
-function renderPromptOptions_OLD(filterText = '') {
+function _renderPromptOptions_OLD(filterText = '') {
   ErrorBoundary.safeExecute(() => {
     if (!promptOptionsEl) return;
     const needle = filterText.toLowerCase();
@@ -5119,7 +5157,7 @@ const ManualUploadManager = (() => {
    * @param {string|undefined|null} pathStr
    * @returns {ManualUploadPath|null}
    */
-  function parseManualUploadPath(pathStr) {
+  function _parseManualUploadPath(pathStr) {
     if (!pathStr || typeof pathStr !== 'string') return null;
     const normalized = pathStr.replace(/\\/g, '/').trim().replace(/^\/+|\/+$/g, '');
     if (!normalized) return null;
@@ -5185,10 +5223,6 @@ const ManualUploadManager = (() => {
            */
           (a, b) => b.modified - a.modified
         );
-
-      /** @type {NormalizedUpload[]} */
-      inventory = /** @type {NormalizedUpload[]} */ (inventory);
-      
       updateManualUploadUI();
       
       if (!silent) {
@@ -5252,7 +5286,7 @@ const ManualUploadManager = (() => {
     
     /* NormalizedUpload typedef defined earlier; reuse canonical typedef. */
 
-    inventory.forEach((/** @type {NormalizedUpload} */ file, /** @type {number} */ idx) => {
+    inventory.forEach((/** @type {NormalizedUpload} */ file, /** @type {number} */ _idx) => {
       /** @type {HTMLOptionElement} */
       const option = document.createElement('option');
       option.value = file.relPath;
@@ -5877,9 +5911,9 @@ const SwipeHandler = (() => {
   /**
    * Handle touch start event
    * @param {TouchEvent} e
-   * @param {HTMLElement} sidebar
+  * @param {HTMLElement} _sidebar
    */
-  function handleTouchStart(e, sidebar) {
+  function handleTouchStart(e, _sidebar) {
     if (!e.touches || e.touches.length === 0) return;
     
     const touch = e.touches[0];
@@ -5892,9 +5926,9 @@ const SwipeHandler = (() => {
   /**
    * Handle touch move event
    * @param {TouchEvent} e
-   * @param {HTMLElement} sidebar
+  * @param {HTMLElement} _sidebar
    */
-  function handleTouchMove(e, sidebar) {
+  function handleTouchMove(e, _sidebar) {
     if (!e.touches || e.touches.length === 0) return;
     
     const touch = e.touches[0];
@@ -5996,7 +6030,7 @@ const PipelineManager = (() => {
   let currentPhase = 'prepare';
   let pipelineHintEl = null;
   
-  function getPhaseIndex(phase) {
+  function _getPhaseIndex(phase) {
     return PHASES.indexOf(phase);
   }
   
@@ -6010,6 +6044,14 @@ const PipelineManager = (() => {
     document.dispatchEvent(phaseEvent);
     
     updatePhaseHint();
+
+    // Announce key lifecycle transitions for screen readers
+    if (phase === 'run') {
+      LiveMessenger.announce('Parser started. Monitor the debug console for progress.');
+    }
+    if (phase === 'review') {
+      LiveMessenger.announce('Parsing complete. Review outputs or download artifacts.', { focusTarget: pipelineHintEl });
+    }
     
     if (options.focus) {
       // Focus relevant UI element based on phase
@@ -6023,6 +6065,14 @@ const PipelineManager = (() => {
       if (!pipelineHintEl) return;
     }
     
+    // Ensure focusable/announced even if markup omitted attributes
+    if (pipelineHintEl instanceof HTMLElement) {
+      pipelineHintEl.setAttribute('role', 'status');
+      pipelineHintEl.setAttribute('aria-live', 'polite');
+      pipelineHintEl.setAttribute('aria-atomic', 'true');
+      if (!pipelineHintEl.hasAttribute('tabindex')) pipelineHintEl.setAttribute('tabindex', '-1');
+    }
+
     let message = '';
     let level = 'info';
     
@@ -6314,7 +6364,7 @@ const UrlListManager = (() => {
     }
 
     // County detection: query param county=, tokens containing "county", or path segment preceding "county"
-    const qsCounty = lower.match(/[?&]county=([^&#\/]*)/i);
+    const qsCounty = lower.match(/[?&]county=([^&#/]*)/i);
     if (qsCounty && qsCounty[1]) {
       county = qsCounty[1];
     } else {
@@ -6479,6 +6529,332 @@ const UrlListManager = (() => {
     const urlsContainer = $('.urls-container');
     const stateSelect = $('#urlStateFilter');
     const countySelect = $('#urlCountyFilter');
+    const addForm = /** @type {HTMLFormElement|null} */ (document.getElementById('addUrlForm'));
+    const newUrlInput = /** @type {HTMLInputElement|null} */ (document.getElementById('newUrl'));
+    const addUrlStatus = /** @type {HTMLElement|null} */ (document.getElementById('addUrlStatus'));
+    const addUrlButton = addForm ? addForm.querySelector('.url-add-btn') : null;
+
+    // Schema helper controls
+    const schemaYear = /** @type {HTMLInputElement|null} */ (document.getElementById('schemaYear'));
+    const schemaContest = /** @type {HTMLInputElement|null} */ (document.getElementById('schemaContest'));
+    const schemaState = /** @type {HTMLInputElement|null} */ (document.getElementById('schemaState'));
+    const schemaScope = /** @type {HTMLInputElement|null} */ (document.getElementById('schemaScope'));
+    const schemaFormat = /** @type {HTMLSelectElement|null} */ (document.getElementById('schemaFormat'));
+    const schemaNotes = /** @type {HTMLInputElement|null} */ (document.getElementById('schemaNotes'));
+    const schemaUrl = /** @type {HTMLInputElement|null} */ (document.getElementById('schemaUrl'));
+    const schemaBuildBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('schemaBuildBtn'));
+    const schemaCopyBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('schemaCopyBtn'));
+    const schemaAutofillBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('schemaAutofillBtn'));
+    const schemaPreview = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('schemaPreview'));
+    const schemaStatus = /** @type {HTMLElement|null} */ (document.getElementById('schemaStatus'));
+
+    const schemaDefaultYear = new Date().getFullYear();
+    if (schemaYear && !schemaYear.value) schemaYear.value = String(schemaDefaultYear);
+    if (schemaFormat && !schemaFormat.value) schemaFormat.value = 'HTML';
+
+    // -------------------------------
+    // Schema Helper: build urls.txt rows
+    // -------------------------------
+    const STATE_CODES = [
+      'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'
+    ];
+    const STATE_NAMES = {
+      alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA', colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA', hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA', kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD', massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS', missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK', oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT', vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY'
+    };
+
+    const announce = (msg) => {
+      try {
+        LiveMessenger.announce(msg);
+      } catch (e) {
+        // no-op if LiveMessenger is unavailable
+      }
+    };
+
+    const setSchemaStatus = (msg, tone = 'muted') => {
+      if (!schemaStatus) return;
+      schemaStatus.textContent = msg;
+      schemaStatus.classList.remove('text-success', 'text-danger', 'text-muted');
+      if (tone === 'success') schemaStatus.classList.add('text-success');
+      else if (tone === 'error') schemaStatus.classList.add('text-danger');
+      else schemaStatus.classList.add('text-muted');
+      announce(msg);
+    };
+
+    const normalizeStateCode = (val) => {
+      if (!val) return '';
+      const clean = String(val).trim();
+      if (clean.length === 2) {
+        const up = clean.toUpperCase();
+        return STATE_CODES.includes(up) ? up : '';
+      }
+      const lower = clean.toLowerCase();
+      if (STATE_NAMES[lower]) return STATE_NAMES[lower];
+      // Try space-less match for names like newyork
+      const spaced = lower.replace(/_/g, ' ');
+      return STATE_NAMES[spaced] || '';
+    };
+
+    const titleCase = (text) => {
+      return text
+        ? text
+          .toLowerCase()
+          .split(/\s+/)
+          .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+          .join(' ')
+        : '';
+    };
+
+    const guessFromUrl = (urlVal) => {
+      if (!urlVal) return {};
+      try {
+        const meta = /** @type {{ state?: string|null, county?: string|null }} */ (extractMeta(urlVal) || {});
+        const inferred = {};
+        if (meta.state) inferred.state = meta.state;
+        if (meta.county) inferred.county = meta.county;
+        if (inferred.state && inferred.county) return inferred;
+
+        const u = new URL(urlVal);
+        const host = u.hostname.toLowerCase();
+        const path = u.pathname.toLowerCase();
+        // Guess state by code or name in host/path
+        for (const code of STATE_CODES) {
+          const codeLower = code.toLowerCase();
+          if (host.includes(`.${codeLower}.`) || host.endsWith(`.${codeLower}`) || path.includes(`/${codeLower}/`)) {
+            inferred.state = inferred.state || code;
+            break;
+          }
+        }
+        if (!inferred.state) {
+          for (const [name, code] of Object.entries(STATE_NAMES)) {
+            const token = name.replace(/\s+/g, '-');
+            if (host.includes(token) || path.includes(token)) {
+              inferred.state = code;
+              break;
+            }
+          }
+        }
+        // Guess county if present
+        if (!inferred.county) {
+          const countyMatch = path.match(/\b([a-z]+)-?county\b/);
+          if (countyMatch) {
+            inferred.county = titleCase(countyMatch[1] + ' County');
+          }
+        }
+        return inferred;
+      } catch (e) {
+        return {};
+      }
+    };
+
+    const buildSchemaRowFromValues = (vals) => {
+      const year = (vals.year || '').trim();
+      const contest = (vals.contest || '').trim();
+      const stateRaw = (vals.state || '').trim();
+      const scopeRaw = (vals.scope || '').trim();
+      const format = (vals.format || '').trim();
+      const notes = (vals.notes || '').trim();
+      const urlVal = (vals.url || '').trim();
+
+      if (!/^\d{4}$/.test(year)) return { error: 'Year must be 4 digits.' };
+      if (!contest) return { error: 'Contest is required.' };
+      const state = normalizeStateCode(stateRaw);
+      if (stateRaw && !state) return { error: 'State must be a valid 2-letter code or name.' };
+      if (!format) return { error: 'Format is required.' };
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(urlVal);
+        if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('bad scheme');
+      } catch (e) {
+        return { error: 'URL must be http/https and well-formed.' };
+      }
+
+      const scope = scopeRaw || (state ? 'statewide' : '');
+      const finalScope = scope.trim();
+      const row = [
+        year,
+        contest,
+        state || '',
+        finalScope,
+        format,
+        notes,
+        parsedUrl.toString(),
+      ].join('\t');
+
+      return { row };
+    };
+
+    const buildSchemaRow = () => {
+      if (!schemaYear || !schemaContest || !schemaState || !schemaScope || !schemaFormat || !schemaNotes || !schemaUrl || !schemaPreview) {
+        return null;
+      }
+      const result = buildSchemaRowFromValues({
+        year: schemaYear.value,
+        contest: schemaContest.value,
+        state: schemaState.value,
+        scope: schemaScope.value,
+        format: schemaFormat.value,
+        notes: schemaNotes.value,
+        url: schemaUrl.value,
+      });
+      if (result.error) {
+        setSchemaStatus(result.error, 'error');
+        return null;
+      }
+      const row = result.row;
+      schemaPreview.value = row;
+      if (schemaCopyBtn) schemaCopyBtn.disabled = false;
+      setSchemaStatus('Row built. Copy and paste into urls.txt.', 'success');
+      // Prefill add form URL for convenience
+      if (newUrlInput && !newUrlInput.value) {
+        newUrlInput.value = schemaUrl.value.trim();
+      }
+      return row;
+    };
+
+    const handleSchemaAutofill = () => {
+      if (!schemaUrl || !schemaState || !schemaScope) return;
+      const urlVal = schemaUrl.value.trim();
+      if (!urlVal) {
+        setSchemaStatus('Enter a URL to autofill.', 'error');
+        return;
+      }
+      const guess = guessFromUrl(urlVal);
+      const updates = [];
+      if (guess.state && !schemaState.value) {
+        schemaState.value = guess.state;
+        updates.push(`state -> ${guess.state}`);
+      }
+      if (guess.county && !schemaScope.value) {
+        schemaScope.value = guess.county;
+        updates.push(`scope -> ${guess.county}`);
+      }
+      if (!updates.length) {
+        setSchemaStatus('No autofill hints found.', 'muted');
+        return;
+      }
+      setSchemaStatus(`Autofilled ${updates.join(', ')}.`, 'success');
+    };
+
+    if (schemaAutofillBtn) {
+      schemaAutofillBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        handleSchemaAutofill();
+      });
+    }
+    if (schemaUrl) {
+      schemaUrl.addEventListener('blur', () => {
+        // Gentle autofill on blur without overriding existing values
+        if (!schemaState?.value || !schemaScope?.value) handleSchemaAutofill();
+      });
+    }
+    if (schemaBuildBtn) {
+      schemaBuildBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        buildSchemaRow();
+      });
+    }
+    if (schemaCopyBtn && schemaPreview) {
+      schemaCopyBtn.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        if (!schemaPreview.value) {
+          setSchemaStatus('Nothing to copy. Build a row first.', 'error');
+          return;
+        }
+        const row = schemaPreview.value;
+        try {
+          await navigator.clipboard.writeText(row);
+          setSchemaStatus('Copied to clipboard.', 'success');
+        } catch (e) {
+          try {
+            const ta = document.createElement('textarea');
+            ta.value = row;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            setSchemaStatus('Copied to clipboard.', 'success');
+          } catch (err) {
+            setSchemaStatus('Copy failed. Please select and copy manually.', 'error');
+          }
+        }
+      });
+    }
+
+    // Expose a lightweight self-check for build/autofill so QA can call from console.
+    const runSchemaHelperSelfTest = () => {
+      const sampleUrl = 'https://example.com/wa/pierce-county/results?state=WA';
+      const guess = guessFromUrl(sampleUrl);
+      const res = buildSchemaRowFromValues({
+        year: '2024',
+        contest: 'Governor',
+        state: guess.state || 'WA',
+        scope: guess.county || 'Pierce County',
+        format: 'HTML',
+        notes: 'sample',
+        url: sampleUrl,
+      });
+      return {
+        ok: !!res.row,
+        row: res.row || '',
+        error: res.error || null,
+        guess,
+      };
+    };
+    try {
+      const wAny = /** @type {any} */ (window);
+      wAny.SchemaHelperSelfTest = runSchemaHelperSelfTest;
+    } catch (e) { /* noop */ }
+
+    /**
+     * Update inline status text for the Add URL form.
+     * @param {string} msg
+     * @param {'info'|'success'|'warning'|'error'} [type]
+     */
+    function setAddUrlStatus(msg, type = 'info') {
+      if (!addUrlStatus) return;
+      addUrlStatus.textContent = msg;
+      addUrlStatus.classList.toggle('text-success', type === 'success');
+      addUrlStatus.classList.toggle('text-danger', type === 'error');
+      addUrlStatus.classList.toggle('text-warning', type === 'warning');
+    }
+
+    if (addForm) {
+      addForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const urlVal = newUrlInput ? newUrlInput.value.trim() : '';
+        if (!urlVal) {
+          setAddUrlStatus('Enter a URL to add.', 'warning');
+          LiveMessenger.announce('Enter a URL to add.', { focusTarget: newUrlInput });
+          return;
+        }
+
+        setAddUrlStatus('Adding URL...', 'info');
+        if (addUrlButton instanceof HTMLButtonElement) addUrlButton.disabled = true;
+
+        try {
+          const response = await fetch('/api/urls', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: urlVal, session_id: currentSessionId || undefined })
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !payload.success) {
+            const errMsg = payload.error || 'Unable to add URL. Ensure it is http/https and allowed.';
+            throw new Error(errMsg);
+          }
+          setAddUrlStatus('URL added to library.', 'success');
+          LiveMessenger.announce('URL added to library.', { focusTarget: addUrlStatus || addForm });
+          if (newUrlInput) newUrlInput.value = '';
+          await fetchUrls();
+        } catch (/** @type {any} */ err) {
+          const msg = err?.message || 'Unable to add URL.';
+          setAddUrlStatus(msg, 'error');
+          LiveMessenger.alert(`Add URL failed: ${msg}`, { focusTarget: addUrlStatus || addForm });
+        } finally {
+          if (addUrlButton instanceof HTMLButtonElement) addUrlButton.disabled = false;
+        }
+      });
+    }
 
     if (searchBox) {
       searchBox.addEventListener('input', (e) => {
@@ -6967,7 +7343,7 @@ const TablePreviewManager = (() => {
 // Enhanced Folder Browser
 // ============================================
 
-const FolderBrowser = (() => {
+const _FolderBrowser = (() => {
   const ROOT_LABELS = {
     input: 'Input Files',
     uploads: 'Uploads',
@@ -7000,7 +7376,7 @@ const FolderBrowser = (() => {
     }
   }
   
-  function show(root, initialPath = '', onSelect, options = {}) {
+  function show(root, initialPath = '', onSelect, _options = {}) {
     const modal = Modal.get();
     if (!modal) {
       onSelect?.(null);
@@ -7033,7 +7409,7 @@ const FolderBrowser = (() => {
       crumbs.push(rootCrumb);
       
       let acc = '';
-      parts.forEach((part, i) => {
+      parts.forEach((part, _i) => {
         const sep = document.createElement('span');
         sep.textContent = ' / ';
         crumbs.push(sep);
@@ -7182,7 +7558,7 @@ const FolderBrowser = (() => {
 // Download Modal
 // ============================================
 
-const DownloadModal = (() => {
+const _DownloadModal = (() => {
   function show(options, summary, callback) {
     const modal = Modal.get();
     if (!modal) {
@@ -7300,7 +7676,7 @@ document.addEventListener('DOMContentLoaded', () => {
   ArtifactPanels.init();
 
   // Navigation overflow ("More" menu) for small screens
-  const navLinks = Array.from(document.querySelectorAll('.navbar-links .nav-link'));
+  const _navLinks = Array.from(document.querySelectorAll('.navbar-links .nav-link'));
   const navMoreToggle = document.getElementById('btnNavMore');
   const navMoreDropdown = document.getElementById('navMoreDropdown');
   function setHiddenWithInert(el, hidden) {

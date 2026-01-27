@@ -49,7 +49,8 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime, timezone
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
 from threading import Event, Thread
 from typing import Callable, Tuple
 from urllib.parse import urlparse
@@ -154,6 +155,65 @@ try:
     DB_MONITOR_FILE.touch(exist_ok=True)
 except Exception:
     pass
+
+# Flagged URL audit log (rotated daily, small caps)
+FLAGGED_URL_SIZE_CAP = 5 * 1024 * 1024  # ~5MB per daily file
+FLAGGED_URL_RETENTION_DAYS = 30
+
+
+def _flagged_url_log_dir() -> Path:
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return LOG_DIR
+
+
+def _rotate_flagged_url_path(now: datetime | None = None) -> Path:
+    """Return a safe path for today's flagged URL log, adding part suffix if size cap exceeded."""
+    now = now or datetime.now(timezone.utc)
+    base = _flagged_url_log_dir()
+    prefix = base / f"flagged_urls-{now.strftime('%Y%m%d')}"
+    candidate = prefix.with_suffix('.jsonl')
+    if candidate.exists() and candidate.stat().st_size >= FLAGGED_URL_SIZE_CAP:
+        # find next part
+        part = 1
+        while True:
+            cand = prefix.with_name(f"{prefix.name}-part{part}").with_suffix('.jsonl')
+            if not cand.exists() or cand.stat().st_size < FLAGGED_URL_SIZE_CAP:
+                candidate = cand
+                break
+            part += 1
+    return candidate
+
+
+def _prune_flagged_url_logs(now: datetime | None = None) -> None:
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=FLAGGED_URL_RETENTION_DAYS)
+    base = _flagged_url_log_dir()
+    try:
+        for entry in base.glob('flagged_urls-*.jsonl'):
+            try:
+                mtime = datetime.fromtimestamp(entry.stat().st_mtime, tz=timezone.utc)
+                if mtime < cutoff:
+                    entry.unlink(missing_ok=True)
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
+def log_flagged_url(event: dict) -> None:
+    payload = dict(event or {})
+    payload.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+    path = _rotate_flagged_url_path()
+    try:
+        with open(path, 'ab') as f:
+            f.write(orjson.dumps(payload) + b"\n")
+    except Exception:
+        # best effort; no raise to avoid blocking request
+        return
+    _prune_flagged_url_logs()
 
 # 2. Flask App & SocketIO Initialization
 app = Flask(__name__)
@@ -1357,6 +1417,46 @@ def api_urls():
         url = safe_strip(safe_get(data, "url", ""))
         if not url:
             return jsonify({"success": False, "error": "URL required."}), 400
+
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        session_id = safe_strip(safe_get(data, "session_id"))
+        suspicious_tokens = (
+            "dropbox.com",
+            "drive.google",
+            "docs.google",
+            "googleusercontent.com",
+            "storage.googleapis",
+            "amazonaws.com",
+            "s3.amazonaws.com",
+            "digitaloceanspaces.com",
+            "box.com",
+            "onedrive",
+            "sharepoint",
+            "github.com",
+            "raw.githubusercontent",
+            "gitlab",
+            "pastebin",
+            "notion.so",
+            "cloudfront.net",
+        )
+        if parsed.scheme not in {"http", "https"} or not host:
+            log_flagged_url({
+                "url": url,
+                "reason": "invalid_url",
+                "session_id": session_id,
+            })
+            return jsonify({"success": False, "error": "Only http/https URLs with a host are accepted."}), 400
+
+        if any(tok in host for tok in suspicious_tokens):
+            log_flagged_url({
+                "url": url,
+                "reason": "suspicious_host",
+                "host": host,
+                "session_id": session_id,
+            })
+            return jsonify({"success": False, "error": "Host requires manual review; URL logged for safety."}), 400
+
         with open(urls_file, "a", encoding="utf-8") as f:
             f.write(url + "\n")
         return jsonify({"success": True})

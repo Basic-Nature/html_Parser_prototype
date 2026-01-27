@@ -115,9 +115,7 @@
        * @param {Element|null|undefined} el
        * @returns {el is HTMLElement}
        */
-      function isHTMLElement(el) {
-        return el instanceof HTMLElement;
-      }
+      const isHTMLElement = (el) => el instanceof HTMLElement;
       const aid = overlay.getAttribute && overlay.getAttribute('data-anchor-id');
       if (aid) return document.getElementById(aid) || document.querySelector('[data-overlay-anchor="' + aid + '"]');
       // try aria-controls reverse lookup
@@ -300,7 +298,6 @@
   // Focus-trap and body scroll-lock
   const trapMap = new WeakMap();
   let overlayOpenCount = 0;
-  let previousBodyOverflow = null;
 
   function bodyLock() {
     try {
