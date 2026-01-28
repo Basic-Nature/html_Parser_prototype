@@ -30,7 +30,7 @@ config.setdefault("view_more_selector", "button:has-text('View More')")
 config.setdefault("vote_type_toggle_selector", "button:has-text('Vote Type')")
 config.setdefault("county_toggle_selector", "button:has-text('By County')")
 
-def parse(page, html_context=None):
+def parse(page=None, html_context=None, coordinator=None, context=None, session_id=None, **kwargs):
     if html_context is None:
         html_context = {}
 

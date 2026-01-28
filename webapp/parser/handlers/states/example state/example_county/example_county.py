@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .....Context_Integration.context_coordinator import ContextCoordinator
 
 context_cache = {}
-def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, session_id=None, logger=logger, **kwargs) -> tuple:
+def parse(page=None, html_context=None, coordinator=None, context=None, session_id=None, **kwargs):
     """
     Main entry point for Example County handler.
     - Scans HTML for context and contests

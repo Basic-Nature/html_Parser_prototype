@@ -12,7 +12,7 @@ from ....utils.shared_logic import (
 )
 
 
-def parse(page: Page, html_context: Optional[dict] = None) -> Tuple[Any, Any, Any, dict]:
+def parse(page=None, html_context=None, coordinator=None, context=None, session_id=None, **kwargs):
     """
     State-level handler for New York.
     Delegates to the correct county parser if available.

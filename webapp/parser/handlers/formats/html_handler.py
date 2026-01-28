@@ -134,8 +134,30 @@ def parse(
     available_counties: List[str] = []
     interactive_mode = session_id is None
 
-    # 5. Feedback loop: If handler not found, try ML/NLP and prompt user
+    # 5. Feedback loop: If handler not found, first try a non-interactive
+    # dynamic-download fallback (detect obvious CSV/JSON/XLSX/PDF links),
+    # then fall back to the generic HTML extractor.
     if not handler_found:
+        download_result = None
+        try:
+            from .download_finder import attempt_download_and_parse
+            download_result = attempt_download_and_parse(
+                page=page,
+                coordinator=coordinator,
+                context=html_context,
+                session_id=session_id,
+                logger=logger,
+                non_interactive=True,
+            )
+        except Exception:
+            download_result = None
+
+        if download_result:
+            attempts.append({"method": "dynamic_download_fallback", "status": "success"})
+            routing_trace.append("Dynamic download fallback succeeded.")
+            return download_result
+
+        # If no download handled the page, try the prior generic HTML fallback
         fallback_result = _attempt_generic_fallback(
             page=page,
             coordinator=coordinator,
