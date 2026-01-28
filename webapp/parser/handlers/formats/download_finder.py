@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 
 from ...utils.logger_singleton import logger
 
-
+## (A) Run the signature-normalization plan (scan handlers and auto-fix non-canonical signatures), then re-run the smoke test and full pytest;
 def find_download_links(page: Any, base_url: str | None = None, session_id: str | None = None) -> List[str]:
     """
     Heuristic finder for obvious CSV/JSON download links on a page.
