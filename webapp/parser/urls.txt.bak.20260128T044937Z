@@ -26,15 +26,23 @@ TBD	Results Archive	Oregon	statewide	HTML	ORSOS record 6873777	https://records.s
 2024	Senate	Michigan	statewide	HTML	Vote history index	https://mvic.sos.state.mi.us/votehistory/Index?type=C&electionDate=11-5-2024
 2024	President	Virginia	statewide	HTML	Results overview	https://www.elections.virginia.gov/resultsreports/election-results
 2024	Senate	Virginia	statewide	CSV	Download CSV	https://enr.elections.virginia.gov/cdn/results/d2c804ee-4ec2-46bb-91d7-5b41526eab03/Election%20Results_e5b689ae-a931-4b8a-a5f7-7392e9571c61.csv
+2024	Senate	Washington	statewide	CSV	All counties export	https://results.vote.wa.gov/results/20241105/export/20241105_AllCounties.csv
 2024	Chief Justice Supreme Court	Alabama	statewide	PDF	Certified results	https://www.sos.alabama.gov/sites/default/files/election-2024/State%20Certification%20of%202024%20General%20Election.pdf
 2024	Attorney General	North Carolina	statewide	HTML	Contest summary	https://er.ncsbe.gov/?election_dt=11/05/2024&county_id=1&office=COS&contest=0
+2024	Senate	Pennsylvania	statewide	HTML	Report center	https://www.electionreturns.pa.gov/ReportCenter/Reports
 2024	Senate	California	statewide	HTML	Statement of vote	https://www.sos.ca.gov/elections/prior-elections/statewide-election-results/general-election-nov-5-2024/statement-vote
+2024	President	Alabama	statewide	PDF	Certified results	https://www.sos.alabama.gov/sites/default/files/election-2024/State%20Certification%20of%202024%20General%20Election.pdf
 2024	President	Maryland	statewide	HTML	Detail results	https://elections.maryland.gov/elections/2024/General_Results/gen_detail_results_2024_1_1.html
 2024	President	Oregon	statewide	PDF	Certified results	https://sos.oregon.gov/elections/Documents/results/november-general-2024-results.pdf
+2024	Secretary of State	Oregon	statewide	PDF	Certified results	https://sos.oregon.gov/elections/Documents/results/november-general-2024-results.pdf
+2024	Senate	Arizona	statewide	PDF	Certified canvass	https://apps.azsos.gov/election/2024/ge/canvass/20241105_GeneralCanvass_Signed.pdf
+2024	President	California	statewide	HTML	Statement of vote	https://www.sos.ca.gov/elections/prior-elections/statewide-election-results/general-election-nov-5-2024/statement-vote
+2024	Senate	Florida	statewide	CSV	Download results	https://results.elections.myflorida.com/downloadresults.asp?ElectionDate=11/5/2024&DATAMODE=
 2024	House of Representatives	Georgia	statewide	HTML	State results portal	https://results.sos.ga.gov/results/public/Georgia/elections/2024NovGen
 2024	President	Maine	statewide	XLSX	Certified results	https://www.maine.gov/sos/sites/maine.gov.sos/files/inline-files/President%20and%20Vice%20President%20FINAL-Corrected%2020241205.xlsx
 2024	Senate	Maine	statewide	XLSX	Certified results	https://www.maine.gov/sos/sites/maine.gov.sos/files/inline-files/US%20Senator%20FINAL-Corrected%2020241205.xlsx
 2024	Senate	Maryland	statewide	HTML	General results	https://elections.maryland.gov/elections/2024/General_Results/gen_results_2024_2.html
+2024	President	Michigan	statewide	HTML	Vote history index	https://mvic.sos.state.mi.us/votehistory/Index?type=C&electionDate=11-5-2024
 2024	President	Minnesota	statewide	TXT	County export	https://electionresultsfiles.sos.mn.gov/20241105/USPresCty.txt
 2024	Senate	Minnesota	statewide	TXT	County export	https://electionresultsfiles.sos.mn.gov/20241105/ussenatecty.txt
 2024	President	Nevada	statewide	HTML	Live results	https://silverstateelection.nv.gov/USPresidential/
@@ -44,28 +52,42 @@ TBD	Results Archive	Oregon	statewide	HTML	ORSOS record 6873777	https://records.s
 2024	Senate	Wisconsin	statewide	PDF	County by county report	https://elections.wi.gov/sites/default/files/documents/County%20by%20County%20Report_US%20Senate_1.pdf
 2024	President	Kentucky	statewide	PDF	Certified results	https://elect.ky.gov/results/2020-2029/Documents/2024%20General%20Election%20Certification%20as%20Amended%20on%20December%209th%202024.pdf
 2024	President	Wyoming	statewide	HTML	Results portal	https://sos.wyo.gov/Elections/Docs/2024/2024GeneralResults.aspx
+2024	Senate	Wyoming	statewide	HTML	Results portal	https://sos.wyo.gov/Elections/Docs/2024/2024GeneralResults.aspx
 2024	Senate	Montana	statewide	HTML	Results export	https://electionresults.mt.gov/ResultsExport.aspx
 2024	House of Representatives	Colorado	statewide	HTML	Historical election data	https://historicalelectiondata.coloradosos.gov/
+2024	President	Colorado	statewide	HTML	Historical election data	https://historicalelectiondata.coloradosos.gov/
 2024	President	Connecticut	statewide	HTML	Election history portal	https://electionhistory.ct.gov/eng/
 2024	House of Representatives	Idaho	statewide	HTML	Election results portal	https://voteidaho.gov/election-results/
+2024	President	Idaho	statewide	HTML	Election results portal	https://voteidaho.gov/election-results/
 2024	President	Illinois	statewide	HTML	Vote totals	https://www.elections.il.gov/electionoperations/ElectionVoteTotals.aspx
 2024	Senate	Indiana	statewide	HTML	ENR portal	https://enr.indianavoters.in.gov/site/index.html
 2024	President	Kansas	statewide	HTML	Election results	https://sos.ks.gov/elections/election-results.html
 2024	Governor	New Hampshire	statewide	HTML	General election results	https://www.sos.nh.gov/2024-general-election-results
+2024	President	New Hampshire	statewide	HTML	General election results	https://www.sos.nh.gov/2024-general-election-results
 2024	President	Rhode Island	statewide	HTML	Previous election results	https://elections.ri.gov/elections/previous-election-results
+2024	Senate	Rhode Island	statewide	HTML	Previous election results	https://elections.ri.gov/elections/previous-election-results
 2024	House of Representatives	South Carolina	statewide	HTML	Clarity summary	https://www.enr-scvotes.org/SC/122436/web.345435/#/summary
+2024	President	South Carolina	statewide	HTML	Clarity summary	https://www.enr-scvotes.org/SC/122436/web.345435/#/summary
 2024	President	Tennessee	statewide	HTML	Results portal	https://sos.tn.gov/elections/results
+2024	Senate	Tennessee	statewide	HTML	Results portal	https://sos.tn.gov/elections/results
 2024	President	Utah	statewide	HTML	ENR	https://app.enhancedvoting.com/results/public/utah/elections/general11052024/ballot-items/88e40000-968a-0c37-b0b0-08dce9374078
 2024	Senate	Utah	statewide	HTML	ENR	https://app.enhancedvoting.com/results/public/utah/elections/general11052024/ballot-items/88e40000-968a-0c37-7d29-08dce9374086
 2024	Senate	Massachusetts	statewide	HTML	Election stats portal	https://electionstats.state.ma.us/elections/view/165304/
 2024	President	Mississippi	statewide	HTML	Official results	https://www.sos.ms.gov/elections-voting/2024-general-election
+2024	Senate	Mississippi	statewide	HTML	Official results	https://www.sos.ms.gov/elections-voting/2024-general-election
 2024	President	Iowa	statewide	PDF	Canvass summary	https://sos.iowa.gov/elections/pdf/2024/general/canvsummary.pdf
+2024	President	Montana	statewide	CSV	Results export	https://electionresults.mt.gov/ResultsExport.aspx
 2024	President	Texas	statewide	HTML	Reports portal	https://results.texas-election.com/reports
 2024	President	West Virginia	statewide	HTML	Clarity summary	https://results.enr.clarityelections.com/WV/122766/web.345435/#/summary
+2024	Senate	West Virginia	statewide	HTML	Clarity summary	https://results.enr.clarityelections.com/WV/122766/web.345435/#/summary
 2024	House of Representatives	Alaska	statewide	HTML	Results portal	https://www.elections.alaska.gov/election-results/e/?id=24genr
+2024	President	Alaska	statewide	HTML	Results portal	https://www.elections.alaska.gov/election-results/e/?id=24genr
 2024	Senate	Hawaii	statewide	PDF	Statewide results	https://files.hawaii.gov/elections/files/results/2024/General/histatewide.pdf
+2024	Senate	Connecticut	statewide	HTML	Election history portal	https://electionhistory.ct.gov/eng/
 2024	President	Delaware	statewide	HTML	Results portal	https://elections.delaware.gov/results/html/index.shtml?electionId=GE2024
+2024	Senate	Delaware	statewide	HTML	Results portal	https://elections.delaware.gov/results/html/index.shtml?electionId=GE2024
 2024	President	Hawaii	statewide	HTML	Results portal	https://elections.hawaii.gov/election-results/
+2024	President	Indiana	statewide	HTML	ENR portal	https://enr.indianavoters.in.gov/site/index.html
 2024	House of Representatives	Iowa	statewide	HTML	Clarity detail	https://electionresults.iowa.gov/IA/122322/web.345435/#/detail/1000
 2024	President	Louisiana	statewide	HTML	Graphical results	https://voterportal.sos.la.gov/graphical
 2024	President	Massachusetts	statewide	HTML	Election stats portal	https://electionstats.state.ma.us/elections/view/165300/
@@ -73,19 +95,32 @@ TBD	Results Archive	Oregon	statewide	HTML	ORSOS record 6873777	https://records.s
 2024	President	New Jersey	statewide	PDF	Official results	https://www.nj.gov/state/elections/assets/pdf/election-results/2024/2024-official-general-results-president.pdf
 2024	Senate	New Jersey	statewide	PDF	Official results	https://www.nj.gov/state/elections/assets/pdf/election-results/2024/2024-official-general-results-us-senate.pdf
 2024	President	New Mexico	statewide	PDF	State canvass	https://klvg4oyd4j.execute-api.us-west-2.amazonaws.com/prod/PublicFiles/ee3072ab0d43456cb15a51f7d82c77a2/e2ad2789-7c82-48ba-9e96-b86dae0fb886/General%20Election%20State%20Canvass.pdf
+2024	Senate	New Mexico	statewide	PDF	State canvass	https://klvg4oyd4j.execute-api.us-west-2.amazonaws.com/prod/PublicFiles/ee3072ab0d43456cb15a51f7d82c77a2/e2ad2789-7c82-48ba-9e96-b86dae0fb886/General%20Election%20State%20Canvass.pdf
 2024	President	New York	statewide	HTML	Contest page	https://results.elections.ny.gov/contest/5591
 2024	Senate	New York	statewide	HTML	Contest page	https://results.elections.ny.gov/contest/5582
 2024	President	North Dakota	statewide	CSV	Results export	https://results.sos.nd.gov/ResultsExport.aspx?
+2024	Senate	North Dakota	statewide	CSV	Results export	https://results.sos.nd.gov/ResultsExport.aspx?
 2024	President	Ohio	statewide	HTML	Official results	https://www.ohiosos.gov/elections/election-results-and-data/2024-official-election-results/
+2024	Senate	Ohio	statewide	HTML	Official results	https://www.ohiosos.gov/elections/election-results-and-data/2024-official-election-results/
 2024	House of Representatives	Oklahoma	statewide	HTML	Results portal	https://results.okelections.gov/OKER/?elecDate=20241105
+2024	President	Oklahoma	statewide	HTML	Results portal	https://results.okelections.gov/OKER/?elecDate=20241105
+2024	Senate	Texas	statewide	HTML	Reports portal	https://results.texas-election.com/reports
 2024	President	Vermont	statewide	HTML	Election archive	https://electionarchive.vermont.gov/elections/view/165927/
 2024	Senate	Vermont	statewide	HTML	Election results	https://electionresults.vermont.gov/#/state#/
+2024	House of Representatives	Kansas	statewide	HTML	Election results	https://sos.ks.gov/elections/election-results.html
 2024	House of Representatives	South Dakota	statewide	HTML	Election history portal	https://sdsos.gov/elections-voting/election-resources/election-history/default.aspx
+2024	President	South Dakota	statewide	HTML	Election history portal	https://sdsos.gov/elections-voting/election-resources/election-history/default.aspx
 2024	President	Missouri	statewide	PDF	Official results	https://www.sos.mo.gov/CMSImages/ElectionResultsStatistics/ActualResults-November52024.pdf
+2024	Senate	Missouri	statewide	PDF	Official results	https://www.sos.mo.gov/CMSImages/ElectionResultsStatistics/ActualResults-November52024.pdf
+2024	Senate	Nebraska	statewide	PDF	General canvass book	https://sos.nebraska.gov/sites/default/files/doc/elections/2024/2024%20General%20Canvass%20Book.pdf
 
 # === Quarantine / third-party hosts (review before use) ===
 2024	House of Representatives	Arkansas	statewide	ZIP/Dropbox	Dropbox bundle	https://www.dropbox.com/scl/fo/ygo4l7p5ff0drxa9l56gr/APiOSv8Qjn37mtGVT_vBiWc?rlkey=ge2hy8v6j3eccfusbw5nb2r4i&e=1&dl=0
+2024	President	Arkansas	statewide	ZIP/Dropbox	Dropbox bundle	https://www.dropbox.com/scl/fo/ygo4l7p5ff0drxa9l56gr/APiOSv8Qjn37mtGVT_vBiWc?rlkey=ge2hy8v6j3eccfusbw5nb2r4i&e=1&dl=0
 2020	President	Arkansas	statewide	ZIP/Dropbox	Dropbox bundle	https://www.dropbox.com/scl/fo/ygo4l7p5ff0drxa9l56gr/APiOSv8Qjn37mtGVT_vBiWc?rlkey=ge2hy8v6j3eccfusbw5nb2r4i&e=2&dl=0
+2016	President	Arkansas	statewide	ZIP/Dropbox	Dropbox bundle	https://www.dropbox.com/scl/fo/ygo4l7p5ff0drxa9l56gr/APiOSv8Qjn37mtGVT_vBiWc?rlkey=ge2hy8v6j3eccfusbw5nb2r4i&e=2&dl=0
+2016	Senate	Arkansas	statewide	ZIP/Dropbox	Dropbox bundle	https://www.dropbox.com/scl/fo/ygo4l7p5ff0drxa9l56gr/APiOSv8Qjn37mtGVT_vBiWc?rlkey=ge2hy8v6j3eccfusbw5nb2r4i&e=2&dl=0
+2012	President	Arkansas	statewide	ZIP/Dropbox	Dropbox bundle	https://www.dropbox.com/scl/fo/ygo4l7p5ff0drxa9l56gr/APiOSv8Qjn37mtGVT_vBiWc?rlkey=ge2hy8v6j3eccfusbw5nb2r4i&e=2&dl=0
 2012	House of Representatives	Arkansas	statewide	ZIP/Dropbox	Dropbox bundle	https://www.dropbox.com/scl/fo/ygo4l7p5ff0drxa9l56gr/APiOSv8Qjn37mtGVT_vBiWc?rlkey=ge2hy8v6j3eccfusbw5nb2r4i&e=3&dl=0
 2012	House of Representatives	Idaho	statewide	Google Sheets	Unofficial spreadsheet	https://docs.google.com/spreadsheets/d/1F_oG_QfRJGLHhq06b3kov4Y-HXm6Jbb7/edit?gid=947285544#gid=947285544
 
@@ -98,7 +133,9 @@ TBD	Results Archive	Oregon	statewide	HTML	ORSOS record 6873777	https://records.s
 2020	Senate	Georgia	statewide	HTML	Reports index	https://results.sos.ga.gov/results/public/Georgia/elections/2020NovGen/reports
 2020	President	Iowa	statewide	PDF	Canvass summary	https://sos.iowa.gov/elections/pdf/2020/general/canvsummary.pdf
 2020	President	Kentucky	statewide	HTML	Results portal	https://elect.ky.gov/results/2020-2029/Pages/2020.aspx
+2020	Senate	Kentucky	statewide	HTML	Results portal	https://elect.ky.gov/results/2020-2029/Pages/2020.aspx
 2020	President	Maine	statewide	HTML	Results data	https://www.maine.gov/sos/elections-voting/election-results-data/election-results-2020
+2020	Senate	Maine	statewide	HTML	Results data	https://www.maine.gov/sos/elections-voting/election-results-data/election-results-2020
 2020	President	Maryland	statewide	HTML	General results	https://elections.maryland.gov/elections/2020/results/General/index.html
 2020	Senate	Montana	statewide	HTML	Archives index	https://sosmt.gov/elections/archives/
 2020	President	North Carolina	statewide	HTML	Historical results	https://www.ncsbe.gov/results-data/election-results/historical-election-results-data
@@ -109,38 +146,73 @@ TBD	Results Archive	Oregon	statewide	HTML	ORSOS record 6873777	https://records.s
 2020	President	Alabama	statewide	HTML	Election data	https://www.sos.alabama.gov/alabama-votes/voter/election-data
 2020	President	Pennsylvania	statewide	HTML	Summary results	https://www.electionreturns.pa.gov/General/SummaryResults?ElectionID=83&ElectionType=G&IsActive=0
 2020	President	Michigan	statewide	HTML	Vote history index	https://mvic.sos.state.mi.us/votehistory/Index
+2020	Senate	Michigan	statewide	HTML	Vote history index	https://mvic.sos.state.mi.us/votehistory/Index
 2020	President	Oregon	statewide	HTML	Election history	https://sos.oregon.gov/elections/Pages/electionhistory.aspx
 2020	Senate	Oregon	statewide	PDF	Certified results	https://sos.oregon.gov/elections/Documents/results/november-general-2020.pdf
 2020	Governor	Washington	statewide	HTML	Executive results	https://results.vote.wa.gov/results/20201103/stateexecutive.html
 2020	President	Washington	statewide	CSV	Export	https://results.vote.wa.gov/results/20201103/export.html
+2020	House of Representatives	Hawaii	statewide	HTML	Results portal	https://elections.hawaii.gov/election-results/
 2020	President	Arizona	statewide	PDF	State canvass	https://apps.azsos.gov/election/2020/2020_general_state_canvass.pdf
+2020	Senate	Arizona	statewide	PDF	State canvass	https://apps.azsos.gov/election/2020/2020_general_state_canvass.pdf
 2020	House of Representatives	California	statewide	PDF	Statement of vote	https://www.sos.ca.gov/elections/prior-elections/statewide-election-results/general-election-november-3-2020/statement-vote
 2020	President	Connecticut	statewide	HTML	Contest detail	https://electionhistory.ct.gov/eng/contests/view/15175
+2020	House of Representatives	Florida	statewide	HTML	Results index	https://results.elections.myflorida.com/Index.asp?ElectionDate=11/3/2020&DATAMODE=
+2020	President	Georgia	statewide	HTML	Reports index	https://results.sos.ga.gov/results/public/Georgia/elections/2020NovGen/reports
+2020	President	Montana	statewide	HTML	Archives index	https://sosmt.gov/elections/archives/
 2020	President	Nevada	statewide	HTML	US Presidential	https://www.nvsos.gov/silverstate2020gen/USPresidential/
 2020	President	New York	statewide	HTML	Contest page	https://results.elections.ny.gov/contest/308
 2020	President	Virginia	statewide	HTML	Historical results	https://historical.elections.virginia.gov/elections/view/144567/
+2020	President	California	statewide	PDF	Statement of vote	https://www.sos.ca.gov/elections/prior-elections/statewide-election-results/general-election-november-3-2020/statement-vote
+2020	President	Hawaii	statewide	HTML	Results portal	https://elections.hawaii.gov/election-results/
+2020	Senate	North Carolina	statewide	HTML	Historical results	https://www.ncsbe.gov/results-data/election-results/historical-election-results-data
+2020	President	Texas	statewide	HTML	Races index	https://results.texas-election.com/races
 2020	Senate	Virginia	statewide	HTML	Historical results	https://historical.elections.virginia.gov/elections/view/144564/
+2020	House of Representatives	Ohio	statewide	HTML	Results and data	https://www.sos.state.oh.us/elections/election-results-and-data/2020/
 2020	President	New Hampshire	statewide	HTML	General results	https://www.sos.nh.gov/elections/2020-election-results/2020-general-election-results
 2020	Senate	New Mexico	statewide	HTML	Federal results	https://electionresults.sos.nm.gov/resultsSW.aspx?type=FED&map=CTY&eid=2782
 2020	President	Colorado	statewide	HTML	Historical data search	https://historicalelectiondata.coloradosos.gov/search?gf=f&f%5b0%5d=67
 2020	Senate	Delaware	statewide	HTML	Election archive	https://elections.delaware.gov/elections/election_archive.shtml
+2020	President	Louisiana	statewide	HTML	Graphical results	https://voterportal.sos.la.gov/graphical
+2020	Senate	Louisiana	statewide	HTML	Graphical results	https://voterportal.sos.la.gov/graphical
 2020	President	South Dakota	statewide	HTML	Election history	https://sdsos.gov/elections-voting/election-resources/election-history/2020_Election_History.aspx
+2020	Senate	South Dakota	statewide	HTML	Election history	https://sdsos.gov/elections-voting/election-resources/election-history/2020_Election_History.aspx
 2020	President	West Virginia	statewide	HTML	Clarity summary	https://results.enr.clarityelections.com/WV/106210/web.264614/#/summary
+2020	Senate	West Virginia	statewide	HTML	Clarity summary	https://results.enr.clarityelections.com/WV/106210/web.264614/#/summary
 2020	Senate	Oklahoma	statewide	HTML	Results portal	https://results.okelections.gov/OKER/
+2020	President	Oklahoma	statewide	HTML	Results portal	https://results.okelections.gov/OKER/
+2020	Senate	Kansas	statewide	HTML	Election results	https://sos.ks.gov/elections/election-results.html
 2020	Governor	Vermont	statewide	HTML	Election archive	https://electionarchive.vermont.gov/elections/view/143384/
 2020	Senate	Nebraska	statewide	HTML	Previous elections	https://sos.nebraska.gov/previous-elections
 2020	Senate	New Jersey	statewide	HTML	Election information	https://nj.gov/state/elections/election-information-2020.shtml#general
 2020	Governor	North Dakota	statewide	HTML	Results statewide	https://results.sos.nd.gov/ResultsSW.aspx?text=All&type=SW&map=CTY&eid=StuhWbgeuSk.
+2020	President	North Dakota	statewide	HTML	Results statewide	https://results.sos.nd.gov/ResultsSW.aspx?text=All&type=SW&map=CTY&eid=StuhWbgeuSk.
+2020	President	New Mexico	statewide	HTML	Federal results	https://electionresults.sos.nm.gov/resultsSW.aspx?type=FED&map=CTY&eid=2782
+2020	President	Nebraska	statewide	HTML	Previous elections	https://sos.nebraska.gov/previous-elections
+2020	President	New Jersey	statewide	HTML	Election information	https://nj.gov/state/elections/election-information-2020.shtml#general
 2020	President	South Carolina	statewide	HTML	Clarity ENR	https://www.enr-scvotes.org/SC/106502/Web02-state.264691/#/cid/20500?undefined
+2020	Senate	South Carolina	statewide	HTML	Clarity ENR	https://www.enr-scvotes.org/SC/106502/Web02-state.264691/#/cid/20500?undefined
 2020	President	Utah	statewide	HTML	Historical results	https://vote.utah.gov/historical-election-results/
 2020	President	Mississippi	statewide	HTML	Official results	https://www.sos.ms.gov/elections-voting/election-results/2020-election-results/2020-general-election
+2020	Senate	Mississippi	statewide	HTML	Official results	https://www.sos.ms.gov/elections-voting/election-results/2020-election-results/2020-general-election
+2020	Senate	New Hampshire	statewide	HTML	General election results	https://www.sos.nh.gov/elections/2020-election-results/2020-general-election-results
 2020	Governor	Missouri	statewide	HTML	Official results	https://www.sos.mo.gov/elections/results
+2020	President	Missouri	statewide	HTML	Official results	https://www.sos.mo.gov/elections/results
+2020	President	Rhode Island	statewide	HTML	Previous election results	https://elections.ri.gov/elections/previous-election-results
+2020	Senate	Rhode Island	statewide	HTML	Previous election results	https://elections.ri.gov/elections/previous-election-results
 2020	President	Vermont	statewide	HTML	Election archive	https://electionarchive.vermont.gov/elections/view/144513/
+2020	House of Representatives	Kansas	statewide	HTML	Election results	https://sos.ks.gov/elections/election-results.html
+2020	House of Representatives	South Dakota	statewide	HTML	Election history	https://sdsos.gov/elections-voting/election-resources/election-history/default.aspx
+2020	President	South Dakota	statewide	HTML	Election history	https://sdsos.gov/elections-voting/election-resources/election-history/default.aspx
 2020	Senate	Wyoming	statewide	HTML	Results portal	https://sos.wyo.gov/Elections/Docs/2020/2020GeneralResults.aspx
+2020	President	Wyoming	statewide	HTML	Results portal	https://sos.wyo.gov/Elections/Docs/2020/2020GeneralResults.aspx
 2012	President	Rhode Island	-	-	https://elections.ri.gov/elections/previous-election-results						
 2012	Senate	Rhode Island		-	https://elections.ri.gov/elections/previous-election-results						
 2016	President	Nevada	statewide	HTML	Silver State ENR	https://www.nvsos.gov/silverstate2016gen/
+2016	Senate	Nevada	statewide	HTML	Silver State ENR	https://www.nvsos.gov/silverstate2016gen/
 2016	President	Wisconsin	statewide	XLSX	County recount report	https://elections.wi.gov/sites/default/files/legacy/County%2520by%2520County%2520Report%2520President%2520of%2520the%2520United%2520States%2520Recount.xlsx
+2016	President	Pennsylvania	statewide	HTML	Report center	https://www.electionreturns.pa.gov/ReportCenter/Reports
+2016	President	North Carolina	statewide	HTML	Historical results	https://www.ncsbe.gov/results-data/election-results/historical-election-results-data
+2016	Senate	North Carolina	statewide	HTML	Historical results	https://www.ncsbe.gov/results-data/election-results/historical-election-results-data
 2016	President	Tennessee	statewide	HTML	Results portal	https://sos.tn.gov/elections/results#2020
 2016	Senate	Iowa	statewide	PDF	Canvass summary	https://sos.iowa.gov/elections/pdf/2016/general/canvsummary.pdf
 2016	President	Alabama	statewide	PDF	Certified results	https://www.sos.alabama.gov/sites/default/files/voter-pdfs/2016/2016-Official-General-Election-Results-Certified-2016-11-29.pdf
@@ -149,53 +221,100 @@ TBD	Results Archive	Oregon	statewide	HTML	ORSOS record 6873777	https://records.s
 2016	President	Texas	statewide	HTML	State history	https://elections.sos.state.tx.us/elchist319_state.htm
 2016	President	Washington	statewide	HTML	Federal results	https://results.vote.wa.gov/results/20161108/federal.html
 2016	President	Arizona	statewide	PDF	Official canvass	https://apps.azsos.gov/election/2016/General/Official%20Signed%20State%20Canvass.pdf
+2016	Senate	Arizona	statewide	PDF	Official canvass	https://apps.azsos.gov/election/2016/General/Official%20Signed%20State%20Canvass.pdf
 2016	President	Georgia	statewide	HTML	Ballot items	https://results.sos.ga.gov/results/public/Georgia/elections/2016NovGen/ballot-items/01000000-f6f4-3a08-f4f5-08dd146b92e5
 2016	Senate	Georgia	statewide	HTML	Ballot items	https://results.sos.ga.gov/results/public/Georgia/elections/2016NovGen/ballot-items/01000000-f6f4-3a08-c717-08dd146b92e8
+2016	President	Hawaii	statewide	HTML	Results portal	https://elections.hawaii.gov/election-results/
+2016	Senate	Hawaii	statewide	HTML	Results portal	https://elections.hawaii.gov/election-results/
 2016	Senate	Kentucky	statewide	HTML	Primary/general results	https://elect.ky.gov/results/2010-2019/Pages/2016primaryandgeneralelectionresults.aspx
 2016	Senate	Maryland	statewide	HTML	Election data	https://elections.maryland.gov/elections/2016/election_data/index.html
 2016	President	Virginia	statewide	HTML	Historical results	https://historical.elections.virginia.gov/elections/view/80871/
+2016	President	Michigan	statewide	HTML	Vote history index	https://mvic.sos.state.mi.us/votehistory/Index
+2016	House of Representatives	Michigan	statewide	HTML	Vote history index	https://mvic.sos.state.mi.us/votehistory/Index
 2016	Governor	Montana	statewide	PDF	Statewide canvass	https://sosmt.gov/Portals/142/Elections/archives/2010s/2016/2016GeneralStatewideCanvass.pdf?dt=1523477333219
 2016	Senate	Washington	statewide	HTML	US Senator	https://results.vote.wa.gov/results/20161108/us-senator.html
+2016	President	Ohio	statewide	HTML	Official results	https://www.ohiosos.gov/elections/election-results-and-data/2016-official-elections-results/
 2016	President	Maine	statewide	HTML	Results data	https://www.maine.gov/sos/elections-voting/election-results-data/election-results-2016-2017
 2016	President	New York	statewide	HTML	Contest page	https://results.elections.ny.gov/contest/1650
 2016	Senate	New York	statewide	HTML	Contest page	https://results.elections.ny.gov/contest/1649
+2016	President	Oregon	statewide	HTML	ORSOS record	https://records.sos.state.or.us/ORSOSWebDrawer/Recordhtml/6873777
 2016	President	Florida	statewide	HTML	Results index	https://results.elections.myflorida.com/Index.asp?ElectionDate=11/8/2016&DATAMODE=
+2016	Senate	Florida	statewide	HTML	Results index	https://results.elections.myflorida.com/Index.asp?ElectionDate=11/8/2016&DATAMODE=
+2016	President	Iowa	statewide	PDF	Canvass summary	https://sos.iowa.gov/elections/pdf/2016/general/canvsummary.pdf
+2016	President	Montana	statewide	PDF	Statewide canvass	https://sosmt.gov/Portals/142/Elections/archives/2010s/2016/2016GeneralStatewideCanvass.pdf?dt=1523477333219
 2016	President	New Hampshire	statewide	HTML	General election results	https://www.sos.nh.gov/elections/2016-election-results/2016-general-election-results
 2016	President	Mississippi	statewide	HTML	Official results	https://www.sos.ms.gov/elections-voting/election-results/2016-election-results/2016-general-election
+2016	President	Missouri	statewide	HTML	Official results	https://www.sos.mo.gov/elections/results
+2016	Senate	Missouri	statewide	HTML	Official results	https://www.sos.mo.gov/elections/results
+2016	President	Nebraska	statewide	HTML	Previous elections	https://sos.nebraska.gov/previous-elections
+2016	Senate	New Hampshire	statewide	HTML	General election results	https://www.sos.nh.gov/elections/2016-election-results/2016-general-election-results
 2016	President	New Jersey	statewide	HTML	Results portal	https://nj.gov/state/elections/election-information-results.shtml
 2016	President	South Carolina	statewide	HTML	Clarity reports	https://www.enr-scvotes.org/SC/64658/316617/en/reports.html
+2016	Senate	South Carolina	statewide	HTML	Clarity reports	https://www.enr-scvotes.org/SC/64658/316617/en/reports.html
 2016	President	South Dakota	statewide	PDF	Official canvass	https://sdsos.gov/elections-voting/assets/2016%20Assets/2016GeneralElectionOfficialResultsStateCanvass.pdf
+2016	Senate	South Dakota	statewide	PDF	Official canvass	https://sdsos.gov/elections-voting/assets/2016%20Assets/2016GeneralElectionOfficialResultsStateCanvass.pdf
 2016	President	Utah	statewide	HTML	Election records	https://vote.utah.gov/2016-election-records/
+2016	Senate	Utah	statewide	HTML	Election records	https://vote.utah.gov/2016-election-records/
 2016	President	Vermont	statewide	HTML	Election archive	https://electionarchive.vermont.gov/elections/view/82048/
 2016	Senate	Vermont	statewide	HTML	Election archive	https://electionarchive.vermont.gov/elections/view/82049/
 2016	Governor	West Virginia	statewide	CSV	Download	https://apps.sos.wv.gov/elections/results/download.aspx?year=2016&eid=23
+2016	President	West Virginia	statewide	CSV	Download	https://apps.sos.wv.gov/elections/results/download.aspx?year=2016&eid=23
+2016	Senate	Alabama	statewide	PDF	Certified results	https://www.sos.alabama.gov/sites/default/files/voter-pdfs/2016/2016-Official-General-Election-Results-Certified-2016-11-29.pdf
 2016	Senate	Connecticut	statewide	HTML	Contest page	https://electionhistory.ct.gov/eng/contests/view/4637
+2016	President	Kentucky	statewide	HTML	Primary/general results	https://elect.ky.gov/results/2010-2019/Pages/2016primaryandgeneralelectionresults.aspx
+2016	President	Maryland	statewide	HTML	Election data	https://elections.maryland.gov/elections/2016/election_data/index.html
+2016	Senate	Kansas	statewide	HTML	Election results	https://sos.ks.gov/elections/election-results.html
+2016	President	Oklahoma	statewide	HTML	Results portal	https://results.okelections.gov/OKER/
+2016	Senate	Oklahoma	statewide	HTML	Results portal	https://results.okelections.gov/OKER/
+2016	President	Montana	statewide	PDF	Statewide canvass	https://sosmt.gov/Portals/142/Elections/archives/2010s/2016/2016GeneralStatewideCanvass.pdf?dt=1523477333219
 2012	President	South Carolina	statewide	HTML	ENR archive	https://www.enr-scvotes.org/SC/42513/116143/en/reports.html
 2012	President	South Dakota	statewide	HTML	History search portal	https://sdsos.gov/elections-voting/election-resources/election-history/election-history-search.aspx
 2012	Governor	North Carolina	statewide	HTML	Contest page	https://er.ncsbe.gov/?election_dt=11/06/2012&county_id=0&office=COS&contest=1167
 2012	President	North Carolina	statewide	HTML	Contest page	https://er.ncsbe.gov/?election_dt=11/06/2012&county_id=0&office=FED&contest=1360
 2012	Senate	Nevada	statewide	HTML	US Senate ENR	https://www.nvsos.gov/silverstate2012gen/USSenate/
 2012	President	Tennessee	statewide	HTML	Results portal	https://sos.tn.gov/elections/results#2012
+2012	Senate	Tennessee	statewide	HTML	Results portal	https://sos.tn.gov/elections/results#2012
 2012	Senate	Wisconsin	statewide	PDF	Preservica archive	https://whs.access.preservica.com/uncategorized/SO_8be7cfb1-3567-4277-984c-436f91ed3518/
 2012	President	Pennsylvania	statewide	HTML	Summary results	https://www.electionreturns.pa.gov/General/SummaryResults?ElectionID=27&ElectionType=G&IsActive=0
+2012	Senate	Pennsylvania	statewide	HTML	Summary results	https://www.electionreturns.pa.gov/General/SummaryResults?ElectionID=27&ElectionType=G&IsActive=0
 2012	President	Nevada	statewide	HTML	ENR portal	https://www.nvsos.gov/silverstate2012gen/
 2012	President	Wisconsin	statewide	PDF	Download file	https://whs.access.preservica.com/download/file/IO_044257f0-8e3b-4f01-852f-f0e53f46b5a7
+2012	President	Michigan	statewide	HTML	Vote history index	https://mvic.sos.state.mi.us/votehistory/Index
+2012	Senate	Michigan	statewide	HTML	Vote history index	https://mvic.sos.state.mi.us/votehistory/Index
 2012	House of Representatives	Georgia	statewide	HTML	ENR portal	https://results.sos.ga.gov/results/public/Georgia/elections/2012NovGen
 2012	President	Oregon	statewide	HTML	ORSOS record	https://records.sos.state.or.us/ORSOSWebDrawer/Recordhtml/6873690
+2012	Attorney General	Oregon	statewide	HTML	ORSOS record	https://records.sos.state.or.us/ORSOSWebDrawer/Recordhtml/6873690
 2012	Senate	Connecticut	statewide	HTML	Contest page	https://electionhistory.ct.gov/eng/contests/view/5481
+2012	President	Texas	statewide	HTML	Reports portal	https://results.texas-election.com/reports
 2012	President	California	statewide	PDF	Statement of vote	https://www.sos.ca.gov/elections/prior-elections/statewide-election-results/general-election-november-6-2012/statement-vote
+2012	Senate	California	statewide	PDF	Statement of vote	https://www.sos.ca.gov/elections/prior-elections/statewide-election-results/general-election-november-6-2012/statement-vote
 2012	President	Colorado	statewide	HTML	Historical data search	https://historicalelectiondata.coloradosos.gov/search?gf=e&e[0]=22
+2012	Senate	Colorado	statewide	HTML	Historical data search	https://historicalelectiondata.coloradosos.gov/search?gf=e&e[0]=22
 2012	President	Indiana	statewide	HTML	Historical ENR	https://indianavoters.in.gov/ENRHistorical/ElectionResults
+2012	Senate	Indiana	statewide	HTML	Historical ENR	https://indianavoters.in.gov/ENRHistorical/ElectionResults
+2012	President	Kansas	statewide	HTML	Election results	https://sos.ks.gov/elections/election-results.html
+2012	President	Louisiana	statewide	HTML	Graphical results	https://voterportal.sos.la.gov/graphical
 2012	President	Mississippi	statewide	HTML	Official results	https://www.sos.ms.gov/elections-voting/election-results/2012-election-results/2012-general-election
+2012	Senate	Mississippi	statewide	HTML	Official results	https://www.sos.ms.gov/elections-voting/election-results/2012-election-results/2012-general-election
+2012	President	Missouri	statewide	HTML	Official results	https://www.sos.mo.gov/elections/results
+2012	Senate	Missouri	statewide	HTML	Official results	https://www.sos.mo.gov/elections/results
 2012	President	Florida	statewide	HTML	Results index	https://results.elections.myflorida.com/Index.asp?ElectionDate=11/6/2012&DATAMODE=
+2012	Senate	Florida	statewide	HTML	Results index	https://results.elections.myflorida.com/Index.asp?ElectionDate=11/6/2012&DATAMODE=
 2012	President	Montana	statewide	PDF	General canvass	https://sosmt.gov/Portals/142/Elections/archives/2010s/2012/2012_General_Canvass.pdf?dt=1523477333219
+2012	Senate	Montana	statewide	PDF	General canvass	https://sosmt.gov/Portals/142/Elections/archives/2010s/2012/2012_General_Canvass.pdf?dt=1523477333219
 2012	President	Ohio	statewide	HTML	Election results	https://www.sos.state.oh.us/elections/election-results-and-data/2012-elections-results/
 2012	Senate	Ohio	statewide	HTML	Election results	https://www.ohiosos.gov/elections/election-results-and-data/2012-elections-results/
 2012	President	Maryland	statewide	HTML	General detail	https://www.elections.maryland.gov/elections/2012/results/general/gen_detail_results_2012_4_BOT001-.html
 2012	President	Virginia	statewide	HTML	Historical results	https://historical.elections.virginia.gov/elections/view/44930/
 2012	House of Representatives	Kentucky	statewide	HTML	Primary/general results	https://elect.ky.gov/results/2010-2019/Pages/2012primaryandgeneralelectionresults.aspx
+2012	President	Hawaii	statewide	HTML	Results portal	https://elections.hawaii.gov/election-results/
+2012	Senate	Hawaii	statewide	HTML	Results portal	https://elections.hawaii.gov/election-results/
+2012	President	Kentucky	statewide	HTML	Primary/general results	https://elect.ky.gov/results/2010-2019/Pages/2012primaryandgeneralelectionresults.aspx
+2012	Chief Justice Supreme Court	Alabama	statewide	PDF	Certified results	https://www.sos.alabama.gov/sites/default/files/election-2024/State%20Certification%20of%202024%20General%20Election.pdf
 2012	President	Alabama	statewide	PDF	Amended certified	https://www.sos.alabama.gov/sites/default/files/voter-pdfs/2012/statecert-amended-general-12-17-2012.pdf
 2012	President	Connecticut	statewide	HTML	Contest page	https://electionhistory.ct.gov/eng/contests/view/5480
+2012	President	Utah	statewide	HTML	Historical results	https://vote.utah.gov/historical-election-results/
+2012	Senate	Utah	statewide	HTML	Historical results	https://vote.utah.gov/historical-election-results/
 2012	President	Vermont	statewide	HTML	Contest page	https://electionarchive.vermont.gov/elections/view/68979/
 2012	Senate	Vermont	statewide	HTML	Contest page	https://electionarchive.vermont.gov/elections/view/68980/
 2012	President	West Virginia	statewide	CSV	Download	https://apps.sos.wv.gov/elections/results/download.aspx?year=2012&eid=13
@@ -203,29 +322,66 @@ TBD	Results Archive	Oregon	statewide	HTML	ORSOS record 6873777	https://records.s
 2016	President	Massachusetts	statewide	HTML	ElectionStats portal	https://electionstats.state.ma.us/elections/view/130243/
 2012	President	Wyoming	statewide	HTML	State ENR	https://sos.wyo.gov/Elections/Docs/2012/2012GeneralResults.aspx
 2016	President	Alaska	statewide	HTML	Official results	https://www.elections.alaska.gov/results/16GENR/index.php#officialresults
+2016	Senate	Arkansas	statewide	Dropbox	Unofficial bundle (Dropbox)	https://www.dropbox.com/scl/fo/ygo4l7p5ff0drxa9l56gr/APiOSv8Qjn37mtGVT_vBiWc?rlkey=ge2hy8v6j3eccfusbw5nb2r4i&e=2&dl=0
 2016	President	Illinois	statewide	CSV	Download vote totals	https://www.elections.il.gov/electionoperations/DownloadVoteTotals.aspx
+2016	Senate	Illinois	statewide	CSV	Download vote totals	https://www.elections.il.gov/electionoperations/DownloadVoteTotals.aspx
 2016	President	Colorado	statewide	HTML	Historical data search	https://historicalelectiondata.coloradosos.gov/search?gf=e&e[0]=17
+2016	Senate	Colorado	statewide	HTML	Historical data search	https://historicalelectiondata.coloradosos.gov/search?gf=e&e[0]=17
+2016	Senate	Alaska	statewide	HTML	Official results	https://www.elections.alaska.gov/results/16GENR/index.php#officialresults
+2016	President	Arkansas	statewide	Dropbox	Unofficial bundle (Dropbox)	https://www.dropbox.com/scl/fo/ygo4l7p5ff0drxa9l56gr/APiOSv8Qjn37mtGVT_vBiWc?rlkey=ge2hy8v6j3eccfusbw5nb2r4i&e=2&dl=0
+2016	Governor	Delaware	statewide	HTML	Election archive	https://elections.delaware.gov/elections/election_archive.shtml
+2016	President	Delaware	statewide	HTML	Election archive	https://elections.delaware.gov/elections/election_archive.shtml
 2016	President	Idaho	statewide	HTML	Archived results	https://voteidaho.gov/election-results/#archived-results
+2016	Senate	Idaho	statewide	HTML	Archived results	https://voteidaho.gov/election-results/#archived-results
 2016	President	Indiana	statewide	HTML	Historical ENR	https://enr.indianavoters.in.gov/archive/2016General/index.html
+2016	Senate	Indiana	statewide	HTML	Historical ENR	https://enr.indianavoters.in.gov/archive/2016General/index.html
+2016	President	Kansas	statewide	HTML	Election results portal	https://sos.ks.gov/elections/election-results.html
+2016	Senate	Kansas	statewide	HTML	Election results portal	https://sos.ks.gov/elections/election-results.html
 2016	President	North Dakota	statewide	HTML	ResultsSW portal	https://results.sos.nd.gov/ResultsSW.aspx?text=All&type=SW&map=CTY&eid=NT3DecKycoM.
+2016	Senate	North Dakota	statewide	HTML	ResultsSW portal	https://results.sos.nd.gov/ResultsSW.aspx?text=All&type=SW&map=CTY&eid=NT3DecKycoM.
 2016	President	Wyoming	statewide	HTML	Official results	https://sos.wyo.gov/Elections/Docs/2016/2016GeneralResults.aspx
+2012	President	Delaware	statewide	HTML	Election archive	https://elections.delaware.gov/elections/election_archive.shtml
+2012	Senate	Delaware	statewide	HTML	Election archive	https://elections.delaware.gov/elections/election_archive.shtml
 2012	President	Idaho	statewide	HTML	Canvass portal	https://canvass.sos.idaho.gov/eng/contests/view/336
+2012	President	Illinois	statewide	CSV	Download vote totals	https://www.elections.il.gov/electionoperations/DownloadVoteTotals.aspx
 2012	President	Massachusetts	statewide	HTML	ElectionStats portal	https://electionstats.state.ma.us/elections/view/112698/
 2012	Senate	Massachusetts	statewide	HTML	ElectionStats portal	https://electionstats.state.ma.us/elections/view/112702/
 2012	President	North Dakota	statewide	CSV	Results export	https://results.sos.nd.gov/ResultsExport.aspx?eid=vp_Q9Zt7wF4.
+2012	Senate	North Dakota	statewide	CSV	Results export	https://results.sos.nd.gov/ResultsExport.aspx?eid=vp_Q9Zt7wF4.
 2012	President	Oklahoma	statewide	HTML	Results portal	https://results.okelections.gov/OKER/?elecDate=20121106
+2012	Senate	Wyoming	statewide	HTML	State ENR	https://sos.wyo.gov/Elections/Docs/2012/2012GeneralResults.aspx
+2016	President	Louisiana	statewide	HTML	Graphical results	https://voterportal.sos.la.gov/graphical
+2016	House of Representatives	Wyoming	statewide	HTML	Official results	https://sos.wyo.gov/Elections/Docs/2016/2016GeneralResults.aspx
+2016	Senate	Louisiana	statewide	HTML	Graphical results	https://voterportal.sos.la.gov/graphical
+2016	President	Rhode Island	statewide	HTML	Previous election results	https://elections.ri.gov/elections/previous-election-results
+2024	House of Representatives	Kentucky	statewide	PDF	Certified results (amended)	https://elect.ky.gov/results/2020-2029/Documents/2024%20General%20Election%20Certification%20as%20Amended%20on%20December%209th%202024.pdf
 2024	House of Representatives	Illinois	statewide	HTML	Results portal	https://www.elections.il.gov/electionoperations/ElectionVoteTotals.aspx?ID=9huvqbsiUWA%3d&OfficeType=LpWf6lpbWOfBN3kEuxRi3A%3d%3d
+2024	House of Representatives	Louisiana	statewide	HTML	Graphical results	https://voterportal.sos.la.gov/graphical
+2020	House of Representatives	Maryland	statewide	HTML	Election results	https://elections.maryland.gov/elections/2020/results/General/index.html
 2020	House of Representatives	New York	statewide	HTML	Results search	https://results.elections.ny.gov/search?df=2020&dt=2020&bq=false&coff[0].i=13
 2016	House of Representatives	Texas	statewide	HTML	Race select archive	https://elections.sos.state.tx.us/elchist319_raceselect.htm
 2016	House of Representatives	Virginia	statewide	HTML	Historical results	https://historical.elections.virginia.gov/elections/search/year_from:2016/year_to:2016/office_id:5/stage:General
+2020	Senate	Arkansas	statewide	Dropbox	Unofficial bundle (Dropbox)	https://www.dropbox.com/scl/fo/ygo4l7p5ff0drxa9l56gr/APiOSv8Qjn37mtGVT_vBiWc?rlkey=ge2hy8v6j3eccfusbw5nb2r4i&e=2&dl=0
+2016	House of Representatives	Massachusetts	statewide	HTML	ElectionStats portal	https://electionstats.state.ma.us/elections/view/130243/
 2016	House of Representatives	Tennessee	statewide	HTML	State results portal	https://sos.tn.gov/elections/results#2016
+2012	House of Representatives	Arkansas	statewide	Dropbox	Unofficial bundle (Dropbox)	https://www.dropbox.com/scl/fo/ygo4l7p5ff0drxa9l56gr/APiOSv8Qjn37mtGVT_vBiWc?rlkey=ge2hy8v6j3eccfusbw5nb2r4i&e=3&dl=0
+2012	House of Representatives	Idaho	statewide	Google Sheets	Unofficial spreadsheet	https://docs.google.com/spreadsheets/d/1F_oG_QfRJGLHhq06b3kov4Y-HXm6Jbb7/edit?gid=947285544#gid=947285544
+2012	House of Representatives	Oklahoma	statewide	HTML	Results portal	https://results.okelections.gov/OKER/?elecDate=20121106
 2020	House of Representatives	Colorado	statewide	HTML	Historical data search	https://historicalelectiondata.coloradosos.gov/search?gf=f&f[0]=67
 2020	House of Representatives	Utah	statewide	HTML	Official results landing (select 2020 General → US House)	https://elections.utah.gov/election-resources/election-results-and-canvass
 2016	House of Representatives	Minnesota	statewide	HTML	General election results	https://www.sos.mn.gov/elections-voting/election-results/2016/2016-general-election-results/
+2016	House of Representatives	Mississippi	statewide	HTML	Official results	https://www.sos.ms.gov/elections-voting/election-results/2016-election-results/2016-general-election
 2016	Senate	Nebraska	statewide	PDF	State canvass (no US Senate contest in 2016; archive for completeness)	https://sos.nebraska.gov/sites/sos.nebraska.gov/files/doc/elections/2016/2016%20General%20Election%20Results.pdf
+2016	House of Representatives	New Jersey	statewide	HTML	Election information/results	https://nj.gov/state/elections/election-information-results.shtml
 2016	House of Representatives	New Mexico	statewide	HTML	Past election results	https://www.sos.nm.gov/voting-and-elections/election-results/past-election-results-2016/
+2016	House of Representatives	Rhode Island	statewide	HTML	Previous election results	https://elections.ri.gov/elections/previous-election-results
 2012	House of Representatives	Alaska	statewide	HTML	Official results	https://www.elections.alaska.gov/results/12GENR/index.php#officialresults
+2012	House of Representatives	Illinois	statewide	CSV	Download vote totals	https://www.elections.il.gov/electionoperations/DownloadVoteTotals.aspx
 2012	House of Representatives	Iowa	statewide	PDF	Canvass summary	https://sos.iowa.gov/elections/pdf/2012/general/canvsummary.pdf
+2012	House of Representatives	Kansas	statewide	HTML	Election results portal	https://sos.ks.gov/elections/election-results.html
+2012	House of Representatives	Louisiana	statewide	HTML	Graphical results	https://voterportal.sos.la.gov/graphical
+2012	House of Representatives	South Carolina	statewide	HTML	ENR archive	https://www.enr-scvotes.org/SC/42513/116143/en/reports.html
+2012	House of Representatives	South Dakota	statewide	HTML	History search portal	https://sdsos.gov/elections-voting/election-resources/election-history/election-history-search.aspx
 2025	House of Representatives	Tennessee	statewide	HTML	District 7 county breakdown	https://elections.tn.gov/county-breakdown/United%20States%20House%20of%20Representatives%20District%207
 2020	House of Representatives	Connecticut	statewide	HTML	Contest search	https://electionhistory.ct.gov/eng/contests/search/year_from:2020/year_to:2020/office_id:330/stage:et-id-3
 

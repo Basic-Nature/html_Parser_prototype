@@ -2,7 +2,7 @@ import hashlib
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from ..Context_Integration.Context_Library.constants import (
@@ -396,7 +396,7 @@ class ContextService:
 
     def _log_audit(self, event: str, data: Any):
         entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "event": event,
             "data": data,
             "version": self.version
