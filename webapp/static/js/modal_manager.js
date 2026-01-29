@@ -81,6 +81,60 @@
       const body = document.createElement('div');
       body.className = 'mm-body';
       body.id = `${modal.id}-desc`;
+
+      // If caller provided an existing modal element (e.g., page's #promptModal),
+      // adopt it directly instead of wrapping it in a new mm-wrapper. This preserves
+      // event handlers, focus management, and existing markup.
+      if (modal.body instanceof Element && modal.body.classList && modal.body.classList.contains('modal')) {
+        const existingModal = modal.body;
+        try {
+          // Replace original position with a placeholder so we can restore later
+          if (existingModal.parentNode) {
+            modal._origPlaceholder = document.createComment(`mm-placeholder-${modal.id}`);
+            existingModal.parentNode.replaceChild(modal._origPlaceholder, existingModal);
+          }
+        } catch (e) {}
+        // Ensure the modal is visible and not hidden by a 'hidden' helper class
+        try { existingModal.classList.remove('hidden'); } catch (e) {}
+
+        // Use the existing modal element as the wrapper for this manager instance
+        backdrop.appendChild(existingModal);
+        // ensure backdrop is attached to manager container so it's discoverable and styled
+        try {
+          if (!this.container) this._createContainer();
+          this.container.appendChild(backdrop);
+        } catch (e) {}
+
+        // Derive handles from the existing structure where possible
+        const existingTitle = existingModal.querySelector('.modal-header h3') || existingModal.querySelector('h2') || title;
+        const existingBody = existingModal.querySelector('.modal-body') || body;
+        const existingActions = existingModal.querySelector('.modal-footer') || null;
+
+        // Keep refs for cleanup
+        modal._el = { backdrop, wrapper: existingModal, title: existingTitle, body: existingBody, actions: existingActions };
+
+        // focus management: focus first actionable element inside existing actions
+        setTimeout(() => {
+          const first = (existingActions && existingActions.querySelector) ? existingActions.querySelector('button') : null;
+          if (first) first.focus();
+        }, 10);
+
+        // keyboard handler
+        const kdExisting = (e) => { if (e.key === 'Escape') { this._closeModal(modal, { actionId: 'dismiss', payload: null }); } };
+        existingModal.addEventListener('keydown', kdExisting);
+        modal._cleanup = () => {
+          try { existingModal.removeEventListener('keydown', kdExisting); } catch (e) {}
+          // restore to original place if placeholder exists
+          try {
+            if (modal._origPlaceholder && modal._origPlaceholder.parentNode) {
+              modal._origPlaceholder.parentNode.replaceChild(existingModal, modal._origPlaceholder);
+            }
+          } catch (e) {}
+        };
+
+        return;
+      }
+
       if (typeof modal.body === 'string') {
         body.textContent = modal.body;
       } else if (modal.body instanceof Node) {
@@ -120,18 +174,60 @@
 
       // focus management: focus first actionable element
       setTimeout(() => {
-        const first = actions.querySelector('button');
-        if (first) first.focus();
+        try {
+          const first = actions.querySelector('button');
+          if (first) first.focus();
+          else {
+            // ensure wrapper is focusable and focus it as fallback
+            try { wrapper.setAttribute('tabindex', '-1'); wrapper.focus(); } catch (e) {}
+          }
+        } catch (e) {}
       }, 10);
 
-      // keyboard handler
+      // keyboard handler: ESC => dismiss; Tab => focus trap
       const kd = (e) => {
-        if (e.key === 'Escape') {
-          this._closeModal(modal, { actionId: 'dismiss', payload: null });
-        }
+        try {
+          if (e.key === 'Escape') {
+            this._closeModal(modal, { actionId: 'dismiss', payload: null });
+            return;
+          }
+          if (e.key === 'Tab') {
+            // basic focus trap
+            const focusable = Array.from(wrapper.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')).filter((el) => el instanceof HTMLElement && el.offsetParent !== null);
+            if (!focusable.length) {
+              e.preventDefault();
+              return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (!e.shiftKey && document.activeElement === last) {
+              e.preventDefault();
+              if (first instanceof HTMLElement) try { first.focus(); } catch (e) {}
+            } else if (e.shiftKey && document.activeElement === first) {
+              e.preventDefault();
+              if (last instanceof HTMLElement) try { last.focus(); } catch (e) {}
+            }
+          }
+        } catch (ex) {}
       };
       backdrop.addEventListener('keydown', kd);
-      modal._cleanup = () => backdrop.removeEventListener('keydown', kd);
+
+      // backdrop click: if target is backdrop and not blocking, dismiss
+      const onBackdropClick = (ev) => {
+        try {
+          if (ev.target === backdrop) {
+            if (!modal.blocking) {
+              this._closeModal(modal, { actionId: 'dismiss', payload: null });
+            }
+          }
+        } catch (ex) {}
+      };
+      backdrop.addEventListener('mousedown', onBackdropClick);
+
+      modal._cleanup = () => {
+        try { backdrop.removeEventListener('keydown', kd); } catch (e) {}
+        try { backdrop.removeEventListener('mousedown', onBackdropClick); } catch (e) {}
+      };
     }
 
     _closeModal(modal, result) {
@@ -140,12 +236,29 @@
       } catch (e) {
         // ignore
       }
-      // remove element
+      // restore adopted element to original location when applicable
       try {
         const el = modal && modal._el && modal._el.backdrop;
+        const wrapper = modal && modal._el && modal._el.wrapper;
+        // perform cleanup before removal
+        if (modal && modal._cleanup) modal._cleanup();
+
+        // If this modal adopted an existing page element, restore it to placeholder
+        try {
+          if (wrapper && wrapper instanceof Element) {
+            // check for internally recorded placeholder first
+            const ph = modal._origPlaceholder || (typeof _getPlaceholder === 'function' ? _getPlaceholder(wrapper) : null);
+            if (ph && ph.parentNode) {
+              ph.parentNode.replaceChild(wrapper, ph);
+              // remove global placeholder mapping if present
+              try { if (typeof _deletePlaceholder === 'function') _deletePlaceholder(wrapper); } catch (e) {}
+            }
+          }
+        } catch (restoreErr) {}
+
+        // remove backdrop (which contains wrapper)
         if (el && el.parentNode) el.parentNode.removeChild(el);
       } catch (e) {}
-      if (modal && modal._cleanup) modal._cleanup();
       this._emit('close', { id: modal && modal.id, result });
       this.active = null;
       // process next in queue

@@ -3775,6 +3775,22 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
   }
   syncLeftToggleFloating();
 
+  // Ensure legacy left sidebar is visible by default on desktop
+  try {
+    if (legacySidebar && isDesktop()) {
+      // If left sidebar is not explicitly hidden, present it by default for desktop users
+      const ls = /** @type {HTMLElement} */ (legacySidebar);
+      const rect = ls.getBoundingClientRect ? ls.getBoundingClientRect() : { width: 0, height: 0, left: 0, right: 0 };
+      const styles = window.getComputedStyle ? window.getComputedStyle(ls) : { display: 'block', visibility: 'visible', opacity: '1' };
+      const hiddenByStyle = styles.display === 'none' || styles.visibility === 'hidden' || styles.opacity === '0';
+      const zeroSize = rect.width <= 0 || rect.height <= 0;
+      if (!hiddenByStyle && !zeroSize) {
+        ls.classList.add('sidebar-open');
+        try { if (toggleLeftBtn) toggleLeftBtn.setAttribute('aria-expanded', 'true'); } catch (e) {}
+      }
+    }
+  } catch (e) { /* noop */ }
+
   function closeAll() {
     if (legacySidebar) legacySidebar.classList.remove('sidebar-open');
     if (rightSidebar) {
@@ -7022,8 +7038,10 @@ const UrlListManager = (() => {
     if (collapseBtn && urlsContainer) {
       const instructionsEl = /** @type {HTMLElement | null} */ (document.querySelector('.source-instructions'));
       
-      // Initialize state from localStorage (default: instructions visible, URLs hidden)
-      const showUrls = localStorage.getItem('urlsExpanded') === 'true';
+      // Initialize state from localStorage (default: on wide screens, show URLs)
+      const stored = localStorage.getItem('urlsExpanded');
+      const defaultShow = (window && window.innerWidth && window.innerWidth >= 900);
+      const showUrls = (stored === null) ? defaultShow : (stored === 'true');
       
       if (showUrls) {
         // Show URLs, hide instructions
