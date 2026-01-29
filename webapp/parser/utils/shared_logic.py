@@ -1235,21 +1235,62 @@ def safe_get_first(lst, label, url, logger=logger, default=None, allow_nonlist=F
     logger.error(f"[DOM_PARTS] '{label}' is not a list for URL: {url} (type: {type(lst).__name__})")
     return default
 
-def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, coordinator: Optional["ContextCoordinator"] = None, logger=logger, **kwargs: Any) -> Any:
+def validate_handler_result(result: Any) -> tuple[list[str], list[dict], Any, dict]:
+    """Normalize various handler return shapes to canonical 4-tuple:
+    (headers: list[str], rows: list[dict], contest: str|dict, metadata: dict)
+
+    If the result is malformed, returns empty headers/rows and metadata with error info.
     """
-    Safely call handler.parse, injecting coordinator if supported.
-    Handles missing parse method, non-callable, and exceptions.
+    try:
+        # 4-tuple as expected
+        if isinstance(result, tuple) and len(result) == 4:
+            headers, rows, contest, metadata = result
+            headers = list(headers) if isinstance(headers, (list, tuple)) else (list(headers) if headers is not None else [])
+            rows = list(rows) if isinstance(rows, (list, tuple)) else ([] if rows is None else [rows])
+            metadata = dict(metadata) if isinstance(metadata, dict) else ({'raw_metadata': metadata} if metadata is not None else {})
+            return headers, rows, contest, metadata
+
+        # 3-tuple -> assume (headers, rows, contest)
+        if isinstance(result, tuple) and len(result) == 3:
+            headers, rows, contest = result
+            headers = list(headers) if isinstance(headers, (list, tuple)) else (list(headers) if headers is not None else [])
+            rows = list(rows) if isinstance(rows, (list, tuple)) else ([] if rows is None else [rows])
+            return headers, rows, contest, {}
+
+        # Handler returned rows only
+        if isinstance(result, list):
+            return [], list(result), "", {}
+
+        # Unknown/malformed
+        return [], [], "", {"error": "invalid_handler_result", "raw_result": result}
+    except Exception as e:
+        return [], [], "", {"error": "validate_exception", "exception": str(e), "raw_result": result}
+
+
+def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, coordinator: Optional["ContextCoordinator"] = None, logger=logger, raise_on_error: bool = False, session_id: str | None = None, **kwargs: Any) -> tuple[list[str], list[dict], Any, dict]:
+    """
+    Safely call handler.parse (or handler itself if callable), injecting coordinator if supported.
+
+    Always returns a canonical 4-tuple: (headers, rows, contest, metadata).
+    On exception or malformed return, returns an error metadata dict instead of raising
+    unless `raise_on_error` is True.
     """
     try:
         if handler is None:
             if logger:
                 logger.error("[safe_parse] Handler is None.")
-            return None
+            return [], [], "", {"error": "no_handler"}
+
         parse_method = getattr(handler, "parse", None)
+        # Fallback: if handler is directly callable (function), use it
+        if not callable(parse_method) and callable(handler):
+            parse_method = handler
+
         if not callable(parse_method):
             if logger:
-                logger.error("[safe_parse] Handler has no callable 'parse' method.")
-            return None
+                logger.error("[safe_parse] Handler has no callable 'parse' method or is not callable.")
+            return [], [], "", {"error": "no_parse_method"}
+
         sig = inspect.signature(parse_method)
         param_names = list(sig.parameters.keys())
 
@@ -1257,14 +1298,15 @@ def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, 
         call_args = list(args)
         call_kwargs = dict(kwargs)
 
-        # Only add coordinator if not already in args
+        # Support raise_on_error passed via kwargs as well
+        if 'raise_on_error' in call_kwargs:
+            call_kwargs.pop('raise_on_error', None)
+
+        # Only add coordinator if the parse signature accepts it and not already provided
         if 'coordinator' in param_names:
-            # Find the index of 'coordinator' in the signature
             coord_idx = param_names.index('coordinator')
-            # If not enough args to fill coordinator, add it positionally
             if len(call_args) <= coord_idx:
                 call_args.insert(coord_idx, coordinator)
-            # Remove from kwargs if present
             call_kwargs.pop('coordinator', None)
 
         # Remove any kwargs that are already filled by positional args
@@ -1273,13 +1315,30 @@ def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, 
                 call_kwargs.pop(name)
 
         if logger:
-            logger.debug(f"[safe_parse] Calling handler.parse with args: {[type(a) for a in call_args]}, kwargs: {call_kwargs}")
+            try:
+                logger.debug(f"[safe_parse] Calling handler.parse with args: {[type(a) for a in call_args]}, kwargs: {list(call_kwargs.keys())}")
+            except Exception:
+                pass
 
-        return parse_method(*call_args, **call_kwargs)
-    except Exception as e:
+        raw_result = parse_method(*call_args, **call_kwargs)
+        return validate_handler_result(raw_result)
+
+    except Exception as exc:
+        # Structured error metadata
+        meta = {
+            "error": "exception",
+            "exception": str(exc),
+        }
+        if session_id:
+            meta["session_id"] = session_id
         if logger:
-            logger.error(f"[safe_parse] Error calling handler.parse: {e}")
-        return None
+            try:
+                logger.error({"level": "ERROR", "type": "handler", "message": f"[safe_parse] Exception: {exc}", "session_id": session_id})
+            except Exception:
+                pass
+        if raise_on_error:
+            raise
+        return [], [], "", meta
 
 def safe_endswith(obj: Union[str, bytes], suffix: Union[str, bytes], logger=logger) -> bool:
     """Safely call .endswith on a string-like object."""

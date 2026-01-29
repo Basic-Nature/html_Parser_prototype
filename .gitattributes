@@ -1,4 +1,11 @@
-*.psd filter=lfs diff=lfs merge=lfs -text
+# Git LFS tracked patterns for large artifacts
+# Track candidate_summary_index.json wherever it appears
+candidate_summary_index.json filter=lfs diff=lfs merge=lfs -text
+webapp/parser/fixtures/candidate_summary_index.json filter=lfs diff=lfs merge=lfs -text
+
+# Optionally track other large fixtures (uncomment if desired)
+# webapp/parser/fixtures/*.jsonl filter=lfs diff=lfs merge=lfs -text
+# *.pdf filter=lfs diff=lfs merge=lfs -text*.psd filter=lfs diff=lfs merge=lfs -text
 log/table_builder_cache/*.json filter=lfs diff=lfs merge=lfs -text
 log/*.jsonl filter=lfs diff=lfs merge=lfs -text
 *.jsonl filter=lfs diff=lfs merge=lfs -text

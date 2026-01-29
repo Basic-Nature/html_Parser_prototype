@@ -5532,3 +5532,59 @@ body.pulse-loading {
   0%, 100% { transform: translateY(0); filter: drop-shadow(0 0 6px rgba(37,99,235,0.45)); }
   50% { transform: translateY(-4px); filter: drop-shadow(0 0 10px rgba(16,185,129,0.45)); }
 }
+
+/* ============================================
+   Override: left-sidebar-centered layout
+   Appended block: when `body.left-sidebar-centered` is present on desktop,
+   render the left sidebar as the primary centered content and place
+   artifact/input-output cards below spanning full width.
+   ============================================ */
+@media (min-width: 768px) {
+  body.left-sidebar-centered .dashboard-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 1rem !important;
+  }
+
+  /* Sidebar becomes full-width and centered at top */
+  body.left-sidebar-centered #sidebar,
+  body.left-sidebar-centered .sidebar-left {
+    width: 100% !important;
+    max-width: 980px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    box-sizing: border-box !important;
+    position: relative !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
+  }
+  body.left-sidebar-centered #sidebar .sidebar-content,
+  body.left-sidebar-centered .sidebar-left .sidebar-content {
+    width: 100% !important;
+  }
+
+  /* Ensure Input/Output artifact area sits below the sidebar and spans full width */
+  body.left-sidebar-centered .artifact-hub,
+  body.left-sidebar-centered #inputArtifacts,
+  body.left-sidebar-centered #outputArtifacts,
+  body.left-sidebar-centered .artifact-card {
+    width: 100% !important;
+    max-width: 980px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  /* Order: sidebar first, then artifacts */
+  body.left-sidebar-centered #sidebar { order: 0 !important; }
+  body.left-sidebar-centered .artifact-hub { order: 1 !important; }
+
+  /* Respect open/collapsed interactive classes (avoid hiding overlays/backdrops) */
+  body.left-sidebar-centered #sidebar.sidebar-open,
+  body.left-sidebar-centered #sidebar.open {
+    display: block !important;
+  }
+}
+
+/* End override */

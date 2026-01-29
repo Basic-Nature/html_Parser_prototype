@@ -211,6 +211,17 @@ FORCE_PARSE_INPUT_FILE = os.environ.get("FORCE_PARSE_INPUT_FILE", "false").lower
 FORCE_PARSE_FORMAT = os.environ.get("FORCE_PARSE_FORMAT", "").strip().lower()
 MAX_URLS_DISPLAYED = os.environ.get("MAX_URLS_DISPLAYED")
 
+# Fuzzy matching policy defaults (used by fec_lookup and reporting tools)
+try:
+    MIN_FUZZY_SCORE_AUTO = int(os.environ.get("MIN_FUZZY_SCORE_AUTO", "90"))
+except Exception:
+    MIN_FUZZY_SCORE_AUTO = 90
+try:
+    MIN_FUZZY_SCORE_MANUAL = int(os.environ.get("MIN_FUZZY_SCORE_MANUAL", "70"))
+except Exception:
+    MIN_FUZZY_SCORE_MANUAL = 70
+FUZZY_SCORER = os.environ.get("FUZZY_SCORER", "auto").strip() or "auto"
+
 # Pipeline worker and error thresholds (used by web_pipeline.py and related modules)
 PIPELINE_MAX_WORKERS = int(os.environ.get("PIPELINE_MAX_WORKERS", 2))
 PIPELINE_MAX_ERRORS = int(os.environ.get("PIPELINE_MAX_ERRORS", 5))
@@ -373,6 +384,7 @@ __all__ = [
     "ENABLE_REALTIME_STREAM","FORCE_PARSE_INPUT_FILE","FORCE_PARSE_FORMAT",
     "MAX_URLS_DISPLAYED","PIPELINE_MAX_WORKERS","PIPELINE_MAX_ERRORS",
     "PIPELINE_HEARTBEAT_INTERVAL","ENABLE_USER_FEEDBACK", "DISABLE_HTML_FALLBACK", "ENABLE_CAMELOT",
+    "MIN_FUZZY_SCORE_AUTO","MIN_FUZZY_SCORE_MANUAL","FUZZY_SCORER",
     "CAMELOT_MIN_SCORE","CAMELOT_HYBRID_FILL","CAMELOT_MERGE_COMPAT",
 
     # Training params

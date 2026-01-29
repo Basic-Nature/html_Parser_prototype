@@ -206,7 +206,7 @@ class BatchProcessor:
         self._queue_prompt_responses(race)
         context = self._build_context(race, batch_index)
 
-        result = safe_parse(
+        headers, rows, contest, metadata = safe_parse(
             self.handler,
             self.page,
             self.coordinator,
@@ -215,17 +215,17 @@ class BatchProcessor:
             logger=logger,
         )
 
-        if not isinstance(result, tuple) or len(result) != 4:
+        if isinstance(metadata, dict) and metadata.get("error"):
             logger.error({
                 "level": "ERROR",
                 "type": "batch",
-                "message": f"[Batch] Handler returned invalid result for '{label}'.",
+                "message": f"[Batch] Handler error for '{label}': {metadata.get('error')}",
                 "session_id": self.session_id,
                 "url": self.target_url,
             })
             return False
 
-        return self._emit_result(result, race, index=batch_index)
+        return self._emit_result((headers, rows, contest, metadata), race, index=batch_index)
 
     def _build_context(self, race: Dict[str, Any], batch_index: int) -> Dict[str, Any]:
         context = {}

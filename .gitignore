@@ -1,10 +1,11 @@
-# Smart Elections Parser .gitignore (refactored)
+# Consolidated .gitignore for html_Parser_prototype
 
-# ----------------------------
-# Python (source & environments)
-# ----------------------------
+# -------------------------
+# Python artifacts & envs
+# -------------------------
 __pycache__/
 *.py[cod]
+*$py.class
 *.pyo
 *.pyd
 *.pyc
@@ -12,57 +13,52 @@ __pycache__/
 .venv/
 venv/
 env/
-.python-version
-.env
-*.vs/
+ENV/
+pip-wheel-metadata/
 
-# VCS/CI
-.git
-.github
-.gitignore
-
-# ----------------------------
-# Node / JavaScript
-# ----------------------------
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-package-lock.backup*.json
-
-# Build outputs (JS/TS)
-dist/
-build/
-.next/
-out/
-.vite/
-vite-cache/
-.storybook/
-.cache/
-.tmp/
-.temp/
-webpack-stats.json
-
-# Coverage / test / lint caches
-coverage/
-.nyc_output/
-.coverage
-coverage.xml
-htmlcov/
-.eslintcache
-.stylelintcache
+# Test / cache
 .pytest_cache/
 .mypy_cache/
-.ruff_cache/
-pytestdebug.log
-hint-report/ 
-tools/debug_headless_output/
+.tox/
 
-# ----------------------------
-# Logs & transient debug
-# ----------------------------
+# -------------------------
+# Editor / OS
+# -------------------------
+.vscode/
+.idea/
+.vs/
+*.sublime-project
+*.sublime-workspace
+.code-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# -------------------------
+# Secrets / env
+# -------------------------
+.env
+.env.*.local
+secrets.*
+*.secret
+
+# -------------------------
+# Build / packaging
+# -------------------------
+build/
+dist/
+eggs/
+
+# -------------------------
+# Logs, runtime data, temporary outputs
+# -------------------------
 *.log
+*.ndjson
+*.idx
+*.sqlite
+*.sqlite3
+*.db
+*.gz
 *.bak
 *.tmp
 *.swp
@@ -70,20 +66,69 @@ nohup.out
 *.out
 *debug.html
 tools/tmp/
+tools/debug_headless_output/
+
+# -------------------------
+# Application runtime folders
+# -------------------------
+input/
+output/
+uploads/
+tmp/
+cache/
+tmp_parser_pid.txt
+
+# Keep committed fixtures directory
+!webapp/parser/fixtures/
+
+# -------------------------
+# Node / frontend
+# -------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.backup*.json
+.dist/
+.vite/
+.storybook/
+webpack-stats.json
+
+# -------------------------
+# Coverage / lint caches
+# -------------------------
+coverage/
+.nyc_output/
+.coverage
+coverage.xml
+htmlcov/
+.eslintcache
+.stylelintcache
+.ruff_cache/
+pytestdebug.log
+hint-report/
 tools/axe-report.json
 tools/lh-report.json
 tools/lh-screenshots/
 tools/webhint-report.json
-json/
 tools/screenshots/
 tools/cluster_dom_mapping.json
 tools/reports/
-# ----------------------------
-# Generated / runtime data
-# ----------------------------
-output/
-input/
-uploads/
+
+# -------------------------
+# Browser drivers & automation
+# -------------------------
+msedge_driver.log
+chromedriver.log
+selenium-screenshots/
+.playwright/
+.ms-playwright/
+webapp/ms-playwright/
+
+# -------------------------
+# Generated / runtime patterns
+# -------------------------
 *.csv
 *.pdf
 .output_cache.json
@@ -94,70 +139,22 @@ fine_tuned_spacy_ner_tmp/
 cache/context_cache.json
 webapp/parser/Context_Integration/Context_Library/log/
 webapp/parser/Context_Integration/Context_Library/cache/
-# ----------------------------
-# Browser drivers & automation
-# ----------------------------
-msedge_driver.log
-chromedriver.log
-selenium-screenshots/
-.playwright/
-.ms-playwright/
-webapp/ms-playwright/
 
-# ----------------------------
-# IDE / Editor settings
-# ----------------------------
-.vscode/
-.idea/
-*.sublime-project
-*.sublime-workspace
-*.code-workspace
-
-# ----------------------------
-# Jupyter Notebooks (optional)
-# ----------------------------
+# -------------------------
+# Jupyter / archives / misc
+# -------------------------
 .ipynb_checkpoints/
 *.ipynb
-
-# ----------------------------
-# System files
-# ----------------------------
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# ----------------------------
-# Azure / Functions local only
-# ----------------------------
-local.settings.json
-.python_packages/
-
-# ----------------------------
-# Archives
-# ----------------------------
 *.tar.gz
 *.zip
 *.7z
 
-# Local data/tests (exclude unless you truly need them in the image)
+# Local data/tests (exclude unless intentionally committed)
 data/
 tests/
 
-# ----------------------------
-# Dev configuration notes
-# ----------------------------
-# .env holds overrideable configs like:
-# BROWSER=msedge|chrome
-# HEADLESS=true|false
-# CAPTCHA_DETECTION_ENABLED=true
-# USER_AGENT_ROTATION=true
-# OUTPUT_DIR=output
-# Example final output path: ${OUTPUT_DIR}/${STATE}/${COUNTY}/${RACE}/results.csv
+# Dev notes / scripts (do not ignore necessarily)
 scripts/install_poppler_ubuntu.sh
-scripts/install_poppler_ubuntu.sh
-
-# Test documentation (temporary)
-test_navbar_changes.md
 
 # Windows temp
 %TEMP%/

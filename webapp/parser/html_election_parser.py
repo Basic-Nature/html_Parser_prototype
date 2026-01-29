@@ -46,7 +46,7 @@ from .utils.download_utils import ensure_input_directory, ensure_output_director
 from .utils.dynamic_table_extractor import dynamic_table_extractor
 from .utils.format_router import prompt_and_handle_download, route_format_handler
 from .utils.logger_singleton import logger, prompt
-from .utils.misc_utils import load_processed_urls
+from .utils.misc_utils import load_processed_urls, extract_url_and_label
 from .utils.output_utils import finalize_election_output
 from .utils.shared_logic import (
     infer_state_county_from_url,
@@ -63,6 +63,28 @@ if CACHE_RESET and PROCESSED_URLS_FILE.exists():
 
 _navigation_store = NavigationRecipeStore()
 NAVIGATION_RUNNER = NavigationInstructionRunner(_navigation_store)
+
+
+def _close_browser_quietly(browser, session_id=None) -> None:
+    """Attempt to close Playwright browser safely; log non-fatal errors.
+
+    Use this helper everywhere instead of calling `sync_safe_browser_close`
+    directly so closing errors won't raise and will be logged uniformly.
+    """
+    try:
+        if browser is not None:
+            sync_safe_browser_close(browser, session_id=session_id)
+    except Exception as exc:
+        try:
+            logger.warning({
+                "level": "WARNING",
+                "type": "browser",
+                "message": f"Failed to close browser cleanly: {exc}",
+                "session_id": session_id,
+            })
+        except Exception:
+            # Best-effort logging; do not raise
+            pass
 
 
 def _count_dom_table_rows(page) -> int:
@@ -92,23 +114,31 @@ def load_urls() -> List[str]:
             "message": msg,
         }
         logger.error(payload)
-        url = safe_strip(prompt.prompt_input("URL: "))
-        if url:
-            URL_LIST_FILE.write_text(url + "\n")
-            msg = f"Appended URL to urls.txt: {url}"
+        user_input = safe_strip(prompt.prompt_input("URL: "))
+        if user_input:
+            u, lbl = extract_url_and_label(user_input)
+            write_val = u or user_input
+            URL_LIST_FILE.write_text(write_val + "\n")
+            msg = f"Appended URL to urls.txt: {write_val}"
             payload = {
                 "level": "INFO",
                 "type": "input",
                 "message": msg,
             }
             logger.info(payload)
-        return [url] if url else []
+        return [write_val] if user_input else []
 
-    with URL_LIST_FILE.open('r') as f:
+    with URL_LIST_FILE.open('r', encoding='utf-8') as f:
         lines = []
-        for line in f:
-            line_stripped = safe_strip(line)
-            if line_stripped and not line_stripped.startswith("#"):
+        for raw_line in f:
+            line_stripped = safe_strip(raw_line)
+            if not line_stripped or line_stripped.startswith("#"):
+                continue
+            u, lbl = extract_url_and_label(line_stripped)
+            if u:
+                lines.append(u)
+            else:
+                # keep the raw line if no URL extracted (back-compat)
                 lines.append(line_stripped)
 
     if not lines:
@@ -119,18 +149,20 @@ def load_urls() -> List[str]:
             "message": msg,
         }
         logger.error(payload)
-        url = safe_strip(prompt.prompt_input("URL: "))
-        if url:
-            with URL_LIST_FILE.open('a') as f_append:
-                f_append.write(url + "\n")
-            msg = f"Appended URL to urls.txt: {url}"
+        user_input = safe_strip(prompt.prompt_input("URL: "))
+        if user_input:
+            u, lbl = extract_url_and_label(user_input)
+            write_val = u or user_input
+            with URL_LIST_FILE.open('a', encoding='utf-8') as f_append:
+                f_append.write(write_val + "\n")
+            msg = f"Appended URL to urls.txt: {write_val}"
             payload = {
                 "level": "INFO",
                 "type": "input",
                 "message": msg,
             }
             logger.info(payload)
-            return [url]
+            return [write_val]
     return lines
 
 def mark_url_processed(url, status="success", **metadata) -> None:
@@ -395,7 +427,7 @@ def process_format_override(
                 "message": f"[ManualOverride] Parsing selected upload: {forced_rel}",
                 "session_id": session_id
             })
-            result = safe_parse(
+            headers, rows, contest, metadata = safe_parse(
                 handler,
                 page=None,
                 manual_file=forced_path,
@@ -405,16 +437,16 @@ def process_format_override(
                 cancel_flag=cancel_flag,
                 **kwargs,
             )
-            if not (isinstance(result, tuple) and len(result) == 4):
+            if isinstance(metadata, dict) and metadata.get("error"):
                 logger.error({
                     "level": "ERROR",
                     "type": "manual_override",
-                    "message": "[ManualOverride] Invalid result format from forced upload parse.",
+                    "message": f"[ManualOverride] Handler error: {metadata.get('error')}",
                     "session_id": session_id
                 })
                 return None
             output_file_path = None
-            metadata = result[-1]
+            # metadata already set from safe_parse
             if isinstance(metadata, dict):
                 output_file_path = metadata.get("output_file")
             if output_bypass and output_file_path and os.path.exists(output_file_path):
@@ -1117,7 +1149,7 @@ def orchestrate_url(
                             "session_id": session_id
                         }
                         logger.info(payload)
-                        sync_safe_browser_close(browser, session_id)
+                        _close_browser_quietly(browser, session_id)
                         return
                 except Exception as e:
                     msg = f"Exception during cancel_flag check: {e}"
@@ -1128,7 +1160,7 @@ def orchestrate_url(
                         "session_id": session_id
                     }
                     logger.warning(payload)
-                    sync_safe_browser_close(browser, session_id)
+                    _close_browser_quietly(browser, session_id)
                     return
 
             if not page:
@@ -1140,7 +1172,7 @@ def orchestrate_url(
                     "session_id": session_id
                 }
                 logger.error(payload)
-                sync_safe_browser_close(browser, session_id)
+                _close_browser_quietly(browser, session_id)
                 return
 
             state, county = infer_state_county_from_url(target_url)
@@ -1319,7 +1351,7 @@ def orchestrate_url(
             else:
                 handler = None
 
-            if not isinstance(result, tuple) or len(result) != 4:
+            if not (isinstance(result, tuple) and len(result) == 4):
                 msg = f"Handler did not return a valid result tuple. (Session: {session_id})"
                 payload = {
                     "level": "ERROR",
@@ -1329,10 +1361,17 @@ def orchestrate_url(
                 }
                 logger.error(payload)
                 mark_url_processed(target_url, status="fail", session_id=session_id)
-                sync_safe_browser_close(browser, session_id)
+                _close_browser_quietly(browser, session_id)
                 return
 
             headers, data, contest, metadata = result
+
+            if isinstance(metadata, dict) and metadata.get("error"):
+                msg = f"Handler reported error: {metadata.get('error')} (Session: {session_id})"
+                logger.error({"level": "ERROR", "type": "handler", "message": msg, "session_id": session_id})
+                mark_url_processed(target_url, status="fail", session_id=session_id)
+                _close_browser_quietly(browser, session_id)
+                return
 
             if isinstance(metadata, dict) and metadata.get("cancelled"):
                 cancel_msg = metadata.get("cancel_reason") or "Parsing cancelled by user request."
@@ -1343,7 +1382,7 @@ def orchestrate_url(
                     "session_id": session_id,
                 })
                 mark_url_processed(target_url, status="cancelled", session_id=session_id)
-                sync_safe_browser_close(browser, session_id)
+                _close_browser_quietly(browser, session_id)
                 return
 
             batch_mode = context.get("batch_mode") if isinstance(context, dict) else None
@@ -1373,7 +1412,7 @@ def orchestrate_url(
                     }
                     logger.error(payload)
                     mark_url_processed(target_url, status="error", session_id=session_id)
-                sync_safe_browser_close(browser, session_id)
+                _close_browser_quietly(browser, session_id)
                 return
 
             if all([headers, data, contest, metadata]):
@@ -1479,7 +1518,7 @@ def orchestrate_url(
             )
         mark_url_processed(target_url, status="error", session_id=session_id)
     finally:
-        sync_safe_browser_close(browser, session_id)
+        _close_browser_quietly(browser, session_id)
 def _orchestrate_url_worker(args):
     """
     args tuple:
@@ -1725,7 +1764,8 @@ def main(
             "message": "Database connection failed. Exiting pipeline.",
             "session_id": session_id
         })
-        sys.exit(1)
+        # Raise instead of exiting so callers (e.g., web pipeline) can handle failures
+        raise
 
 if __name__ == "__main__":
     logger.set_mode("cli")

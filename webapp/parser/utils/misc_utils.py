@@ -8,6 +8,7 @@ import hashlib
 import os
 from pathlib import Path
 from typing import Any, Dict, List
+import re
 
 import orjson
 
@@ -78,3 +79,39 @@ def is_safe_path(basedir: str, path: str) -> bool:
         basedir = os.path.abspath(basedir)
         path = os.path.abspath(path)
         return os.path.commonpath([basedir]) == os.path.commonpath([basedir, path])
+
+
+def extract_url_and_label(line: str) -> tuple[str | None, str | None]:
+    """
+    Extract the first http(s) URL from a line and return (url, label).
+
+    - If no URL is found, returns (None, None).
+    - If the line contains extra text besides the URL, the returned label
+      is the line with the URL removed and common separators trimmed.
+
+    This is permissive: it pulls the first http(s) token and treats the rest
+    as an optional human label. Useful for forgiving `urls.txt` entries like
+    "County page - https://example.org/results".
+    """
+    if not line or not isinstance(line, str):
+        return None, None
+    s = line.strip()
+    if not s or s.startswith('#'):
+        return None, None
+    # find first http/https URL
+    m = None
+    try:
+        m = re.search(r"(https?://[^\s'\"<>|,]+)", s, re.I)
+    except Exception:
+        m = None
+    if not m:
+        return None, None
+    url = m.group(1).strip().rstrip('.,;')
+    # build label by removing the matched url and common separators
+    label = s.replace(m.group(0), '').strip()
+    # remove leading/trailing separators
+    label = re.sub(r"^[\-:\|\s]+", '', label)
+    label = re.sub(r"[\-:\|\s]+$", '', label)
+    if not label:
+        label = None
+    return url, label

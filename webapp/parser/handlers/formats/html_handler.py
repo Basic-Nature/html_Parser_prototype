@@ -169,7 +169,7 @@ def parse(
                         handler = handler_mod
                         handler_found = True
                     elif hasattr(handler_mod, "parse"):
-                        handler = safe_parse(handler_mod)
+                        handler = handler_mod
                         handler_found = True
                     else:
                         handler_found = False

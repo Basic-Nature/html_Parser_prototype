@@ -11,6 +11,7 @@ import requests
 from ..config import DISABLE_HTML_FALLBACK, SUPPORTED_FORMATS
 from ..Context_Integration.Context_Library.constants import CONTEST_KEYWORDS
 from ..handlers.formats import csv_handler, json_handler, pdf_handler, txt_handler, xlsx_handler
+from ..handlers import fec_handler
 from .browser_utils import (
     safe_click,
     safe_content,
@@ -536,7 +537,7 @@ def prompt_and_handle_download(
             "file_path": full_path
         })
         handler_kwargs.pop("cancel_flag", None)
-        result = safe_parse(
+        headers, rows, contest, metadata = safe_parse(
             handler,
             page=None,
             manual_file=full_path,
@@ -546,16 +547,15 @@ def prompt_and_handle_download(
             cancel_flag=cancel_flag,
             **handler_kwargs,
         )
-        valid = isinstance(result, tuple) and len(result) == 4
-        if not valid:
+        if isinstance(metadata, dict) and metadata.get("error"):
             logger.error({
                 "level": "ERROR",
                 "type": "manual_override",
-                "message": "[ManualOverride] Invalid result format.",
+                "message": f"[ManualOverride] Handler error: {metadata.get('error')}",
                 "session_id": session_id
             })
             return None, False
-        return result, True
+        return (headers, rows, contest, metadata), True
 
     # --- Not in manual upload mode: fallback to DOM/HTML logic ---
     logger.info({
@@ -935,7 +935,30 @@ def prompt_and_handle_download(
             return None, None
 
         # Dispatch to format handler with manual_file
-        handler = route_format_handler(fmt)
+        handler = None
+        # Heuristic: prefer fec_handler for CSV/Excel that match FEC header patterns
+        if fmt in ('csv', 'xlsx', 'xls') and local_file_path:
+            try:
+                ext = os.path.splitext(local_file_path)[1].lower().lstrip('.')
+                if ext in ('xlsx', 'xls'):
+                    # try to read headers via pandas if available
+                    try:
+                        import pandas as _pd
+                        df = _pd.read_excel(local_file_path, sheet_name=0, nrows=0)
+                        cols = [str(c).lower() for c in list(df.columns)]
+                        hay = " ".join(cols)
+                    except Exception:
+                        hay = ""
+                else:
+                    with open(local_file_path, 'r', encoding='utf-8', errors='replace') as fh:
+                        hay = fh.read(4096).lower()
+                # look for distinctive FEC headers/tokens
+                if any(tok in hay for tok in ('cand_id', 'cand_name', 'link_image', 'cand_party_affiliation')):
+                    handler = fec_handler
+            except Exception:
+                handler = None
+        if handler is None:
+            handler = route_format_handler(fmt)
         if not handler:
             logger.error({
                 "level": "ERROR",
@@ -945,7 +968,7 @@ def prompt_and_handle_download(
             })
             return None, None
 
-        result = safe_parse(
+        headers, rows, contest, metadata = safe_parse(
             handler,
             page=None,
             manual_file=local_file_path,
@@ -955,16 +978,15 @@ def prompt_and_handle_download(
             cancel_flag=cancel_flag,
             **handler_kwargs,
         )
-        valid = isinstance(result, tuple) and len(result) == 4
-        if not valid:
+        if isinstance(metadata, dict) and metadata.get("error"):
             logger.error({
                 "level": "ERROR",
                 "type": "manual_override",
-                "message": "[ManualOverride] Invalid result format.",
+                "message": "[ManualOverride] Handler returned error.",
                 "session_id": session_id
             })
             return None, False
-        return result, True
+        return (headers, rows, contest, metadata), True
 
     except Exception as e:
         logger.warning({

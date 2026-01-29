@@ -398,6 +398,33 @@ try {
   ){
     if(!dropdown || !toggle) return;
     dropdown.setAttribute('aria-hidden', 'true');
+
+  // --- Left-sidebar-centered init (inlined) ----------------------------------
+  // Previously in webapp/static/js/left_sidebar_centered_init.js — inlined here
+  // to avoid an extra request and keep behavior bundled with main page JS.
+  (function(){
+    function initLeftSidebarCentered(){
+      try {
+        if (window.innerWidth >= 768) {
+          var body = document.body;
+          if (!body) return;
+          // Respect explicit user toggles or prior class state
+          if (body.classList.contains('right-sidebar-collapsed') || body.classList.contains('left-sidebar-centered')) return;
+          var sidebar = document.getElementById('sidebar') || document.querySelector('.sidebar-left');
+          if (!sidebar) return;
+          body.classList.add('left-sidebar-centered');
+        }
+      } catch (e) {
+        console && console.warn && console.warn('left-sidebar-centered init failed', e);
+      }
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initLeftSidebarCentered);
+    } else {
+      initLeftSidebarCentered();
+    }
+  })();
+
     toggle.setAttribute('aria-expanded','false');
     dropdown.classList.remove('open');
     try{ toggle.focus(); }catch(e){}
