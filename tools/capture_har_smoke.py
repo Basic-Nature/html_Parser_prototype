@@ -79,6 +79,21 @@ with sync_playwright() as p:
     # Allow time for background requests / socket connects
     time.sleep(6)
 
+    def try_click_visible(selector, timeout=1500, retries=3):
+        for _ in range(retries):
+            try:
+                page.wait_for_selector(selector, state='visible', timeout=timeout)
+                loc = page.locator(selector)
+                try:
+                    loc.scroll_into_view_if_needed(timeout=timeout)
+                except Exception:
+                    pass
+                loc.click()
+                return True
+            except Exception:
+                time.sleep(0.2)
+        return False
+
     # Try to open parent/menu toggler(s) that reveal nav-more, then click nav-more.
     try:
         toggler_selectors = [
@@ -87,52 +102,19 @@ with sync_playwright() as p:
         ]
         toggled = False
         for sel in toggler_selectors:
-            try:
-                loc = page.locator(sel)
-                loc.wait_for(state='visible', timeout=1500)
-                loc.click()
+            if try_click_visible(sel, timeout=1500, retries=2):
                 print(f'Clicked toggler: {sel}')
                 toggled = True
                 time.sleep(0.5)
                 break
-            except Exception:
-                # fallback JS click
-                try:
-                    page.evaluate("(s)=>{const el=document.querySelector(s); if(el) el.click();}", sel)
-                    print(f'JS-clicked toggler (fallback): {sel}')
-                    toggled = True
-                    time.sleep(0.5)
-                    break
-                except Exception as e:
-                    print(f'Failed clicking toggler {sel}:', e)
+            else:
+                print(f'Failed clicking toggler {sel}')
 
         # Try clicking the nav-more control, with JS and DOM fallbacks
-        try:
-            nav_more = page.locator('#btnNavMore')
-            nav_more.wait_for(state='visible', timeout=3000)
-            nav_more.click(force=True)
+        if try_click_visible('#btnNavMore', timeout=3000, retries=3):
             print('Clicked #btnNavMore')
-        except Exception:
-            # JS click fallback
-            try:
-                page.evaluate("() => { const el = document.querySelector('#btnNavMore'); if(el) el.click(); }")
-                print('Attempted JS click on #btnNavMore (no visibility)')
-            except Exception:
-                # Last-resort: temporarily un-inert nav dropdown and click
-                try:
-                    page.evaluate("() => { const dd = document.querySelector('#navMoreDropdown'); if(dd){ dd.__backup_inert = dd.inert; dd.__backup_aria = dd.getAttribute('aria-hidden'); dd.inert = false; dd.setAttribute('aria-hidden','false'); const links = dd.querySelectorAll('a'); for(const a of links){ a.setAttribute('tabindex','0'); } } }")
-                    time.sleep(0.3)
-                    try:
-                        page.evaluate("() => { const b = document.querySelector('#btnNavMore'); if(b) b.click(); }")
-                        print('Clicked #btnNavMore after temporary un-inert')
-                    except Exception as e:
-                        print('Failed click after un-inert:', e)
-                    try:
-                        page.evaluate("() => { const dd = document.querySelector('#navMoreDropdown'); if(dd && typeof dd.__backup_inert !== 'undefined'){ dd.inert = !!dd.__backup_inert; if(dd.__backup_aria!==null){ dd.setAttribute('aria-hidden', dd.__backup_aria);} else { dd.removeAttribute('aria-hidden'); } const links = dd.querySelectorAll('a'); for(const a of links){ a.removeAttribute('tabindex'); } delete dd.__backup_inert; delete dd.__backup_aria; } }")
-                    except Exception:
-                        pass
-                except Exception as e:
-                    print('Nav-more not visible or not found after toggler attempts and fallbacks:', e)
+        else:
+            print('Nav-more not visible or not found after toggler attempts')
     except Exception as e:
         print('Error while attempting to reveal/click nav-more:', e)
 

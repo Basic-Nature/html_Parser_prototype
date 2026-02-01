@@ -4592,6 +4592,233 @@ const promptInputEl = $('#promptInput');
 const promptSearchEl = $('#promptSearch');
 const promptOptionsEl = $('#promptOptions');
 
+let promptFocusRestoreEl = null;
+let promptFocusTrapHandler = null;
+let promptTopLayerObserver = null;
+let promptOptionPreviewEl = null;
+let promptOptionPreviewHideTimer = null;
+
+function ensurePromptModalAria(promptModal) {
+  if (!promptModal) return;
+  try {
+    promptModal.setAttribute('role', 'dialog');
+    promptModal.setAttribute('aria-modal', 'true');
+    if (!promptModal.getAttribute('aria-labelledby')) {
+      promptModal.setAttribute('aria-labelledby', 'promptTitle');
+    }
+    if (!promptModal.getAttribute('aria-describedby')) {
+      promptModal.setAttribute('aria-describedby', 'promptMessage');
+    }
+  } catch (e) { /* noop */ }
+}
+
+function getPromptFocusableElements(root) {
+  if (!root) return [];
+  const nodes = Array.from(root.querySelectorAll(
+    'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+  ));
+  return nodes.filter((el) => {
+    try {
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    } catch (e) {
+      return false;
+    }
+  });
+}
+
+function installPromptFocusTrap(promptModal) {
+  if (!promptModal || promptFocusTrapHandler) return;
+  try {
+    promptFocusRestoreEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  } catch (e) {
+    promptFocusRestoreEl = null;
+  }
+
+  promptFocusTrapHandler = (e) => {
+    if (!e || e.key !== 'Tab') return;
+    const focusables = getPromptFocusableElements(promptModal);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first || document.activeElement === promptModal) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  promptModal.addEventListener('keydown', promptFocusTrapHandler);
+}
+
+function teardownPromptFocusTrap(promptModal) {
+  if (promptModal && promptFocusTrapHandler) {
+    try {
+      promptModal.removeEventListener('keydown', promptFocusTrapHandler);
+    } catch (e) { /* noop */ }
+  }
+  promptFocusTrapHandler = null;
+  if (promptFocusRestoreEl && typeof promptFocusRestoreEl.focus === 'function') {
+    try { promptFocusRestoreEl.focus(); } catch (e) { /* noop */ }
+  }
+  promptFocusRestoreEl = null;
+}
+
+function installPromptTopLayerGuard(promptModal) {
+  if (!promptModal) return;
+  try {
+    promptModal.classList.add('prompt-modal-top');
+    promptModal.dataset.promptTopLayer = '1';
+  } catch (e) { /* noop */ }
+  ensurePromptModalAria(promptModal);
+
+  if (promptTopLayerObserver) {
+    try { promptTopLayerObserver.disconnect(); } catch (e) { /* noop */ }
+  }
+  promptTopLayerObserver = new MutationObserver(() => {
+    try {
+      if (!promptModal.classList.contains('prompt-modal-top')) {
+        promptModal.classList.add('prompt-modal-top');
+      }
+      ensurePromptModalAria(promptModal);
+    } catch (e) { /* noop */ }
+  });
+  try {
+    promptTopLayerObserver.observe(promptModal, {
+      attributes: true,
+      attributeFilter: ['class', 'style', 'role', 'aria-modal', 'aria-labelledby', 'aria-describedby']
+    });
+  } catch (e) { /* noop */ }
+}
+
+function teardownPromptTopLayerGuard(promptModal) {
+  if (promptTopLayerObserver) {
+    try { promptTopLayerObserver.disconnect(); } catch (e) { /* noop */ }
+  }
+  promptTopLayerObserver = null;
+  if (promptModal) {
+    try {
+      promptModal.classList.remove('prompt-modal-top');
+      delete promptModal.dataset.promptTopLayer;
+    } catch (e) { /* noop */ }
+  }
+}
+
+function ensurePromptOptionPreviewSlot() {
+  if (promptOptionPreviewEl && promptOptionPreviewEl.isConnected) return promptOptionPreviewEl;
+  const modalBody = promptOptionsEl ? promptOptionsEl.closest('.modal-body') : null;
+  if (!modalBody) return null;
+  const existing = modalBody.querySelector('#promptOptionPreview');
+  if (existing) {
+    promptOptionPreviewEl = existing;
+    return existing;
+  }
+  const preview = document.createElement('div');
+  preview.id = 'promptOptionPreview';
+  preview.className = 'prompt-option-preview hidden';
+  const title = document.createElement('div');
+  title.className = 'prompt-option-preview-title';
+  const body = document.createElement('div');
+  body.className = 'prompt-option-preview-body';
+  preview.appendChild(title);
+  preview.appendChild(body);
+  if (promptInputEl && promptInputEl.parentNode === modalBody) {
+    modalBody.insertBefore(preview, promptInputEl);
+  } else {
+    modalBody.appendChild(preview);
+  }
+  promptOptionPreviewEl = preview;
+  return preview;
+}
+
+function getPromptPreviewPayload(opt) {
+  if (!opt) return null;
+  const meta = opt.metadata || {};
+  let rawPreview = meta.preview_text || meta.preview || '';
+  if (!rawPreview && meta.preview_html) {
+    try {
+      const doc = new DOMParser().parseFromString(String(meta.preview_html), 'text/html');
+      rawPreview = (doc && doc.body && doc.body.textContent) ? doc.body.textContent : '';
+    } catch (e) {
+      rawPreview = '';
+    }
+  }
+  const fallbackText = opt.meta || '';
+  const text = String(rawPreview || fallbackText || '').trim();
+  const title = String(opt.label || 'Preview');
+  if (!text) return null;
+  return { title, text };
+}
+
+function getPromptPreviewSupport(text) {
+  const nav = (typeof navigator !== 'undefined' ? navigator : null);
+  let canShare = false;
+  if (nav && typeof nav.canShare === 'function') {
+    try {
+      canShare = !!nav.canShare({ text: String(text || '') });
+    } catch (e) {
+      canShare = false;
+    }
+  }
+  const api = (/** @type {any} */ (window)).Preview || (/** @type {any} */ (window)).preview || (nav && (/** @type {any} */ (nav)).preview);
+  return { api, canShare };
+}
+
+function showPromptOptionPreview(payload) {
+  if (!payload) return;
+  if (promptOptionPreviewHideTimer) {
+    clearTimeout(promptOptionPreviewHideTimer);
+    promptOptionPreviewHideTimer = null;
+  }
+
+  const previewSupport = getPromptPreviewSupport(payload.text);
+  let usedApi = false;
+  if (previewSupport.api && (previewSupport.canShare || previewSupport.api)) {
+    try {
+      if (typeof previewSupport.api === 'function') {
+        previewSupport.api(payload);
+      } else if (typeof previewSupport.api.show === 'function') {
+        previewSupport.api.show(payload);
+      } else if (typeof previewSupport.api.open === 'function') {
+        previewSupport.api.open(payload);
+      }
+      usedApi = true;
+    } catch (e) {
+      usedApi = false;
+    }
+  }
+
+  if (usedApi) return;
+
+  const previewEl = ensurePromptOptionPreviewSlot();
+  if (!previewEl) return;
+  const titleEl = previewEl.querySelector('.prompt-option-preview-title');
+  const bodyEl = previewEl.querySelector('.prompt-option-preview-body');
+  if (titleEl) titleEl.textContent = payload.title || 'Preview';
+  if (bodyEl) bodyEl.textContent = payload.text || '';
+  previewEl.classList.remove('hidden');
+}
+
+function hidePromptOptionPreview(force = false) {
+  if (!promptOptionPreviewEl) return;
+  if (promptOptionPreviewHideTimer) {
+    clearTimeout(promptOptionPreviewHideTimer);
+    promptOptionPreviewHideTimer = null;
+  }
+  const doHide = () => {
+    if (promptOptionPreviewEl) promptOptionPreviewEl.classList.add('hidden');
+  };
+  if (force) {
+    doHide();
+    return;
+  }
+  promptOptionPreviewHideTimer = setTimeout(doHide, 120);
+}
+
 /* PromptOption typedef consolidated at top of file. */
 
 /**
@@ -4818,6 +5045,8 @@ function renderPromptOptions(filterText = '') {
       frag.appendChild(elem);
     }
     promptOptionsEl.replaceChildren(frag);
+
+    hidePromptOptionPreview(true);
   
   updateSelectionSummary();
   }, 'renderPromptOptions');
@@ -5118,6 +5347,16 @@ function createPromptOptionButton(opt, options = {}) {
       // Single-click auto-submit for single options
       btn.addEventListener('click', () => submitPrompt(String(opt.index ?? opt.value ?? opt.label)));
     }
+
+    const previewPayload = getPromptPreviewPayload(opt);
+    if (previewPayload) {
+      const showPreview = () => showPromptOptionPreview(previewPayload);
+      const hidePreview = () => hidePromptOptionPreview();
+      btn.addEventListener('mouseenter', showPreview);
+      btn.addEventListener('focus', showPreview);
+      btn.addEventListener('mouseleave', hidePreview);
+      btn.addEventListener('blur', hidePreview);
+    }
     
     return btn;
   }, 'createPromptOptionButton', null);
@@ -5175,6 +5414,13 @@ function showPrompt({ title = 'Action required', message = '', options = [], pla
     renderPromptOptions('');
 
     const promptModal = $('#promptModal');
+    if (promptModal) {
+      ensurePromptModalAria(promptModal);
+      installPromptTopLayerGuard(promptModal);
+      installPromptFocusTrap(promptModal);
+      ensurePromptOptionPreviewSlot();
+      hidePromptOptionPreview(true);
+    }
     try {
       if (window.modalManager && promptModal instanceof HTMLElement) {
         // Move existing prompt DOM into modalManager body to preserve event handlers
@@ -5284,6 +5530,11 @@ function hidePrompt(options) {
       placeholder: (promptInputEl instanceof HTMLInputElement) ? promptInputEl.placeholder : ''
     } : null;
     const promptModal = $('#promptModal');
+    if (promptModal) {
+      teardownPromptTopLayerGuard(promptModal);
+      teardownPromptFocusTrap(promptModal);
+      hidePromptOptionPreview(true);
+    }
     // If modalManager is managing the prompt, ask it to close first
     try {
       if (window.modalManager && typeof window.modalManager.closeModal === 'function') {

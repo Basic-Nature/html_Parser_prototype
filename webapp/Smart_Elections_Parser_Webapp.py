@@ -3456,184 +3456,184 @@ def handle_ballot_lens(data=None) -> None:
     thread = socketio.start_background_task(worker_wrapper)
     session_manager.set_thread(session_id, thread)
 
-    # --- FEC mappings review endpoints ---
-    MAPPINGS_PATH = os.path.join(str(PROJECT_ROOT), 'webapp', 'parser', 'fixtures', 'mappings.json')
-    REPORT_JSONL = os.path.join(str(PROJECT_ROOT), 'webapp', 'parser', 'fixtures', 'fuzzy_match_report_full.jsonl')
+# --- FEC mappings review endpoints ---
+MAPPINGS_PATH = os.path.join(str(PROJECT_ROOT), 'webapp', 'parser', 'fixtures', 'mappings.json')
+REPORT_JSONL = os.path.join(str(PROJECT_ROOT), 'webapp', 'parser', 'fixtures', 'fuzzy_match_report_full.jsonl')
 
 
-    def _read_jsonl(path):
-        out = []
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
+def _read_jsonl(path):
+    out = []
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    out.append(orjson.loads(line) if isinstance(line, (bytes, bytearray)) else json.loads(line))
+                except Exception:
                     try:
-                        out.append(orjson.loads(line) if isinstance(line, (bytes, bytearray)) else json.loads(line))
+                        out.append(json.loads(line))
                     except Exception:
-                        try:
-                            out.append(json.loads(line))
-                        except Exception:
-                            continue
+                        continue
+    except Exception:
+        return []
+    return out
+
+
+@app.route('/fec_mappings_review')
+def fec_mappings_review():
+    # Simple single-file HTML reviewer for fuzzy-match problem rows
+    html = '''<!doctype html><html><head><meta charset="utf-8"><title>FEC Mappings Review</title></head><body>
+    <h2>FEC Mappings Review</h2>
+    <div id="status">Loading...</div>
+    <table id="rows" border="1" style="border-collapse:collapse;margin-top:12px;width:100%"><thead><tr><th>File</th><th>Row</th><th>Candidate</th><th>State</th><th>Match</th><th>Score</th><th>Nearest</th><th>Actions</th></tr></thead><tbody></tbody></table>
+    <script>
+    async function load(){
+      const resp = await fetch('/api/fec/problem_rows?limit=200');
+      const data = await resp.json();
+      document.getElementById('status').innerText = `Loaded ${data.length} rows (showing up to 200)`;
+      const tb = document.querySelector('#rows tbody');
+      tb.innerHTML = '';
+      for(const r of data){
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.file}</td><td>${r.row}</td><td>${(r.cand_name||'')}</td><td>${(r.state||'')}</td><td>${r.match_type}</td><td>${r.score||0}</td><td>${(r.candidates||[]).map(c=>`${c.cand_id}(${c.score})`).join('<br>')}</td><td></td>`;
+        const actions = tr.querySelector('td:last-child');
+        const accept = document.createElement('button'); accept.innerText='Accept/Map';
+        accept.onclick = async ()=>{
+          const mapped = prompt('Enter mapped candidate id (leave blank to cancel):','');
+          if(mapped===null||mapped==='') return;
+          const payload = {file:r.file,row:r.row,mapped_id:mapped,note:''};
+          await fetch('/api/fec/save_mapping',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+          actions.innerText='Mapped';
+        };
+        const reject = document.createElement('button'); reject.innerText='Reject';
+        reject.onclick = async ()=>{
+          if(!confirm('Mark as rejected?')) return;
+          const payload = {file:r.file,row:r.row,mapped_id:null,note:'rejected'};
+          await fetch('/api/fec/save_mapping',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+          actions.innerText='Rejected';
+        };
+        actions.appendChild(accept); actions.appendChild(document.createTextNode(' ')); actions.appendChild(reject);
+        tb.appendChild(tr);
+      }
+    }
+    load();
+    </script>
+    </body></html>'''
+    return html
+
+
+@app.route('/api/fec/problem_rows')
+def api_fec_problem_rows():
+    try:
+        min_score = int(request.args.get('min_score') or 70)
+    except Exception:
+        min_score = 70
+    try:
+        limit = int(request.args.get('limit') or 200)
+    except Exception:
+        limit = 200
+    rows = _read_jsonl(REPORT_JSONL)
+    out = []
+    for r in rows:
+        try:
+            score = int(r.get('score') or 0)
         except Exception:
-            return []
-        return out
+            score = 0
+        if r.get('match_type') != 'exact' or score < min_score:
+            out.append(r)
+        if len(out) >= limit:
+            break
+    return jsonify(out)
 
 
-    @app.route('/fec_mappings_review')
-    def fec_mappings_review():
-        # Simple single-file HTML reviewer for fuzzy-match problem rows
-        html = '''<!doctype html><html><head><meta charset="utf-8"><title>FEC Mappings Review</title></head><body>
-        <h2>FEC Mappings Review</h2>
-        <div id="status">Loading...</div>
-        <table id="rows" border="1" style="border-collapse:collapse;margin-top:12px;width:100%"><thead><tr><th>File</th><th>Row</th><th>Candidate</th><th>State</th><th>Match</th><th>Score</th><th>Nearest</th><th>Actions</th></tr></thead><tbody></tbody></table>
-        <script>
-        async function load(){
-          const resp = await fetch('/api/fec/problem_rows?limit=200');
-          const data = await resp.json();
-          document.getElementById('status').innerText = `Loaded ${data.length} rows (showing up to 200)`;
-          const tb = document.querySelector('#rows tbody');
-          tb.innerHTML = '';
-          for(const r of data){
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${r.file}</td><td>${r.row}</td><td>${(r.cand_name||'')}</td><td>${(r.state||'')}</td><td>${r.match_type}</td><td>${r.score||0}</td><td>${(r.candidates||[]).map(c=>`${c.cand_id}(${c.score})`).join('<br>')}</td><td></td>`;
-            const actions = tr.querySelector('td:last-child');
-            const accept = document.createElement('button'); accept.innerText='Accept/Map';
-            accept.onclick = async ()=>{
-              const mapped = prompt('Enter mapped candidate id (leave blank to cancel):','');
-              if(mapped===null||mapped==='') return;
-              const payload = {file:r.file,row:r.row,mapped_id:mapped,note:''};
-              await fetch('/api/fec/save_mapping',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-              actions.innerText='Mapped';
-            };
-            const reject = document.createElement('button'); reject.innerText='Reject';
-            reject.onclick = async ()=>{
-              if(!confirm('Mark as rejected?')) return;
-              const payload = {file:r.file,row:r.row,mapped_id:null,note:'rejected'};
-              await fetch('/api/fec/save_mapping',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-              actions.innerText='Rejected';
-            };
-            actions.appendChild(accept); actions.appendChild(document.createTextNode(' ')); actions.appendChild(reject);
-            tb.appendChild(tr);
-          }
+@app.route('/api/fec/save_mapping', methods=['POST'])
+def api_fec_save_mapping():
+    data = request.get_json(force=True) or {}
+
+    def _validate(name: str, val, *, allow_null: bool = False, max_len: int = 256):
+        if val is None:
+            if allow_null:
+                return None
+            raise ValueError(f"{name} is required")
+        if isinstance(val, (int, float)):
+            return val
+        if not isinstance(val, str):
+            raise ValueError(f"{name} must be a string")
+        cleaned = val.strip()
+        if not cleaned and not allow_null:
+            raise ValueError(f"{name} is empty")
+        if len(cleaned) > max_len:
+            raise ValueError(f"{name} too long")
+        return cleaned
+
+    try:
+        file_val = _validate('file', data.get('file'), allow_null=False, max_len=160)
+        # simple safety check for filename characters
+        if not _SAFE_FILTER_PATTERN.fullmatch(file_val):
+            raise ValueError('file contains invalid characters')
+        row_val = data.get('row')
+        if isinstance(row_val, (int, float)):
+            row_val = int(row_val)
+        else:
+            row_val = _validate('row', row_val, allow_null=False, max_len=64)
+        mapped_id = data.get('mapped_id')
+        if mapped_id is not None:
+            mapped_id = _validate('mapped_id', mapped_id, allow_null=True, max_len=128)
+        note = data.get('note')
+        if note is not None:
+            note = _validate('note', note, allow_null=True, max_len=1024)
+
+        entry = {
+            'file': file_val,
+            'row': row_val,
+            'mapped_id': mapped_id,
+            'note': note,
+            'ts': datetime.now(timezone.utc).isoformat()
         }
-        load();
-        </script>
-        </body></html>'''
-        return html
 
+        # Ensure directory exists
+        d = os.path.dirname(MAPPINGS_PATH)
+        os.makedirs(d, exist_ok=True)
 
-    @app.route('/api/fec/problem_rows')
-    def api_fec_problem_rows():
+        # Atomic read/modify/write with rotation cap
+        MAX_ENTRIES = int(os.environ.get('MAPPINGS_MAX_ENTRIES', '5000'))
+        tmp_path = MAPPINGS_PATH + '.tmp'
         try:
-            min_score = int(request.args.get('min_score') or 70)
-        except Exception:
-            min_score = 70
-        try:
-            limit = int(request.args.get('limit') or 200)
-        except Exception:
-            limit = 200
-        rows = _read_jsonl(REPORT_JSONL)
-        out = []
-        for r in rows:
-            try:
-                score = int(r.get('score') or 0)
-            except Exception:
-                score = 0
-            if r.get('match_type') != 'exact' or score < min_score:
-                out.append(r)
-            if len(out) >= limit:
-                break
-        return jsonify(out)
-
-
-    @app.route('/api/fec/save_mapping', methods=['POST'])
-    def api_fec_save_mapping():
-        data = request.get_json(force=True) or {}
-
-        def _validate(name: str, val, *, allow_null: bool = False, max_len: int = 256):
-            if val is None:
-                if allow_null:
-                    return None
-                raise ValueError(f"{name} is required")
-            if isinstance(val, (int, float)):
-                return val
-            if not isinstance(val, str):
-                raise ValueError(f"{name} must be a string")
-            cleaned = val.strip()
-            if not cleaned and not allow_null:
-                raise ValueError(f"{name} is empty")
-            if len(cleaned) > max_len:
-                raise ValueError(f"{name} too long")
-            return cleaned
-
-        try:
-            file_val = _validate('file', data.get('file'), allow_null=False, max_len=160)
-            # simple safety check for filename characters
-            if not _SAFE_FILTER_PATTERN.fullmatch(file_val):
-                raise ValueError('file contains invalid characters')
-            row_val = data.get('row')
-            if isinstance(row_val, (int, float)):
-                row_val = int(row_val)
+            if os.path.exists(MAPPINGS_PATH):
+                with open(MAPPINGS_PATH, 'r', encoding='utf-8') as f:
+                    existing = json.load(f)
+                    if not isinstance(existing, list):
+                        existing = []
             else:
-                row_val = _validate('row', row_val, allow_null=False, max_len=64)
-            mapped_id = data.get('mapped_id')
-            if mapped_id is not None:
-                mapped_id = _validate('mapped_id', mapped_id, allow_null=True, max_len=128)
-            note = data.get('note')
-            if note is not None:
-                note = _validate('note', note, allow_null=True, max_len=1024)
-
-            entry = {
-                'file': file_val,
-                'row': row_val,
-                'mapped_id': mapped_id,
-                'note': note,
-                'ts': datetime.now(timezone.utc).isoformat()
-            }
-
-            # Ensure directory exists
-            d = os.path.dirname(MAPPINGS_PATH)
-            os.makedirs(d, exist_ok=True)
-
-            # Atomic read/modify/write with rotation cap
-            MAX_ENTRIES = int(os.environ.get('MAPPINGS_MAX_ENTRIES', '5000'))
-            tmp_path = MAPPINGS_PATH + '.tmp'
-            try:
-                if os.path.exists(MAPPINGS_PATH):
-                    with open(MAPPINGS_PATH, 'r', encoding='utf-8') as f:
-                        existing = json.load(f)
-                        if not isinstance(existing, list):
-                            existing = []
-                else:
-                    existing = []
-            except Exception:
                 existing = []
+        except Exception:
+            existing = []
 
-            existing.append(entry)
-            # Trim oldest entries to MAX_ENTRIES
-            if len(existing) > MAX_ENTRIES:
-                existing = existing[-MAX_ENTRIES:]
+        existing.append(entry)
+        # Trim oldest entries to MAX_ENTRIES
+        if len(existing) > MAX_ENTRIES:
+            existing = existing[-MAX_ENTRIES:]
 
-            # Write to temp file then atomically replace
-            with open(tmp_path, 'w', encoding='utf-8') as tf:
-                json.dump(existing, tf, indent=2)
-                tf.flush()
-                os.fsync(tf.fileno())
-            os.replace(tmp_path, MAPPINGS_PATH)
+        # Write to temp file then atomically replace
+        with open(tmp_path, 'w', encoding='utf-8') as tf:
+            json.dump(existing, tf, indent=2)
+            tf.flush()
+            os.fsync(tf.fileno())
+        os.replace(tmp_path, MAPPINGS_PATH)
 
-            return jsonify({'success': True, 'entry': entry})
-        except ValueError as ve:
-            return jsonify({'success': False, 'error': str(ve)}), 400
-        except Exception as exc:
-            logger.error({'level': 'ERROR', 'type': 'mappings', 'message': f'Failed to save mapping: {exc}', 'session_id': None})
-            try:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
-            except Exception:
-                pass
-            return jsonify({'success': False, 'error': str(exc)}), 500
+        return jsonify({'success': True, 'entry': entry})
+    except ValueError as ve:
+        return jsonify({'success': False, 'error': str(ve)}), 400
+    except Exception as exc:
+        logger.error({'level': 'ERROR', 'type': 'mappings', 'message': f'Failed to save mapping: {exc}', 'session_id': None})
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
+        return jsonify({'success': False, 'error': str(exc)}), 500
 
 # Heartbeat thread startup (idempotent)
 if 'heartbeat_thread' not in globals() or not isinstance(globals().get('heartbeat_thread'), Thread) or not globals()['heartbeat_thread'].is_alive():

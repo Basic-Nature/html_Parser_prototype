@@ -4209,6 +4209,10 @@ code {
   z-index: var(--z-modal);
 }
 
+.prompt-modal-top {
+  z-index: calc(var(--z-modal) + 25);
+}
+
 .modal-content {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -4396,6 +4400,32 @@ code {
 .prompt-option .meta {
   color: var(--text-muted);
   font-size: 0.875rem;
+}
+
+.prompt-option-preview {
+  margin: 0 0 var(--spacing-md);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.prompt-option-preview.hidden {
+  display: none !important;
+}
+
+.prompt-option-preview-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--modal-contrast-color, #e6f4ff);
+}
+
+.prompt-option-preview-body {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
 }
 
 .modal-footer {
