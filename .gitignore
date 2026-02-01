@@ -67,6 +67,7 @@ nohup.out
 *debug.html
 tools/tmp/
 tools/debug_headless_output/
+tools/prompt_smoke.html
 
 # -------------------------
 # Application runtime folders
