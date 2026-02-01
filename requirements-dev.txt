@@ -6,3 +6,6 @@ types-requests==2.32.0.20241016
 python-dotenv>=1.2.1
 pytest>=9.0.2 
 # JS/Markdown tooling lives in package.json; install Node/npm and run `npm install` separately.
+# Development-only test helpers
+# Prometheus client used for local metrics testing (not required in production runtime)
+prometheus-client>=0.16.0

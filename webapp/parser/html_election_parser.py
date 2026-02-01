@@ -41,11 +41,16 @@ from .utils.browser_utils import (
     TABLE_DISCOVERY_SELECTOR,
     TABLE_DISCOVERY_SELECTOR_JS,
     SCROLL_METRIC_KEYS,
+    safe_query_selector_all,
+    safe_count,
+    safe_locator,
 )
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.dynamic_table_extractor import dynamic_table_extractor
 from .utils.format_router import prompt_and_handle_download, route_format_handler
 from .utils.logger_singleton import logger, prompt
+from .utils.telemetry import emit_telemetry_event
+from .utils.telemetry_agg import increment_counter
 from .utils.misc_utils import load_processed_urls, extract_url_and_label
 from .utils.output_utils import finalize_election_output
 from .utils.shared_logic import (
@@ -91,16 +96,29 @@ def _count_dom_table_rows(page) -> int:
     if page is None:
         return 0
     try:
-        return int(
-            page.evaluate(
-                f"""() => {{
-                    const nodes = document.querySelectorAll({TABLE_DISCOVERY_SELECTOR_JS});
-                    let total = 0;
-                    nodes.forEach((tbl) => {{ total += tbl.querySelectorAll("tr").length; }});
-                    return total;
-                }}"""
-            )
-        )
+        # Prefer Playwright locator/element-handle APIs to avoid injecting JS via evaluate
+        total = 0
+        try:
+            nodes = []
+            if hasattr(page, "query_selector_all"):
+                nodes = page.query_selector_all(TABLE_DISCOVERY_SELECTOR)
+            else:
+                nodes = safe_query_selector_all(page, TABLE_DISCOVERY_SELECTOR)
+        except Exception:
+            nodes = safe_query_selector_all(page, TABLE_DISCOVERY_SELECTOR)
+
+        for tbl in nodes:
+            try:
+                if hasattr(tbl, "query_selector_all"):
+                    trs = tbl.query_selector_all("tr")
+                    total += len(trs) if trs is not None else 0
+                else:
+                    # If ElementHandle lacks query_selector_all, try safe_locator within its context
+                    locator = safe_locator(tbl, "tr")
+                    total += safe_count(locator)
+            except Exception:
+                continue
+        return int(total)
     except Exception:
         return 0
 
@@ -195,6 +213,36 @@ def mark_url_processed(url, status="success", **metadata) -> None:
             entries.append(entry)
         with open(PROCESSED_URLS_FILE, 'wb') as f:
             f.write(orjson.dumps(entries, option=orjson.OPT_INDENT_2))
+    try:
+        # Emit telemetry event for processed URL (best-effort)
+        emit_telemetry_event("url_processed", entry)
+    except Exception:
+        pass
+    try:
+        # Update lightweight aggregation counters
+        increment_counter('processed_total', 1)
+        if isinstance(status, str):
+            s = status.lower()
+            if s in ('success',):
+                increment_counter('processed_success', 1)
+            elif s in ('fail', 'error'):
+                increment_counter('processed_fail', 1)
+            elif s in ('partial',):
+                increment_counter('processed_partial', 1)
+            elif s in ('cancelled', 'cancel'):
+                increment_counter('processed_cancelled', 1)
+        # flag fallbacks
+        if isinstance(metadata, dict) and metadata.get('fallback'):
+            increment_counter('fallbacks', 1)
+        # track tables_seen if present
+        try:
+            tbls = int(metadata.get('tables_seen') or 0)
+            if tbls:
+                increment_counter('tables_seen_total', tbls)
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 def prompt_url_selection(
     urls: List[str],
@@ -1130,6 +1178,10 @@ def orchestrate_url(
         "session_id": session_id
     }
     logger.info(payload)
+    try:
+        emit_telemetry_event("navigation_start", {"url": target_url, "session_id": session_id})
+    except Exception:
+        pass
 
     browser = page = None
     result = None
@@ -1217,6 +1269,16 @@ def orchestrate_url(
                         telemetry=nav_output.telemetry,
                         metadata=nav_output.metadata,
                     )
+                try:
+                    emit_telemetry_event("navigation_complete", {
+                        "url": target_url,
+                        "session_id": session_id,
+                        "nav_executed": bool(getattr(nav_output, 'executed', False)) if nav_output is not None else False,
+                        "nav_script_id": getattr(nav_output, 'script_id', None) if nav_output is not None else None,
+                        "nav_telemetry": getattr(nav_output, 'telemetry', None) if nav_output is not None else None,
+                    })
+                except Exception:
+                    pass
             scroll_metrics: Dict[str, Any] = {}
             try:
                 autoscroll_until_stable(
@@ -1239,6 +1301,10 @@ def orchestrate_url(
                         **{k: v for k, v in scroll_metrics.items() if k in SCROLL_METRIC_KEYS},
                     }
                 )
+                try:
+                    emit_telemetry_event("page_scrolled", {"url": target_url, "session_id": session_id, "scroll_metrics": scroll_metrics})
+                except Exception:
+                    pass
 
             dom_table_rows = _count_dom_table_rows(page)
             download_parse_tuple = None
@@ -1301,6 +1367,15 @@ def orchestrate_url(
                     fuzzy_cutoff=None,
                     session_id=session_id
                 )
+                try:
+                    handler_name = None
+                    summary = None
+                    if isinstance(handler_result, dict):
+                        handler_name = handler_result.get('handler').__class__.__name__ if handler_result.get('handler') is not None else None
+                        summary = handler_result.get('summary')
+                    emit_telemetry_event("handler_selected", {"url": target_url, "session_id": session_id, "handler": handler_name, "summary": summary})
+                except Exception:
+                    pass
                 handler = handler_result.get("handler") if isinstance(handler_result, dict) else None
                 summary = handler_result.get("summary") if isinstance(handler_result, dict) else None
 
@@ -1363,6 +1438,23 @@ def orchestrate_url(
                 mark_url_processed(target_url, status="fail", session_id=session_id)
                 _close_browser_quietly(browser, session_id)
                 return
+
+            # Emit parse result telemetry (best-effort)
+            try:
+                if isinstance(result, tuple) and len(result) == 4:
+                    _h, _d, _c, _m = result
+                    row_count = len(_d) if isinstance(_d, (list, tuple)) else 0
+                    col_count = len(_h) if isinstance(_h, (list, tuple)) else (len(_d[0]) if row_count and isinstance(_d[0], (list, tuple)) else 0)
+                    emit_telemetry_event("parse_result", {
+                        "url": target_url,
+                        "session_id": session_id,
+                        "handler": getattr(handler, '__class__', None).__name__ if handler else None,
+                        "row_count": row_count,
+                        "column_count": col_count,
+                        "metadata_keys": list(_m.keys()) if isinstance(_m, dict) else None,
+                    })
+            except Exception:
+                pass
 
             headers, data, contest, metadata = result
 
@@ -1498,6 +1590,10 @@ def orchestrate_url(
         msg = f"Exception while processing {target_url}: {e}"
         payload = {"level": "ERROR","type": "exception","message": msg,"session_id": session_id}
         logger.error(payload)
+        try:
+            emit_telemetry_event("processing_exception", {"url": target_url, "session_id": session_id, "error": str(e)})
+        except Exception:
+            pass
         try:
             choice = prompt.prompt_input(
                 "[PROMPT] Error encountered. Retry (r) / Skip (s) ? ",

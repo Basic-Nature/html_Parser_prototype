@@ -99,9 +99,9 @@ def main():
                     results['sidebar_toggle_computed'] = diag
                 except Exception as e:
                     results['sidebar_toggle_computed_error'] = str(e)
-                # Ensure the toggle is visible: try to force inline styles as a fallback for headless runs
+                # Ensure the toggle is visible: add a debug helper class instead of forcing inline styles
                 try:
-                    page.evaluate("() => { const el = document.querySelector('.sidebar-toggle'); if (el) { el.style.position='fixed'; el.style.left='12px'; el.style.top='12px'; el.style.zIndex='12600'; el.style.display='inline-flex'; el.style.visibility='visible'; } }")
+                    page.evaluate("() => { const el = document.querySelector('.sidebar-toggle'); if (el) { el.classList.add('debug-visible'); el.setAttribute('data-debug-forced','1'); } }")
                 except Exception:
                     pass
                 # Prefer floating toggle if present

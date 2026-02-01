@@ -179,37 +179,66 @@ function updateCharts() {
 // Update data table
 function updateTable() {
     const tbody = document.getElementById('dataTableBody');
-    tbody.innerHTML = '';
+    // Clear children safely
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
 
     if (allMetrics.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem;">No data</td></tr>';
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 8;
+        td.style.textAlign = 'center';
+        td.style.padding = '2rem';
+        td.textContent = 'No data';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
         return;
     }
 
     allMetrics.slice(0, 20).forEach(m => {
+        const tr = document.createElement('tr');
+
+        const makeTd = (text, opts = {}) => {
+            const td = document.createElement('td');
+            if (opts.maxWidth) {
+                td.style.maxWidth = opts.maxWidth;
+                td.style.overflow = 'hidden';
+                td.style.textOverflow = 'ellipsis';
+                td.style.whiteSpace = 'nowrap';
+            }
+            td.textContent = text;
+            return td;
+        };
+
+        tr.appendChild(makeTd(m.timestamp || ''));
+        tr.appendChild(makeTd(m.handler || 'N/A'));
+        tr.appendChild(makeTd(m.state || 'N/A'));
+        tr.appendChild(makeTd(m.contest || 'N/A', { maxWidth: '200px' }));
+        tr.appendChild(makeTd(m.row_count != null ? String(m.row_count) : 'N/A'));
+        tr.appendChild(makeTd(m.column_count != null ? String(m.column_count) : 'N/A'));
+
+        // Confidence badge
         const conf = m.quality_metrics?.extraction_confidence;
-        let confBadge = '<span class="confidence-badge confidence-unknown">N/A</span>';
-        if (conf != null) {
+        const confTd = document.createElement('td');
+        const confSpan = document.createElement('span');
+        confSpan.classList.add('confidence-badge');
+        if (conf == null) {
+            confSpan.classList.add('confidence-unknown');
+            confSpan.textContent = 'N/A';
+        } else {
             const confPct = (conf * 100).toFixed(1) + '%';
-            if (conf >= 0.8) confBadge = `<span class="confidence-badge confidence-high">${confPct}</span>`;
-            else if (conf >= 0.5) confBadge = `<span class="confidence-badge confidence-medium">${confPct}</span>`;
-            else confBadge = `<span class="confidence-badge confidence-low">${confPct}</span>`;
+            if (conf >= 0.8) confSpan.classList.add('confidence-high');
+            else if (conf >= 0.5) confSpan.classList.add('confidence-medium');
+            else confSpan.classList.add('confidence-low');
+            confSpan.textContent = confPct;
         }
+        confTd.appendChild(confSpan);
+        tr.appendChild(confTd);
 
         const emptyRatio = m.quality_metrics?.empty_row_ratio;
         const emptyPct = emptyRatio != null ? (emptyRatio * 100).toFixed(1) + '%' : 'N/A';
+        tr.appendChild(makeTd(emptyPct));
 
-        const row = `<tr>
-            <td>${m.timestamp}</td>
-            <td>${m.handler || 'N/A'}</td>
-            <td>${m.state || 'N/A'}</td>
-            <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">${m.contest || 'N/A'}</td>
-            <td>${m.row_count || 'N/A'}</td>
-            <td>${m.column_count || 'N/A'}</td>
-            <td>${confBadge}</td>
-            <td>${emptyPct}</td>
-        </tr>`;
-        tbody.innerHTML += row;
+        tbody.appendChild(tr);
     });
 }
 
@@ -221,7 +250,12 @@ function updateStateFilter() {
     const states = new Set(allMetrics.map(m => m.state).filter(s => s));
 
     if (stateFilter instanceof HTMLSelectElement) {
-        stateFilter.innerHTML = '<option value="">All States</option>';
+        // Clear existing options
+        while (stateFilter.firstChild) stateFilter.removeChild(stateFilter.firstChild);
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = 'All States';
+        stateFilter.appendChild(defaultOpt);
         Array.from(states).sort().forEach(state => {
             const option = document.createElement('option');
             option.value = state;

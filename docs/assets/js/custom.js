@@ -84,43 +84,29 @@ document.addEventListener('DOMContentLoaded', function() {
   // Add metallic glow effects to interactive elements
   const addGlowEffect = (element) => {
     element.addEventListener('mouseenter', function() {
-      this.style.boxShadow = '0 0 20px rgba(0, 255, 231, 0.4), 0 0 40px rgba(69, 129, 142, 0.2)';
-      this.style.transform = 'translateY(-2px)';
+      this.classList.add('hover-elevated');
     });
 
     element.addEventListener('mouseleave', function() {
-      this.style.boxShadow = '';
-      this.style.transform = '';
+      this.classList.remove('hover-elevated');
     });
   };
 
   // Apply glow effects to links and buttons
   document.querySelectorAll('a, button, .breadcrumb-item a').forEach(addGlowEffect);
 
-  // Enhance code blocks with copy functionality
+  // Enhance code blocks with copy functionality (use classes instead of inline styles)
   document.querySelectorAll('pre').forEach(function(pre) {
     const button = document.createElement('button');
     button.textContent = '📋 Copy';
-    button.style.cssText = `
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      background: rgba(69, 129, 142, 0.9);
-      color: #e6e8ea;
-      border: 1px solid #00ffe7;
-      border-radius: 6px;
-      padding: 4px 8px;
-      font-size: 12px;
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    `;
+    button.className = 'copy-button';
 
-    pre.style.position = 'relative';
+    // mark the pre so CSS can position the button
+    pre.classList.add('pre-with-copy');
     pre.appendChild(button);
 
-    pre.addEventListener('mouseenter', () => button.style.opacity = '1');
-    pre.addEventListener('mouseleave', () => button.style.opacity = '0');
+    pre.addEventListener('mouseenter', () => button.classList.add('visible'));
+    pre.addEventListener('mouseleave', () => button.classList.remove('visible'));
 
     button.addEventListener('click', function() {
       const code = pre.querySelector('code');
@@ -152,15 +138,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.mermaid').forEach(function(diagram) {
     const loading = document.createElement('div');
     loading.textContent = 'Rendering diagram...';
-    loading.style.cssText = `
-      text-align: center;
-      color: #00ffe7;
-      font-style: italic;
-      padding: 20px;
-      background: rgba(26, 42, 42, 0.8);
-      border-radius: 8px;
-      margin: 10px 0;
-    `;
+    loading.className = 'mermaid-loading';
     diagram.appendChild(loading);
 
     // Remove loading after rendering
@@ -190,7 +168,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const label = textEl.textContent.trim();
         if (!label) return;
 
-        g.style.cursor = 'pointer';
+        g.classList.add('pointer');
         g.addEventListener('click', function() {
           // Find headings by normalized text (works for raw markdown headings
           // which will be converted to <h*> elements by the site generator).
@@ -199,11 +177,9 @@ document.addEventListener('DOMContentLoaded', function() {
           const target = candidates.find(h => normalizeLabel(h.textContent || '') === nLabel || (h.id && normalizeLabel(h.id) === nLabel));
           if (target) {
             target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            // Flash highlight
-            const original = target.style.boxShadow;
-            target.style.transition = 'box-shadow 0.3s ease';
-            target.style.boxShadow = '0 0 12px rgba(0, 255, 231, 0.6)';
-            setTimeout(() => { target.style.boxShadow = original; }, 1800);
+            // Flash highlight using CSS class
+            target.classList.add('flash-highlight');
+            setTimeout(() => { target.classList.remove('flash-highlight'); }, 1800);
           }
         });
       } catch (e) {

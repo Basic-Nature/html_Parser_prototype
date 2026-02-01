@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Prompt Smoke Test</title>
+  <style>
+    .hidden { display: none; }
+    .prompt-option { display:block; margin:4px 0 }
+  </style>
+</head>
+<body>
+  <div id="promptModal" class="hidden">
+    <h1 id="promptTitle"></h1>
+    <div id="promptMessage"></div>
+    <input id="promptInput" />
+    <input id="promptSearch" />
+    <div id="promptOptions"></div>
+    <div id="promptSelectionSummary" class="hidden"></div>
+    <button id="btnSubmitPrompt">Submit</button>
+    <button id="btnCancelPrompt">Cancel</button>
+    <button id="btnClosePrompt">Close</button>
+  </div>
+
+  <script>
+    // Minimal helpers and mocks expected by ballot_lens_modern.js
+    window.$ = function(sel) { return document.querySelector(sel); };
+    window.__tl_helpers = {
+      setElValue: function(el, v){ if(el) el.value = v; },
+      elValue: function(el){ return el ? el.value : ''; },
+      targetValue: function(e){ return (e && e.target) ? e.target.value : ''; },
+      targetChecked: function(e){ return (e && e.target) ? !!e.target.checked : false; },
+      safeClick: function(el){ try{ el && el.click(); }catch(e){} }
+    };
+    window.socket = { emit: function(ev, payload){ window._socketEmit = {ev, payload}; } };
+    window.ErrorBoundary = { safeExecute: function(fn){ try{ return fn(); }catch(e){ console.error('ErrorBoundary', e); } } };
+    window.ModalRestoreBanner = { show: function(){}, clear: function(){}};
+    window.SessionRestore = { hasRestoreData: function(){ return false; }, showRestoreBanner: function(){} };
+
+    // Simple modalManager mock
+    window.modalManager = (function(){
+      let _resolve = null;
+      return {
+        showModal: function(opts){
+          window._modalShown = opts;
+          // make the adopted element visible for testing
+          try{
+            const el = document.getElementById('promptModal');
+            if(el && el.classList) el.classList.remove('hidden');
+          }catch(e){}
+          return new Promise(function(resolve){ _resolve = resolve; window._modalResolve = resolve; });
+        },
+        closeModal: function(id){
+          window._modalClosedId = id;
+          if (_resolve){ _resolve({ actionId: 'dismiss' }); _resolve = null; window._modalResolve = null; }
+          return true;
+        }
+      };
+    })();
+
+    // expose test results container
+    window.testResults = {};
+  </script>
+
+  <script src="../webapp/static/js/ballot_lens_modern.js"></script>
+
+  <script>
+    // Utility for automated clicks after load
+    function clickButton(id){ const btn = document.getElementById(id); if(btn) btn.click(); }
+
+    // Wait a moment for script to wire up
+    setTimeout(function(){
+      // Ensure prompt is shown via code path
+      try{
+        // Prefer direct call to showPrompt if available, else fallback to handlePromptLog
+        if (typeof showPrompt === 'function') {
+          showPrompt({ title: 'Test Prompt', message: '[PROMPT] Choose', options: ['One','Two','Three'] });
+        } else if (typeof handlePromptLog === 'function'){
+          handlePromptLog({ type: 'prompt', message: '[PROMPT] Choose', context: { options: ['One','Two','Three'] } });
+        }
+      }catch(e){ console.error(e); }
+    }, 100);
+  </script>
+</body>
+</html>

@@ -140,7 +140,14 @@
       } else if (modal.body instanceof Node) {
         body.appendChild(modal.body);
       } else if (modal.body && modal.body.html) {
-        body.innerHTML = modal.body.html;
+        // Parse trusted HTML into nodes rather than assigning innerHTML directly
+        try {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(modal.body.html, 'text/html');
+          Array.from(doc.body.childNodes).forEach(n => body.appendChild(n.cloneNode(true)));
+        } catch (e) {
+          body.textContent = String(modal.body.html);
+        }
       } else {
         body.textContent = String(modal.body || '');
       }

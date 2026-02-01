@@ -210,8 +210,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
           const ta = document.createElement('textarea');
           ta.value = jsonTxt;
-          ta.style.position='fixed';
-          ta.style.opacity='0';
+          // Use CSS-driven offscreen class instead of inline styles
+          ta.classList.add('offscreen-temp');
           document.body.appendChild(ta);
           ta.select();
           document.execCommand('copy');
@@ -259,7 +259,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const sid = (row.dataset.sessionId || '').toLowerCase();
       const st  = (row.dataset.status || '').toLowerCase();
       const src = (row.dataset.source || '').toLowerCase();
-      row.style.display = match(rid,sid,st,src) ? '' : 'none';
+      // Toggle presentation via CSS class instead of inline style
+      row.classList.toggle('hidden', !match(rid,sid,st,src));
     });
 
     qsa('.run-accordion-item').forEach(item => {
@@ -267,7 +268,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const sid = (item.dataset.sessionId || '').toLowerCase();
       const st  = (item.dataset.status || '').toLowerCase();
       const src = (item.dataset.source || '').toLowerCase();
-      item.style.display = match(rid,sid,st,src) ? '' : 'none';
+      // Toggle presentation via CSS class instead of inline style
+      item.classList.toggle('hidden', !match(rid,sid,st,src));
     });
   }
 

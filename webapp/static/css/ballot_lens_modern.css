@@ -118,6 +118,87 @@
   display: none !important;
 }
 
+/* Utility: offscreen element used for clipboard fallbacks without inline styles
+   Positioned off-canvas and fully transparent via CSS class so JS does not need
+   to inject presentation styles. */
+.offscreen-temp {
+  position: fixed !important;
+  left: -9999px !important;
+  top: -9999px !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Utility to apply display: contents without JS inline styles */
+.display-contents {
+  display: contents !important;
+}
+
+/* Prevent body scroll while overlays or drawers are open (toggle via JS class) */
+.no-scroll {
+  overflow: hidden !important;
+}
+
+/* Carousel translate controlled by CSS custom property set by JS */
+#sourceCarouselTrack {
+  transform: translateX(var(--carousel-translate, 0%));
+  transition: transform 280ms var(--transition-fast, 300ms);
+}
+
+/* Quality pill mini-meter driven by CSS custom property */
+.quality-pill .mini-meter-fill {
+  width: var(--quality-fill, 0%);
+  opacity: var(--quality-opacity, 1);
+  transition: width 220ms ease, opacity 180ms ease;
+  display: inline-block;
+  height: 8px;
+  background: linear-gradient(90deg, var(--accent-success, #10b981), var(--accent-primary, #2563eb));
+  border-radius: 6px;
+}
+
+/* Clickable header cell helper (use class instead of inline cursor) */
+.clickable { cursor: pointer; }
+
+/* Toast slide-out animation class (use class toggles instead of inline animation) */
+@keyframes slideOutRight { from { transform: translateX(0); opacity: 1; } to { transform: translateX(12px); opacity: 0; } }
+.slide-out-right { animation: slideOutRight 300ms ease forwards; }
+
+/* Preformatted block styling when JS prefers to add inline styles */
+.pre-styled {
+  background: var(--bg-primary);
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-md);
+  overflow: auto;
+}
+
+/* Floating banner uses CSS variables for positioning set by JS */
+.floating-banner {
+  position: fixed;
+  bottom: var(--banner-bottom, auto);
+  left: var(--banner-left, auto);
+  right: var(--banner-right, auto);
+}
+
+/* Nav more dropdown: positioning via CSS vars when open */
+.nav-more-open {
+  display: block !important;
+  opacity: 1 !important;
+  position: fixed !important;
+  left: var(--navmore-left, auto) !important;
+  top: var(--navmore-top, auto) !important;
+  min-width: var(--navmore-minwidth, 160px) !important;
+  z-index: var(--navmore-zindex, 20000) !important;
+}
+
+/* Right sidebar inline-style replacement hook: when JS needs to apply dynamic inline presentation,
+   it should add the `rs-inline` class; clearing will remove the class. */
+.sidebar-right.rs-inline {
+  transition: transform 240ms ease, opacity 180ms ease;
+  will-change: transform, opacity;
+}
+
 /* Error Toast - styled via CSS class instead of inline styles (CSP compliant) */
 .error-toast,
 .notification-toast {
@@ -999,6 +1080,8 @@ th {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
+  /* Ensure children can shrink/grow properly inside flex layout */
+  min-height: 0;
 }
 
 .source-card-header {
@@ -1014,16 +1097,26 @@ th {
 .source-actions { display: flex; gap: var(--spacing-xs); }
 
 .source-body { display: flex; flex-direction: column; gap: var(--spacing-md); }
+/* Ensure source body allows children with internal scrolling to shrink properly */
+.source-body { min-height: 0; }
 
 .upload-row { display: flex; gap: var(--spacing-sm); align-items: center; flex-wrap: wrap; }
 
 .source-card .url-lines {
-  max-height: 320px;
+  /* Allow the URL panel to expand with the viewport while keeping internal scrolling */
+  /* User preference: increase max to 100vh and ensure a reasonable minimum (50vh) */
+  max-height: 100vh;
   overflow: auto;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: var(--spacing-sm);
   background: var(--bg-tertiary);
+  /* Allow this element to grow inside flex column parents and enable internal scrolling
+     Fixes cases where flex children get a collapsed height (min-height:0 allows overflow) */
+  flex: 1 1 auto;
+  /* Ensure this element can both grow and shrink inside flex parents
+     and respect min-height so the sidebar can resize accordingly. */
+  min-height: 50vh;
 }
 
 .source-card .url-search-box { width: 100%; }
@@ -1039,7 +1132,8 @@ th {
 }
 
 .url-lines {
-  max-height: 240px;
+  /* Expand URL list to use available viewport space and remain scrollable */
+  max-height: 100vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -1047,12 +1141,16 @@ th {
   flex-direction: column;
   gap: var(--spacing-xs);
   padding-right: 4px;
+  /* When inside a flex column, allow the list to take available space and scroll internally */
+  flex: 1 1 auto;
+  min-height: 50vh;
 }
 
 /* URL list wrapper for sidebar context */
 .url-list-wrapper {
+  /* Make wrapper flexible for long URL libraries */
   overflow-y: auto;
-  max-height: 400px;
+  max-height: 60vh;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   padding-right: 4px;
@@ -1303,11 +1401,15 @@ th {
   }
 
   .urls-container {
-    max-height: 240px;
+    /* Allow the URL container to expand with viewport; keep internal scrolling */
+    max-height: 55vh;
+    overflow-y: auto;
   }
 
   .url-lines {
-    max-height: 200px;
+    /* Expand URL list to use available viewport space and remain scrollable */
+    max-height: 55vh;
+    overflow-y: auto;
   }
 
   .artifact-hub {
@@ -2125,7 +2227,6 @@ th {
     width: 48px;
     height: 48px;
     min-width: 48px;
-    min-height: 48px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -2431,8 +2532,9 @@ th {
 .dashboard-grid {
   display: grid;
   /* 3-column layout: left sidebar | main content (flexible) | right sidebar */
+  /* Left | Main (flexible) | Right — allow main column to shrink when needed */
   grid-template-columns: clamp(var(--sidebar-left-min), 40vw, var(--sidebar-left-max))
-                         clamp(520px, 45vw, 1fr)
+                         minmax(0, 1fr)
                          clamp(var(--sidebar-right-min), 15vw, var(--sidebar-right-max));
   grid-template-rows: minmax(0, 1fr);
   flex: 1;
@@ -2681,7 +2783,8 @@ body.right-sidebar-collapsed .sidebar-right * {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
-  max-height: 500px;
+  /* Use viewport-relative max so the panel grows on taller screens while preserving collapse animation */
+  max-height: 60vh;
   overflow: hidden;
   transition: max-height var(--transition-normal), opacity var(--transition-fast);
   opacity: 1;
@@ -4117,6 +4220,18 @@ code {
   overflow: hidden;
   width: clamp(480px, 70vw, 900px);
   max-width: 90vw;
+  /* Improved text contrast and futuristic glow for dark theme modals */
+  /* Primary text color: light icy-blue with a stronger fallback */
+  color: var(--modal-contrast-color, #e6f4ff);
+  /* Back shadow for depth + radiant blue glow */
+  /* First layer: subtle dark offset for readable edge; following layers: brand blue glow */
+  text-shadow:
+    0 1px 2px rgba(0,0,0,0.65),
+    0 0 8px rgba(37,99,235,0.65),
+    0 0 20px rgba(37,99,235,0.18);
+  /* Slight inner backdrop for contrast against busy backgrounds */
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
 }
 
 .modal-content.modal-large {
@@ -4242,7 +4357,6 @@ code {
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast);
   text-align: left;
-  min-height: 48px;
 }
 
 .prompt-option:hover {
@@ -4263,6 +4377,20 @@ code {
   line-height: 1.5;
   white-space: normal;
   overflow-wrap: break-word;
+  /* Improved contrast + subtle brand-blue glow to match modal header */
+  color: var(--modal-contrast-color, #e6f4ff);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.65), 0 0 8px rgba(37,99,235,0.45), 0 0 18px rgba(37,99,235,0.12);
+  font-family: "JetBrains Mono", SFMono-Regular, Menlo, Monaco, "Courier New", monospace;
+  -webkit-font-smoothing: antialiased;
+  word-break: break-word;
+}
+
+/* Reduce glow intensity on light color-schemes to avoid harsh highlights */
+@media (prefers-color-scheme: light) {
+  .prompt-option .label {
+    color: var(--modal-contrast-color, #0645ad);
+    text-shadow: 0 1px 1px rgba(0,0,0,0.12);
+  }
 }
 
 .prompt-option .meta {

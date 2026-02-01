@@ -1,0 +1,45 @@
+/* Utility styles for docs JS interactions (use instead of inline styles) */
+.pre-with-copy {
+  position: relative;
+}
+.copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(0,255,231,0.12);
+  background: rgba(26, 34, 40, 0.75);
+  color: #e6e8ea;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.12s ease;
+  cursor: pointer;
+}
+.copy-button.visible {
+  opacity: 1;
+}
+.mermaid-loading {
+  text-align: center;
+  color: #00ffe7;
+  font-style: italic;
+  padding: 20px;
+  background: rgba(26, 42, 42, 0.8);
+  border-radius: 8px;
+  margin: 10px 0;
+}
+.pointer {
+  cursor: pointer !important;
+}
+.flash-highlight {
+  box-shadow: 0 0 12px rgba(0, 255, 231, 0.6);
+  transition: box-shadow 0.3s ease;
+}
+.hover-elevated {
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  transform: translateY(-2px);
+  transition: box-shadow 0.18s ease, transform 0.12s ease;
+}
+
+/* Small helper to ensure focusable/clickable elements show pointer */
+.pointer, a.pointer { cursor: pointer; }

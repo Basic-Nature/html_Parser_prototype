@@ -57,6 +57,7 @@ from urllib.parse import urlparse
 
 import orjson
 import psycopg2
+import json
 from psycopg2 import errors as pg_errors
 from sqlalchemy.exc import OperationalError
 from flask import (
@@ -73,7 +74,7 @@ from flask import (
     url_for,
     session,
 )
-from werkzeug.exceptions import NotFound
+from werkzeug.exceptions import NotFound, HTTPException
 # Socket.IO imports
 try:
     from flask_socketio import SocketIO, emit, join_room
@@ -224,6 +225,55 @@ socketio = SocketIO(
     cors_allowed_origins=SOCKETIO_ALLOWED_ORIGINS,
     **_SOCKETIO_ENGINE_OPTIONS,
 )
+
+
+# Optional Prometheus scrape endpoint
+ENABLE_PROMETHEUS = os.environ.get('ENABLE_PROMETHEUS', 'false').lower() in ('1', 'true', 'yes')
+TEST_METRICS_ROUTE_ENABLED = os.environ.get('ENABLE_TEST_METRICS_ROUTE', 'false').lower() in ('1', 'true', 'yes') or os.environ.get('FLASK_ENV', '').lower() == 'development' or os.environ.get('PYTEST_CURRENT_TEST', '')
+if ENABLE_PROMETHEUS:
+    try:
+        from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, REGISTRY
+
+        @app.route('/metrics')
+        def metrics():
+            try:
+                data = generate_latest(REGISTRY)
+                return Response(data, mimetype=CONTENT_TYPE_LATEST)
+            except Exception as e:
+                try:
+                    logger.error({"level": "ERROR", "type": "metrics", "message": f"/metrics error: {e}"})
+                except Exception:
+                    pass
+                return Response("Internal metrics error", status=500, mimetype='text/plain')
+
+        # --- Test-only route to increment metrics for deterministic tests ---
+        if TEST_METRICS_ROUTE_ENABLED:
+            @app.route('/test/metrics/increment', methods=['POST'])
+            def test_metrics_increment():
+                try:
+                    from webapp.parser.utils.metrics_prom import increment_test_counter
+                except Exception as e:
+                    return jsonify({"success": False, "error": f"metrics_prom import failed: {e}"}), 500
+                try:
+                    increment_test_counter()
+                    return jsonify({"success": True, "message": "Test counter incremented."})
+                except Exception as e:
+                    return jsonify({"success": False, "error": str(e)}), 500
+    except Exception:
+        try:
+            logger.info({"level": "INFO", "type": "metrics", "message": "Prometheus client not available; /metrics disabled."})
+        except Exception:
+            pass
+
+# If Prometheus is enabled, try to import the internal metrics module so counters are registered
+if os.environ.get('ENABLE_PROMETHEUS', 'false').lower() in ('1', 'true', 'yes'):
+    try:
+        import webapp.parser.utils.metrics_prom  # ensure counters are created on import
+    except Exception:
+        try:
+            logger.debug({"level": "DEBUG", "type": "metrics", "message": "Failed to import metrics_prom on startup."})
+        except Exception:
+            pass
 
 # --- Health task orchestration (Azure control center) ---
 HEALTH_TASK_DEFINITIONS: dict[str, dict] = {
@@ -1291,6 +1341,54 @@ def add_headers(response: Response) -> Response:
     response = ensure_utf8(response)
     return response
 
+
+@app.errorhandler(Exception)
+def _handle_global_exception(e):
+    """Global exception handler: log and return JSON for API requests.
+
+    For requests to `/api/...` or requests that accept JSON, return a JSON
+    error payload. For other requests, return a plain text 500 response.
+    """
+    try:
+        # Determine HTTP status and message
+        if isinstance(e, HTTPException):
+            code = getattr(e, 'code', 500) or 500
+            description = getattr(e, 'description', str(e))
+        else:
+            code = 500
+            description = str(e)
+
+        # Log structured error
+        try:
+            logger.error({
+                "level": "ERROR",
+                "type": "exception",
+                "message": f"Unhandled exception: {description}",
+                "path": getattr(request, 'path', None),
+                "method": getattr(request, 'method', None),
+                "session_id": None,
+            })
+        except Exception:
+            pass
+
+        accept = (request.headers.get('Accept') or '').lower()
+        wants_json = (request.path or '').startswith('/api/') or 'application/json' in accept or request.is_json
+
+        if wants_json:
+            payload = {"error": description}
+            return jsonify(payload), code
+
+        # Non-API requests: return safe plain-text message
+        safe_msg = "Internal Server Error" if code == 500 else description
+        return Response(safe_msg, status=code, mimetype='text/plain')
+    except Exception:
+        # If the error handler itself fails, avoid raising; return minimal JSON
+        try:
+            logger.error({"level": "ERROR", "type": "exception", "message": "Exception in error handler"})
+        except Exception:
+            pass
+        return jsonify({"error": "internal"}), 500
+
 # Data Management Utilities
 def add_url() -> None:
     url = input("Enter new URL to add: ").strip()
@@ -1413,9 +1511,10 @@ def index() -> str:
 @app.route("/api/urls", methods=["GET", "POST"])
 def api_urls():
     urls_file = str(URL_LIST_FILE)
-    if request.method == "GET":
-        if not os.path.exists(urls_file):
-            return jsonify({"urls": []})
+    try:
+        if request.method == "GET":
+            if not os.path.exists(urls_file):
+                return jsonify({"urls": []})
             urls = []
             with open(urls_file, "r", encoding="utf-8") as f:
                 for raw in f:
@@ -1425,7 +1524,60 @@ def api_urls():
                     u, lbl = extract_url_and_label(s)
                     urls.append(u or s)
             return jsonify({"urls": urls})
-    elif request.method == "POST":
+        elif request.method == "POST":
+            data = request.get_json() or {}
+            raw_url = safe_strip(safe_get(data, "url", ""))
+            if not raw_url:
+                return jsonify({"success": False, "error": "URL required."}), 400
+            url, lbl = extract_url_and_label(raw_url)
+            if not url:
+                return jsonify({"success": False, "error": "No valid http(s) URL found."}), 400
+
+            parsed = urlparse(url)
+            host = (parsed.hostname or "").lower()
+            session_id = safe_strip(safe_get(data, "session_id"))
+            suspicious_tokens = (
+                "dropbox.com",
+                "drive.google",
+                "docs.google",
+                "googleusercontent.com",
+                "storage.googleapis",
+                "amazonaws.com",
+                "s3.amazonaws.com",
+                "digitaloceanspaces.com",
+                "box.com",
+                "onedrive",
+                "sharepoint",
+                "github.com",
+                "raw.githubusercontent",
+                "gitlab",
+                "pastebin",
+                "notion.so",
+                "cloudfront.net",
+            )
+            if parsed.scheme not in {"http", "https"} or not host:
+                log_flagged_url({
+                    "url": url,
+                    "reason": "invalid_url",
+                    "session_id": session_id,
+                })
+                return jsonify({"success": False, "error": "Only http/https URLs with a host are accepted."}), 400
+
+            if any(tok in host for tok in suspicious_tokens):
+                log_flagged_url({
+                    "url": url,
+                    "reason": "suspicious_host",
+                    "host": host,
+                    "session_id": session_id,
+                })
+                return jsonify({"success": False, "error": "Host requires manual review; URL logged for safety."}), 400
+
+            with open(urls_file, "a", encoding="utf-8") as f:
+                f.write(url + "\n")
+            return jsonify({"success": True})
+    except Exception as exc:
+        logger.error({"level": "ERROR", "type": "api", "message": f"api_urls GET/POST failed: {exc}", "session_id": None})
+        return jsonify({"urls": [], "error": "internal"}), 500
         data = request.get_json() or {}
         raw_url = safe_strip(safe_get(data, "url", ""))
         if not raw_url:
@@ -1835,13 +1987,13 @@ document.addEventListener('DOMContentLoaded', function () {
             var applyFilter = function() {
                 var q = filterInput.value.trim().toLowerCase();
                 if (!q) {
-                    rows.forEach(function(r){ r.style.display = ''; });
-                    return;
-                }
-                rows.forEach(function(r){
-                    var text = r.textContent.toLowerCase();
-                    r.style.display = text.indexOf(q) !== -1 ? '' : 'none';
-                });
+                        rows.forEach(function(r){ r.classList.remove('hidden'); });
+                        return;
+                    }
+                    rows.forEach(function(r){
+                        var text = r.textContent.toLowerCase();
+                        if (text.indexOf(q) !== -1) r.classList.remove('hidden'); else r.classList.add('hidden');
+                    });
             };
             filterInput.addEventListener('input', function(){
                 if (timer) clearTimeout(timer);

@@ -1,3 +1,5 @@
+/// <reference path="./global.d.ts" />
+
 (function(){
   // Lightweight helpers to safely access EventTarget values and node containment
   // Exposed on `window.__tl_helpers` for reuse across this large file.
@@ -195,6 +197,55 @@ function _deletePlaceholder(el) {
   try { if (!el) return; if (typeof window !== 'undefined' && window.__mm_placeholder_map) { window.__mm_placeholder_map.delete(el); } } catch (e) { /* noop */ }
 }
 
+// Centralized overlay focus/inert manager
+(function(){
+  try {
+    var W = typeof window !== 'undefined' ? window : null;
+    if (W && typeof W.manageOverlayFocus !== 'function') {
+      W.manageOverlayFocus = function(selector, open) {
+        try {
+          var el = document.querySelector(selector);
+          if (!el) return false;
+          // backup previous state once
+          if (typeof el.__manage_backup === 'undefined') {
+            try {
+              var focusables = Array.from(el.querySelectorAll('a,button,input,select,textarea,[tabindex]'));
+            } catch (e) { focusables = []; }
+            el.__manage_backup = {
+              inert: !!el.inert,
+              aria: el.getAttribute('aria-hidden'),
+              tabIndexMap: focusables.map(function(e){ return { node: e, tabindex: e.getAttribute('tabindex') }; })
+            };
+          }
+          if (open) {
+            el.inert = false;
+            el.setAttribute('aria-hidden', 'false');
+            try {
+              el.querySelectorAll('a,button,input,select,textarea,[tabindex]').forEach(function(e){ try{ e.setAttribute('tabindex','0'); }catch(_e){} });
+            } catch (e) {}
+            var first = el.querySelector('a,button,input,select,textarea,[tabindex]');
+            try { if (first && typeof first.focus === 'function') first.focus(); } catch (e) {}
+          } else {
+            var b = el.__manage_backup || {};
+            try { el.inert = !!b.inert; } catch (e) {}
+            try {
+              if (typeof b.aria === 'undefined' || b.aria === null) el.removeAttribute('aria-hidden'); else el.setAttribute('aria-hidden', b.aria);
+            } catch (e) {}
+            try {
+              if (Array.isArray(b.tabIndexMap)) {
+                b.tabIndexMap.forEach(function(item){ try { if (item && item.node) { if (item.tabindex === null) item.node.removeAttribute('tabindex'); else if (typeof item.tabindex !== 'undefined') item.node.setAttribute('tabindex', item.tabindex); } } catch(e){} });
+              } else {
+                el.querySelectorAll('a,button,input,select,textarea,[tabindex]').forEach(function(e){ try{ e.removeAttribute('tabindex'); }catch(_e){} });
+              }
+            } catch (e) {}
+            try { delete el.__manage_backup; } catch (e) {}
+          }
+          return true;
+        } catch (e) { return false; }
+      };
+    }
+  } catch (e) { /* noop */ }
+})();
 /* --------------------------------------------------------------------------
  * Canonical typedefs -- single source of truth to avoid duplicate JSDoc defs
  * Consolidate commonly-reused typedef names here. If you add new typedefs,
@@ -254,7 +305,8 @@ try {
 
       function setActive(nextIndex){
         index = Math.max(0, Math.min(nextIndex, slides.length - 1));
-        track.style.transform = 'translateX(' + (-index * 100) + '%)';
+        // Use a CSS custom property for the translate so presentation is driven by CSS
+        try { track.style.setProperty('--carousel-translate', (-index * 100) + '%'); } catch (e) { /* fallback */ }
         slides.forEach(function(slide, idx){
           var isActive = idx === index;
           slide.classList.toggle('is-active', isActive);
@@ -990,24 +1042,47 @@ const _TablePreview = (() => {
   function showPreviewModal(title, data) {
     const modal = /** @type {PreviewModalElement} */ (document.createElement('div'));
     modal.className = 'modal preview-modal';
-    modal.innerHTML = `
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>${escapeHtml(title)}</h3>
-          <button class="modal-close" aria-label="Close preview">×</button>
-        </div>
-        <div class="modal-body">
-          ${renderPreview(data)}
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-primary preview-continue">Continue</button>
-        </div>
-      </div>
-    `;
+    // Build modal content safely
+    const content = document.createElement('div');
+    content.className = 'modal-content';
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+    const h3 = document.createElement('h3');
+    h3.textContent = String(title);
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'modal-close';
+    closeBtn.setAttribute('aria-label', 'Close preview');
+    closeBtn.textContent = '×';
+    header.appendChild(h3);
+    header.appendChild(closeBtn);
+
+    const bodyDiv = document.createElement('div');
+    bodyDiv.className = 'modal-body';
+    // renderPreview returns HTML string; parse and append safely
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(renderPreview(data), 'text/html');
+      Array.from(doc.body.childNodes).forEach(n => bodyDiv.appendChild(n.cloneNode(true)));
+    } catch (e) {
+      bodyDiv.textContent = String(renderPreview(data));
+    }
+
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+    const contBtn = document.createElement('button');
+    contBtn.className = 'btn btn-primary preview-continue';
+    contBtn.textContent = 'Continue';
+    footer.appendChild(contBtn);
+
+    content.appendChild(header);
+    content.appendChild(bodyDiv);
+    content.appendChild(footer);
+    modal.appendChild(content);
     document.body.appendChild(modal);
     /** @type {Element | null} */
-    const closeBtn = modal.querySelector('.modal-close');
-    if (closeBtn instanceof Element) closeBtn.addEventListener('click', () => modal.remove());
+    const closeBtnEl = modal.querySelector('.modal-close');
+    if (closeBtnEl instanceof Element) closeBtnEl.addEventListener('click', () => modal.remove());
     /** @type {Element | null} */
     const cont = modal.querySelector('.preview-continue');
     if (cont instanceof Element) cont.addEventListener('click', () => modal.remove());
@@ -1063,13 +1138,22 @@ const SessionRestore = (() => {
     const state = JSON.parse(data);
     const banner = document.createElement('div');
     banner.className = 'restore-banner';
-    banner.innerHTML = `
-      <div class="restore-content">
-        <span>📋 Restore session from ${new Date(state.timestamp).toLocaleTimeString()}?</span>
-        <button class="btn btn-sm btn-primary" id="btnRestoreYes">Restore</button>
-        <button class="btn btn-sm btn-secondary" id="btnRestoreNo">Dismiss</button>
-      </div>
-    `;
+    const rc = document.createElement('div');
+    rc.className = 'restore-content';
+    const span = document.createElement('span');
+    span.textContent = '📋 Restore session from ' + new Date(state.timestamp).toLocaleTimeString() + '?';
+    const btnRestore = document.createElement('button');
+    btnRestore.className = 'btn btn-sm btn-primary';
+    btnRestore.id = 'btnRestoreYes';
+    btnRestore.textContent = 'Restore';
+    const btnDismiss = document.createElement('button');
+    btnDismiss.className = 'btn btn-sm btn-secondary';
+    btnDismiss.id = 'btnRestoreNo';
+    btnDismiss.textContent = 'Dismiss';
+    rc.appendChild(span);
+    rc.appendChild(btnRestore);
+    rc.appendChild(btnDismiss);
+    banner.appendChild(rc);
     document.body.prepend(banner);
     
     const btnYes = document.getElementById('btnRestoreYes');
@@ -1329,9 +1413,8 @@ window.addEventListener('resize', () => {
       sidebar.classList.remove('sidebar-open');
       const backdrop = document.querySelector('.sidebar-backdrop') || document.querySelector('.mobile-sidebar-overlay');
       if (backdrop) backdrop.classList.remove('visible');
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
+        // Clear any body-level presentation classes instead of inline styles
+        document.body.classList.remove('no-scroll', 'body-fixed', 'body-fullwidth');
     }
   }, 250);
 });
@@ -1384,24 +1467,82 @@ function showFlaggedModal(flagged, report_path) {
     const modal = document.createElement('div');
     modal.id = 'flaggedModal';
     modal.className = 'flagged-modal';
-    modal.innerHTML = `
-      <div class="flagged-modal-content">
-        <div class="flagged-modal-header">
-          <h3>Flagged Details (${flagged.length})</h3>
-          <div class="flagged-controls">
-            <input id="flaggedFilter" placeholder="Filter by URL or reason" class="input-sm" />
-            <input id="flaggedMinConf" type="number" min="0" max="1" step="0.01" placeholder="Min confidence" class="input-sm w-110" />
-            <button id="flaggedExportCSV" class="btn btn-sm">Export CSV</button>
-            <button id="flaggedExportJSON" class="btn btn-sm">Export JSON</button>
-            ${reportName ? `<a class="btn btn-sm btn-outline" id="flaggedDownload" href="/download_fs?root=output&path=reports&name=${encodeURIComponent(reportName)}" target="_blank" rel="noopener">Download report</a>` : ''}
-            <button id="flaggedClose" class="btn btn-sm">Close</button>
-          </div>
-        </div>
-        <div class="flagged-modal-body">
-          <table class="flagged-table"><thead><tr><th data-key="url">URL</th><th data-key="status">Status</th><th data-key="reasons">Reasons</th><th data-key="confidence">Confidence</th><th data-key="metadata">Metadata</th></tr></thead><tbody id="flaggedTableBody"></tbody></table>
-        </div>
-      </div>
-    `;
+    // Build flagged modal content safely
+    const content = document.createElement('div');
+    content.className = 'flagged-modal-content';
+    const header = document.createElement('div');
+    header.className = 'flagged-modal-header';
+    const h3 = document.createElement('h3');
+    h3.textContent = 'Flagged Details (' + String(flagged.length) + ')';
+    const controls = document.createElement('div');
+    controls.className = 'flagged-controls';
+    const inpFilter = document.createElement('input');
+    inpFilter.id = 'flaggedFilter';
+    inpFilter.placeholder = 'Filter by URL or reason';
+    inpFilter.className = 'input-sm';
+    const inpMin = document.createElement('input');
+    inpMin.id = 'flaggedMinConf';
+    inpMin.type = 'number';
+    inpMin.min = '0';
+    inpMin.max = '1';
+    inpMin.step = '0.01';
+    inpMin.placeholder = 'Min confidence';
+    inpMin.className = 'input-sm w-110';
+    const btnCSV = document.createElement('button');
+    btnCSV.id = 'flaggedExportCSV';
+    btnCSV.className = 'btn btn-sm';
+    btnCSV.textContent = 'Export CSV';
+    const btnJSON = document.createElement('button');
+    btnJSON.id = 'flaggedExportJSON';
+    btnJSON.className = 'btn btn-sm';
+    btnJSON.textContent = 'Export JSON';
+    controls.appendChild(inpFilter);
+    controls.appendChild(inpMin);
+    controls.appendChild(btnCSV);
+    controls.appendChild(btnJSON);
+    if (reportName) {
+      const aDownload = document.createElement('a');
+      aDownload.className = 'btn btn-sm btn-outline';
+      aDownload.id = 'flaggedDownload';
+      aDownload.href = '/download_fs?root=output&path=reports&name=' + encodeURIComponent(reportName);
+      aDownload.target = '_blank';
+      aDownload.rel = 'noopener';
+      aDownload.textContent = 'Download report';
+      controls.appendChild(aDownload);
+    }
+    const btnClose = document.createElement('button');
+    btnClose.id = 'flaggedClose';
+    btnClose.className = 'btn btn-sm';
+    btnClose.textContent = 'Close';
+    controls.appendChild(btnClose);
+    header.appendChild(h3);
+    header.appendChild(controls);
+    content.appendChild(header);
+    // Build body section and table safely using DOM APIs (avoid injecting raw HTML)
+    const bodyWrapper = document.createElement('div');
+    bodyWrapper.className = 'flagged-modal-body';
+
+    const table = document.createElement('table');
+    table.className = 'flagged-table';
+
+    const thead = document.createElement('thead');
+    const trHead = document.createElement('tr');
+    ['url','status','reasons','confidence','metadata'].forEach(key => {
+      const th = document.createElement('th');
+      th.setAttribute('data-key', key);
+      th.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+      trHead.appendChild(th);
+    });
+    thead.appendChild(trHead);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    tbody.id = 'flaggedTableBody';
+    table.appendChild(tbody);
+
+    bodyWrapper.appendChild(table);
+    content.appendChild(bodyWrapper);
+    modal.appendChild(content);
     document.body.appendChild(modal);
 
     // close on ESC
@@ -1409,8 +1550,7 @@ function showFlaggedModal(flagged, report_path) {
     const escHandler = (ev) => { if (ev.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', escHandler); } };
     document.addEventListener('keydown', escHandler);
 
-    /** @type {HTMLElement | null} */
-    const tbody = modal.querySelector('#flaggedTableBody');
+    // tbody already created above; no need to re-query (avoids redeclare)
 
     /**
      * @param {FlaggedItem} item
@@ -1462,9 +1602,9 @@ function showFlaggedModal(flagged, report_path) {
         const rowMeta = f.metadata_excerpt || {};
         let openLinkHtml = '';
         const possibleFile = rowMeta.output_file || rowMeta.output_file_path || rowMeta.output_path || rowMeta.output_filename || '';
+        const baseName = possibleFile ? String(possibleFile).split(/[\\\/]/).pop() : '';
         if (possibleFile) {
-          const base = String(possibleFile).split(/[\\/]/).pop();
-          openLinkHtml = `<a class="btn btn-xs" href="/download_fs?root=output&path=&name=${encodeURIComponent(base)}" target="_blank" rel="noopener">Open output</a>`;
+          openLinkHtml = `<a class="btn btn-xs" href="/download_fs?root=output&path=&name=${encodeURIComponent(baseName)}" target="_blank" rel="noopener">Open output</a>`;
         }
         let jumpBtnHtml = '';
         const rowIndex = rowMeta.output_row || rowMeta.output_row_index || rowMeta.row_index || '';
@@ -1472,16 +1612,71 @@ function showFlaggedModal(flagged, report_path) {
           jumpBtnHtml = `<button class="btn btn-xs jump-row" data-row="${escapeHtml(String(rowIndex))}">Jump to CSV row ${escapeHtml(String(rowIndex))}</button>`;
         }
 
-        tr.innerHTML = `
-          <td><a href="${escapeHtml(f.url || '')}" target="_blank" rel="noopener">${urlText}</a></td>
-          <td>${status}</td>
-          <td>${escapeHtml(reasons)}</td>
-          <td>${confVal !== '' ? Number(confVal).toFixed(2) : ''}</td>
-          <td><div class="flex-col-gap-start">
-            <div class="flex-row-gap-center">${openLinkHtml}${jumpBtnHtml}<button class="copy-meta btn btn-xs" data-meta="${metaDataAttr}">Copy</button></div>
-            <pre class="small muted pre-wrap no-margin">${metaEsc}</pre>
-          </div></td>
-        `;
+        // Build row cells safely without using innerHTML so user content isn't injected as HTML
+        // URL cell
+        const tdUrl = document.createElement('td');
+        const aLink = document.createElement('a');
+        aLink.href = f.url || '';
+        aLink.target = '_blank';
+        aLink.rel = 'noopener';
+        aLink.textContent = String(f.url || '');
+        tdUrl.appendChild(aLink);
+        tr.appendChild(tdUrl);
+
+        // Status cell
+        const tdStatus = document.createElement('td');
+        tdStatus.textContent = String(f.status || '');
+        tr.appendChild(tdStatus);
+
+        // Reasons cell
+        const tdReasons = document.createElement('td');
+        tdReasons.textContent = String(reasons || '');
+        tr.appendChild(tdReasons);
+
+        // Confidence cell
+        const tdConf = document.createElement('td');
+        tdConf.textContent = confVal !== '' ? Number(confVal).toFixed(2) : '';
+        tr.appendChild(tdConf);
+
+        // Meta / actions cell
+        const tdMeta = document.createElement('td');
+        const wrapper = document.createElement('div');
+        wrapper.className = 'flex-col-gap-start';
+        const rowInner = document.createElement('div');
+        rowInner.className = 'flex-row-gap-center';
+
+        if (possibleFile) {
+          const aOpen = document.createElement('a');
+          aOpen.className = 'btn btn-xs';
+          aOpen.href = '/download_fs?root=output&path=&name=' + encodeURIComponent(baseName);
+          aOpen.target = '_blank';
+          aOpen.rel = 'noopener';
+          aOpen.textContent = 'Open output';
+          rowInner.appendChild(aOpen);
+        }
+
+        if (rowIndex !== '' && rowIndex !== undefined && rowIndex !== null) {
+          const jumpBtn = document.createElement('button');
+          jumpBtn.className = 'btn btn-xs jump-row';
+          jumpBtn.dataset.row = String(rowIndex);
+          jumpBtn.textContent = 'Jump to CSV row ' + String(rowIndex);
+          rowInner.appendChild(jumpBtn);
+        }
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-meta btn btn-xs';
+        copyBtn.dataset.meta = metaDataAttr;
+        copyBtn.textContent = 'Copy';
+        rowInner.appendChild(copyBtn);
+
+        wrapper.appendChild(rowInner);
+        const preEl = document.createElement('pre');
+        preEl.className = 'small muted pre-wrap no-margin';
+        preEl.textContent = String(metaEsc || '');
+        wrapper.appendChild(preEl);
+        tdMeta.appendChild(wrapper);
+        tr.appendChild(tdMeta);
+
         tbody.appendChild(tr);
       }
 
@@ -1619,7 +1814,8 @@ function showFlaggedModal(flagged, report_path) {
           th.classList.remove('active');
           th.removeAttribute('data-sort-dir');
         }
-        th.style.cursor = k ? 'pointer' : '';
+        // Toggle cursor presentation via class instead of inline style
+        th.classList.toggle('clickable', !!k);
       });
     };
 
@@ -2283,7 +2479,20 @@ socket.on('run_started', /** @param {RunStartedPayload} data */ (data) => {
       const container = document.getElementById('runControls') || document.body;
       container.prepend(panel);
     }
-    panel.innerHTML = `<strong>Run:</strong> ${escapeHtml(data.session_id)} — <em>started</em> <span class="small muted">(${new Date(data.timestamp*1000).toLocaleString()})</span>`;
+    // Construct summary safely without innerHTML
+    panel.innerHTML = '';
+    const strongStart = document.createElement('strong');
+    strongStart.textContent = 'Run:';
+    panel.appendChild(strongStart);
+    panel.appendChild(document.createTextNode(' ' + String(data.session_id) + ' — '));
+    const emStart = document.createElement('em');
+    emStart.textContent = 'started';
+    panel.appendChild(emStart);
+    panel.appendChild(document.createTextNode(' '));
+    const spanTs = document.createElement('span');
+    spanTs.className = 'small muted';
+    spanTs.textContent = '(' + new Date(data.timestamp*1000).toLocaleString() + ')';
+    panel.appendChild(spanTs);
   }, 'socket:run_started');
 });
 
@@ -2308,7 +2517,12 @@ socket.on('run_progress', /** @param {RunProgressPayload} data */ (data) => {
     const processed = Number(data.processed || 0);
     /** @type {number} */
     const pct = total ? Math.round((processed / total) * 100) : 0;
-    panel.innerHTML = `<strong>Run:</strong> ${escapeHtml(data.session_id)} — ${pct}% (${processed}/${total})`;
+    // Update progress safely
+    panel.innerHTML = '';
+    const strongProg = document.createElement('strong');
+    strongProg.textContent = 'Run:';
+    panel.appendChild(strongProg);
+    panel.appendChild(document.createTextNode(' ' + String(data.session_id) + ' — ' + String(pct) + '% (' + String(processed) + '/' + String(total) + ')'));
   }, 'socket:run_progress');
 });
 
@@ -2432,10 +2646,18 @@ socket.on('run_summary', /**
     if (data.report_path) {
       const parts = data.report_path.replace(/\\/g, '/').split('/');
       const name = parts[parts.length-1] || data.report_path;
-      const href = `/download_fs?root=output&path=reports&name=${encodeURIComponent(name)}`;
-      html += `<div class="mt-2"><a href="${href}" target="_blank" rel="noopener">Download report</a></div>`;
+      const href = '/download_fs?root=output&path=reports&name=' + encodeURIComponent(name);
+      const dlDiv = document.createElement('div');
+      dlDiv.className = 'mt-2';
+      const dlA = document.createElement('a');
+      dlA.href = href;
+      dlA.target = '_blank';
+      dlA.rel = 'noopener';
+      dlA.textContent = 'Download report';
+      dlDiv.appendChild(dlA);
+      panel.appendChild(dlDiv);
     }
-    panel.innerHTML = html;
+    // If html content (other parts) existed previously, ensure panel has that content appended elsewhere
     // attach listener for modal open if present
     try {
       const btn = document.getElementById('btnViewFlagged');
@@ -2762,11 +2984,19 @@ function showToast(message, type = 'info', duration = CONFIG.toastDuration) {
     error: '✗',
   };
   
-  toast.innerHTML = `
-    <div class="toast-icon">${icons[type] || type}</div>
-    <div class="toast-message">${escapeHtml(message)}</div>
-    <button class="toast-close">×</button>
-  `;
+  // Build toast content safely
+  const ti = document.createElement('div');
+  ti.className = 'toast-icon';
+  ti.textContent = icons[type] || String(type);
+  const tm = document.createElement('div');
+  tm.className = 'toast-message';
+  tm.textContent = String(escapeHtml(message));
+  const tbtn = document.createElement('button');
+  tbtn.className = 'toast-close';
+  tbtn.textContent = '×';
+  toast.appendChild(ti);
+  toast.appendChild(tm);
+  toast.appendChild(tbtn);
   
   const container = /** @type {HTMLElement | null} */ ($('#toastContainer'));
   if (container) container.appendChild(toast);
@@ -2782,7 +3012,8 @@ function showToast(message, type = 'info', duration = CONFIG.toastDuration) {
   // Ensure removal after duration (store timeout id in case future code wants to clear)
   const toId = /** @type {TimeoutId} */ (/** @type {any} */ (setTimeout(() => {
     try {
-      toast.style.animation = 'slideOutRight 300ms ease';
+      // Use class to trigger animation instead of inline style
+      toast.classList.add('slide-out-right');
       setTimeout(() => toast.remove(), 300);
     } catch (e) {
       try { toast.remove(); } catch (err) {}
@@ -3186,19 +3417,25 @@ function displayTablePreview(_result) {
   // Headers
   /** @type {HTMLTableSectionElement} */
   const thead = document.createElement('thead');
-  thead.innerHTML = `
-    <tr>
-      ${sampleData[0].map(h => `<th>${escapeHtml(h)}</th>`).join('')}
-    </tr>
-  `;
+  const headerRow = document.createElement('tr');
+  (sampleData[0] || []).forEach(h => {
+    const th = document.createElement('th');
+    th.textContent = String(h);
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
   table.appendChild(thead);
-  
+
   // Body
   /** @type {HTMLTableSectionElement} */
   const tbody = document.createElement('tbody');
   sampleData.slice(1, CONFIG.maxPreviewRows + 1).forEach(row => {
     const tr = document.createElement('tr');
-    tr.innerHTML = row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('');
+    (row || []).forEach(cell => {
+      const td = document.createElement('td');
+      td.textContent = String(cell);
+      tr.appendChild(td);
+    });
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -3229,10 +3466,8 @@ function displayJsonPreview(_result) {
   /** @type {HTMLPreElement} */
   const pre = /** @type {HTMLPreElement} */ (document.createElement('pre'));
   pre.textContent = JSON.stringify(sampleJson, null, 2);
-  pre.style.background = 'var(--bg-primary)';
-  pre.style.padding = 'var(--spacing-lg)';
-  pre.style.borderRadius = 'var(--radius-md)';
-  pre.style.overflow = 'auto';
+  // Use CSS class to apply pre styling instead of inline styles
+  pre.classList.add('pre-styled');
 
   if (tabContent) {
     tabContent.innerHTML = '';
@@ -3278,16 +3513,30 @@ function updateSessionsList(sessions = state.sessions) {
     list.innerHTML = '<p class="text-muted small">No sessions</p>';
     return;
   }
-  
-  list.innerHTML = state.sessions.map(session => `
-    <div class="session-card ${session.id === currentSessionId ? 'active' : ''}">
-      <div class="session-id">${session.id}</div>
-      <div class="session-progress">
-        <span class="session-status ${session.status || 'pending'}"></span>
-        ${session.progress || 'Initializing...'}
-      </div>
-    </div>
-  `).join('');
+
+  // Build session cards via DOM methods to avoid HTML templating injection
+  list.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  state.sessions.forEach(session => {
+    const card = document.createElement('div');
+    card.className = 'session-card ' + (session.id === currentSessionId ? 'active' : '');
+
+    const idDiv = document.createElement('div');
+    idDiv.className = 'session-id';
+    idDiv.textContent = String(session.id);
+
+    const progDiv = document.createElement('div');
+    progDiv.className = 'session-progress';
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'session-status ' + (session.status || 'pending');
+    progDiv.appendChild(statusSpan);
+    progDiv.appendChild(document.createTextNode(' ' + String(session.progress || 'Initializing...')));
+
+    card.appendChild(idDiv);
+    card.appendChild(progDiv);
+    frag.appendChild(card);
+  });
+  list.appendChild(frag);
   
   $('#sessionCount').textContent = String(state.sessions.length);
 }
@@ -3310,11 +3559,11 @@ function updateProgressCard(sessionData) {
   if (!progressCard) return; // Element doesn't exist in DOM
 
   if (!sessionData || sessionData.state === 'IDLE') {
-    progressCard.style.display = 'none';
+    progressCard.classList.add('hidden');
     return;
   }
 
-  progressCard.style.display = 'block';
+  progressCard.classList.remove('hidden');
   /** @type {HTMLElement | null} */
   const progressSessionEl = /** @type {HTMLElement | null} */ ($('#progressSessionId'));
   /** @type {HTMLElement | null} */
@@ -3504,8 +3753,9 @@ function setQualityPill(confidence) {
   const fillEl = pill.querySelector('.mini-meter-fill');
   if (valueEl) valueEl.textContent = `${val.toFixed(1)}%`;
   if (fillEl instanceof HTMLElement) {
-    fillEl.style.width = `${val}%`;
-    fillEl.style.opacity = '1';
+    try { fillEl.style.setProperty('--quality-fill', `${val}%`); } catch (e) {}
+    try { fillEl.style.setProperty('--quality-opacity', '1'); } catch (e) {}
+    pill.classList.add('has-quality');
   }
 }
 
@@ -3641,8 +3891,8 @@ if (drawerHandle) {
     if (width > 0) {
       root.style.setProperty('--drawer-left-offset', width + 'px');
       // Keep the drawer full-width; do not offset into the main grid.
-      logDrawer.style.left = '';
-      logDrawer.style.right = '';
+      // Clear presentation by removing inline-style helper class
+      logDrawer.classList.remove('drawer-inline');
     }
   }
   
@@ -3690,15 +3940,10 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
       if (isDesktop()) {
         setOverlayVisible(false);
       }
-      try { document.body.style.overflow = ''; } catch (e) {}
+      try { document.body.classList.remove('no-scroll'); } catch (e) {}
       try {
-        rs.style.width = '';
-        rs.style.maxWidth = '';
-        rs.style.padding = '';
-        rs.style.opacity = '';
-        rs.style.transform = '';
-        rs.style.pointerEvents = '';
-        rs.style.overflow = '';
+        // Remove inline-style driven presentation by clearing the helper class
+        rs.classList.remove('rs-inline');
       } catch (e) {}
     } else {
       document.body.classList.remove('right-sidebar-collapsed');
@@ -3706,15 +3951,9 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
       if (isDesktop()) {
         setOverlayVisible(false);
       }
-      try { document.body.style.overflow = ''; } catch (e) {}
+      try { document.body.classList.remove('no-scroll'); } catch (e) {}
       try {
-        rs.style.width = '';
-        rs.style.maxWidth = '';
-        rs.style.padding = '';
-        rs.style.opacity = '';
-        rs.style.transform = '';
-        rs.style.pointerEvents = '';
-        rs.style.overflow = '';
+        rs.classList.remove('rs-inline');
       } catch (e) {}
     }
   }
@@ -3770,7 +4009,7 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
         } catch (e) {}
       });
       try { document.body.classList.remove('no-scroll'); } catch (e) {}
-      try { document.body.style.overflow = ''; } catch (e) {}
+      try { document.body.classList.remove('no-scroll'); } catch (e) {}
       return;
     }
     /** @type {OverlayElement[]} */
@@ -3784,9 +4023,6 @@ document.addEventListener('DOMContentLoaded', function initUnifiedMobileSidebars
     });
     try {
       if (visible) document.body.classList.add('no-scroll'); else document.body.classList.remove('no-scroll');
-    } catch (e) {}
-    try {
-      document.body.style.overflow = visible ? 'hidden' : '';
     } catch (e) {}
   }
 
@@ -4541,7 +4777,10 @@ function renderPromptOptions(filterText = '') {
     });
 
     if (!filtered.length) {
-      promptOptionsEl.innerHTML = '<div class="text-muted small">No options. Enter a response above.</div>';
+      const empty = document.createElement('div');
+      empty.className = 'text-muted small';
+      empty.textContent = 'No options. Enter a response above.';
+      promptOptionsEl.replaceChildren(empty);
       return;
     }
 
@@ -4572,13 +4811,13 @@ function renderPromptOptions(filterText = '') {
       }
     });
 
-    promptOptionsEl.innerHTML = '';
-
     // Standard rendering (virtual scroll removed to avoid inline style mutations under CSP)
+    const frag = document.createDocumentFragment();
     for (const [key, group] of groups) {
       const elem = renderGroupElement(group, key);
-      promptOptionsEl.appendChild(elem);
+      frag.appendChild(elem);
     }
+    promptOptionsEl.replaceChildren(frag);
   
   updateSelectionSummary();
   }, 'renderPromptOptions');
@@ -4774,43 +5013,97 @@ function createPromptOptionButton(opt, options = {}) {
     /** @type {Object.<string, any>} */
     const meta = opt.metadata || {};
     const bundleSize = meta.bundle_child_count ? meta.bundle_child_count + 1 : 0;
-    /** @type {string[]} */
-    const badges = [];
-    
-    // P1.2 Metadata Badges
-    if (meta.scope_label) badges.push(`<span class="badge badge-scope">${escapeHtml(meta.scope_label)}</span>`);
-    if (bundleSize && bundled) badges.push(`<span class="badge badge-bundle">${bundleSize} variations</span>`);
-    if (Array.isArray(meta.counties) && meta.counties.length > 1) badges.push(`<span class="badge badge-counties">${meta.counties.length} counties</span>`);
-    if (meta.year) badges.push(`<span class="badge badge-year">${meta.year}</span>`);
+    // Build badges container (DOM nodes instead of HTML strings)
+    const badgesContainer = document.createElement('div');
+    badgesContainer.className = 'badges';
+    let hasBadges = false;
+    if (meta.scope_label) {
+      const sp = document.createElement('span');
+      sp.className = 'badge badge-scope';
+      sp.textContent = String(meta.scope_label);
+      badgesContainer.appendChild(sp);
+      hasBadges = true;
+    }
+    if (bundleSize && bundled) {
+      const sp = document.createElement('span');
+      sp.className = 'badge badge-bundle';
+      sp.textContent = `${bundleSize} variations`;
+      badgesContainer.appendChild(sp);
+      hasBadges = true;
+    }
+    if (Array.isArray(meta.counties) && meta.counties.length > 1) {
+      const sp = document.createElement('span');
+      sp.className = 'badge badge-counties';
+      sp.textContent = `${meta.counties.length} counties`;
+      badgesContainer.appendChild(sp);
+      hasBadges = true;
+    }
+    if (meta.year) {
+      const sp = document.createElement('span');
+      sp.className = 'badge badge-year';
+      sp.textContent = String(meta.year);
+      badgesContainer.appendChild(sp);
+      hasBadges = true;
+    }
     if (typeof meta.confidence === 'number') {
       const confClass = meta.confidence >= 0.85 ? 'high' : meta.confidence >= 0.70 ? 'medium' : 'low';
-      badges.push(`<span class="badge badge-confidence badge-conf-${confClass}">conf ${meta.confidence.toFixed(2)}</span>`);
+      const sp = document.createElement('span');
+      sp.className = `badge badge-confidence badge-conf-${confClass}`;
+      sp.textContent = `conf ${meta.confidence.toFixed(2)}`;
+      badgesContainer.appendChild(sp);
+      hasBadges = true;
     }
     if (meta.variants || (Array.isArray(meta.contest_ids) && meta.contest_ids.length > 1)) {
       const count = meta.variants || meta.contest_ids.length;
-      badges.push(`<span class="badge badge-variants">${count} IDs</span>`);
+      const sp = document.createElement('span');
+      sp.className = 'badge badge-variants';
+      sp.textContent = `${count} IDs`;
+      badgesContainer.appendChild(sp);
+      hasBadges = true;
     }
-    
-    // P2.1 Multi-Select Checkbox
+
+    // P2.1 Multi-Select Checkbox (accessible: unique id + name + labelled)
     const hasCheckbox = !isChild && activePromptOptions.length > 1;
-    let checkboxHtml = '';
+    /** @type {HTMLInputElement|null} */
+    let checkbox = null;
     if (hasCheckbox) {
       const isChecked = selectedPromptOptions.has(opt.index);
-      checkboxHtml = `<input type="checkbox" class="prompt-option-checkbox" value="${escapeHtml(String(opt.index))}" ${isChecked ? 'checked' : ''} />`;
+      const idSeed = String(opt.index ?? opt.value ?? Math.floor(Math.random() * 1e9));
+      const inputId = `prompt_option_${idSeed}`;
+      const labelId = `prompt_label_${idSeed}`;
+      checkbox = /** @type {HTMLInputElement} */ (document.createElement('input'));
+      checkbox.type = 'checkbox';
+      checkbox.id = inputId;
+      checkbox.name = 'prompt_options';
+      checkbox.className = 'prompt-option-checkbox';
+      checkbox.value = String(opt.index ?? opt.value ?? '');
+      checkbox.checked = !!isChecked;
+      checkbox.setAttribute('aria-labelledby', labelId);
+      btn.dataset.promptOptionId = inputId;
     }
-    
-    btn.innerHTML = `
-      ${checkboxHtml}
-      <div>
-        <div class="label">[${opt.index ?? opt.value ?? '?'}] ${escapeHtml(opt.label || '')}</div>
-        ${badges.length ? `<div class="badges">${badges.join('')}</div>` : ''}
-        ${opt.meta ? `<div class="meta">${escapeHtml(opt.meta)}</div>` : ''}
-      </div>
-    `;
-    
-    // Checkbox event handler
-    /** @type {HTMLInputElement | null} */
-    const checkbox = /** @type {HTMLInputElement | null} */ (btn.querySelector('.prompt-option-checkbox'));
+
+    // Build label and meta container
+    const labelIdVal = `prompt_label_${String(opt.index ?? opt.value ?? '')}`;
+    const labelEl = document.createElement('label');
+    labelEl.id = labelIdVal;
+    if (hasCheckbox && checkbox) labelEl.htmlFor = checkbox.id;
+    labelEl.className = 'label';
+    labelEl.textContent = `[${opt.index ?? opt.value ?? '?'}] ${String(opt.label || '')}`;
+
+    const contentDiv = document.createElement('div');
+    contentDiv.appendChild(labelEl);
+    if (hasBadges) contentDiv.appendChild(badgesContainer);
+    if (opt.meta) {
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'meta';
+      metaDiv.textContent = String(opt.meta);
+      contentDiv.appendChild(metaDiv);
+    }
+
+    if (checkbox) btn.appendChild(checkbox);
+    btn.appendChild(contentDiv);
+
+    // Checkbox event handler (attach to created node)
     if (checkbox) {
       checkbox.addEventListener('change', (e) => {
         if ((/** @type {any} */ (window)).__tl_helpers.targetChecked(e)) {
@@ -5059,7 +5352,8 @@ const btnSubmitPrompt = $('#btnSubmitPrompt');
 const btnCancelPrompt = $('#btnCancelPrompt');
 if (btnCancelPrompt) {
   btnCancelPrompt.addEventListener('click', () => {
-    submitPrompt('cancel');
+    // Don't send literal 'cancel' as a parser response; just hide and allow restore
+    hidePrompt({ preserveState: true, showRestore: true, reason: 'cancel' });
   });
 }
 
@@ -6465,9 +6759,11 @@ const ModalRestoreBanner = (() => {
       const mainContent = document.querySelector('.main-content');
       if (mainContent) {
         const rect = mainContent.getBoundingClientRect();
-        banner.style.bottom = 'calc(var(--drawer-left-offset, 300px) + 60px)';
-        banner.style.left = `${rect.left + 16}px`;
-        banner.style.right = `${window.innerWidth - rect.right + 16}px`;
+        // Use CSS variables and the floating-banner class instead of inline positioning
+        try { banner.classList.add('floating-banner'); } catch (e) {}
+        try { banner.style.setProperty('--banner-bottom', 'calc(var(--drawer-left-offset, 300px) + 60px)'); } catch (e) {}
+        try { banner.style.setProperty('--banner-left', `${rect.left + 16}px`); } catch (e) {}
+        try { banner.style.setProperty('--banner-right', `${window.innerWidth - rect.right + 16}px`); } catch (e) {}
       }
     }, 50);
   }
@@ -6679,14 +6975,62 @@ const UrlListManager = (() => {
   async function fetchUrls() {
     try {
       const response = await fetch('/api/urls');
-      const data = await response.json();
-      cachedUrls = data.urls || [];
+
+      // Prefer JSON when available; otherwise handle text/HTML gracefully
+      const contentType = response.headers.get('content-type') || '';
+
+      if (!response.ok) {
+        // Try to parse JSON error body if possible
+        let errBody = null;
+        if (contentType.indexOf('application/json') !== -1) {
+          try { errBody = await response.json(); } catch (e) { errBody = null; }
+        } else {
+          try { errBody = await response.text(); } catch (e) { errBody = null; }
+        }
+        const short = (typeof errBody === 'string') ? errBody.slice(0, 240) : JSON.stringify(errBody || {}).slice(0,240);
+        const msg = `Failed to load URL library: server returned ${response.status} ${response.statusText}`;
+        console.error('[UrlListManager]', msg, errBody);
+        if (typeof LiveMessenger !== 'undefined' && LiveMessenger && LiveMessenger.alert) {
+          LiveMessenger.alert(`${msg}. ${typeof errBody === 'string' ? short : ''}`);
+        }
+        cachedUrls = [];
+        cachedMeta = [];
+        renderUrlList([], lastSearch, selectedState, selectedCounty);
+        return [];
+      }
+
+      // If response is JSON-ish, parse JSON; otherwise try text and report
+      let data = null;
+      if (contentType.indexOf('application/json') !== -1 || contentType.indexOf('application/vnd') !== -1) {
+        try {
+          data = await response.json();
+        } catch (err) {
+          console.error('[UrlListManager] Failed to parse JSON response:', err);
+          if (typeof LiveMessenger !== 'undefined' && LiveMessenger && LiveMessenger.alert) {
+            LiveMessenger.alert('Failed to parse server response when loading URLs. See Debug Console.');
+          }
+          data = { urls: [] };
+        }
+      } else {
+        // non-JSON response (likely HTML error page)
+        const txt = await response.text().catch(() => '(unreadable response)');
+        console.error('[UrlListManager] Expected JSON but received:', txt.slice(0,512));
+        if (typeof LiveMessenger !== 'undefined' && LiveMessenger && LiveMessenger.alert) {
+          LiveMessenger.alert('Unable to load URL list: server returned non-JSON response. Check server logs.');
+        }
+        data = { urls: [] };
+      }
+
+      cachedUrls = (data && Array.isArray(data.urls)) ? data.urls : [];
       cachedMeta = cachedUrls.map(extractMeta);
       populateTaxonomy(cachedMeta);
       renderUrlList(cachedMeta, lastSearch, selectedState, selectedCounty);
       return cachedUrls;
     } catch (/** @type {any} */ error) {
       console.error('[UrlListManager] Failed to fetch URLs:', error);
+      if (typeof LiveMessenger !== 'undefined' && LiveMessenger && LiveMessenger.alert) {
+        LiveMessenger.alert('Failed to fetch URL list: network error or invalid server response. See Debug Console.');
+      }
       cachedUrls = [];
       cachedMeta = [];
       renderUrlList([], lastSearch, selectedState, selectedCounty);
@@ -7074,12 +7418,12 @@ const UrlListManager = (() => {
         // Show URLs, hide instructions
         urlsContainer.classList.remove('collapsed');
         collapseBtn.classList.remove('collapsed');
-        if (instructionsEl) instructionsEl.style.display = 'none';
+        if (instructionsEl) instructionsEl.classList.add('hidden');
       } else {
         // Show instructions, hide URLs (default)
         urlsContainer.classList.add('collapsed');
         collapseBtn.classList.add('collapsed');
-        if (instructionsEl) instructionsEl.style.display = 'flex';
+        if (instructionsEl) instructionsEl.classList.remove('hidden');
       }
       
       collapseBtn.addEventListener('click', (e) => {
@@ -7090,13 +7434,13 @@ const UrlListManager = (() => {
           // Currently showing URLs, switch to instructions
           urlsContainer.classList.add('collapsed');
           collapseBtn.classList.add('collapsed');
-          if (instructionsEl) instructionsEl.style.display = 'flex';
+          if (instructionsEl) instructionsEl.classList.remove('hidden');
           localStorage.setItem('urlsExpanded', 'false');
         } else {
           // Currently showing instructions, switch to URLs
           urlsContainer.classList.remove('collapsed');
           collapseBtn.classList.remove('collapsed');
-          if (instructionsEl) instructionsEl.style.display = 'none';
+          if (instructionsEl) instructionsEl.classList.add('hidden');
           localStorage.setItem('urlsExpanded', 'true');
         }
       });
@@ -7910,31 +8254,34 @@ document.addEventListener('DOMContentLoaded', () => {
     // Ensure dropdown is visible to headless checks by applying inline styles
     try {
       if (open) {
-        navMoreDropdown.style.display = 'block';
-        navMoreDropdown.style.opacity = '1';
-        navMoreDropdown.style.zIndex = '20000';
-        // Position dropdown near toggle to ensure it's in-viewport for headless tests
+        // Toggle helper class and set positioning via CSS variables (avoids inline layout-by-style where possible)
+        navMoreDropdown.classList.add('nav-more-open');
         try {
           const r = navMoreToggle.getBoundingClientRect();
-          navMoreDropdown.style.position = 'fixed';
-          navMoreDropdown.style.left = `${Math.max(6, Math.round(r.left))}px`;
-          navMoreDropdown.style.top = `${Math.round(r.bottom + 6)}px`;
-          navMoreDropdown.style.minWidth = '160px';
-        } catch (errPos) {
-          /* ignore */
-        }
+          navMoreDropdown.style.setProperty('--navmore-left', `${Math.max(6, Math.round(r.left))}px`);
+          navMoreDropdown.style.setProperty('--navmore-top', `${Math.round(r.bottom + 6)}px`);
+          navMoreDropdown.style.setProperty('--navmore-minwidth', '160px');
+          navMoreDropdown.style.setProperty('--navmore-zindex', '20000');
+        } catch (errPos) { /* ignore */ }
       } else {
-        navMoreDropdown.style.display = 'none';
-        navMoreDropdown.style.opacity = '';
-        navMoreDropdown.style.zIndex = '';
-        navMoreDropdown.style.position = '';
-        navMoreDropdown.style.left = '';
-        navMoreDropdown.style.top = '';
-        navMoreDropdown.style.minWidth = '';
+        // Remove helper class and clear the CSS variables
+        navMoreDropdown.classList.remove('nav-more-open');
+        try {
+          navMoreDropdown.style.removeProperty('--navmore-left');
+          navMoreDropdown.style.removeProperty('--navmore-top');
+          navMoreDropdown.style.removeProperty('--navmore-minwidth');
+          navMoreDropdown.style.removeProperty('--navmore-zindex');
+        } catch (err) { /* ignore */ }
       }
     } catch (e) {}
-    // Use inert/tabindex management to avoid focusable children inside aria-hidden
-    try { setHiddenWithInert(navMoreDropdown, !open); } catch (e) {}
+    // Use centralized inert/tabindex management helper when available; fallback to setHiddenWithInert
+    try {
+      if (typeof window !== 'undefined' && typeof window.manageOverlayFocus === 'function') {
+        try { window.manageOverlayFocus('#navMoreDropdown', open); } catch (err) { setHiddenWithInert(navMoreDropdown, !open); }
+      } else {
+        setHiddenWithInert(navMoreDropdown, !open);
+      }
+    } catch (e) { try { setHiddenWithInert(navMoreDropdown, !open); } catch (_) {} }
     try { navMoreDropdown.toggleAttribute('hidden', !open); } catch (e) {}
     navMoreToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
@@ -8082,8 +8429,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create a wrapper that will carry the CSS custom property for the row
         const wrapper = document.createElement('div');
         wrapper.className = 'results-row';
-        // use display: contents to avoid adding an extra box to layout while still providing inheritance
-        wrapper.style.display = 'contents';
+        // use display: contents via CSS class to avoid inline presentation styles
+        wrapper.classList.add('display-contents');
         wrapper.style.setProperty('--row-min-height', max + 'px');
 
         // Append wrapper and move row cards into it in order

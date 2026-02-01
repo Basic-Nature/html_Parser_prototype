@@ -34,7 +34,8 @@ sentence_transformers>=5.1.0
 --extra-index-url https://download.pytorch.org/whl/cpu
 nltk>=3.9.1
 # For JSON and structured parsing
-orjson>=3.11.1
+orjson==3.9.5
+prometheus_client>=0.16.0
 # For browser fingerprint masking (via Playwright)
 # fake-useragent>=2.2.0
 

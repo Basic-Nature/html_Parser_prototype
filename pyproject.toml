@@ -100,6 +100,9 @@ check_untyped_defs = true
 selenium = [
   "seleniumbase>=4.40.8",
 ]
+dev = [
+  "prometheus-client>=0.16.0",
+]
 
 [tool.poe.tasks]
 run-tests = { cmd = "./scripts/run_tests.sh" }

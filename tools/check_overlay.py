@@ -27,8 +27,8 @@ with sync_playwright() as p:
     except Exception as e:
         print('open invoke error', e)
     page.wait_for_timeout(700)
-    # force add classes
-    page.evaluate("() => { const o = document.getElementById('mobileSidebarOverlay'); if (o) { o.classList.add('visible'); o.style.display='block'; o.style.opacity='1'; } const sb = document.querySelector('.sidebar-backdrop'); if (sb) { sb.classList.add('visible'); sb.style.display='block'; sb.style.opacity='1'; } }")
+    # force add classes (avoid inline style mutations; toggle visibility via class and ARIA)
+    page.evaluate("() => { const o = document.getElementById('mobileSidebarOverlay'); if (o) { o.classList.add('visible'); o.setAttribute('aria-hidden','false'); } const sb = document.querySelector('.sidebar-backdrop'); if (sb) { sb.classList.add('visible'); sb.setAttribute('aria-hidden','false'); } }")
     page.wait_for_timeout(200)
     print('mobileOverlay stats after:', get_stats('#mobileSidebarOverlay'))
     print('backdrop stats after:', get_stats('.sidebar-backdrop'))

@@ -232,13 +232,27 @@
 
     function open(msg) {
       lastActive = document.activeElement;
-      popup.innerHTML = `
-        <div class="custom-popup" role="dialog" aria-modal="true">
-          ${msg || ''}
-          <br>
-          <button type="button" data-popup-close>Close</button>
-        </div>
-      `;
+      // Build popup content without innerHTML
+      const wrapper = document.createElement('div');
+      wrapper.className = 'custom-popup';
+      wrapper.setAttribute('role', 'dialog');
+      wrapper.setAttribute('aria-modal', 'true');
+      if (msg instanceof Node) {
+        wrapper.appendChild(msg);
+      } else {
+        const msgWrap = document.createElement('div');
+        msgWrap.textContent = String(msg || '');
+        wrapper.appendChild(msgWrap);
+      }
+      wrapper.appendChild(document.createElement('br'));
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.setAttribute('data-popup-close', '');
+      closeBtn.textContent = 'Close';
+      wrapper.appendChild(closeBtn);
+      // replace popup children
+      while (popup.firstChild) popup.removeChild(popup.firstChild);
+      popup.appendChild(wrapper);
       popup.classList.add('is-open');
       popup.addEventListener('keydown', trapFocus);
       const btn = popup.querySelector('[data-popup-close]');
@@ -250,7 +264,8 @@
 
     function close() {
       popup.classList.remove('is-open');
-      popup.innerHTML = '';
+      // remove children safely
+      while (popup.firstChild) popup.removeChild(popup.firstChild);
       popup.removeEventListener('click', backdropClose);
       document.removeEventListener('keydown', escClose);
       popup.removeEventListener('keydown', trapFocus);
@@ -283,8 +298,6 @@
       const W = 300, H = 300;
       canvas.width = Math.round(W * DPR);
       canvas.height = Math.round(H * DPR);
-      canvas.style.width = W + 'px';
-      canvas.style.height = H + 'px';
     }
     size();
     window.addEventListener('resize', size);

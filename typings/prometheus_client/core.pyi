@@ -1,0 +1,7 @@
+from typing import Any
+
+class CollectorRegistry: ...
+
+REGISTRY: CollectorRegistry
+
+def push_to_gateway(gateway: str, job: str, registry: CollectorRegistry) -> None: ...

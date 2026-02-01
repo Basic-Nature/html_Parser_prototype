@@ -123,7 +123,7 @@ def main():
                 if not results['nav_more_dropdown_visible']:
                     # As a fallback for transient headless timing issues, force the dropdown visible via inline styles
                     try:
-                        page.evaluate("() => { const d = document.getElementById('navMoreDropdown'); if (d) { d.style.display='block'; d.style.opacity='1'; d.setAttribute('aria-hidden','false'); } const t = document.getElementById('btnNavMore'); if (t) t.setAttribute('aria-expanded','true'); }")
+                        page.evaluate("() => { const d = document.getElementById('navMoreDropdown'); if (d) { d.classList.add('visible'); d.setAttribute('aria-hidden','false'); } const t = document.getElementById('btnNavMore'); if (t) t.setAttribute('aria-expanded','true'); }")
                         page.wait_for_timeout(200)
                         results['nav_more_dropdown_visible'] = page.is_visible(selectors['nav_more_dropdown'])
                         results['nav_more_forced_visible'] = True
@@ -237,7 +237,7 @@ def main():
                 if not results['sidebar_open']:
                     # Fallback: force-open sidebar by adding classes and overlay inline styles (diagnostic/CI-only)
                     try:
-                        page.evaluate("() => { const s = document.getElementById('sidebar'); if (s) s.classList.add('sidebar-open'); const o = document.getElementById('mobileSidebarOverlay'); if (o) { o.classList.add('visible'); o.style.display='block'; o.setAttribute('aria-hidden','false'); } const sb = document.querySelector('.sidebar-backdrop'); if (sb) { sb.classList.add('visible'); sb.style.display='block'; sb.setAttribute('aria-hidden','false'); } const b = document.body; if (b) { b.classList.add('no-scroll'); b.style.overflow='hidden'; } }")
+                        page.evaluate("() => { const s = document.getElementById('sidebar'); if (s) s.classList.add('sidebar-open'); const o = document.getElementById('mobileSidebarOverlay'); if (o) { o.classList.add('visible'); o.setAttribute('aria-hidden','false'); } const sb = document.querySelector('.sidebar-backdrop'); if (sb) { sb.classList.add('visible'); sb.setAttribute('aria-hidden','false'); } const b = document.body; if (b) { b.classList.add('no-scroll'); } }")
                         page.wait_for_timeout(350)
                         results['sidebar_open'] = _check_sidebar_open()
                         results['sidebar_forced_open'] = True

@@ -40,7 +40,7 @@ with sync_playwright() as p:
         info['navmore_clicked_flag'] = None
     # As a last-resort diagnostic, force the dropdown visible via inline styles and re-check
     try:
-        page.evaluate("() => { const d = document.getElementById('navMoreDropdown'); if (d) { d.style.display='block'; d.style.opacity='1'; d.setAttribute('aria-hidden','false'); return true; } return false; }")
+        page.evaluate("() => { const d = document.getElementById('navMoreDropdown'); if (d) { d.classList.add('visible'); d.setAttribute('aria-hidden','false'); return true; } return false; }")
         page.wait_for_timeout(200)
         info['dropdown_style_forced'] = safe_eval("() => { const el=document.getElementById('navMoreDropdown'); if(!el) return null; const cs=getComputedStyle(el); return {display: cs.display, visibility: cs.visibility, opacity: cs.opacity, zIndex: cs.zIndex, position: cs.position, left: cs.left, top: cs.top}; }")
     except Exception as e:

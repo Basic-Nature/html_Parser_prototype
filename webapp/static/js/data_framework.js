@@ -169,7 +169,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function buildHeader() {
-    el.theadRow.innerHTML = '';
+    // Clear existing header cells safely
+    while (el.theadRow.firstChild) el.theadRow.removeChild(el.theadRow.firstChild);
     visibleColumns.forEach(key => {
       if (!allowedColumns.has(key)) return;
       const th = document.createElement('th');
@@ -212,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function buildColumnMenu() {
     if (!el.colMenu) return;
-    el.colMenu.innerHTML = '';
+    while (el.colMenu.firstChild) el.colMenu.removeChild(el.colMenu.firstChild);
     const allKeys = Array.from(allowedColumns);
     allKeys.forEach(key => {
       const label = document.createElement('label');
@@ -270,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- Rendering ----------
   function renderSkeleton(rows = SKELETON_ROWS) {
-    el.tbody.innerHTML = '';
+    while (el.tbody.firstChild) el.tbody.removeChild(el.tbody.firstChild);
     for (let i = 0; i < rows; i++) {
       const tr = document.createElement('tr');
       tr.className = 'skeleton';
@@ -287,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const start = (page - 1) * pageSize;
     const slice = filtered.slice(start, start + pageSize);
 
-    el.tbody.innerHTML = '';
+    while (el.tbody.firstChild) el.tbody.removeChild(el.tbody.firstChild);
     if (!slice.length) {
       const tr = document.createElement('tr');
       const td = document.createElement('td');
@@ -361,18 +362,18 @@ document.addEventListener('DOMContentLoaded', () => {
     (navigator.clipboard?.writeText
       ? navigator.clipboard.writeText(csv)
       : new Promise((res, rej) => {
-          try {
-            const ta = document.createElement('textarea');
-            ta.value = csv;
-            ta.style.position = 'fixed';
-            ta.style.opacity = '0';
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            ta.remove();
-            res();
-          } catch (er) { rej(er); }
-        })
+            try {
+              const ta = document.createElement('textarea');
+              ta.value = csv;
+              // Use CSS-driven offscreen class instead of inline styles
+              ta.classList.add('offscreen-temp');
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              ta.remove();
+              res();
+            } catch (er) { rej(er); }
+          })
     ).then(() => showInfoToast('Copied CSV to clipboard.'))
      .catch(() => showErrorToast('Copy failed.'));
   }

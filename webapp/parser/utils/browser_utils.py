@@ -14,6 +14,7 @@ import os
 import random
 import re
 import time
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional, Protocol, Sequence, Tuple, TypeVar, Union
 
 from playwright.async_api import Browser as AsyncBrowser
@@ -271,6 +272,160 @@ def safe_click(element: Optional[ElementType], logger=logger) -> bool:
         if logger:
             logger.error(f"[safe_click] Error: {e}")
         return False
+
+
+def capture_page_diagnostics(page: Optional[PageType], session_id: Optional[str] = None, note: str = "click_failure") -> dict:
+    """
+    Capture lightweight diagnostics on the page: HTML snapshot and a PNG screenshot.
+    Returns a dict with paths (or error messages) for troubleshooting.
+    """
+    out = {"html": None, "screenshot": None, "error": None}
+    if page is None:
+        return out
+    ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    safe_prefix = session_id or "debug"
+    try:
+        html = safe_content(page, session_id=session_id)
+        html_path = os.path.abspath(f"{safe_prefix}__{note}__{ts}.html")
+        with open(html_path, "w", encoding="utf-8", errors="replace") as fh:
+            fh.write(html)
+        out["html"] = html_path
+    except Exception as e:
+        out["error"] = f"html_capture:{e}"
+    try:
+        if hasattr(page, "screenshot"):
+            png_path = os.path.abspath(f"{safe_prefix}__{note}__{ts}.png")
+            try:
+                page.screenshot(path=png_path, full_page=True)
+                out["screenshot"] = png_path
+            except Exception as e:
+                out["error"] = (out.get("error") or "") + f";screenshot:{e}"
+    except Exception:
+        pass
+    try:
+        # Try to collect a small computed-style snapshot for body and first table (best-effort)
+        if hasattr(page, "evaluate"):
+            try:
+                styles = page.evaluate(
+                    "() => { const nodes = Array.from(document.querySelectorAll('body, main, table')).slice(0,5); return nodes.map(n => ({tag: n.tagName, rect: n.getBoundingClientRect ? n.getBoundingClientRect().toJSON() : null, classes: n.className})); }"
+                )
+                out["styles"] = styles
+            except Exception as e:
+                out["styles_error"] = str(e)
+    except Exception:
+        pass
+    try:
+        logger.info({"level": "INFO", "type": "diagnostic", "message": "Captured page diagnostics", "session_id": session_id, "diags": out})
+    except Exception:
+        pass
+    return out
+
+
+def safe_click_with_retry(
+    page: Optional[PageType] = None,
+    selector: Optional[str] = None,
+    element: Optional[ElementType] = None,
+    max_retries: int = 3,
+    timeout: int = 30000,
+    delay_between: float = 0.6,
+    scroll_into_view: bool = True,
+    session_id: Optional[str] = None,
+    logger=logger,
+) -> bool:
+    """
+    Robust click helper that will re-query the selector/element before each attempt,
+    wait for attached/visible state, optionally scroll into view, and retry on failures.
+    On persistent failure captures page diagnostics.
+    """
+    if element is None and selector is None:
+        logger.error("[safe_click_with_retry] Neither selector nor element provided.")
+        return False
+
+    last_exc = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            el = element
+            # Re-query fresh locator/element each attempt when selector provided
+            if selector and page is not None:
+                try:
+                    loc = safe_locator(page, selector, logger)
+                    if loc is not None:
+                        # Prefer locator object (has click and wait_for)
+                        el = loc
+                    else:
+                        # fallback to query_selector_all first match
+                        qs = None
+                        if hasattr(page, "query_selector_all"):
+                            qs = page.query_selector_all(selector)
+                        if qs:
+                            el = qs[0]
+                except Exception as e:
+                    logger.warning(f"[safe_click_with_retry] Re-query failed: {e} (attempt {attempt})")
+
+            if el is None:
+                logger.warning(f"[safe_click_with_retry] No element found for selector={selector} (attempt {attempt})")
+                last_exc = Exception("element_not_found")
+                time.sleep(delay_between)
+                continue
+
+            # Optionally scroll into view
+            try:
+                if scroll_into_view and hasattr(el, "scroll_into_view_if_needed"):
+                    try:
+                        el.scroll_into_view_if_needed()
+                    except Exception:
+                        # locator may not support scroll_into_view_if_needed; try evaluate
+                        try:
+                            if hasattr(page, "evaluate"):
+                                page.evaluate(f"el => el.scrollIntoView({{block:'center',inline:'center'}})", el)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # Prefer locator.click if available (supports timeout)
+            if hasattr(el, "click"):
+                try:
+                    # If locator has wait_for, ensure attached/visible first
+                    try:
+                        if hasattr(el, "wait_for"):
+                            try:
+                                el.wait_for(state="visible", timeout=timeout)
+                            except Exception:
+                                # try attached as a fallback
+                                try:
+                                    el.wait_for(state="attached", timeout=timeout)
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+                    el.click(timeout=timeout)
+                    return True
+                except Exception as e:
+                    last_exc = e
+                    logger.warning({"level": "WARNING", "type": "browser", "message": f"Click attempt failed (attempt {attempt}/{max_retries}): {e}", "session_id": session_id})
+                    # short backoff
+                    time.sleep(delay_between)
+                    continue
+            else:
+                last_exc = Exception("element_has_no_click")
+                logger.warning(f"[safe_click_with_retry] Element has no click() (attempt {attempt})")
+                time.sleep(delay_between)
+                continue
+
+        except Exception as e:
+            last_exc = e
+            logger.warning({"level": "WARNING", "type": "browser", "message": f"Exception during click helper (attempt {attempt}): {e}", "session_id": session_id})
+            time.sleep(delay_between)
+            continue
+
+    # If we reach here, all attempts failed — capture diagnostics
+    try:
+        diags = capture_page_diagnostics(page, session_id=session_id, note=(selector or 'element_click').replace('/', '_'))
+        logger.error({"level": "ERROR", "type": "browser", "message": f"All click attempts failed for selector={selector}; diagnostics captured.", "session_id": session_id, "diagnostics": diags, "error": str(last_exc)})
+    except Exception:
+        logger.error({"level": "ERROR", "type": "browser", "message": f"All click attempts failed for selector={selector}; diagnostics capture failed.", "session_id": session_id})
+    return False
 
 def safe_get_attribute(element: Optional[ElementType], attr: str, logger=logger) -> str:
     """Safely get an attribute from a Playwright element."""
@@ -743,11 +898,8 @@ def autoscroll_until_stable(
             total_scrolled += step
             update_progress(scroll_attempts)
             try:
-                current_table_count = safe_evaluate(
-                    page,
-                    f"document.querySelectorAll({TABLE_DISCOVERY_SELECTOR_JS}).length",
-                    logger
-                ) or 0
+                locator = safe_locator(page, TABLE_DISCOVERY_SELECTOR, logger)
+                current_table_count = safe_count(locator, logger) if locator is not None else 0
             except Exception:
                 current_table_count = 0
             if current_table_count > max_tables_seen:
