@@ -140,6 +140,7 @@ cache/context_cache.json
 webapp/parser/Context_Integration/Context_Library/log/
 webapp/parser/Context_Integration/Context_Library/cache/
 webapp/parser/urls.txt.bak*
+tools/debug_screenshots/
 # -------------------------
 # Jupyter / archives / misc
 # -------------------------
