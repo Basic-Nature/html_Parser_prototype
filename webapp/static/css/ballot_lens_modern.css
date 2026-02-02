@@ -65,6 +65,11 @@
   --z-sidebar: 301;
   --z-modal-backdrop: 400;
   --z-modal: 401;
+  --z-modal-manager: 1200;
+  --z-pending-overlay: 950;
+  --z-navmore: 700;
+  --z-tool-window: 1100;
+  --z-footer: 650;
   --z-toast: 500;
   --z-navbar: 600;
 
@@ -189,7 +194,7 @@
   left: var(--navmore-left, auto) !important;
   top: var(--navmore-top, auto) !important;
   min-width: var(--navmore-minwidth, 160px) !important;
-  z-index: var(--navmore-zindex, 20000) !important;
+  z-index: var(--z-navmore);
 }
 
 /* Right sidebar inline-style replacement hook: when JS needs to apply dynamic inline presentation,
@@ -1869,7 +1874,7 @@ th {
   max-height: 80vh !important;
   border-radius: 8px !important;
   box-shadow: 0 12px 30px rgba(0,0,0,0.25) !important;
-  z-index: 1200 !important;
+  z-index: var(--z-tool-window);
   overflow: auto !important;
 }
 
@@ -2049,7 +2054,7 @@ th {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 12000;
+    z-index: var(--z-footer);
     background: var(--bg-secondary);
     border-top: 1px solid var(--border-color);
     padding: 8px 0;
@@ -4210,7 +4215,7 @@ code {
 }
 
 .prompt-modal-top {
-  z-index: calc(var(--z-modal) + 25);
+  z-index: calc(var(--z-modal-manager, var(--z-modal)) + 5);
 }
 
 .modal-content {
@@ -4959,7 +4964,7 @@ code {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  z-index: var(--z-pending-overlay, 950);
   animation: fadeIn 200ms ease;
 }
 

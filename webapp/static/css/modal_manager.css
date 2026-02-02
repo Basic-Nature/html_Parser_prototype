@@ -1,5 +1,7 @@
 /* Minimal styles for Modal Manager scaffold */
-#modal-manager-root { position: relative; z-index: 9999; }
+#modal-manager-root { position: fixed; inset: 0; z-index: var(--z-modal-manager, 1200); pointer-events: none; }
+.mm-backdrop { pointer-events: auto; }
+.mm-backdrop.hidden { display: none; pointer-events: none; }
 .mm-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; padding:16px; }
 .mm-wrapper { background: var(--bg, #fff); color: var(--text,#111); max-width:720px; width:100%; border-radius:8px; box-shadow:0 8px 32px rgba(0,0,0,0.4); padding:18px; transform:translateY(0); }
 .mm-title { margin:0 0 8px 0; font-size:1.125rem; }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import inspect
+import os
 import re
 import threading
 
@@ -40,6 +41,11 @@ def safe_strip(val) -> str:
         return val.strip() if isinstance(val, str) else str(val).strip()
     except Exception:
         return ""
+
+try:
+    DEFAULT_WEBAPP_PROMPT_TIMEOUT_SEC = max(0, int(os.environ.get("PROMPT_TIMEOUT_SEC", "300")))
+except Exception:
+    DEFAULT_WEBAPP_PROMPT_TIMEOUT_SEC = 300
 
 class PromptCancelled(Exception):
     """Raised when the user cancels a prompt."""
@@ -493,6 +499,8 @@ class UserPrompt(ContextManager):
         """
         from .logger_singleton import logger
         self.cleanup_sessions()
+        if self.mode == "webapp" and timeout is None and DEFAULT_WEBAPP_PROMPT_TIMEOUT_SEC > 0:
+            timeout = float(DEFAULT_WEBAPP_PROMPT_TIMEOUT_SEC)
         def input_with_timeout(prompt: str, timeout: float) -> Optional[str]:
             result = [None]
             def inner():

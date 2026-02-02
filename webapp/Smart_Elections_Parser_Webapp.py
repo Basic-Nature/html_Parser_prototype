@@ -139,6 +139,7 @@ from webapp.parser.utils.shared_logic import (
     safe_sid,
     safe_is_set,
 )
+from webapp.parser.utils.cert_utils import extract_client_principal
 from webapp.parser.utils.misc_utils import extract_url_and_label
 
 from webapp.parser.web_pipeline import (
@@ -230,6 +231,7 @@ socketio = SocketIO(
 # Optional Prometheus scrape endpoint
 ENABLE_PROMETHEUS = os.environ.get('ENABLE_PROMETHEUS', 'false').lower() in ('1', 'true', 'yes')
 TEST_METRICS_ROUTE_ENABLED = os.environ.get('ENABLE_TEST_METRICS_ROUTE', 'false').lower() in ('1', 'true', 'yes') or os.environ.get('FLASK_ENV', '').lower() == 'development' or os.environ.get('PYTEST_CURRENT_TEST', '')
+TEST_UI_ROUTES_ENABLED = os.environ.get('ENABLE_TEST_UI_ROUTES', 'false').lower() in ('1', 'true', 'yes') or os.environ.get('FLASK_ENV', '').lower() == 'development'
 if ENABLE_PROMETHEUS:
     try:
         from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, REGISTRY
@@ -549,6 +551,9 @@ ENABLE_FINGERPRINT_SESSION_RECOVERY = os.environ.get(
     "true",
 ).lower() in {"1", "true", "yes"}
 
+ALLOW_DEV_NO_PRINCIPAL = os.environ.get("ALLOW_DEV_NO_PRINCIPAL", "false").lower() in {"1", "true", "yes"}
+ALLOW_AUTO_SESSION_REUSE = os.environ.get("ALLOW_AUTO_SESSION_REUSE", "true").lower() in {"1", "true", "yes"}
+
 LOG_DEDUPE_WINDOW = float(os.environ.get("LOG_DEDUPE_WINDOW_SEC", "2.0"))
 MAX_CACHE_PER_SESSION = 120
 
@@ -565,6 +570,16 @@ if HB_INTERVAL_OVERRIDE:
     except ValueError:
         pass
 
+# Conservative cleanup controls (avoid tearing down active or stale-but-recoverable sessions)
+try:
+    SESSION_EXPIRE_GRACE_SEC = max(0, int(os.environ.get("SESSION_EXPIRE_GRACE_SEC", "600")))
+except ValueError:
+    SESSION_EXPIRE_GRACE_SEC = 600
+try:
+    SESSION_STALE_RECOVERY_SEC = max(0, int(os.environ.get("SESSION_STALE_RECOVERY_SEC", "120")))
+except ValueError:
+    SESSION_STALE_RECOVERY_SEC = 120
+
 DIRECT_URL_LIMIT = 20
 
 # 4. Utility Functions
@@ -576,8 +591,48 @@ def is_owner(sid, username):
 def create_session_metadata(sid, username=None):
     return session_manager.ensure_session(sid, username)
 
+def _recover_stale_session(session_id: str, reason: str) -> bool:
+    if not session_id:
+        return False
+    if safe_is_alive(session_id):
+        return False
+    meta = session_manager.get_metadata(session_id) or {}
+    last_active = session_manager.get_last_active(session_id) or 0
+    age = time.time() - last_active
+    if age < SESSION_STALE_RECOVERY_SEC:
+        return False
+    # Clear prompt state + queues to avoid stale prompts blocking UI.
+    try:
+        prompt.clear_prompt_session(session_id, delay=0)
+    except Exception:
+        pass
+    session_manager.drop_prompt_queue(session_id)
+    session_manager.pop_emitter(session_id)
+    # Unlock + reset to idle for safe user recovery
+    transition_session(
+        session_id,
+        SessionState.IDLE,
+        locked=False,
+        phase=PipelinePhase.PREPARE,
+        emit=False,
+        broadcast=False,
+        extras={"stale_recovered": True, "stale_reason": reason},
+    )
+    return True
+
 def cleanup_sessions():
-    expired = session_manager.expire_sessions(SESSION_TIMEOUT)
+    recovered = []
+    # Attempt safe recovery for stale sessions (avoid blocking UX on reconnect)
+    for sid in session_manager.list_active_session_ids():
+        if _recover_stale_session(sid, reason="cleanup"):
+            recovered.append(sid)
+
+    expired = session_manager.expire_sessions(
+        SESSION_TIMEOUT,
+        require_unlocked=True,
+        require_no_thread=True,
+        grace_period=SESSION_EXPIRE_GRACE_SEC,
+    )
     for sid in expired:
         try:
             log_path = os.path.join(LOG_DIR, f"sess_{sid}.ndjson")
@@ -589,6 +644,8 @@ def cleanup_sessions():
         session_manager.unbind_fingerprints_for_session(sid)
     if expired:
         emit('session_expired', {'expired_sessions': expired}, broadcast=True)
+        broadcast_sessions()
+    if recovered:
         broadcast_sessions()
 
 def transition_session(
@@ -660,35 +717,119 @@ def client_fingerprint():
     ua = request.headers.get('User-Agent', '') or ''
     return f"{ip}|{ua[:64]}"
 
+
+def get_request_principal():
+    """Return (principal, source) preferring client cert, then SSO OID."""
+    principal, source = extract_client_principal(request.headers)
+    if principal:
+        return principal, source
+
+    # Dev-only bypass for localhost when explicitly enabled
+    host = (request.host or "").lower()
+    is_local = (
+        host in {"localhost", "127.0.0.1", "::1", "[::1]"}
+        or host.startswith("localhost:")
+        or host.startswith("127.0.0.1:")
+        or host.startswith("[::1]:")
+    )
+    if ALLOW_DEV_NO_PRINCIPAL and is_local:
+        remote = request.remote_addr or "local"
+        return f"dev:{remote}", "dev_bypass"
+    return None, None
+
 def resolve_session_id(data=None, create_if_missing=True):
+    def _log_resolution(decision: str, sid_val: str | None, reason: str | None = None):
+        try:
+            logger.info({
+                "level": "INFO",
+                "type": "auth",
+                "message": f"Session resolution: {decision}",
+                "session_id": sid_val,
+                "reason": reason,
+            })
+        except Exception:
+            pass
+
+    def _truthy(val):
+        if val is None:
+            return False
+        if isinstance(val, bool):
+            return val
+        try:
+            s = str(val).strip().lower()
+        except Exception:
+            return False
+        return s in {"1", "true", "yes", "y", "on", "reuse", "reuse_session"}
+
     try:
         socket_sid = safe_sid()
     except Exception:
         socket_sid = getattr(request, 'sid', None)
     if not isinstance(socket_sid, str) or not socket_sid:
         return None
+    principal, principal_source = get_request_principal()
+
+    # Determine whether automatic session reuse is permitted
+    reuse_hint = False
+    if isinstance(data, dict):
+        reuse_hint = _truthy(data.get("reuse_session") or data.get("reuse"))
+    try:
+        arg_reuse = request.args.get("reuse_session")
+        hdr_reuse = request.headers.get("X-Reuse-Session")
+        reuse_hint = reuse_hint or _truthy(arg_reuse) or _truthy(hdr_reuse)
+    except Exception:
+        pass
+
+    allow_reuse = ALLOW_AUTO_SESSION_REUSE or reuse_hint
+    # For dev_bypass principals, default to no automatic reuse unless explicitly hinted
+    if principal_source == "dev_bypass" and not reuse_hint:
+        allow_reuse = False
+
     sid = None
     if isinstance(data, dict):
         sid = safe_get(data, 'session_id')
     if isinstance(sid, str) and sid:
         session_manager.bind_socket(socket_sid, sid)
+        if principal:
+            session_manager.set_principal(sid, principal, principal_source)
+        _log_resolution("explicit_session_id", sid, "payload session_id")
         return sid
 
-    mapped = session_manager.resolve_socket(socket_sid)
-    if isinstance(mapped, str) and mapped:
-        return mapped
+    # Prefer principal binding to ensure identity fidelity across reconnects
+    if allow_reuse and principal:
+        mapped_principal = session_manager.resolve_principal(principal)
+        if isinstance(mapped_principal, str) and mapped_principal:
+            session_manager.bind_socket(socket_sid, mapped_principal)
+            session['logical_session_id'] = mapped_principal
+            _log_resolution("reuse_principal", mapped_principal, principal_source)
+            return mapped_principal
 
-    cookie_sid = session.get('logical_session_id')
-    if isinstance(cookie_sid, str) and cookie_sid:
-        session_manager.bind_socket(socket_sid, cookie_sid)
-        return cookie_sid
+    if allow_reuse:
+        mapped = session_manager.resolve_socket(socket_sid)
+        if isinstance(mapped, str) and mapped:
+            if principal:
+                session_manager.set_principal(mapped, principal, principal_source)
+            _log_resolution("reuse_socket", mapped, "socket bind")
+            return mapped
+
+    if allow_reuse:
+        cookie_sid = session.get('logical_session_id')
+        if isinstance(cookie_sid, str) and cookie_sid:
+            session_manager.bind_socket(socket_sid, cookie_sid)
+            if principal:
+                session_manager.set_principal(cookie_sid, principal, principal_source)
+            _log_resolution("reuse_cookie", cookie_sid, "logical_session_id cookie")
+            return cookie_sid
 
     fingerprint = client_fingerprint() if ENABLE_FINGERPRINT_SESSION_RECOVERY else None
-    if ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
+    if allow_reuse and ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
         fp_sid = session_manager.resolve_fingerprint(fingerprint)
         if isinstance(fp_sid, str) and fp_sid:
             session_manager.bind_socket(socket_sid, fp_sid)
             session['logical_session_id'] = fp_sid
+            if principal:
+                session_manager.set_principal(fp_sid, principal, principal_source)
+            _log_resolution("reuse_fingerprint", fp_sid, "fingerprint")
             return fp_sid
 
     if not create_if_missing:
@@ -700,6 +841,9 @@ def resolve_session_id(data=None, create_if_missing=True):
     session_manager.bind_socket(socket_sid, new_sid)
     session['logical_session_id'] = new_sid
     session_manager.ensure_session(new_sid)
+    if principal:
+        session_manager.set_principal(new_sid, principal, principal_source)
+    _log_resolution("new_session", new_sid, "created")
     return new_sid
 
 def emit_contest_options(session_id: str, contests: list[dict], context: dict | None = None):
@@ -1687,6 +1831,58 @@ def api_health_task_detail(task_id: str):
     if not record:
         return jsonify({"error": "Task not found."}), 404
     return jsonify({"task": record})
+
+
+@app.route('/test/ui/prompt', methods=['POST'])
+def test_ui_prompt():
+    if not TEST_UI_ROUTES_ENABLED:
+        return jsonify({"error": "Test UI routes disabled"}), 404
+
+    data = request.get_json(silent=True) or {}
+    session_id = safe_strip(safe_get(data, "session_id"))
+    if not session_id:
+        return jsonify({"error": "session_id required"}), 400
+    if not session_manager.has_session(session_id):
+        return jsonify({"error": "unknown session"}), 404
+
+    title = safe_strip(safe_get(data, "title")) or "Test Prompt"
+    message = safe_strip(safe_get(data, "message")) or "Select an option"
+    options_raw = safe_get(data, "options")
+
+    options = []
+    if isinstance(options_raw, list):
+        for idx, opt in enumerate(options_raw):
+            try:
+                if isinstance(opt, dict):
+                    label = safe_strip(opt.get("label") or opt.get("title") or opt.get("name")) or f"Option {idx+1}"
+                    meta = safe_strip(opt.get("meta") or opt.get("summary")) or ""
+                    options.append({"index": opt.get("index") or idx + 1, "label": label, "meta": meta, "metadata": opt})
+                else:
+                    options.append({"index": idx + 1, "label": str(opt), "meta": ""})
+            except Exception:
+                options.append({"index": idx + 1, "label": str(opt), "meta": ""})
+
+    payload = {
+        "type": "prompt",
+        "message": message,
+        "session_id": session_id,
+        "context": {
+            "title": title,
+            "options": options,
+        }
+    }
+
+    try:
+        store_log(session_id, normalize_log_obj({"type": "prompt", "level": "INFO", "message": message, "session_id": session_id}))
+    except Exception:
+        pass
+
+    try:
+        socketio.emit('parser_output', payload, room=session_id)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({"success": True, "emitted": True, "session_id": session_id, "options": len(options)})
 
 @app.route("/api/fs/list", methods=["GET"])
 def api_fs_list():
@@ -2887,13 +3083,56 @@ def handle_connect(auth=None):
     try:
         cleanup_sessions()
         session['log_format'] = "json"
+        principal, principal_source = get_request_principal()
+        if not principal:
+            emit('parser_output', {
+                "level": "ERROR",
+                "type": "auth",
+                "message": "Missing client certificate or SSO principal; connection rejected.",
+                "session_id": None
+            }, room=getattr(request, 'sid', None))
+            return False
+        if principal_source == "dev_bypass":
+            logger.warning({
+                "level": "WARNING",
+                "type": "auth",
+                "message": "Dev principal bypass active (ALLOW_DEV_NO_PRINCIPAL).",
+                "session_id": None,
+                "principal": principal,
+                "remote_addr": request.remote_addr,
+                "host": request.host,
+            })
+        def _truthy(val):
+            if val is None:
+                return False
+            if isinstance(val, bool):
+                return val
+            try:
+                s = str(val).strip().lower()
+            except Exception:
+                return False
+            return s in {"1", "true", "yes", "y", "on", "reuse", "reuse_session"}
+
+        reuse_hint = False
+        if isinstance(auth, dict):
+            reuse_hint = _truthy(auth.get('reuse_session') or auth.get('reuse'))
+        try:
+            arg_reuse = request.args.get('reuse_session')
+            hdr_reuse = request.headers.get('X-Reuse-Session')
+            reuse_hint = reuse_hint or _truthy(arg_reuse) or _truthy(hdr_reuse)
+        except Exception:
+            pass
+
+        allow_reuse = ALLOW_AUTO_SESSION_REUSE or reuse_hint
+        if principal_source == "dev_bypass" and not reuse_hint:
+            allow_reuse = False
         requested = None
         if isinstance(auth, dict):
             requested = safe_get(auth, 'requested_session_id')
         if not requested:
             requested = request.args.get('prev_session_id')
         revived = None
-        if requested and session_manager.has_session(requested):
+        if allow_reuse and requested and session_manager.has_session(requested):
             revived = requested
             session_manager.touch_session(revived)
             cancellation_manager.remove(revived)
@@ -2905,7 +3144,7 @@ def handle_connect(auth=None):
                 "session_id": revived
             })
             emit('session_id', {'session_id': revived})
-        else:
+        elif allow_reuse:
             cookie_sid = session.get('logical_session_id')
             if cookie_sid and session_manager.has_session(cookie_sid):
                 session_manager.mark_active(cookie_sid)
@@ -2922,6 +3161,7 @@ def handle_connect(auth=None):
         resolved = resolve_session_id({'session_id': revived} if revived else {}, create_if_missing=False)
         if resolved:
             session_manager.touch_session(resolved)
+            _recover_stale_session(resolved, reason="connect")
 
         if revived:
             session_manager.mark_active(revived)
@@ -2933,7 +3173,9 @@ def handle_connect(auth=None):
             "level": "INFO",
             "type": "status",
             "message": "Socket connected (no auto session creation)",
-            "session_id": resolved
+            "session_id": resolved,
+            "principal": principal,
+            "principal_source": principal_source,
         })
     except Exception as e:
         emit('parser_output', {
@@ -3031,6 +3273,49 @@ def handle_parser_prompt(data) -> None:
             },
         )
 
+@socketio.on('prompt_cancel')
+def handle_prompt_cancel(data=None) -> None:
+    payload = data or {}
+    session_id = resolve_session_id(payload, create_if_missing=False)
+    reason = safe_lower(safe_get(payload, 'reason', 'cancel'))
+    if not session_id or not session_manager.has_session(session_id):
+        logger.error({
+            "level": "ERROR",
+            "type": "prompt",
+            "message": "Invalid or unknown session_id for prompt_cancel.",
+            "session_id": None,
+        })
+        return
+
+    prompt_session = prompt.prompt_sessions.get(session_id)
+    if prompt_session and not prompt_session.is_resolved():
+        try:
+            prompt_session.set_response("cancel")
+        except Exception:
+            try:
+                prompt_session.cancel()
+            except Exception:
+                pass
+
+    try:
+        cancel_processing(session_id)
+    except Exception:
+        pass
+
+    transition_session(
+        session_id,
+        SessionState.IDLE,
+        locked=False,
+        phase=PipelinePhase.PREPARE,
+        broadcast=False,
+        extras={
+            "manual_source": get_manual_source(session_id),
+            "manual_source_origin": get_manual_source_origin(session_id),
+            "prompt_cancelled": True,
+            "prompt_cancel_reason": reason,
+        },
+    )
+
 @socketio.on('cancel_parser')
 def handle_cancel_parser(data=None) -> None:
     session_id = resolve_session_id(data or {}, create_if_missing=False)
@@ -3042,6 +3327,18 @@ def handle_cancel_parser(data=None) -> None:
             "session_id": None
         })
         return
+
+    # If a prompt is active, resolve it immediately so the worker unblocks
+    prompt_session = prompt.prompt_sessions.get(session_id)
+    if prompt_session and not prompt_session.is_resolved():
+        try:
+            prompt_session.set_response("cancel")
+        except Exception:
+            try:
+                prompt_session.cancel()
+            except Exception:
+                pass
+
     cancel_processing(session_id)
     logger.info({
         "level": "INFO",
@@ -3063,12 +3360,14 @@ def handle_cancel_parser(data=None) -> None:
     session_manager.pop_emitter(session_id)
     transition_session(
         session_id,
-        SessionState.CANCELLING,
+        SessionState.CANCELLED,
         locked=False,
-        phase=PipelinePhase.RUN,
+        phase=PipelinePhase.PREPARE,
         extras={
             "manual_source": get_manual_source(session_id),
             "manual_source_origin": get_manual_source_origin(session_id),
+            "prompt_cancelled": True,
+            "cancel_reason": "user_cancel",
         },
     )
     cleanup_sessions()

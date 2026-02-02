@@ -21,10 +21,14 @@ from sqlalchemy.exc import OperationalError
 from .config import (
     CACHE_LOCK,
     CACHE_RESET,
+    ENABLE_SELENIUM_FALLBACK,
     ENABLE_AI_ANALYSIS,
     ENABLE_PARALLEL,
     ENABLE_REALTIME_STREAM,
     INPUT_DIR,
+    NAV_MAX_ATTEMPTS,
+    NAV_TIMEOUT_PLAYWRIGHT_MS,
+    NAV_TIMEOUT_SELENIUM_MS,
     MAX_URLS_DISPLAYED,
     OUTPUT_DIR,
     PROCESSED_URLS_FILE,
@@ -33,6 +37,7 @@ from .config import (
 )
 from .state_router import get_handler, preload_handler_map
 from .navigator import NavigationInstructionRunner, NavigationRecipeStore
+from .utils.captcha_tools import detect_cloudflare_challenge
 from .utils.browser_utils import (
     autoscroll_until_stable,
     safe_content,
@@ -45,6 +50,7 @@ from .utils.browser_utils import (
     safe_count,
     safe_locator,
 )
+from .utils.seleniumbase_launcher import SELENIUMBASE_AVAILABLE, close_driver, launch_browser
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.dynamic_table_extractor import dynamic_table_extractor
 from .utils.format_router import prompt_and_handle_download, route_format_handler
@@ -1185,246 +1191,366 @@ def orchestrate_url(
 
     browser = page = None
     result = None
+    nav_meta: Dict[str, Any] = {}
+    agent_used = None
+    state, county = infer_state_county_from_url(target_url)
+    strategies = [
+        {"agent": "playwright", "timeout_ms": NAV_TIMEOUT_PLAYWRIGHT_MS},
+    ]
+    if ENABLE_SELENIUM_FALLBACK:
+        strategies.append({"agent": "selenium", "timeout_ms": NAV_TIMEOUT_SELENIUM_MS})
+    max_attempts = min(len(strategies), NAV_MAX_ATTEMPTS)
+
     try:
-        with sync_playwright() as p:
-            browser, _, page, _ = sync_browser_pipeline(
-                p, target_url, cache_exit_callback=mark_url_processed, session_id=session_id
-            )
-            if cancel_flag is not None and safe_is_set(cancel_flag):
+        for attempt_idx, strat in enumerate(strategies[:max_attempts], start=1):
+            agent = strat.get("agent")
+            try:
+                increment_counter("nav_agent_attempt_total", 1)
+            except Exception:
+                pass
+
+            if agent == "playwright":
                 try:
-                    if safe_is_set(cancel_flag):
-                        msg = f"Processing cancelled for {target_url}"
+                    with sync_playwright() as p:
+                        browser, _, page, _, nav_meta = sync_browser_pipeline(
+                            p,
+                            target_url,
+                            cache_exit_callback=mark_url_processed,
+                            session_id=session_id,
+                            nav_timeout_ms=strat.get("timeout_ms") or NAV_TIMEOUT_PLAYWRIGHT_MS,
+                            cancel_flag=cancel_flag,
+                        )
+                    if cancel_flag is not None and safe_is_set(cancel_flag):
                         payload = {
                             "level": "INFO",
                             "type": "cancel",
-                            "message": msg,
-                            "session_id": session_id
+                            "message": f"Processing cancelled for {target_url}",
+                            "session_id": session_id,
                         }
                         logger.info(payload)
                         _close_browser_quietly(browser, session_id)
                         return
-                except Exception as e:
-                    msg = f"Exception during cancel_flag check: {e}"
-                    payload = {
-                        "level": "WARNING",
-                        "type": "cancel",
-                        "message": msg,
-                        "session_id": session_id
-                    }
-                    logger.warning(payload)
+                    if not page:
+                        logger.error({
+                            "level": "ERROR",
+                            "type": "browser",
+                            "message": f"Could not open page for {target_url}",
+                            "session_id": session_id,
+                        })
+                        _close_browser_quietly(browser, session_id)
+                        continue
+                    if nav_meta.get("cloudflare_detected") and ENABLE_SELENIUM_FALLBACK:
+                        logger.warning({
+                            "level": "WARNING",
+                            "type": "browser",
+                            "message": "Cloudflare challenge detected — will attempt Selenium fallback if enabled.",
+                            "session_id": session_id,
+                        })
+                        try:
+                            increment_counter("nav_agent_playwright_cloudflare", 1)
+                        except Exception:
+                            pass
+                        _close_browser_quietly(browser, session_id)
+                        browser = page = None
+                        continue
+                    agent_used = "playwright"
+                    try:
+                        increment_counter("nav_agent_playwright_success", 1)
+                    except Exception:
+                        pass
+                    break
+                except Exception as exc:
+                    logger.error({
+                        "level": "ERROR",
+                        "type": "browser",
+                        "message": f"Playwright navigation failed: {exc}",
+                        "session_id": session_id,
+                    })
+                    try:
+                        increment_counter("nav_agent_playwright_fail", 1)
+                    except Exception:
+                        pass
                     _close_browser_quietly(browser, session_id)
-                    return
+                    browser = page = None
+                    continue
 
-            if not page:
-                msg = f"Could not open page for {target_url}"
+            if agent == "selenium":
+                if not (ENABLE_SELENIUM_FALLBACK and SELENIUMBASE_AVAILABLE):
+                    logger.warning({
+                        "level": "WARNING",
+                        "type": "browser",
+                        "message": "Selenium fallback requested but dependency is unavailable.",
+                        "session_id": session_id,
+                    })
+                    continue
+                driver = None
+                try:
+                    _, _, driver = launch_browser()
+                    try:
+                        driver.set_page_load_timeout((strat.get("timeout_ms") or NAV_TIMEOUT_SELENIUM_MS) / 1000)
+                    except Exception:
+                        pass
+                    driver.get(target_url)
+                    html_text = getattr(driver, "page_source", "") or ""
+                    blocked = detect_cloudflare_challenge(driver)
+                    nav_meta = {"agent": "selenium", "cloudflare_detected": blocked}
+                    if not html_text:
+                        raise RuntimeError("Selenium fallback returned empty page_source")
+                    fallback_ctx = {
+                        "state": state,
+                        "county": county,
+                        "url": target_url,
+                        "fallback_reason": "selenium_fallback",
+                    }
+                    result = generate_generic_html_result(
+                        page=None,
+                        coordinator=coordinator,
+                        context=fallback_ctx,
+                        session_id=session_id,
+                        html_text=html_text,
+                        log_type="selenium_fallback",
+                    )
+                    if result:
+                        agent_used = "selenium"
+                        try:
+                            increment_counter("nav_agent_selenium_success", 1)
+                        except Exception:
+                            pass
+                        break
+                    try:
+                        increment_counter("nav_agent_selenium_fail", 1)
+                    except Exception:
+                        pass
+                except Exception as exc:
+                    logger.error({
+                        "level": "ERROR",
+                        "type": "browser",
+                        "message": f"Selenium fallback failed: {exc}",
+                        "session_id": session_id,
+                    })
+                    try:
+                        increment_counter("nav_agent_selenium_fail", 1)
+                    except Exception:
+                        pass
+                finally:
+                    if driver:
+                        close_driver(driver)
+
+        # If Selenium fallback produced a direct result, finish early
+        if agent_used == "selenium" and result is not None:
+            headers, data, contest, metadata = result
+            if all([headers, data, contest, metadata]):
+                ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
+                stream_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
+                mark_url_processed(target_url, status="success", session_id=session_id)
+            else:
+                mark_url_processed(target_url, status="partial", session_id=session_id)
+            return
+
+        if page is None:
+            logger.error({
+                "level": "ERROR",
+                "type": "browser",
+                "message": f"Navigation failed for {target_url} (no agent succeeded).",
+                "session_id": session_id,
+            })
+            mark_url_processed(target_url, status="error", session_id=session_id)
+            return
+        nav_context = {
+            "state": state,
+            "county": county,
+            "url": target_url,
+        }
+        nav_context_before = dict(nav_context)
+        nav_output = None
+        if NAVIGATION_RUNNER:
+            try:
+                nav_output = NAVIGATION_RUNNER.run(
+                    page,
+                    context=nav_context,
+                    coordinator=coordinator,
+                    session_id=session_id,
+                )
+            except Exception as exc:
+                nav_output = None
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "navigation",
+                    "message": f"Navigation runner failed: {exc}",
+                    "session_id": session_id,
+                })
+            else:
+                if nav_output.executed:
+                    logger.info({
+                        "level": "INFO",
+                        "type": "navigation",
+                        "message": f"Navigation script executed: {nav_output.script_id}",
+                        "session_id": session_id,
+                    })
+                if nav_output.context_updates:
+                    nav_context.update(nav_output.context_updates)
+                coordinator.record_navigation_feedback(
+                    script_id=nav_output.script_id,
+                    success=nav_output.executed,
+                    context_before=nav_context_before,
+                    context_after=dict(nav_context),
+                    telemetry=nav_output.telemetry,
+                    metadata=nav_output.metadata,
+                )
+            try:
+                emit_telemetry_event("navigation_complete", {
+                    "url": target_url,
+                    "session_id": session_id,
+                    "nav_executed": bool(getattr(nav_output, 'executed', False)) if nav_output is not None else False,
+                    "nav_script_id": getattr(nav_output, 'script_id', None) if nav_output is not None else None,
+                    "nav_telemetry": getattr(nav_output, 'telemetry', None) if nav_output is not None else None,
+                })
+            except Exception:
+                pass
+        scroll_metrics: Dict[str, Any] = {}
+        try:
+            autoscroll_until_stable(
+                page,
+                wait_for_selector='table, a[href$=".csv"], a[href$=".json"], [role="table"]',
+                max_total_time=20000,
+                delay_ms=250,
+                session_id=session_id,
+                metrics=scroll_metrics,
+            )
+        except Exception:
+            pass
+        if scroll_metrics:
+            logger.info(
+                {
+                    "level": "INFO",
+                    "type": "telemetry",
+                    "message": "[Telemetry] Autoscroll metrics collected.",
+                    "session_id": session_id,
+                    **{k: v for k, v in scroll_metrics.items() if k in SCROLL_METRIC_KEYS},
+                }
+            )
+            try:
+                emit_telemetry_event("page_scrolled", {"url": target_url, "session_id": session_id, "scroll_metrics": scroll_metrics})
+            except Exception:
+                pass
+
+        dom_table_rows = _count_dom_table_rows(page)
+        download_parse_tuple = None
+        handled = False
+        if dom_table_rows <= 0:
+            download_parse_tuple, handled = prompt_and_handle_download(
+                page,
+                target_url,
+                rejected_downloads,
+                session_id=session_id,
+                cancel_flag=cancel_flag,
+                **kwargs,
+            )
+        else:
+            logger.info(
+                {
+                    "level": "INFO",
+                    "type": "download",
+                    "message": "[format_router] DOM tables detected; deferring downloads to keep HTML parsing priority.",
+                    "session_id": session_id,
+                    "dom_table_rows": dom_table_rows,
+                }
+            )
+        if handled:
+            if isinstance(download_parse_tuple, tuple) and len(download_parse_tuple) == 4:
+                result = download_parse_tuple
+                msg = f"Download handled for {target_url}; continuing pipeline."
                 payload = {
-                    "level": "ERROR",
-                    "type": "browser",
+                    "level": "INFO",
+                    "type": "download",
                     "message": msg,
                     "session_id": session_id
                 }
-                logger.error(payload)
-                _close_browser_quietly(browser, session_id)
-                return
+                logger.info(payload)
+            else:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "download",
+                    "message": "Download handler returned invalid result tuple; falling back to HTML pipeline.",
+                    "session_id": session_id
+                })
 
-            state, county = infer_state_county_from_url(target_url)
-            nav_context = {
-                "state": state,
-                "county": county,
-                "url": target_url,
-            }
-            nav_context_before = dict(nav_context)
-            nav_output = None
-            if NAVIGATION_RUNNER:
-                try:
-                    nav_output = NAVIGATION_RUNNER.run(
-                        page,
-                        context=nav_context,
-                        coordinator=coordinator,
-                        session_id=session_id,
-                    )
-                except Exception as exc:
-                    nav_output = None
-                    logger.warning({
-                        "level": "WARNING",
-                        "type": "navigation",
-                        "message": f"Navigation runner failed: {exc}",
-                        "session_id": session_id,
-                    })
-                else:
-                    if nav_output.executed:
-                        logger.info({
-                            "level": "INFO",
-                            "type": "navigation",
-                            "message": f"Navigation script executed: {nav_output.script_id}",
-                            "session_id": session_id,
-                        })
-                    if nav_output.context_updates:
-                        nav_context.update(nav_output.context_updates)
-                    coordinator.record_navigation_feedback(
-                        script_id=nav_output.script_id,
-                        success=nav_output.executed,
-                        context_before=nav_context_before,
-                        context_after=dict(nav_context),
-                        telemetry=nav_output.telemetry,
-                        metadata=nav_output.metadata,
-                    )
-                try:
-                    emit_telemetry_event("navigation_complete", {
-                        "url": target_url,
-                        "session_id": session_id,
-                        "nav_executed": bool(getattr(nav_output, 'executed', False)) if nav_output is not None else False,
-                        "nav_script_id": getattr(nav_output, 'script_id', None) if nav_output is not None else None,
-                        "nav_telemetry": getattr(nav_output, 'telemetry', None) if nav_output is not None else None,
-                    })
-                except Exception:
-                    pass
-            scroll_metrics: Dict[str, Any] = {}
+        handler = None
+        context = {
+            **nav_context,
+            "url": target_url,
+            "session_id": session_id,
+            "output_bypass": output_bypass
+        }
+        if result is None:
+            active_state = context.get("state") or state
+            if active_state:
+                preload_handler_map(restrict_to_states=[active_state])
+            else:
+                preload_handler_map()
+            handler_result = get_handler(
+                context,
+                url=target_url,
+                debug=False,
+                fuzzy_cutoff=None,
+                session_id=session_id
+            )
             try:
-                autoscroll_until_stable(
-                    page,
-                    wait_for_selector='table, a[href$=".csv"], a[href$=".json"], [role="table"]',
-                    max_total_time=20000,
-                    delay_ms=250,
-                    session_id=session_id,
-                    metrics=scroll_metrics,
-                )
+                handler_name = None
+                summary = None
+                if isinstance(handler_result, dict):
+                    handler_name = handler_result.get('handler').__class__.__name__ if handler_result.get('handler') is not None else None
+                    summary = handler_result.get('summary')
+                emit_telemetry_event("handler_selected", {"url": target_url, "session_id": session_id, "handler": handler_name, "summary": summary})
             except Exception:
                 pass
-            if scroll_metrics:
-                logger.info(
-                    {
-                        "level": "INFO",
-                        "type": "telemetry",
-                        "message": "[Telemetry] Autoscroll metrics collected.",
-                        "session_id": session_id,
-                        **{k: v for k, v in scroll_metrics.items() if k in SCROLL_METRIC_KEYS},
-                    }
-                )
-                try:
-                    emit_telemetry_event("page_scrolled", {"url": target_url, "session_id": session_id, "scroll_metrics": scroll_metrics})
-                except Exception:
-                    pass
+            handler = handler_result.get("handler") if isinstance(handler_result, dict) else None
+            summary = handler_result.get("summary") if isinstance(handler_result, dict) else None
 
-            dom_table_rows = _count_dom_table_rows(page)
-            download_parse_tuple = None
-            handled = False
-            if dom_table_rows <= 0:
-                download_parse_tuple, handled = prompt_and_handle_download(
+            if summary and isinstance(summary, dict) and summary.get("log"):
+                log_entries = summary.get("log")
+                for entry in log_entries:
+                    payload = {
+                        "level": "INFO",
+                        "type": "router",
+                        "message": entry,
+                        "session_id": session_id
+                    }
+                    logger.info(payload)
+
+            if handler and hasattr(handler, 'parse'):
+                result = safe_parse(
+                    handler,
                     page,
-                    target_url,
-                    rejected_downloads,
+                    coordinator,
+                    context,
                     session_id=session_id,
+                    logger=logger,
                     cancel_flag=cancel_flag,
                     **kwargs,
                 )
             else:
-                logger.info(
-                    {
-                        "level": "INFO",
-                        "type": "download",
-                        "message": "[format_router] DOM tables detected; deferring downloads to keep HTML parsing priority.",
-                        "session_id": session_id,
-                        "dom_table_rows": dom_table_rows,
-                    }
-                )
-            if handled:
-                if isinstance(download_parse_tuple, tuple) and len(download_parse_tuple) == 4:
-                    result = download_parse_tuple
-                    msg = f"Download handled for {target_url}; continuing pipeline."
-                    payload = {
-                        "level": "INFO",
-                        "type": "download",
-                        "message": msg,
-                        "session_id": session_id
-                    }
-                    logger.info(payload)
-                else:
-                    logger.warning({
-                        "level": "WARNING",
-                        "type": "download",
-                        "message": "Download handler returned invalid result tuple; falling back to HTML pipeline.",
-                        "session_id": session_id
-                    })
-
-            handler = None
-            context = {
-                **nav_context,
-                "url": target_url,
-                "session_id": session_id,
-                "output_bypass": output_bypass
-            }
-            if result is None:
-                active_state = context.get("state") or state
-                if active_state:
-                    preload_handler_map(restrict_to_states=[active_state])
-                else:
-                    preload_handler_map()
-                handler_result = get_handler(
-                    context,
-                    url=target_url,
-                    debug=False,
-                    fuzzy_cutoff=None,
-                    session_id=session_id
-                )
+                msg = f"[Router] No suitable handler found for {target_url}, using generic HTML fallback."
+                payload = {
+                    "level": "WARNING",
+                    "type": "router",
+                    "message": msg,
+                    "session_id": session_id
+                }
+                logger.warning(payload)
+                html_content = None
                 try:
-                    handler_name = None
-                    summary = None
-                    if isinstance(handler_result, dict):
-                        handler_name = handler_result.get('handler').__class__.__name__ if handler_result.get('handler') is not None else None
-                        summary = handler_result.get('summary')
-                    emit_telemetry_event("handler_selected", {"url": target_url, "session_id": session_id, "handler": handler_name, "summary": summary})
+                    html_content = page.inner_html("body") if page else None
                 except Exception:
-                    pass
-                handler = handler_result.get("handler") if isinstance(handler_result, dict) else None
-                summary = handler_result.get("summary") if isinstance(handler_result, dict) else None
-
-                if summary and isinstance(summary, dict) and summary.get("log"):
-                    log_entries = summary.get("log")
-                    for entry in log_entries:
-                        payload = {
-                            "level": "INFO",
-                            "type": "router",
-                            "message": entry,
-                            "session_id": session_id
-                        }
-                        logger.info(payload)
-
-                if handler and hasattr(handler, 'parse'):
-                    result = safe_parse(
-                        handler,
-                        page,
-                        coordinator,
-                        context,
-                        session_id=session_id,
-                        logger=logger,
-                        cancel_flag=cancel_flag,
-                        **kwargs,
-                    )
-                else:
-                    msg = f"[Router] No suitable handler found for {target_url}, using generic HTML fallback."
-                    payload = {
-                        "level": "WARNING",
-                        "type": "router",
-                        "message": msg,
-                        "session_id": session_id
-                    }
-                    logger.warning(payload)
                     html_content = None
-                    try:
-                        html_content = page.inner_html("body") if page else None
-                    except Exception:
-                        html_content = None
-                    result = generate_generic_html_result(
-                        page=page,
-                        coordinator=coordinator,
-                        context=context,
-                        session_id=session_id,
-                        html_text=html_content,
-                        log_type="router"
-                    )
-            else:
-                handler = None
+                result = generate_generic_html_result(
+                    page=page,
+                    coordinator=coordinator,
+                    context=context,
+                    session_id=session_id,
+                    html_text=html_content,
+                    log_type="router"
+                )
 
             if not (isinstance(result, tuple) and len(result) == 4):
                 msg = f"Handler did not return a valid result tuple. (Session: {session_id})"

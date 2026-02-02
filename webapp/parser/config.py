@@ -211,6 +211,21 @@ FORCE_PARSE_INPUT_FILE = os.environ.get("FORCE_PARSE_INPUT_FILE", "false").lower
 FORCE_PARSE_FORMAT = os.environ.get("FORCE_PARSE_FORMAT", "").strip().lower()
 MAX_URLS_DISPLAYED = os.environ.get("MAX_URLS_DISPLAYED")
 
+# Agent selection / navigation hardening
+ENABLE_SELENIUM_FALLBACK = os.environ.get("ENABLE_SELENIUM_FALLBACK", "false").lower() in ("1", "true", "yes")
+try:
+    NAV_MAX_ATTEMPTS = max(1, int(os.environ.get("NAV_MAX_ATTEMPTS", "2")))
+except Exception:
+    NAV_MAX_ATTEMPTS = 2
+try:
+    NAV_TIMEOUT_PLAYWRIGHT_MS = max(5000, int(os.environ.get("NAV_TIMEOUT_PLAYWRIGHT_MS", "60000")))
+except Exception:
+    NAV_TIMEOUT_PLAYWRIGHT_MS = 60000
+try:
+    NAV_TIMEOUT_SELENIUM_MS = max(5000, int(os.environ.get("NAV_TIMEOUT_SELENIUM_MS", "60000")))
+except Exception:
+    NAV_TIMEOUT_SELENIUM_MS = 60000
+
 # Fuzzy matching policy defaults (used by fec_lookup and reporting tools)
 try:
     MIN_FUZZY_SCORE_AUTO = int(os.environ.get("MIN_FUZZY_SCORE_AUTO", "90"))

@@ -553,7 +553,28 @@ const CONFIG = {
   virtualScrollItemHeight: 48,
   virtualScrollBuffer: 10,
   maxDirectUrls: 20, // Maximum URLs for batch processing
+  debug: true, // Set true to enable verbose debug logging
 };
+
+function debugLog(label, payload) {
+  if (!CONFIG.debug) return;
+  try {
+    console.debug(label, payload);
+  } catch (e) { /* noop */ }
+}
+
+function debugPerf(label, fn) {
+  const enabled = !!CONFIG.debug;
+  const start = enabled ? (performance.now ? performance.now() : Date.now()) : 0;
+  try {
+    return fn();
+  } finally {
+    if (enabled) {
+      const end = performance.now ? performance.now() : Date.now();
+      debugLog(label, { durationMs: Math.round((end - start) * 1000) / 1000, ts: Date.now() });
+    }
+  }
+}
 
 // Accessor to get left toggle element when needed (avoid early DOM query)
 function _getToggleLeftBtn() { return document.getElementById('sidebarToggleBtn'); }
@@ -1914,51 +1935,84 @@ async function runIntegrationTests() {
     }
   };
   
-  const results = {};
-  for (const [name, test] of Object.entries(tests)) {
-    try {
-      results[name] = await Promise.resolve(test());
-    } catch (e) {
-      results[name] = false;
-      ErrorBoundary.logError(e, `Test: ${name}`);
+  // Run integration tests and log results if CONFIG.debug is enabled
+  if (CONFIG.debug) {
+    const results = {};
+    for (const [name, test] of Object.entries(tests)) {
+      try {
+        results[name] = await Promise.resolve(test());
+      } catch (e) {
+        results[name] = false;
+        ErrorBoundary.logError(e, `Test: ${name}`);
+      }
+    }
+    const passed = Object.values(results).filter(Boolean).length;
+    console.log(`[Integration Tests] ${passed}/${Object.keys(tests).length} passed`, results);
+  }
+}
+
+/**
+ * Lightweight debug logger gated by CONFIG.debug.
+ * @param {string} label
+ * @param {unknown} payload
+ * @returns {void}
+ */
+function debugLog(label, payload) {
+  if (!CONFIG.debug) return;
+  try {
+    console.debug(label, payload);
+  } catch (e) { /* noop */ }
+}
+
+/**
+ * Measure execution time of a callback when debug logging is enabled.
+ * @template T
+ * @param {string} label
+ * @param {() => T} fn
+ * @returns {T}
+ */
+function debugPerf(label, fn) {
+  const enabled = !!CONFIG.debug;
+  const start = enabled ? (performance.now ? performance.now() : Date.now()) : 0;
+  try {
+    return fn();
+  } finally {
+    if (enabled) {
+      const elapsed = (performance.now ? performance.now() : Date.now()) - start;
+      console.debug(`[perf] ${label}: ${elapsed.toFixed(2)}ms`);
     }
   }
-  
-  const passed = Object.values(results).filter(Boolean).length;
-  console.log(`[Integration Tests] ${passed}/${Object.keys(tests).length} passed`, results);
-  return results;
 }
 
 // ============================================
-// PHASE 3: Visual Enhancements & UX Polish
+// Log Level Colors
 // ============================================
 
 /**
- * P3.1: Color-Coded Logs
- * Apply color coding to log entries based on level
+ * @typedef {Object} LevelColor
+ * @property {string} bg
+ * @property {string} border
+ * @property {string} text
  */
-const _LogColorCoding = (() => {
+
+/**
+ * @typedef {Object.<string, LevelColor>} LevelColorMap
+ */
+
+const LevelColors = (() => {
+  /** @type {LevelColorMap} */
   const levelColors = {
-    'ERROR': { bg: '#3d1a1a', border: '#dc2626', text: '#fca5a5' },
-    'CRITICAL': { bg: '#3d1a1a', border: '#991b1b', text: '#fca5a5' },
-    'WARNING': { bg: '#3d2a1a', border: '#ea580c', text: '#fdba74' },
-    'INFO': { bg: '#1a2a3d', border: '#3b82f6', text: '#93c5fd' },
+    'INFO': { bg: '#ecf0f1', border: '#3498db', text: '#2c3e50' },
+    'WARNING': { bg: '#fff3cd', border: '#ffc107', text: '#856404' },
+    'ERROR': { bg: '#f8d7da', border: '#dc3545', text: '#721c24' },
+    'SUCCESS': { bg: '#d4edda', border: '#28a745', text: '#155724' },
     'DEBUG': { bg: '#1a2a2a', border: '#10b981', text: '#6ee7b7' },
     'TRACE': { bg: '#2a1a3d', border: '#8b5cf6', text: '#c4b5fd' }
   };
-  
-  /**
-   * @typedef {Object} LevelColor
-   * @property {string} bg
-   * @property {string} border
-   * @property {string} text
-   */
-
-  /* LevelColorMap typedef consolidated inline; see `levelColors` object above. */
 
   /**
    * Apply a level-specific CSS class to an element.
-   * Removes any existing level classes derived from levelColors and adds the class for the provided level.
+   * Removes any existing level classes and adds the class for the provided level.
    * @param {HTMLElement} element
    * @param {string} level - Level key (e.g., "ERROR", "INFO")
    * @returns {void}
@@ -1972,20 +2026,16 @@ const _LogColorCoding = (() => {
     const levelClass = `log-level-${level.toLowerCase()}`;
     element.classList.add(levelClass);
   }
-  
-  /**
-   * @typedef {Object.<string, LevelColor>} LevelColorMap
-   */
 
   /**
    * Return the color mapping for a given log level.
    * @param {string} level
-  * @returns {LevelColor}
+   * @returns {LevelColor}
    */
   function getLevelColor(level) {
     return levelColors[level] || levelColors['INFO'];
   }
-  
+
   return { applyColorToElement, getLevelColor, levelColors };
 })();
 
@@ -3159,24 +3209,74 @@ function renderLogs() {
   });
   
   const logOutput = $('#logOutput');
-  logOutput.innerHTML = filtered.map(log => {
-    const typeBadge = LogTypeBadges.createBadge(log.type);
-    const highlightedMsg = state.filters.search 
-      ? SearchHighlighter.highlightText(log.message, state.filters.search)
-      : escapeHtml(log.message);
-    
-    // Use CSS classes instead of inline styles for CSP compliance
+  if (!logOutput) return;
+
+  const frag = document.createDocumentFragment();
+  filtered.forEach(log => {
     const levelClass = `log-level-${(log.level || 'INFO').toLowerCase()}`;
-    
-    return `
-      <div class="log-line ${levelClass}">
-        <span class="log-timestamp">${new Date(log.timestamp).toLocaleTimeString()}</span>
-        <span class="log-level">${log.level}</span>
-        ${typeBadge}
-        <div class="log-message">${highlightedMsg}</div>
-      </div>
-    `;
-  }).join('');
+
+    const line = document.createElement('div');
+    line.className = `log-line ${levelClass}`;
+
+    const ts = document.createElement('span');
+    ts.className = 'log-timestamp';
+    ts.textContent = new Date(log.timestamp).toLocaleTimeString();
+
+    const lvl = document.createElement('span');
+    lvl.className = 'log-level';
+    lvl.textContent = String(log.level || 'INFO');
+
+    const badgeCfg = LogTypeBadges.getTypeConfig(log.type);
+    const safeType = (log.type || 'info').toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const badge = document.createElement('span');
+    badge.className = `log-type-badge log-type-${safeType}`;
+    badge.textContent = `${badgeCfg.icon} ${badgeCfg.label}`;
+
+    const msg = document.createElement('div');
+    msg.className = 'log-message';
+    msg.appendChild(buildHighlightedMessage(String(log.message || ''), state.filters.search || ''));
+
+    line.appendChild(ts);
+    line.appendChild(lvl);
+    line.appendChild(badge);
+    line.appendChild(msg);
+    frag.appendChild(line);
+  });
+
+  logOutput.replaceChildren(frag);
+}
+
+function buildHighlightedMessage(text, searchTerm) {
+  const frag = document.createDocumentFragment();
+  if (!searchTerm) {
+    frag.appendChild(document.createTextNode(text));
+    return frag;
+  }
+  const haystack = text;
+  const needle = String(searchTerm);
+  const lowerHay = haystack.toLowerCase();
+  const lowerNeedle = needle.toLowerCase();
+  if (!lowerNeedle) {
+    frag.appendChild(document.createTextNode(text));
+    return frag;
+  }
+  let start = 0;
+  while (start < haystack.length) {
+    const idx = lowerHay.indexOf(lowerNeedle, start);
+    if (idx === -1) {
+      frag.appendChild(document.createTextNode(haystack.slice(start)));
+      break;
+    }
+    if (idx > start) {
+      frag.appendChild(document.createTextNode(haystack.slice(start, idx)));
+    }
+    const mark = document.createElement('mark');
+    mark.className = 'search-highlight';
+    mark.textContent = haystack.slice(idx, idx + needle.length);
+    frag.appendChild(mark);
+    start = idx + needle.length;
+  }
+  return frag;
 }
 
 // ============================================
@@ -4597,6 +4697,10 @@ let promptFocusTrapHandler = null;
 let promptTopLayerObserver = null;
 let promptOptionPreviewEl = null;
 let promptOptionPreviewHideTimer = null;
+let promptUsingModalManager = false;
+let promptTopLayerMutationCount = 0;
+let promptTopLayerLastTs = 0;
+let lastForceClearTs = 0;
 
 function ensurePromptModalAria(promptModal) {
   if (!promptModal) return;
@@ -4681,10 +4785,21 @@ function installPromptTopLayerGuard(promptModal) {
   }
   promptTopLayerObserver = new MutationObserver(() => {
     try {
+      const now = performance.now ? performance.now() : Date.now();
+      if (promptTopLayerLastTs && (now - promptTopLayerLastTs) < 50) {
+        return; // throttle noisy attribute churn
+      }
+      promptTopLayerLastTs = now;
+      promptTopLayerMutationCount += 1;
       if (!promptModal.classList.contains('prompt-modal-top')) {
         promptModal.classList.add('prompt-modal-top');
       }
       ensurePromptModalAria(promptModal);
+      debugLog('[promptTopLayer] mutation observed', {
+        count: promptTopLayerMutationCount,
+        classList: Array.from(promptModal.classList),
+        ts: Date.now()
+      });
     } catch (e) { /* noop */ }
   });
   try {
@@ -4828,6 +4943,7 @@ function hidePromptOptionPreview(force = false) {
  * @property {Array<string|Object>} [options] - Contest/options array (strings or objects).
  * @property {Object.<string, any>} [processed] - Processed-info map keyed by URL.
  * @property {string} [title] - Optional prompt title override.
+ * @property {string} [message] - Optional prompt message override.
  * @property {string} [placeholder] - Optional placeholder text for prompt input/search.
  * @property {Object.<string, any>} [metadata] - Any additional metadata.
  */
@@ -4851,12 +4967,21 @@ function handlePromptLog(data) {
   ErrorBoundary.safeExecute(() => {
     /** @type {string} */
     const message = typeof data?.message === 'string' ? data.message : '';
-    /** @type {boolean} */
-    const isPrompt = data?.type === 'prompt' || message.toUpperCase().includes('[PROMPT]');
     /** @type {PromptContext} */
     const ctx = /** @type {PromptContext} */ (data?.context || {});
+    const ctxMessage = typeof ctx?.message === 'string' ? ctx.message : '';
+    const hasContextOptions = Array.isArray(ctx?.options) && ctx.options.length > 0;
+    const hasContextUrls = Array.isArray(ctx?.urls) && ctx.urls.length > 0;
+    /** @type {boolean} */
+    const isPrompt = data?.type === 'prompt'
+      || message.toUpperCase().includes('[PROMPT]')
+      || hasContextOptions
+      || hasContextUrls;
     /** @type {PromptOption[]} */
     let options = [];
+
+    /** @type {string} */
+    let promptMessage = message || ctxMessage || '';
 
     // DEBUG: Log what we're receiving
     console.debug('[handlePromptLog] Received data:', {
@@ -4867,7 +4992,7 @@ function handlePromptLog(data) {
     });
 
     // URL selection prompt
-    if (Array.isArray(ctx.urls) && ctx.urls.length) {
+    if (hasContextUrls) {
       console.debug('[handlePromptLog] Found URLs in context:', ctx.urls.length);
       options = ctx.urls.map((u, idx) => (/** @type {PromptOption} */ ({
         index: idx + 1,
@@ -4877,7 +5002,7 @@ function handlePromptLog(data) {
     }
 
     // Contest/options style prompt
-    if (!options.length && Array.isArray(ctx.options) && ctx.options.length) {
+    if (!options.length && hasContextOptions) {
       console.debug('[handlePromptLog] Found options in context:', ctx.options.length);
       options = ctx.options.map((opt, idx) => {
         if (typeof opt === 'string') {
@@ -4897,16 +5022,20 @@ function handlePromptLog(data) {
       });
     }
 
-    if (isPrompt && message) {
+    if (!promptMessage && hasContextOptions) {
+      promptMessage = 'Select an option';
+    } else if (!promptMessage && hasContextUrls) {
+      promptMessage = 'Select a URL';
+    }
+
+    if (isPrompt && (promptMessage || options.length)) {
       console.debug('[handlePromptLog] Displaying prompt with', options.length, 'options');
       showPrompt({
         title: ctx.title || 'Action required',
-        message,
+        message: promptMessage,
         options,
         placeholder: ctx.placeholder,
       });
-    } else {
-      console.warn('[handlePromptLog] Not a prompt or empty message. isPrompt:', isPrompt, 'message:', message.substring(0, 50));
     }
   }, 'handlePromptLog');
 }
@@ -5379,101 +5508,83 @@ function updateSelectionSummary() {
 
 function showPrompt({ title = 'Action required', message = '', options = [], placeholder = '' }) {
   ErrorBoundary.safeExecute(() => {
-    try {
-      if (typeof ModalRestoreBanner !== 'undefined') {
-        ModalRestoreBanner.clear('prompt');
+    debugPerf('[perf] showPrompt', () => {
+      try {
+        if (typeof ModalRestoreBanner !== 'undefined') {
+          ModalRestoreBanner.clear('prompt');
+        }
+      } catch (e) { /* noop */ }
+      // Ensure any blocking overlays yield to the prompt UI
+      try { PendingOverlay.hide(); } catch (e) { /* noop */ }
+      try { forceClearPromptModalArtifacts({ includePendingOverlay: true, log: false, throttleMs: 150 }); } catch (e) { /* noop */ }
+      activePromptMessage = message;
+      activePromptOptions = Array.isArray(options) ? options : [];
+
+      debugLog('[showPrompt] Displaying', {
+        title,
+        messagePreview: message.substring(0, 100),
+        optionsCount: activePromptOptions.length,
+        optionsSample: activePromptOptions.slice(0, 3),
+        placeholder
+      });
+
+      if (promptTitleEl) {
+        promptTitleEl.textContent = title;
+        debugLog('[showPrompt] Set title', title);
       }
-    } catch (e) { /* noop */ }
-    activePromptMessage = message;
-    activePromptOptions = Array.isArray(options) ? options : [];
+      if (promptMessageEl) {
+        promptMessageEl.textContent = message || 'Please choose an option';
+        debugLog('[showPrompt] Set message', message);
+      }
+      if (promptInputEl) {
+        (/** @type {any} */ (window)).__tl_helpers.setElValue(promptInputEl, '');
+        if (placeholder && promptInputEl instanceof HTMLInputElement) promptInputEl.placeholder = placeholder;
+      }
+      if (promptSearchEl) {
+        (/** @type {any} */ (window)).__tl_helpers.setElValue(promptSearchEl, '');
+        if (promptSearchEl instanceof HTMLInputElement) promptSearchEl.placeholder = placeholder || 'Filter options...';
+      }
+      renderPromptOptions('');
 
-    console.debug('[showPrompt] Displaying:', {
-      title,
-      messagePreview: message.substring(0, 100),
-      optionsCount: activePromptOptions.length,
-      optionsSample: activePromptOptions.slice(0, 3),
-      placeholder
-    });
-
-    if (promptTitleEl) {
-      promptTitleEl.textContent = title;
-      console.debug('[showPrompt] Set title to:', title);
-    }
-    if (promptMessageEl) {
-      promptMessageEl.textContent = message || 'Please choose an option';
-      console.debug('[showPrompt] Set message');
-    }
-    if (promptInputEl) {
-      (/** @type {any} */ (window)).__tl_helpers.setElValue(promptInputEl, '');
-      if (placeholder && promptInputEl instanceof HTMLInputElement) promptInputEl.placeholder = placeholder;
-    }
-    if (promptSearchEl) {
-      (/** @type {any} */ (window)).__tl_helpers.setElValue(promptSearchEl, '');
-      if (promptSearchEl instanceof HTMLInputElement) promptSearchEl.placeholder = placeholder || 'Filter options...';
-    }
-    renderPromptOptions('');
-
-    const promptModal = $('#promptModal');
-    if (promptModal) {
-      ensurePromptModalAria(promptModal);
-      installPromptTopLayerGuard(promptModal);
-      installPromptFocusTrap(promptModal);
-      ensurePromptOptionPreviewSlot();
-      hidePromptOptionPreview(true);
-    }
-    try {
-      if (window.modalManager && promptModal instanceof HTMLElement) {
-        // Move existing prompt DOM into modalManager body to preserve event handlers
-        try {
-          // store placeholder for restoration (migrate legacy prop into WeakMap)
-          if (!_getPlaceholder(promptModal)) {
-            const ph = document.createComment('promptModal-placeholder');
-            promptModal.parentNode && promptModal.parentNode.insertBefore(ph, promptModal);
-            _setPlaceholder(promptModal, ph);
-          }
-        } catch (e) { /* noop */ }
-
-        // Show via modalManager, body as the promptModal node (moved)
-        window.modalManager.showModal({
-          id: 'promptModal',
-          title: promptTitleEl ? (promptTitleEl.textContent || 'Action required') : 'Action required',
-          body: promptModal,
-          blocking: true,
-          actions: [
-            { id: 'submit', label: 'Submit', isDefault: true },
-            { id: 'cancel', label: 'Cancel' }
-          ]
-        }).then((result) => {
+      const promptModal = $('#promptModal');
+      if (promptModal) {
+        ensurePromptModalAria(promptModal);
+        installPromptTopLayerGuard(promptModal);
+        installPromptFocusTrap(promptModal);
+        ensurePromptOptionPreviewSlot();
+        hidePromptOptionPreview(true);
+        let adoptedByModalManager = false;
+        if (window.modalManager && typeof window.modalManager.showModal === 'function') {
           try {
-            if (result && result.actionId === 'submit') {
-              submitPrompt();
-            } else if (result && (result.actionId === 'cancel' || result.actionId === 'dismiss')) {
-              // preserve state and show restore
-              hidePrompt({ preserveState: true, showRestore: true, reason: 'cancel' });
-            }
-          } catch (e) { /* noop */ }
-        }).catch(() => { /* noop */ });
+            promptUsingModalManager = true;
+            window.modalManager.showModal({
+              id: 'promptModal',
+              title,
+              body: promptModal,
+              blocking: true,
+              priority: 100
+            });
+            adoptedByModalManager = true;
+            debugLog('[showPrompt] Routed to modalManager', { sessionId: currentSessionId });
+          } catch (e) {
+            promptUsingModalManager = false;
+          }
+        }
 
-        // ensure focus lands on search/input
-        setTimeout(() => {
-          if (promptSearchEl) promptSearchEl.focus(); else if (promptInputEl) promptInputEl.focus();
-        }, 30);
-      } else {
-        if (promptModal) {
-          promptModal.classList.remove('hidden');
-          console.debug('[showPrompt] Modal made visible (legacy)');
+        if (!adoptedByModalManager) {
+          promptUsingModalManager = false;
+          try {
+            promptModal.classList.remove('hidden');
+          } catch (e) { /* noop */ }
         }
-        if (promptSearchEl) {
-          promptSearchEl.focus();
-        } else if (promptInputEl) {
-          promptInputEl.focus();
-        }
+        try { promptModal.removeAttribute('aria-hidden'); } catch (e) { /* noop */ }
       }
-    } catch (e) {
-      // fallback to legacy behavior
-      if (promptModal) promptModal.classList.remove('hidden');
-      if (promptSearchEl) promptSearchEl.focus(); else if (promptInputEl) promptInputEl.focus();
-    }
+      if (promptSearchEl) {
+        promptSearchEl.focus();
+      } else if (promptInputEl) {
+        promptInputEl.focus();
+      }
+    });
   }, 'showPrompt');
 }
 
@@ -5535,16 +5646,24 @@ function hidePrompt(options) {
       teardownPromptFocusTrap(promptModal);
       hidePromptOptionPreview(true);
     }
+    if (reason === 'cancel' && currentSessionId && socket) {
+      try {
+        socket.emit('prompt_cancel', {
+          session_id: currentSessionId,
+          reason
+        });
+      } catch (e) { /* noop */ }
+    }
     // If modalManager is managing the prompt, ask it to close first
     try {
-      if (window.modalManager && typeof window.modalManager.closeModal === 'function') {
+      if (promptUsingModalManager && window.modalManager && typeof window.modalManager.closeModal === 'function') {
         try { window.modalManager.closeModal('promptModal'); } catch (e) { /* noop */ }
       }
     } catch (e) { /* noop */ }
 
     // If promptModal was moved into modalManager, rely on modalManager to close it
     try {
-      if (promptModal && _getPlaceholder(promptModal) && window.modalManager) {
+      if (promptUsingModalManager && promptModal && _getPlaceholder(promptModal) && window.modalManager) {
         // modalManager will have already removed the element; restore to placeholder
         const ph = _getPlaceholder(promptModal);
         if (ph && ph.parentNode) {
@@ -5552,12 +5671,16 @@ function hidePrompt(options) {
           ph.parentNode.removeChild(ph);
         }
         _deletePlaceholder(promptModal);
+        try { promptModal.classList.add('hidden'); } catch (e) { /* noop */ }
       } else if (promptModal) {
         promptModal.classList.add('hidden');
       }
     } catch (e) {
       try { if (promptModal) promptModal.classList.add('hidden'); } catch (e2) {}
     }
+    // Final cleanup to avoid stray overlays blocking input
+    try { forceClearPromptModalArtifacts({ includePendingOverlay: true, log: false, throttleMs: 150 }); } catch (e) { /* noop */ }
+    promptUsingModalManager = false;
     document.body.classList.remove('no-scroll');
     if (showRestore && snapshot && (snapshot.message || (snapshot.options && snapshot.options.length))) {
       try {
@@ -5595,6 +5718,53 @@ function hidePrompt(options) {
   }, 'hidePrompt');
 }
 
+/**
+ * Hard cleanup for modalManager + pending overlay leftovers that can block input.
+ * Call after prompt hide and on page lifecycle events.
+ */
+function forceClearPromptModalArtifacts(options = {}) {
+  const { includePendingOverlay = false, log = false, throttleMs = 0 } = options;
+  const nowTs = Date.now();
+  if (throttleMs && lastForceClearTs && (nowTs - lastForceClearTs) < throttleMs) {
+    debugLog('[forceClear] throttled', { sinceMs: nowTs - lastForceClearTs, throttleMs });
+    return;
+  }
+  lastForceClearTs = nowTs;
+  const logIf = (msg, extra) => { if (log) console.debug(msg, extra || ''); };
+
+  debugPerf('[perf] forceClearPromptModalArtifacts', () => {
+    try {
+      if (window.modalManager && typeof window.modalManager.closeModal === 'function') {
+        window.modalManager.closeModal('promptModal', 'force-clean');
+      }
+    } catch (e) { logIf('[forceClear] modalManager close failed', e); }
+
+    try {
+      document.querySelectorAll('.mm-backdrop').forEach((el) => {
+        // Remove orphaned backdrops that lack the prompt modal
+        if (!el.querySelector('#promptModal')) {
+          el.remove();
+        }
+      });
+    } catch (e) { logIf('[forceClear] backdrop prune failed', e); }
+
+    try {
+      const ph = typeof _getPlaceholder === 'function' ? _getPlaceholder(document.getElementById('promptModal')) : null;
+      const promptModal = document.getElementById('promptModal');
+      if (ph && ph.parentNode && promptModal && promptModal.parentNode !== ph.parentNode) {
+        ph.parentNode.insertBefore(promptModal, ph);
+        ph.parentNode.removeChild(ph);
+        if (typeof _deletePlaceholder === 'function') _deletePlaceholder(promptModal);
+      }
+    } catch (e) { logIf('[forceClear] placeholder restore failed', e); }
+
+    try { document.body.classList.remove('no-scroll'); } catch (e) { /* noop */ }
+    if (includePendingOverlay && typeof PendingOverlay !== 'undefined') {
+      try { PendingOverlay.hide(); } catch (e) { logIf('[forceClear] PendingOverlay.hide failed', e); }
+    }
+  });
+}
+
 const btnSubmitPrompt = $('#btnSubmitPrompt');
   if (btnSubmitPrompt) {
     btnSubmitPrompt.addEventListener('click', () => submitPrompt());
@@ -5603,8 +5773,8 @@ const btnSubmitPrompt = $('#btnSubmitPrompt');
 const btnCancelPrompt = $('#btnCancelPrompt');
 if (btnCancelPrompt) {
   btnCancelPrompt.addEventListener('click', () => {
-    // Don't send literal 'cancel' as a parser response; just hide and allow restore
-    hidePrompt({ preserveState: true, showRestore: true, reason: 'cancel' });
+    // Explicit cancel: clear state and notify backend (no restore banner)
+    hidePrompt({ preserveState: false, showRestore: false, reason: 'cancel' });
   });
 }
 
@@ -5712,6 +5882,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const showShortcutsBtn = $('#btnShowKeyboardShortcuts');
   if (showShortcutsBtn) {
     showShortcutsBtn.addEventListener('click', () => KeyboardGuide.show());
+  }
+
+  // Guard against leftover overlays on load/reconnect
+  setTimeout(() => forceClearPromptModalArtifacts({ includePendingOverlay: true, log: false, throttleMs: 250 }), 50);
+});
+
+// Cancel prompt or parser on unload/visibility loss to avoid stuck sessions
+window.addEventListener('beforeunload', () => {
+  try {
+    const promptModal = document.getElementById('promptModal');
+    const promptVisible = promptModal && !promptModal.classList.contains('hidden');
+    if (promptVisible && socket && currentSessionId) {
+      socket.emit('prompt_cancel', { session_id: currentSessionId, reason: 'page_unload' });
+    } else if (socket && currentSessionId) {
+      socket.emit('cancel_parser', { session_id: currentSessionId });
+    }
+  } catch (e) { /* noop */ }
+  try { forceClearPromptModalArtifacts({ includePendingOverlay: true, log: false, throttleMs: 250 }); } catch (e) { /* noop */ }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    try { forceClearPromptModalArtifacts({ includePendingOverlay: true, log: false, throttleMs: 250 }); } catch (e) { /* noop */ }
   }
 });
 

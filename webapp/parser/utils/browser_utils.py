@@ -34,7 +34,7 @@ from playwright.sync_api import sync_playwright
 from selectolax.parser import Node as SelectolaxNode
 
 if TYPE_CHECKING:  # pragma: no cover - import only used for type hints
-    from selenium.webdriver.remote.webelement import WebElement as SeleniumElement
+    from selenium.webdriver.remote.webelement import WebElement as SeleniumElement  # pyright: ignore[reportMissingImports]
 else:
     try:
         from selenium.webdriver.remote.webelement import WebElement as SeleniumElement
@@ -46,7 +46,7 @@ else:
 
 from ..config import CONTEXT_LIBRARY_PATH, HEADLESS_DEFAULT
 from .logger_singleton import console, logger, prompt
-from .shared_logic import safe_get_first, safe_lower
+from .shared_logic import safe_get_first, safe_is_set, safe_lower
 
 # --- Type Aliases for IDE and Type Checking ---
 PageType = Union[SyncPage, AsyncPage]
@@ -748,20 +748,42 @@ async def async_browser_pipeline(target_url: str, session_id=None) -> Tuple[Opti
 
 # -------------------- SYNC PLAYWRIGHT PIPELINE (for subprocess/batch) --------------------
 
-def sync_launch_browser(playwright: sync_playwright, target_url: str, wait_seconds: int = 7, session_id=None) -> Tuple[Optional[SyncBrowser], Optional[SyncBrowserContext], Optional[SyncPage], str]:
+def sync_launch_browser(
+    playwright: sync_playwright,
+    target_url: str,
+    wait_seconds: int = 7,
+    session_id=None,
+    nav_timeout_ms: int = 60000,
+    cancel_flag=None,
+) -> Tuple[Optional[SyncBrowser], Optional[SyncBrowserContext], Optional[SyncPage], str, Dict[str, Any]]:
     user_agent = get_random_user_agent()
     browser_type = getattr(playwright, "chromium", None)
     launch_headless = HEADLESS_DEFAULT
     launch_args = [] if launch_headless else ["--window-position=0,1000", "--window-size=1280,800"]
+    nav_meta: Dict[str, Any] = {
+        "user_agent": user_agent,
+        "nav_timeout_ms": nav_timeout_ms,
+        "cloudflare_detected": False,
+    }
     browser = safe_launch(browser_type, headless=launch_headless, args=launch_args)
     context = safe_new_context(browser, user_agent=user_agent, viewport={"width": 1280, "height": 800}, locale="en-US")
     page = safe_new_page(context)
-    safe_goto(page, target_url, timeout=60000)
+    if cancel_flag is not None and safe_is_set(cancel_flag):
+        logger.info({"level": "INFO", "type": "cancel", "message": "Cancelled before navigation", "session_id": session_id})
+        return browser, context, page, user_agent, nav_meta
+    safe_goto(page, target_url, timeout=nav_timeout_ms)
+    nav_meta["cloudflare_detected"] = bool(sync_detect_cloudflare_captcha(page))
     mode_descr = "headless" if launch_headless else "(minimized)"
     logger.info(f"[BROWSER] Playwright launched {mode_descr} with User-Agent: {user_agent} (Session: {session_id})")
     logger.info(f"[BROWSER] Waiting {wait_seconds} seconds for page to load... (Session: {session_id})")
-    time.sleep(wait_seconds)
-    return browser, context, page, user_agent
+    slept = 0
+    while slept < wait_seconds:
+        if cancel_flag is not None and safe_is_set(cancel_flag):
+            logger.info({"level": "INFO", "type": "cancel", "message": "Cancelled during navigation wait", "session_id": session_id})
+            break
+        time.sleep(1)
+        slept += 1
+    return browser, context, page, user_agent, nav_meta
 
 def sync_detect_cloudflare_captcha(page: SyncPage) -> bool:
     html = page.content().lower()
@@ -783,13 +805,26 @@ def sync_safe_browser_close(browser: Optional[SyncBrowser], session_id: Optional
                 "session_id": session_id
             })
 
-def sync_browser_pipeline(playwright, target_url, cache_exit_callback=None, session_id=None) -> Tuple[Optional[SyncBrowser], Optional[SyncBrowserContext], Optional[SyncPage], str]:
-    browser, context, page, user_agent = sync_launch_browser(playwright, target_url, session_id=session_id)
-    if not sync_detect_cloudflare_captcha(page):
+def sync_browser_pipeline(
+    playwright,
+    target_url,
+    cache_exit_callback=None,
+    session_id=None,
+    nav_timeout_ms: int = 60000,
+    cancel_flag=None,
+) -> Tuple[Optional[SyncBrowser], Optional[SyncBrowserContext], Optional[SyncPage], str, Dict[str, Any]]:
+    browser, context, page, user_agent, nav_meta = sync_launch_browser(
+        playwright,
+        target_url,
+        session_id=session_id,
+        nav_timeout_ms=nav_timeout_ms,
+        cancel_flag=cancel_flag,
+    )
+    if not nav_meta.get("cloudflare_detected"):
         logger.info(f"[CAPTCHA] No CAPTCHA detected. Continuing pipeline. (Session: {session_id})")
-        return browser, context, page, user_agent
+        return browser, context, page, user_agent, nav_meta
     logger.warning(f"[CAPTCHA] CAPTCHA detected in sync mode. Manual intervention not implemented. (Session: {session_id})")
-    return browser, context, page, user_agent
+    return browser, context, page, user_agent, nav_meta
 
 # -------------------- USAGE PATTERN --------------------
 # For interactive/session-based parsing (async):

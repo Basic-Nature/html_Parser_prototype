@@ -29,6 +29,7 @@ class SessionManager:
         self._recent_cache: Dict[str, Dict[str, Any]] = {}
         self._sid_to_session: Dict[str, str] = {}
         self._ip_ua_to_session: Dict[str, str] = {}
+        self._principal_to_session: Dict[str, str] = {}
         self._session_emitters: Dict[str, EmitterFn] = {}
         self._thread_session_map: Dict[int, str] = {}
         self._last_contest_options: Dict[str, Dict[str, Any]] = {}
@@ -78,6 +79,8 @@ class SessionManager:
             "locked": False,
             "manual_source": self._manual_source.get(session_id, "input"),
             "manual_source_origin": self._manual_source_origin.get(session_id, "default"),
+            "principal": None,
+            "principal_source": None,
         }
 
     def has_session(self, session_id: str) -> bool:
@@ -293,6 +296,32 @@ class SessionManager:
             for fp in stale:
                 self._ip_ua_to_session.pop(fp, None)
 
+    # Principal binding (client cert or SSO)
+    def set_principal(self, session_id: str, principal: Optional[str], source: Optional[str] = None) -> bool:
+        """Bind a principal to a session; returns False if the principal is bound elsewhere."""
+        if not principal:
+            return False
+        with self._lock:
+            existing = self._principal_to_session.get(principal)
+            if existing and existing != session_id:
+                return False
+            self._principal_to_session[principal] = session_id
+            meta = self._metadata.get(session_id)
+            if meta:
+                meta["principal"] = principal
+                meta["principal_source"] = source
+            return True
+
+    def resolve_principal(self, principal: str) -> Optional[str]:
+        with self._lock:
+            return self._principal_to_session.get(principal)
+
+    def unbind_principal_for_session(self, session_id: str) -> None:
+        with self._lock:
+            stale = [p for p, sid in self._principal_to_session.items() if sid == session_id]
+            for p in stale:
+                self._principal_to_session.pop(p, None)
+
     def bind_thread_id(self, thread_id: int, session_id: str) -> None:
         with self._lock:
             self._thread_session_map[thread_id] = session_id
@@ -445,6 +474,7 @@ class SessionManager:
                 self._recent_cache.clear()
                 self._sid_to_session.clear()
                 self._ip_ua_to_session.clear()
+                self._principal_to_session.clear()
                 self._session_emitters.clear()
                 self._thread_session_map.clear()
                 self._last_contest_options.clear()
@@ -460,14 +490,31 @@ class SessionManager:
         with self._lock:
             self._delete_session_locked(session_id)
 
-    def expire_sessions(self, timeout: float) -> list[str]:
+    def expire_sessions(
+        self,
+        timeout: float,
+        *,
+        require_unlocked: bool = True,
+        require_no_thread: bool = True,
+        grace_period: float = 0.0,
+    ) -> list[str]:
         now = time.time()
         expired: list[str] = []
         with self._lock:
             for sid, last in list(self._last_active.items()):
-                if now - last > timeout:
-                    expired.append(sid)
-                    self._delete_session_locked(sid)
+                age = now - last
+                if age <= timeout + max(0.0, grace_period):
+                    continue
+                if require_unlocked:
+                    meta = self._metadata.get(sid)
+                    if meta and meta.get("locked"):
+                        continue
+                if require_no_thread:
+                    thread = self._threads.get(sid)
+                    if thread is not None and thread.is_alive():
+                        continue
+                expired.append(sid)
+                self._delete_session_locked(sid)
         return expired
 
     def _delete_session_locked(self, session_id: str) -> None:
@@ -486,3 +533,4 @@ class SessionManager:
         self._sid_to_session = {k: v for k, v in self._sid_to_session.items() if v != session_id}
         self._ip_ua_to_session = {k: v for k, v in self._ip_ua_to_session.items() if v != session_id}
         self._thread_session_map = {k: v for k, v in self._thread_session_map.items() if v != session_id}
+        self._principal_to_session = {k: v for k, v in self._principal_to_session.items() if v != session_id}
