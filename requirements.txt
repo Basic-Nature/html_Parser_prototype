@@ -34,6 +34,9 @@ sentence_transformers>=5.1.0
 --extra-index-url https://download.pytorch.org/whl/cpu
 nltk>=3.9.1
 # For JSON and structured parsing
+# ⚠️ CRITICAL: orjson 3.9.5 compatible with Python 3.12+
+# Python 3.13 has ABI breaking changes; DO NOT upgrade without testing
+# See: https://github.com/ijl/orjson/issues/564 (3.13 support tracked)
 orjson==3.9.5
 prometheus_client>=0.16.0
 # For browser fingerprint masking (via Playwright)

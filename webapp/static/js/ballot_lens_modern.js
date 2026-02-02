@@ -3164,6 +3164,9 @@ function addLog(logObj) {
       sessionId: logObj.session_id || currentSessionId || null,
     };
     
+    // HEARTBEAT FILTERING: Skip empty heartbeat logs from UI rendering (keep in memory for telemetry)
+    const isEmptyHeartbeat = normalized.type === 'other' && (!normalized.message || normalized.message.trim() === '');
+    
     state.logs.push(normalized);
     
     // Keep buffer size manageable
@@ -3171,18 +3174,23 @@ function addLog(logObj) {
       state.logs.shift();
     }
     
-    // Update counts
+    // Update counts (only count non-empty logs)
     updateLogCounts();
     
-    // Apply filter and render
-    renderLogs();
-    
-    // Auto-scroll if enabled
-    if (state.autoScroll) {
-      const logOutput = $('#logOutput');
-      try {
-        if (logOutput) logOutput.scrollTop = logOutput.scrollHeight;
-      } catch (e) { /* ignore scroll errors */ }
+    // Apply filter and render (skip empty heartbeats from UI)
+    if (!isEmptyHeartbeat) {
+      renderLogs();
+      
+      // Auto-scroll if enabled
+      if (state.autoScroll) {
+        const logOutput = $('#logOutput');
+        try {
+          if (logOutput) logOutput.scrollTop = logOutput.scrollHeight;
+        } catch (e) { /* ignore scroll errors */ }
+      }
+    } else {
+      // Still render quietly for live telemetry, but don't disturb auto-scroll
+      renderLogs();
     }
   }, 'addLog');
 }
@@ -3199,6 +3207,11 @@ function updateLogCounts() {
 
 function renderLogs() {
   const filtered = state.logs.filter(log => {
+    // FILTER: Skip empty heartbeats from rendering (they're stored in memory but not displayed)
+    if (log.type === 'other' && (!log.message || log.message.trim() === '')) {
+      return false;
+    }
+    
     if (state.filters.level && log.level !== state.filters.level) return false;
     if (state.filters.search) {
       const searchLower = state.filters.search.toLowerCase();
@@ -7140,21 +7153,55 @@ const Modal = (() => {
 
 const ModalRestoreBanner = (() => {
   let bannerEl = null;
+  let bannerStack = []; // array for stacking multiple banners
   let contexts = new Map(); // key -> { sessionId, message, title, detail, buttonLabel, onRestore }
   let activeBannerKey = null;
+  let bannerContainer = null;
+  
+  function ensureBannerContainer() {
+    if (bannerContainer) return bannerContainer;
+    
+    // SESSION BOUNDARY ENFORCEMENT: Create banner container within results preview (session viewport)
+    let container = document.querySelector('.results-preview-content');
+    
+    if (!container) {
+      // Fallback: use progress card area inside session
+      container = document.querySelector('.results-preview-bar');
+    }
+    
+    if (!container) {
+      // Final fallback: use content-shell (session container)
+      container = document.querySelector('.content-shell');
+    }
+    
+    // Create dedicated banner stack container
+    bannerContainer = document.createElement('div');
+    bannerContainer.id = 'bannerStack';
+    bannerContainer.className = 'banner-stack-container';
+    bannerContainer.setAttribute('role', 'region');
+    bannerContainer.setAttribute('aria-label', 'Session notifications');
+    
+    // Insert at top of container for visibility within session bounds
+    if (container && container.firstChild) {
+      container.insertBefore(bannerContainer, container.firstChild);
+    } else if (container) {
+      container.appendChild(bannerContainer);
+    } else {
+      document.body.appendChild(bannerContainer);
+    }
+    
+    return bannerContainer;
+  }
   
   function createBanner() {
-    if (bannerEl) return bannerEl;
-    
-    bannerEl = document.createElement('div');
-    bannerEl.id = 'modalRestoreBanner';
-    bannerEl.className = 'modal-restore-banner hidden';
-    bannerEl.setAttribute('role', 'status');
-    bannerEl.setAttribute('aria-live', 'polite');
-    
-    const container = document.querySelector('.modern-layout') || document.body;
-    container.appendChild(bannerEl);
-    
+    if (!bannerEl) {
+      bannerEl = document.createElement('div');
+      bannerEl.id = 'modalRestoreBanner';
+      bannerEl.className = 'modal-restore-banner banner-docked hidden';
+      bannerEl.setAttribute('role', 'status');
+      bannerEl.setAttribute('aria-live', 'polite');
+      bannerEl.setAttribute('tabindex', '-1');
+    }
     return bannerEl;
   }
   
@@ -7169,7 +7216,7 @@ const ModalRestoreBanner = (() => {
     
     banner.innerHTML = `
       <div class="restore-content">
-        <div class="restore-icon">↺</div>
+        <div class="restore-icon" aria-hidden="true">↺</div>
         <div class="restore-text">
           <div class="restore-title">${escapeHtml(title || 'Dialog paused')}</div>
           <div class="restore-detail">${escapeHtml(detail || message || 'Reopen to continue')}</div>
@@ -7196,25 +7243,34 @@ const ModalRestoreBanner = (() => {
       });
     }
     
+    // Append to session-bounded container
+    const container = ensureBannerContainer();
+    container.appendChild(banner);
     banner.classList.remove('hidden');
     
-    // Position at bottom of main content (above drawer)
+    // Focus banner for accessibility (after render)
     setTimeout(() => {
-      const mainContent = document.querySelector('.main-content');
-      if (mainContent) {
-        const rect = mainContent.getBoundingClientRect();
-        // Use CSS variables and the floating-banner class instead of inline positioning
-        try { banner.classList.add('floating-banner'); } catch (e) {}
-        try { banner.style.setProperty('--banner-bottom', 'calc(var(--drawer-left-offset, 300px) + 60px)'); } catch (e) {}
-        try { banner.style.setProperty('--banner-left', `${rect.left + 16}px`); } catch (e) {}
-        try { banner.style.setProperty('--banner-right', `${window.innerWidth - rect.right + 16}px`); } catch (e) {}
-      }
-    }, 50);
+      try {
+        banner.focus();
+        banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (e) { /* ignore scroll errors */ }
+    }, 100);
+    
+    // BANNER STACKING: Limit to 1 visible banner at top of session area
+    bannerStack.push({ key, banner });
   }
   
   function hide() {
     if (bannerEl) {
       bannerEl.classList.add('hidden');
+      // Remove from DOM after transition
+      setTimeout(() => {
+        if (bannerEl && bannerEl.parentNode) {
+          bannerEl.parentNode.removeChild(bannerEl);
+          bannerEl = null;
+          bannerStack = [];
+        }
+      }, 300);
     }
     activeBannerKey = null;
   }

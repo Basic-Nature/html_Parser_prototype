@@ -1,5 +1,7 @@
 # Use a stable, public base
-FROM python:3.13-slim-bookworm
+# ⚠️ IMPORTANT: Keep Python 3.12 (NOT 3.13) for orjson binary compatibility
+# orjson 3.9.5 has ABI issues with Python 3.13; 3.12 has stable wheels
+FROM python:3.12-slim-bookworm
 
 # System deps for OCR and Playwright
 ENV DEBIAN_FRONTEND=noninteractive

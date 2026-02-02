@@ -1661,11 +1661,11 @@ th {
    ============================================ */
 
 .modal-restore-banner {
-  position: fixed;
-  bottom: 20px;
-  left: 20px;
-  right: calc(var(--sidebar-right-max) + 40px);
-  z-index: calc(var(--z-modal) - 10);
+  position: relative;
+  bottom: auto;
+  left: auto;
+  right: auto;
+  z-index: var(--z-modal-overlay);
   background: var(--bg-tertiary);
   border: 1px solid var(--accent-primary);
   border-left: 4px solid var(--accent-primary);
@@ -1675,12 +1675,27 @@ th {
   opacity: 1;
   transform: translateY(0);
   transition: opacity var(--transition-normal), transform var(--transition-normal);
+  margin-bottom: var(--spacing-md);
+}
+
+.modal-restore-banner.banner-docked {
+  position: relative;
+  width: 100%;
 }
 
 .modal-restore-banner.hidden {
   opacity: 0;
-  transform: translateY(20px);
+  transform: translateY(-10px);
   pointer-events: none;
+}
+
+/* Banner Stack Container: Holds banners within session viewport */
+.banner-stack-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+  max-width: 100%;
 }
 
 .modal-restore-banner .restore-content {

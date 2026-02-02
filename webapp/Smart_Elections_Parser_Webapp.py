@@ -95,6 +95,7 @@ _tables_initialized = False
 
 # Local health/session utilities
 from webapp.parser.health.session_manager import SessionManager
+from webapp.parser.health.integrity_monitor import get_integrity_monitor
 from webapp.parser.utils.logger_singleton import logger, prompt
 from webapp.parser.utils.session_state import (
     SessionState,
@@ -1297,12 +1298,20 @@ def redirect_to_https_www():
     - Redirects http:// to https://
     - Redirects electionpulse.org to www.electionpulse.org
     """
+    # Prefer forwarded host when behind a proxy/CDN (Azure Front Door/App Service)
+    forwarded_host = request.headers.get("X-Forwarded-Host")
+    raw_host = (forwarded_host or request.host or "").split(",")[0].strip().lower()
+    # Normalize host: strip port, handle IPv6 literals
+    if raw_host.startswith("[") and "]" in raw_host:
+        host_only = raw_host[1:raw_host.index("]")]
+    else:
+        host_only = raw_host.split(":", 1)[0]
+
     # Skip redirects for local development (handle localhost with/without port, IPv4, IPv6)
-    host = request.host
-    if (host in ('localhost', '127.0.0.1', '::1', '[::1]') or 
-        host.startswith('localhost:') or 
-        host.startswith('127.0.0.1:') or
-        host.startswith('[::1]:')):
+    if (host_only in ('localhost', '127.0.0.1', '::1') or 
+        raw_host.startswith('localhost:') or 
+        raw_host.startswith('127.0.0.1:') or
+        raw_host.startswith('[::1]:')):
         return None
     
     # Get the current scheme (check X-Forwarded-Proto for proxy setups like Azure)
@@ -1313,11 +1322,11 @@ def redirect_to_https_www():
     PRODUCTION_WWW = 'www.electionpulse.org'
     
     # Check if we need to redirect to www or HTTPS
-    if host == PRODUCTION_APEX:
+    if host_only == PRODUCTION_APEX:
         # Redirect apex domain to www with HTTPS
         target_url = f"https://{PRODUCTION_WWW}{request.full_path.rstrip('?')}"
         return redirect(target_url, code=301)
-    elif host == PRODUCTION_WWW and scheme != 'https':
+    elif host_only == PRODUCTION_WWW and scheme != 'https':
         # Force HTTPS for www subdomain
         target_url = f"https://{PRODUCTION_WWW}{request.full_path.rstrip('?')}"
         return redirect(target_url, code=301)
@@ -2001,7 +2010,11 @@ def api_fs_delete():
 
 @app.route("/download_fs")
 def download_fs():
+    """Enhanced filesystem download with integrity verification."""
+    import asyncio
     import os
+    from pathlib import Path
+    
     root = (request.args.get("root") or "").lower().strip()
     subpath = (request.args.get("path") or "").strip().replace("\\", "/")
     name = request.args.get("name") or ""
@@ -2016,6 +2029,48 @@ def download_fs():
     fpath = os.path.normpath(os.path.join(want_dir, name))
     if not fpath.startswith(abs_base) or not os.path.isfile(fpath):
         raise NotFound()
+        
+    # Get principal and session for tracking
+    principal, _ = get_request_principal()
+    if not principal:
+        principal = "anonymous"
+    try:
+        session_id = resolve_session_id({}, create_if_missing=False) or "no_session"
+    except Exception:
+        session_id = "no_session"
+        
+    # Only verify integrity for output files (cache deduplication)
+    if root == "output":
+        monitor = get_integrity_monitor()
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                cache_result = loop.run_until_complete(
+                    monitor.get_or_cache_download(
+                        file_name=name,
+                        principal=principal,
+                        session_id=session_id,
+                        file_path=Path(fpath)
+                    )
+                )
+                
+                if session_id != "no_session":
+                    try:
+                        socketio.emit('download_ready', {
+                            "session_id": session_id,
+                            "filename": name,
+                            "size": cache_result.get("size"),
+                            "hash": cache_result.get("hash"),
+                            "cache_hit": cache_result.get("cache_hit", False)
+                        }, room=session_id)
+                    except Exception:
+                        pass
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.error({"level": "ERROR", "type": "download", "message": f"Integrity check failed: {e}", "session_id": session_id})
+            
     return send_file(fpath, as_attachment=True)
 
 
@@ -2595,6 +2650,74 @@ def download_input_file(filename) -> str:
 
 @app.route("/download/output/<filename>")
 def download_output_file(filename) -> str:
+    """Enhanced download with integrity verification and cache deduplication."""
+    import asyncio
+    from pathlib import Path
+    
+    # Get principal for deduplication
+    principal, principal_source = get_request_principal()
+    if not principal:
+        principal = "anonymous"
+        
+    # Get session ID if available
+    try:
+        session_id = resolve_session_id({}, create_if_missing=False) or "no_session"
+    except Exception:
+        session_id = "no_session"
+        
+    file_path = Path(OUTPUT_DIR) / filename
+    if not file_path.exists():
+        raise NotFound()
+        
+    # Async integrity verification with cache
+    monitor = get_integrity_monitor()
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            cache_result = loop.run_until_complete(
+                monitor.get_or_cache_download(
+                    file_name=filename,
+                    principal=principal,
+                    session_id=session_id,
+                    file_path=file_path
+                )
+            )
+            
+            # Emit download_ready event with integrity info
+            if session_id != "no_session":
+                try:
+                    socketio.emit('download_ready', {
+                        "session_id": session_id,
+                        "filename": filename,
+                        "size": cache_result.get("size"),
+                        "hash": cache_result.get("hash"),
+                        "cache_hit": cache_result.get("cache_hit", False),
+                        "ttl_expires_at": cache_result.get("ttl_expires_at")
+                    }, room=session_id)
+                except Exception:
+                    pass
+                    
+            logger.info({
+                "level": "INFO",
+                "type": "download",
+                "message": f"File download: {filename} (cache_hit={cache_result.get('cache_hit', False)})",
+                "session_id": session_id,
+                "principal": principal,
+                "file_hash": cache_result.get("hash"),
+                "file_size": cache_result.get("size")
+            })
+        finally:
+            loop.close()
+    except Exception as e:
+        logger.error({
+            "level": "ERROR",
+            "type": "download",
+            "message": f"Download integrity check failed: {e}",
+            "session_id": session_id,
+            "filename": filename
+        })
+        
     return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
 
 @app.route("/download/uploads/<filename>")
