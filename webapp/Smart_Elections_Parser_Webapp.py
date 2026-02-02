@@ -1291,6 +1291,9 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "False").lower() == "true"
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
 
+# Throttle redirect header diagnostics (per host+path)
+_REDIRECT_HEADER_LOG_LAST: dict[str, float] = {}
+
 @app.before_request
 def redirect_to_https_www():
     """
@@ -1298,6 +1301,8 @@ def redirect_to_https_www():
     - Redirects http:// to https://
     - Redirects electionpulse.org to www.electionpulse.org
     """
+    # Optional diagnostic logging for forwarded headers (guarded to avoid noise)
+    log_forwarded = os.environ.get("LOG_REDIRECT_HEADERS", "").lower() in {"1", "true", "yes"}
     # Prefer forwarded host when behind a proxy/CDN (Azure Front Door/App Service)
     forwarded_host = request.headers.get("X-Forwarded-Host")
     raw_host = (forwarded_host or request.host or "").split(",")[0].strip().lower()
@@ -1306,6 +1311,34 @@ def redirect_to_https_www():
         host_only = raw_host[1:raw_host.index("]")]
     else:
         host_only = raw_host.split(":", 1)[0]
+
+    if log_forwarded:
+        forwarded_proto = request.headers.get("X-Forwarded-Proto")
+        forwarded_port = request.headers.get("X-Forwarded-Port")
+        log_triggered = request.path == "/robots.txt" or not forwarded_host or not forwarded_proto
+        ttl_raw = os.environ.get("LOG_REDIRECT_HEADERS_TTL_SEC", "300")
+        try:
+            ttl_sec = max(0, int(ttl_raw))
+        except ValueError:
+            ttl_sec = 300
+        host_key = host_only or raw_host or "unknown"
+        log_key = f"{host_key}|{request.path}"
+        now = time.time()
+        last_ts = _REDIRECT_HEADER_LOG_LAST.get(log_key)
+        should_log = log_triggered and (ttl_sec == 0 or last_ts is None or (now - last_ts) >= ttl_sec)
+        if should_log:
+            logger.info({
+                "level": "INFO",
+                "type": "status",
+                "message": "[RedirectHeaders] Incoming request headers snapshot",
+                "path": request.path,
+                "host": request.host,
+                "forwarded_host": forwarded_host,
+                "forwarded_proto": forwarded_proto,
+                "forwarded_port": forwarded_port,
+                "session_id": None,
+            })
+            _REDIRECT_HEADER_LOG_LAST[log_key] = now
 
     # Skip redirects for local development (handle localhost with/without port, IPv4, IPv6)
     if (host_only in ('localhost', '127.0.0.1', '::1') or 
