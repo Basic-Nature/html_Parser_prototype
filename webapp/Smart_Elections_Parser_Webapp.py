@@ -74,6 +74,7 @@ from flask import (
     url_for,
     session,
 )
+import csv
 from werkzeug.exceptions import NotFound, HTTPException
 # Socket.IO imports
 try:
@@ -86,6 +87,15 @@ except Exception:
         raise RuntimeError('SocketIO not available')
     def join_room(*a, **k):
         raise RuntimeError('SocketIO not available')
+
+# Optional rate limiting (best-effort)
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+except Exception:
+    Limiter = None
+    def get_remote_address():
+        return "unknown"
 
 # Global storage for last contest options for re-emission on reconnect
 last_contest_options = {}
@@ -129,6 +139,21 @@ from webapp.parser.config import (
     POSTGRES_HOST,
     POSTGRES_PORT,
     SUPPORTED_EXTENSION_SET,
+    MAX_UPLOAD_BYTES,
+    MAX_UPLOAD_SIZE_MB,
+    MAX_PDF_PAGES,
+    MAX_CSV_ROWS,
+    MAX_XLSX_BYTES,
+    MAX_DOWNLOAD_BYTES,
+    URL_ALLOWLIST_SUFFIXES,
+    URL_ALLOWLIST_HOSTS,
+    URL_ENFORCE_ALLOWLIST,
+    URL_BLOCK_PRIVATE_IPS,
+    URL_MAX_REDIRECTS,
+    ALLOW_GOOGLE_DOCS,
+    ALLOW_LEGACY_OUTPUT_DOWNLOAD,
+    MAX_SOCKET_EVENT_BYTES,
+    MAX_SOCKET_LOG_BYTES,
 )
 
 from webapp.parser.utils.shared_logic import (
@@ -139,6 +164,8 @@ from webapp.parser.utils.shared_logic import (
     safe_rsplit,
     safe_sid,
     safe_is_set,
+    safe_filename,
+    safe_validate_external_url,
 )
 from webapp.parser.utils.cert_utils import extract_client_principal
 from webapp.parser.utils.misc_utils import extract_url_and_label
@@ -221,6 +248,20 @@ def log_flagged_url(event: dict) -> None:
 
 # 2. Flask App & SocketIO Initialization
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+
+limiter = None
+if Limiter is not None:
+    try:
+        limiter = Limiter(
+            get_remote_address,
+            app=app,
+            default_limits=[],
+            storage_uri=os.environ.get("RATE_LIMIT_STORAGE_URI", "memory://"),
+        )
+    except Exception:
+        limiter = None
+
 socketio = SocketIO(
     app,
     async_mode=_SOCKETIO_ASYNC_MODE,
@@ -544,6 +585,24 @@ class EnsureWsSecurityHeaders:
 # Wrap early (immediately after app creation)
 app.wsgi_app = EnsureWsSecurityHeaders(app.wsgi_app)
 
+# Register Verification Framework Blueprint
+try:
+    from webapp.parser.verification_endpoints import verification_bp
+    app.register_blueprint(verification_bp)
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Verification Framework blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register Verification Framework blueprint: {e}",
+        "session_id": None
+    })
+
 # 3. Session & State Management
 session_manager = SessionManager()
 
@@ -584,6 +643,168 @@ except ValueError:
 DIRECT_URL_LIMIT = 20
 
 # 4. Utility Functions
+
+_SOCKET_RATE_BUCKETS: dict[str, dict[str, list[float]]] = {}
+_SOCKET_RATE_LIMITS: dict[str, tuple[int, int]] = {
+    "ballot_lens": (3, 60),
+    "parser_prompt": (60, 60),
+    "cancel_parser": (10, 60),
+    "prompt_cancel": (10, 60),
+    "set_manual_source": (15, 60),
+    "toggle_output_bypass": (15, 60),
+}
+
+def _socket_payload_too_large(payload) -> bool:
+    try:
+        if isinstance(payload, (bytes, bytearray)):
+            return len(payload) > MAX_SOCKET_EVENT_BYTES
+        if isinstance(payload, str):
+            return len(payload.encode("utf-8", "ignore")) > MAX_SOCKET_EVENT_BYTES
+        blob = orjson.dumps(payload)
+        return len(blob) > MAX_SOCKET_EVENT_BYTES
+    except Exception:
+        return False
+
+def _rate_limit_socket_action(session_id: str | None, action: str) -> bool:
+    limit, window = _SOCKET_RATE_LIMITS.get(action, (0, 0))
+    if not limit or not window:
+        return True
+    if not session_id:
+        return False
+    now = time.time()
+    bucket = _SOCKET_RATE_BUCKETS.setdefault(session_id, {}).setdefault(action, [])
+    bucket[:] = [ts for ts in bucket if (now - ts) <= window]
+    if len(bucket) >= limit:
+        return False
+    bucket.append(now)
+    return True
+
+def _rate_limit(limit: str):
+    if limiter is None:
+        return lambda fn: fn
+    return limiter.limit(limit)
+
+def _generate_upload_filename(original_name: str) -> str:
+    ext = os.path.splitext(original_name or "")[1].lower()
+    token = secrets.token_urlsafe(16).replace("-", "").replace("_", "")
+    base = f"upload_{token}"
+    return safe_filename(f"{base}{ext}" if ext else base, strict_mode=True)
+
+def _enforce_request_size() -> tuple[bool, str | None]:
+    try:
+        content_len = request.content_length
+    except Exception:
+        content_len = None
+    if content_len is not None and content_len > MAX_UPLOAD_BYTES:
+        return False, f"Upload exceeds {MAX_UPLOAD_SIZE_MB}MB limit."
+    return True, None
+
+def _validate_uploaded_file(path: str, ext: str, session_id: str | None = None) -> tuple[bool, str | None]:
+    try:
+        size = os.path.getsize(path)
+    except Exception:
+        return False, "Upload file unreadable."
+    if size > MAX_UPLOAD_BYTES:
+        return False, f"Upload exceeds {MAX_UPLOAD_SIZE_MB}MB limit."
+    ext = (ext or "").lower()
+    if ext == ".pdf":
+        try:
+            import fitz  # PyMuPDF
+            with fitz.open(path) as doc:
+                if doc.page_count > MAX_PDF_PAGES:
+                    return False, f"PDF exceeds {MAX_PDF_PAGES} pages."
+        except Exception as exc:
+            logger.warning({
+                "level": "WARNING",
+                "type": "upload",
+                "message": f"Failed to inspect PDF: {exc}",
+                "session_id": session_id,
+            })
+    elif ext == ".csv":
+        try:
+            import csv
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                reader = csv.reader(fh)
+                count = 0
+                for _ in reader:
+                    count += 1
+                    if count > MAX_CSV_ROWS:
+                        return False, f"CSV exceeds {MAX_CSV_ROWS} rows."
+        except Exception as exc:
+            logger.warning({
+                "level": "WARNING",
+                "type": "upload",
+                "message": f"Failed to inspect CSV: {exc}",
+                "session_id": session_id,
+            })
+    elif ext in {".xlsx", ".xls"}:
+        if size > MAX_XLSX_BYTES:
+            return False, "Spreadsheet exceeds size limit."
+    return True, None
+
+def _save_uploaded_file(file_obj, dest_dir: str, session_id: str | None = None) -> tuple[bool, str | None, str | None]:
+    if not file_obj or not allowed_file(file_obj.filename):
+        return False, "Invalid file type or no file selected.", None
+    ok, err = _enforce_request_size()
+    if not ok:
+        return False, err, None
+    original_name = file_obj.filename or "upload"
+    filename = _generate_upload_filename(original_name)
+    save_path = os.path.join(dest_dir, filename)
+    try:
+        file_obj.save(save_path)
+    except Exception as exc:
+        return False, f"Failed to save upload: {exc}", None
+    ext = os.path.splitext(filename)[1].lower()
+    valid, reason = _validate_uploaded_file(save_path, ext, session_id=session_id)
+    if not valid:
+        try:
+            os.remove(save_path)
+        except Exception:
+            pass
+        return False, reason, None
+    return True, filename, save_path
+
+def _log_download_access(event: dict) -> None:
+    payload = dict(event or {})
+    payload.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+    try:
+        log_path = LOG_DIR / "download_access.jsonl"
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(payload) + b"\n")
+    except Exception:
+        pass
+
+def _resolve_output_metadata_path(file_path: str) -> str | None:
+    if not file_path:
+        return None
+    parent = os.path.dirname(file_path)
+    candidate = os.path.join(parent, "results.metadata.json")
+    if os.path.exists(candidate):
+        return candidate
+    legacy = os.path.join(parent, "metadata.json")
+    if os.path.exists(legacy):
+        return legacy
+    return None
+
+def _is_output_download_allowed(file_path: str, principal: str | None, session_id: str | None) -> tuple[bool, str]:
+    meta_path = _resolve_output_metadata_path(file_path)
+    if not meta_path:
+        return (ALLOW_LEGACY_OUTPUT_DOWNLOAD, "legacy_missing_metadata") if ALLOW_LEGACY_OUTPUT_DOWNLOAD else (False, "missing_metadata")
+    try:
+        with open(meta_path, "rb") as fh:
+            meta = orjson.loads(fh.read())
+    except Exception:
+        return (ALLOW_LEGACY_OUTPUT_DOWNLOAD, "metadata_read_failed") if ALLOW_LEGACY_OUTPUT_DOWNLOAD else (False, "metadata_read_failed")
+    owner = None
+    if isinstance(meta, dict):
+        owner = meta.get("principal") or (meta.get("context") or {}).get("principal")
+    if owner and principal and owner == principal:
+        return True, "principal_match"
+    meta_session = meta.get("session_id") if isinstance(meta, dict) else None
+    if meta_session and session_id and meta_session == session_id:
+        return True, "session_match"
+    return False, "ownership_mismatch"
 
 def is_owner(sid, username):
     meta = session_manager.get_metadata(sid) or {}
@@ -836,7 +1057,7 @@ def resolve_session_id(data=None, create_if_missing=True):
     if not create_if_missing:
         return None
 
-    new_sid = 'sess_' + os.urandom(6).hex()
+    new_sid = 'sess_' + secrets.token_urlsafe(16)
     if ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
         session_manager.bind_fingerprint(fingerprint, new_sid)
     session_manager.bind_socket(socket_sid, new_sid)
@@ -1101,6 +1322,10 @@ def socketio_emit_func(line):
     Used as the SocketIO emit function for SharedLogger.
     """
     try:
+        if isinstance(line, (bytes, bytearray)) and len(line) > MAX_SOCKET_LOG_BYTES:
+            line = line[:MAX_SOCKET_LOG_BYTES]
+        elif isinstance(line, str) and len(line.encode("utf-8", "ignore")) > MAX_SOCKET_LOG_BYTES:
+            line = line[:5000] + "...(truncated)"
         # Parse or wrap the log line as a dict
         if isinstance(line, str) and not line.strip().startswith("{"):
             obj = {"level": "INFO", "type": "raw", "message": line}
@@ -1695,6 +1920,7 @@ def index() -> str:
     return render_template("index.html")
 
 @app.route("/api/urls", methods=["GET", "POST"])
+@_rate_limit("30/minute")
 def api_urls():
     urls_file = str(URL_LIST_FILE)
     try:
@@ -1722,6 +1948,20 @@ def api_urls():
             parsed = urlparse(url)
             host = (parsed.hostname or "").lower()
             session_id = safe_strip(safe_get(data, "session_id"))
+            allowed, reason = safe_validate_external_url(
+                url,
+                allowlist_suffixes=URL_ALLOWLIST_SUFFIXES,
+                allowlist_hosts=URL_ALLOWLIST_HOSTS,
+                enforce_allowlist=URL_ENFORCE_ALLOWLIST,
+                block_private_ips=URL_BLOCK_PRIVATE_IPS,
+            )
+            if not allowed:
+                log_flagged_url({
+                    "url": url,
+                    "reason": reason,
+                    "session_id": session_id,
+                })
+                return jsonify({"success": False, "error": f"URL blocked: {reason}"}), 400
             suspicious_tokens = (
                 "dropbox.com",
                 "drive.google",
@@ -1741,6 +1981,11 @@ def api_urls():
                 "notion.so",
                 "cloudfront.net",
             )
+            if ALLOW_GOOGLE_DOCS:
+                suspicious_tokens = tuple(
+                    tok for tok in suspicious_tokens
+                    if tok not in {"drive.google", "docs.google", "googleusercontent.com"}
+                )
             if parsed.scheme not in {"http", "https"} or not host:
                 log_flagged_url({
                     "url": url,
@@ -1794,6 +2039,11 @@ def api_urls():
             "notion.so",
             "cloudfront.net",
         )
+        if ALLOW_GOOGLE_DOCS:
+            suspicious_tokens = tuple(
+                tok for tok in suspicious_tokens
+                if tok not in {"drive.google", "docs.google", "googleusercontent.com"}
+            )
         if parsed.scheme not in {"http", "https"} or not host:
             log_flagged_url({
                 "url": url,
@@ -1818,6 +2068,148 @@ def api_urls():
 @app.route("/data_framework", methods=["GET"])
 def data_framework():
     return render_template("data_framework.html", data_api_url=DATA_API_URL)
+
+
+def _collect_data_framework_scaffold(limit: int = 100) -> dict:
+    records = []
+    fields = [
+        "state",
+        "county",
+        "contest",
+        "handler",
+        "row_count",
+        "column_count",
+        "extraction_confidence",
+        "timestamp",
+        "source_url",
+    ]
+    output_dir = Path(OUTPUT_DIR)
+    if not output_dir.exists():
+        return {"fields": fields, "records": [], "generated_at": datetime.now(timezone.utc).isoformat()}
+
+    for folder in sorted(output_dir.iterdir(), reverse=True):
+        if not folder.is_dir():
+            continue
+        metadata_path = folder / "results.metadata.json"
+        if not metadata_path.exists():
+            metadata_path = folder / "metadata.json"
+        if not metadata_path.exists():
+            continue
+        try:
+            with open(metadata_path, "rb") as fh:
+                meta = orjson.loads(fh.read())
+        except Exception:
+            continue
+        if not isinstance(meta, dict):
+            continue
+        quality = meta.get("quality_metrics") if isinstance(meta.get("quality_metrics"), dict) else {}
+        record = {
+            "state": meta.get("state"),
+            "county": meta.get("county"),
+            "contest": meta.get("contest"),
+            "handler": meta.get("handler"),
+            "row_count": meta.get("row_count"),
+            "column_count": meta.get("column_count"),
+            "extraction_confidence": quality.get("extraction_confidence"),
+            "timestamp": meta.get("timestamp") or folder.name.split("__")[-1],
+            "source_url": meta.get("source_url") or (meta.get("context") or {}).get("url"),
+        }
+        records.append(record)
+        if len(records) >= limit:
+            break
+    return {
+        "fields": fields,
+        "records": records,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.route("/api/data_framework/scaffold", methods=["GET"])
+def api_data_framework_scaffold():
+    principal, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+    try:
+        limit = int(request.args.get("limit") or 100)
+        limit = max(1, min(500, limit))
+    except Exception:
+        limit = 100
+    payload = _collect_data_framework_scaffold(limit=limit)
+    return jsonify(payload)
+
+
+@app.route("/api/data_framework/scaffold.csv", methods=["GET"])
+def api_data_framework_scaffold_csv():
+    principal, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return Response("Unauthorized", status=403, mimetype="text/plain")
+    try:
+        limit = int(request.args.get("limit") or 100)
+        limit = max(1, min(500, limit))
+    except Exception:
+        limit = 100
+    scaffold = _collect_data_framework_scaffold(limit=limit)
+    fields = scaffold.get("fields", [])
+    records = scaffold.get("records", [])
+    output = []
+    output.append(fields)
+    for row in records:
+        output.append([row.get(field, "") for field in fields])
+    resp = Response(mimetype="text/csv; charset=utf-8")
+    resp.headers["Content-Disposition"] = "attachment; filename=data_framework_scaffold.csv"
+    writer = csv.writer(resp.stream)
+    for line in output:
+        writer.writerow(line)
+    return resp
+
+
+@app.route("/api/data_framework/exports", methods=["GET"])
+def api_data_framework_exports():
+    """Return daily manifest or fallback to NDJSON exports; read-only endpoint for UI backfill."""
+    principal, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+    try:
+        date_str = (request.args.get("date") or datetime.now().strftime("%Y%m%d")).strip()
+    except Exception:
+        date_str = datetime.now().strftime("%Y%m%d")
+    try:
+        limit = int(request.args.get("limit") or 100)
+    except Exception:
+        limit = 100
+
+    exports_dir = LOG_DIR / "data_framework_exports"
+    manifest_path = exports_dir / f"exports-{date_str}-manifest.json"
+    items = []
+    generated_at = None
+    if manifest_path.exists():
+        try:
+            with open(manifest_path, 'rb') as mf:
+                payload = orjson.loads(mf.read())
+                items = payload.get('items', []) if isinstance(payload, dict) else []
+                generated_at = payload.get('generated_at') if isinstance(payload, dict) else None
+        except Exception:
+            items = []
+
+    # Fallback: read last `limit` entries from exports.jsonl
+    if not items:
+        exports_file = exports_dir / 'exports.jsonl'
+        if exports_file.exists():
+            try:
+                # read all lines and take last `limit`
+                with open(exports_file, 'rb') as ef:
+                    lines = [l for l in ef if l.strip()]
+                last_lines = lines[-limit:]
+                for line in last_lines:
+                    try:
+                        items.append(orjson.loads(line))
+                    except Exception:
+                        continue
+                generated_at = datetime.now().isoformat()
+            except Exception:
+                items = []
+
+    return jsonify({"date": date_str, "count": len(items), "generated_at": generated_at, "items": items})
 
 
 @app.route("/azure_health", methods=["GET"])
@@ -2071,6 +2463,19 @@ def download_fs():
         session_id = resolve_session_id({}, create_if_missing=False) or "no_session"
     except Exception:
         session_id = "no_session"
+
+    if root == "output":
+        allowed, reason = _is_output_download_allowed(fpath, principal, session_id)
+        _log_download_access({
+            "principal": principal,
+            "session_id": session_id,
+            "file": fpath,
+            "root": root,
+            "allowed": allowed,
+            "reason": reason,
+        })
+        if not allowed:
+            return jsonify({"error": "Unauthorized output download"}), 403
         
     # Only verify integrity for output files (cache deduplication)
     if root == "output":
@@ -2701,6 +3106,18 @@ def download_output_file(filename) -> str:
     file_path = Path(OUTPUT_DIR) / filename
     if not file_path.exists():
         raise NotFound()
+
+    allowed, reason = _is_output_download_allowed(str(file_path), principal, session_id)
+    _log_download_access({
+        "principal": principal,
+        "session_id": session_id,
+        "file": str(file_path),
+        "root": "output",
+        "allowed": allowed,
+        "reason": reason,
+    })
+    if not allowed:
+        return Response("Unauthorized output download", status=403, mimetype="text/plain")
         
     # Async integrity verification with cache
     monitor = get_integrity_monitor()
@@ -2765,12 +3182,14 @@ def ballot_lens():
             session['manual_source_pref'] = qp_source
         if request.method == "POST" and "data_file" in request.files:
             file = request.files.get("data_file")
-            if file and allowed_file(file.filename):
-                filename = file.filename
-                file.save(os.path.join(UPLOADS_DIR, filename))
-                flash(f"File '{filename}' uploaded successfully.", "success")
+            ok, saved_name, err_path = _save_uploaded_file(file, str(UPLOADS_DIR), session_id=None)
+            if ok and saved_name:
+                session['FORCE_PARSE_INPUT_FILE'] = saved_name
+                session['FORCE_PARSE_FORMAT'] = saved_name.rsplit('.', 1)[-1].lower() if '.' in saved_name else ''
+                session['manual_source_pref'] = 'uploads'
+                flash(f"File '{saved_name}' uploaded successfully.", "success")
             else:
-                flash("Invalid file type or no file selected.", "danger")
+                flash(saved_name or "Invalid file type or no file selected.", "danger")
         file_lists = get_all_file_lists()
         return render_template(
             "ballot_lens.html",
@@ -2911,6 +3330,7 @@ def api_quality_metrics():
     return jsonify({"metrics": results, "count": len(results)})
 
 @app.route("/upload/input", methods=["POST"])
+@_rate_limit("5/minute")
 def upload_to_input() -> str:
     file = request.files.get("file")
     logger.info({
@@ -2919,15 +3339,51 @@ def upload_to_input() -> str:
         "message": f"Upload to input: {file.filename if file else 'No file'}",
         "session_id": None
     })
-    if file and allowed_file(file.filename):
-        filename = file.filename
-        file.save(os.path.join(INPUT_DIR, filename))
-        flash(f"File '{filename}' uploaded to input folder.", "success")
+    # Gate uploads: require client principal or ADMIN_JWT_TOKEN fallback
+    principal, _ = get_request_principal()
+    admin_token = os.environ.get("ADMIN_JWT_TOKEN")
+    auth_hdr = (request.headers.get("Authorization") or "").strip()
+    token_ok = False
+    if admin_token and auth_hdr.lower().startswith("bearer "):
+        try:
+            token_ok = hmac.compare_digest(auth_hdr.split(None, 1)[1].strip(), admin_token)
+        except Exception:
+            token_ok = False
+
+    if not principal and not token_ok:
+        # Quarantine the upload for admin review
+        try:
+            if file:
+                qdir = os.path.join(str(UPLOADS_DIR), "quarantine")
+                os.makedirs(qdir, exist_ok=True)
+                orig = getattr(file, 'filename', 'upload') or 'upload'
+                fname = _generate_upload_filename(orig)
+                qname = f"quarantine_{fname}"
+                save_path = os.path.join(qdir, qname)
+                file.save(save_path)
+                log_flagged_url({
+                    "event": "upload_quarantine",
+                    "original_name": orig,
+                    "saved_name": qname,
+                    "reason": "missing_principal",
+                })
+                flash(f"Upload quarantined for review: {qname}", "warning")
+            else:
+                flash("No file uploaded.", "danger")
+        except Exception as e:
+            logger.error({"level": "ERROR", "type": "upload", "message": f"Quarantine save failed: {e}"})
+            flash("Failed to save upload.", "danger")
+        return redirect(request.referrer or url_for("ballot_lens"))
+
+    ok, saved_name, err_path = _save_uploaded_file(file, str(INPUT_DIR), session_id=None)
+    if ok and saved_name:
+        flash(f"File '{saved_name}' uploaded to input folder.", "success")
     else:
-        flash("Invalid file type or no file selected.", "danger")
+        flash(saved_name or "Invalid file type or no file selected.", "danger")
     return redirect(request.referrer or url_for("ballot_lens"))
 
 @app.route("/upload/output", methods=["POST"])
+@_rate_limit("5/minute")
 def upload_to_output() -> str:
     file = request.files.get("file")
     logger.info({
@@ -2936,26 +3392,96 @@ def upload_to_output() -> str:
         "message": f"Upload to output: {file.filename if file else 'No file'}",
         "session_id": None
     })
-    if file and allowed_file(file.filename):
-        filename = file.filename
-        file.save(os.path.join(OUTPUT_DIR, filename))
-        flash(f"File '{filename}' uploaded to output folder.", "success")
+    principal, _ = get_request_principal()
+    admin_token = os.environ.get("ADMIN_JWT_TOKEN")
+    auth_hdr = (request.headers.get("Authorization") or "").strip()
+    token_ok = False
+    if admin_token and auth_hdr.lower().startswith("bearer "):
+        try:
+            token_ok = hmac.compare_digest(auth_hdr.split(None, 1)[1].strip(), admin_token)
+        except Exception:
+            token_ok = False
+
+    if not principal and not token_ok:
+        try:
+            if file:
+                qdir = os.path.join(str(UPLOADS_DIR), "quarantine")
+                os.makedirs(qdir, exist_ok=True)
+                orig = getattr(file, 'filename', 'upload') or 'upload'
+                fname = _generate_upload_filename(orig)
+                qname = f"quarantine_{fname}"
+                save_path = os.path.join(qdir, qname)
+                file.save(save_path)
+                log_flagged_url({
+                    "event": "upload_quarantine",
+                    "original_name": orig,
+                    "saved_name": qname,
+                    "reason": "missing_principal",
+                })
+                flash(f"Upload quarantined for review: {qname}", "warning")
+            else:
+                flash("No file uploaded.", "danger")
+        except Exception as e:
+            logger.error({"level": "ERROR", "type": "upload", "message": f"Quarantine save failed: {e}"})
+            flash("Failed to save upload.", "danger")
+        return redirect(request.referrer or url_for("ballot_lens"))
+
+    ok, saved_name, err_path = _save_uploaded_file(file, str(OUTPUT_DIR), session_id=None)
+    if ok and saved_name:
+        flash(f"File '{saved_name}' uploaded to output folder.", "success")
     else:
-        flash("Invalid file type or no file selected.", "danger")
+        flash(saved_name or "Invalid file type or no file selected.", "danger")
     return redirect(request.referrer or url_for("ballot_lens"))
 
 @app.route("/upload/uploads", methods=["POST"])
+@_rate_limit("5/minute")
 def upload_to_uploads() -> str:
     file = request.files.get("data_file") or request.files.get("file")
-    if file and allowed_file(file.filename):
-        filename = file.filename
-        file.save(os.path.join(UPLOADS_DIR, filename))
-        session['FORCE_PARSE_INPUT_FILE'] = filename
-        session['FORCE_PARSE_FORMAT'] = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+    principal, _ = get_request_principal()
+    admin_token = os.environ.get("ADMIN_JWT_TOKEN")
+    auth_hdr = (request.headers.get("Authorization") or "").strip()
+    token_ok = False
+    if admin_token and auth_hdr.lower().startswith("bearer "):
+        try:
+            token_ok = hmac.compare_digest(auth_hdr.split(None, 1)[1].strip(), admin_token)
+        except Exception:
+            token_ok = False
+
+    if not principal and not token_ok:
+        try:
+            if file:
+                qdir = os.path.join(str(UPLOADS_DIR), "quarantine")
+                os.makedirs(qdir, exist_ok=True)
+                orig = getattr(file, 'filename', 'upload') or 'upload'
+                fname = _generate_upload_filename(orig)
+                qname = f"quarantine_{fname}"
+                save_path = os.path.join(qdir, qname)
+                file.save(save_path)
+                log_flagged_url({
+                    "event": "upload_quarantine",
+                    "original_name": orig,
+                    "saved_name": qname,
+                    "reason": "missing_principal",
+                })
+                session['FORCE_PARSE_INPUT_FILE'] = qname
+                session['FORCE_PARSE_FORMAT'] = qname.rsplit('.', 1)[-1].lower() if '.' in qname else ''
+                session['manual_source_pref'] = 'uploads'
+                flash(f"Upload quarantined for review: {qname}", "warning")
+            else:
+                flash("No file uploaded.", "danger")
+        except Exception as e:
+            logger.error({"level": "ERROR", "type": "upload", "message": f"Quarantine save failed: {e}"})
+            flash("Failed to save upload.", "danger")
+        return redirect(request.referrer or url_for("ballot_lens"))
+
+    ok, saved_name, err_path = _save_uploaded_file(file, str(UPLOADS_DIR), session_id=None)
+    if ok and saved_name:
+        session['FORCE_PARSE_INPUT_FILE'] = saved_name
+        session['FORCE_PARSE_FORMAT'] = saved_name.rsplit('.', 1)[-1].lower() if '.' in saved_name else ''
         session['manual_source_pref'] = 'uploads'  # default UI to uploads after upload
-        flash(f"File '{filename}' uploaded to uploads folder.", "success")
+        flash(f"File '{saved_name}' uploaded to uploads folder.", "success")
     else:
-        flash("Invalid file type or no file selected.", "danger")
+        flash(saved_name or "Invalid file type or no file selected.", "danger")
     return redirect(request.referrer or url_for("ballot_lens"))
 
 @app.route("/health")
@@ -3043,7 +3569,7 @@ def rerun_prior(run_id):
         except Exception:
             pass
     # Use a new session (user can change later)
-    new_session = 'sess_' + os.urandom(6).hex()
+    new_session = 'sess_' + secrets.token_urlsafe(16)
     session['logical_session_id'] = new_session
     flash(f"Re-running prior config (run_id={run_id}) in new session {new_session}", "success")
     # Front-end JS should now request a run (or we can directly invoke)
@@ -3156,7 +3682,7 @@ def handle_clone_session(data) -> None:
             }
         )
         return
-    new_sid = 'sess_' + os.urandom(6).hex()
+    new_sid = 'sess_' + secrets.token_urlsafe(16)
     try:
         session_manager.clone_session(old_sid, new_sid)
     except KeyError:
@@ -3406,12 +3932,40 @@ def handle_parser_prompt(data) -> None:
     print("Current prompt sessions:", list(prompt.prompt_sessions.keys()))
     session_id = resolve_session_id(data, create_if_missing=False)
     value = data.get("value", "") if isinstance(data, dict) else data
+
+    if _socket_payload_too_large(data) or _socket_payload_too_large(value):
+        logger.error({
+            "level": "ERROR",
+            "type": "prompt",
+            "message": "Prompt payload too large.",
+            "session_id": session_id,
+        })
+        return
+    
+    # Fallback: if session_id not resolved, try socket mapping
+    if not session_id:
+        try:
+            socket_sid = safe_sid()
+        except Exception:
+            socket_sid = getattr(request, 'sid', None)
+        if isinstance(socket_sid, str):
+            session_id = session_manager.resolve_socket(socket_sid)
+    
     if not session_id or not session_manager.has_session(session_id):
         logger.error({
             "level": "ERROR",
             "type": "prompt",
             "message": "Invalid or unknown session_id for prompt.",
             "session_id": None,
+        })
+        return
+
+    if not _rate_limit_socket_action(session_id, "parser_prompt"):
+        logger.warning({
+            "level": "WARNING",
+            "type": "prompt",
+            "message": "Rate limit exceeded for prompt responses.",
+            "session_id": session_id,
         })
         return
     prompt_session = prompt.prompt_sessions.get(session_id)
@@ -3440,6 +3994,15 @@ def handle_prompt_cancel(data=None) -> None:
             "type": "prompt",
             "message": "Invalid or unknown session_id for prompt_cancel.",
             "session_id": None,
+        })
+        return
+
+    if not _rate_limit_socket_action(session_id, "prompt_cancel"):
+        logger.warning({
+            "level": "WARNING",
+            "type": "prompt",
+            "message": "Rate limit exceeded for prompt_cancel.",
+            "session_id": session_id,
         })
         return
 
@@ -3481,6 +4044,15 @@ def handle_cancel_parser(data=None) -> None:
             "type": "cancel",
             "message": "No session_id provided for cancel.",
             "session_id": None
+        })
+        return
+
+    if not _rate_limit_socket_action(session_id, "cancel_parser"):
+        logger.warning({
+            "level": "WARNING",
+            "type": "cancel",
+            "message": "Rate limit exceeded for cancel requests.",
+            "session_id": session_id,
         })
         return
 
@@ -3539,6 +4111,14 @@ def handle_toggle_output_bypass(data=None):
             "session_id": None
         })
         return
+    if not _rate_limit_socket_action(sid, "toggle_output_bypass"):
+        logger.warning({
+            "level": "WARNING",
+            "type": "status",
+            "message": "Rate limit exceeded for output bypass toggle.",
+            "session_id": sid,
+        })
+        return
     current = session_manager.is_output_bypassed(sid)
     state = session_manager.set_output_bypass(sid, not current)
     emit('output_bypass_state', {"session_id": sid, "output_bypass": state}, room=sid)
@@ -3559,6 +4139,14 @@ def handle_set_manual_source(data=None):
             "type": "input",
             "message": "Invalid manual source update.",
             "session_id": sid
+        })
+        return
+    if not _rate_limit_socket_action(sid, "set_manual_source"):
+        logger.warning({
+            "level": "WARNING",
+            "type": "input",
+            "message": "Rate limit exceeded for manual source updates.",
+            "session_id": sid,
         })
         return
     origin = safe_lower(safe_get(data or {}, 'origin', 'user' if source == 'uploads' else 'default'))
@@ -3627,9 +4215,23 @@ def handle_ballot_lens(data=None) -> None:
         })
         return
 
+    if not _rate_limit_socket_action(session_id, "ballot_lens"):
+        emit('parser_output', normalize_log_obj({
+            "level": "WARNING",
+            "type": "status",
+            "message": "Rate limit exceeded for starting a job.",
+            "session_id": session_id,
+        }), room=session_id)
+        return
+
+    principal, principal_source = get_request_principal()
+
     # --- Ensure join_room is fully propagated before any log emission ---
     join_room(session_id)
     socketio.sleep(0.25)  # More robust than time.sleep for Flask-SocketIO (yields event loop)
+
+    # --- Send session ID back to frontend immediately ---
+    emit('session_id', {'session_id': session_id})
 
     # --- Sync socket/session mapping ---
     try:
@@ -3735,6 +4337,22 @@ def handle_ballot_lens(data=None) -> None:
                     "type": "input",
                     "message": f"Ignoring invalid direct URL: {url_text}",
                     "session_id": session_id
+                })
+                continue
+            allowed, reason = safe_validate_external_url(
+                url_text,
+                allowlist_suffixes=URL_ALLOWLIST_SUFFIXES,
+                allowlist_hosts=URL_ALLOWLIST_HOSTS,
+                enforce_allowlist=URL_ENFORCE_ALLOWLIST,
+                block_private_ips=URL_BLOCK_PRIVATE_IPS,
+            )
+            if not allowed:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "input",
+                    "message": f"Blocked direct URL: {reason}",
+                    "session_id": session_id,
+                    "url": url_text,
                 })
                 continue
             direct_urls.append(url_text)
@@ -3848,7 +4466,9 @@ def handle_ballot_lens(data=None) -> None:
                 disable_internal_heartbeat=True,
                 force_parse_input_file=force_parse_input_file,
                 force_parse_format=force_parse_format,
-                urls=direct_urls if direct_urls else None
+                urls=direct_urls if direct_urls else None,
+                principal=principal,
+                principal_source=principal_source,
             )
             logger.info({
                 "level": "INFO",

@@ -16,7 +16,8 @@ from typing import Any, Dict, List, Optional
 import orjson
 import pandas as pd
 
-from ..config import BASE_DIR, OUTPUT_CACHE, OUTPUT_DIR
+from ..config import BASE_DIR, OUTPUT_CACHE, OUTPUT_DIR, LOG_DIR
+from collections import deque
 from .logger_singleton import logger
 from .rawjson_utils import (
     extract_rawjson_enrichment_from_rows,
@@ -607,6 +608,8 @@ def finalize_election_output(
     meta = {
         "created_at": dt.datetime.now().isoformat(timespec="seconds"),
         "session_id": session_id,
+        "principal": context.get("principal"),
+        "principal_source": context.get("principal_source"),
         "handler": context.get("handler"),
         "input_file": context.get("input_file"),
         "contest": contest_eff,
@@ -676,5 +679,61 @@ def finalize_election_output(
                 pass
     except Exception as e:
         logger.warning(f"[OUTPUT_UTILS] XLSX export failed: {e}")
+
+    # --- Audit export (NDJSON) + daily manifest for Data Framework UI ---
+    try:
+        exports_dir = LOG_DIR / "data_framework_exports"
+        exports_dir.mkdir(parents=True, exist_ok=True)
+
+        audit_entry = {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "csv_path": csv_path,
+            "metadata_path": meta_path,
+            "state": state_eff,
+            "county": county_eff,
+            "contest": contest_eff,
+            "structure_hash": context.get("structure_hash"),
+            "principal": context.get("principal"),
+            "principal_source": context.get("principal_source"),
+            "session_id": session_id,
+            "row_count": len(safe_rows),
+            "extraction_confidence": (context.get("quality_metrics") or {}).get("extraction_confidence")
+        }
+
+        exports_file = exports_dir / "exports.jsonl"
+        # append single-line JSONL
+        try:
+            with open(exports_file, "ab") as ef:
+                ef.write(orjson.dumps(audit_entry) + b"\n")
+        except Exception:
+            # best-effort only
+            pass
+
+        # Build/update daily manifest with most recent N entries (keep last 500)
+        try:
+            from collections import deque as _dq
+            manifest_path = exports_dir / f"exports-{datetime.now().strftime('%Y%m%d')}-manifest.json"
+            # read last 500 lines from exports_file
+            last_n = 500
+            dq = deque(maxlen=last_n)
+            if exports_file.exists():
+                with open(exports_file, "rb") as ef:
+                    for line in ef:
+                        if not line.strip():
+                            continue
+                        try:
+                            dq.append(orjson.loads(line))
+                        except Exception:
+                            continue
+            manifest = list(dq)
+            try:
+                with open(manifest_path, "wb") as mf:
+                    mf.write(orjson.dumps({"generated_at": datetime.now().isoformat(), "items": manifest}, option=orjson.OPT_INDENT_2))
+            except Exception:
+                pass
+        except Exception:
+            pass
+    except Exception:
+        pass
 
     return {"csv_path": csv_path, "metadata_path": meta_path}
