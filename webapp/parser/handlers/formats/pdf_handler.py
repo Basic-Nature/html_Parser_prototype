@@ -149,7 +149,6 @@ from ...utils.shared_logic import (
 )
 from ...utils.pivot import expand_single_rawjson_row, transform_wide_to_smart_standard
 from ...Context_Integration.context_coordinator import dynamic_state_county_detection
-from ...Context_Integration.location_inference import infer_county_from_lines
 from ...utils.header_utils import normalize_table_headers
 
 # Added optional tuning flags (safe defaults if not in config)

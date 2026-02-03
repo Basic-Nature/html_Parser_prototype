@@ -34,7 +34,9 @@ from playwright.sync_api import sync_playwright
 from selectolax.parser import Node as SelectolaxNode
 
 if TYPE_CHECKING:  # pragma: no cover - import only used for type hints
-    from selenium.webdriver.remote.webelement import WebElement as SeleniumElement  # pyright: ignore[reportMissingImports]
+    from selenium.webdriver.remote.webelement import (
+        WebElement as SeleniumElement,  # pyright: ignore[reportMissingImports]
+    )
 else:
     try:
         from selenium.webdriver.remote.webelement import WebElement as SeleniumElement
@@ -377,7 +379,7 @@ def safe_click_with_retry(
                         # locator may not support scroll_into_view_if_needed; try evaluate
                         try:
                             if hasattr(page, "evaluate"):
-                                page.evaluate(f"el => el.scrollIntoView({{block:'center',inline:'center'}})", el)
+                                page.evaluate("el => el.scrollIntoView({block:'center',inline:'center'})", el)
                         except Exception:
                             pass
             except Exception:

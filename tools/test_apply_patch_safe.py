@@ -2,9 +2,8 @@
 
 Run this locally to verify basic behavior of the helper on your workspace.
 """
-from pathlib import Path
 import json
-import os
+from pathlib import Path
 
 from tools.agent_patch_utils import apply_patch_safe
 

@@ -1,3 +1,4 @@
+/* eslint-env jest */
 /**
  * Scaffold unit tests for placeholder migration behavior in `ballot_lens_modern.js`.
  * These tests should be expanded to evaluate the file inside a JSDOM window so the

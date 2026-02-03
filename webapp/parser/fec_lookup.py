@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Dict, Any, Optional
-from .config import MIN_FUZZY_SCORE_MANUAL, FUZZY_SCORER
+from typing import Any, Dict, Optional
+
+from .config import FUZZY_SCORER, MIN_FUZZY_SCORE_MANUAL
 
 HERE = os.path.dirname(__file__)
 FIXTURES = os.path.join(HERE, 'fixtures')
@@ -124,7 +125,7 @@ def find_candidate_by_name(
     tried_rapid = False
     if try_rapid:
         try:
-            from rapidfuzz import process, fuzz  # type: ignore
+            from rapidfuzz import fuzz, process  # type: ignore
             tried_rapid = True
             choices = {t[0]: t[1] for t in idx}
             scorer_fn = fuzz.token_sort_ratio

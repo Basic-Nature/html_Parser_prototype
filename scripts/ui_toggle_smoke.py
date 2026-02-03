@@ -3,11 +3,13 @@
 Smoke test: verify off-canvas sidebar and footer toggle behavior using Playwright.
 Run this while the dev server is running (default http://localhost:5000/ballot_lens).
 """
+import argparse
+import json
 import sys
 import time
-import json
-import argparse
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+
+from playwright.sync_api import TimeoutError as PWTimeout
+from playwright.sync_api import sync_playwright
 
 
 def run_check(url: str) -> int:

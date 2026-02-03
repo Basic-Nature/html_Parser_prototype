@@ -5,7 +5,12 @@
     <title>Data Framework | Smart Elections Parser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- Config (replaces inline script) -->
-    <meta id="dataFrameworkConfig" data-api-url="{{ url_for('api_warehouse_election_results') }}">
+        <meta id="dataFrameworkConfig"
+          data-api-url="{{ url_for('api_warehouse_election_results') }}"
+          data-upload-url="{{ url_for('upload_to_input') }}"
+          data-scaffold-json-url="{{ url_for('api_data_framework_scaffold') }}"
+          data-scaffold-csv-url="{{ url_for('api_data_framework_scaffold_csv') }}"
+          {% if csrf_token %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
     <!-- Bootstrap -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css') }}">
@@ -42,9 +47,12 @@
         {% endwith %}
 
         <div class="upload-section">
-            <form id="uploadForm" enctype="multipart/form-data" method="POST" action="/api/upload_csv">
+          <form id="uploadForm" enctype="multipart/form-data" method="POST" action="{{ url_for('upload_to_input') }}">
                 <label for="csvFile"><b>Upload CSV to Database:</b></label><br>
-                <input type="file" id="csvFile" name="csv_file" accept=".csv" required>
+            {% if csrf_token %}
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% endif %}
+            <input type="file" id="csvFile" name="csv_file" accept=".csv" required>
                 <button type="submit">Upload</button>
             </form>
             <div id="uploadStatus" class="status status-info" aria-live="polite"></div>
@@ -58,6 +66,8 @@
                 <div class="right-controls">
                     <button id="refreshBtn" class="btn action" data-bs-toggle="tooltip" title="Reload data from the API">🔄 Refresh</button>
                     <button id="exportCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Export filtered results to CSV">⬇ Export CSV</button>
+                    <button id="scaffoldJsonBtn" class="btn action" data-bs-toggle="tooltip" title="Download guarded JSON scaffold">🧱 Scaffold JSON</button>
+                    <button id="scaffoldCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Download scaffold CSV">📄 Scaffold CSV</button>
                     <button id="resetFiltersBtn" class="btn action" data-bs-toggle="tooltip" title="Clear search and sorting">↺ Reset</button>
                     <div class="column-chooser">
                         <button id="columnChooserBtn" class="btn action" aria-haspopup="true" aria-expanded="false" data-bs-toggle="tooltip" title="Show/hide columns">▦ Columns</button>

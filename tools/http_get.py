@@ -1,5 +1,7 @@
 import os
+
 import requests
+
 URL = os.environ.get('WEBAPP_URL', 'http://127.0.0.1:5000/ballot_lens')
 print('GET', URL)
 try:

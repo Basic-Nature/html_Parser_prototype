@@ -90,11 +90,10 @@ from .embedding_cache import (
 from .logger_singleton import console, logger, prompt
 from .model_registry import ModelRegistry
 from .shared_logic import (
-    keyword_in_text,
-    normalize_html_for_hash,
-    sync_type_and_election_types,
     clean_cache_inplace,
     convert_ndarrays,
+    keyword_in_text,
+    normalize_html_for_hash,
     safe_add,
     safe_append,
     safe_append_cached_segment,
@@ -111,6 +110,7 @@ from .shared_logic import (
     safe_startswith,
     safe_strip,
     safe_update,
+    sync_type_and_election_types,
 )
 
 # --- Caching and threading ---

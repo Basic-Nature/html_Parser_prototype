@@ -4,14 +4,15 @@ import csv
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
+from webapp.parser.fec_lookup import find_candidate_by_name, get_candidate_by_id
 from webapp.parser.utils.fec_utils import (
     canonicalize_headers,
-    money_normalize,
     date_normalize,
-    party_normalize,
     incumbent_normalize,
+    money_normalize,
+    party_normalize,
 )
-from webapp.parser.fec_lookup import get_candidate_by_id, find_candidate_by_name
+
 try:
     import pandas as pd  # optional, used for .xlsx/.xls support
 except Exception:

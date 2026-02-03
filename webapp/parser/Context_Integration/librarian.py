@@ -20,27 +20,26 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
 import orjson
 
 from ..config import BASE_DIR, CONTEXT_LIBRARY_PATH, LOG_DIR, PROJECT_ROOT
 from ..utils.logger_singleton import logger
-from ..utils.misc_utils import file_hash, is_safe_path
+from ..utils.misc_utils import file_hash
 from ..utils.shared_logic import (
     safe_append,
     safe_filename,
     safe_get,
     safe_merge_defaults,
     safe_setdefault,
-    safe_startswith,
 )
 from .Context_Library.constants import (
-    CANONICAL_STATE_ABBR,
     BALLOT_TYPES,
     CANDIDATE_KEYWORDS,
     CANONICAL_SEGMENT_LABELS,
+    CANONICAL_STATE_ABBR,
     CUSTOM_ATTR_PATTERNS,
     HEADING_TAGS,
     HTML_TAGS,

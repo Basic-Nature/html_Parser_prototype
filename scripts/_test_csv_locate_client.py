@@ -5,7 +5,6 @@ from pathlib import Path
 
 # Ensure repo root on sys.path
 ROOT = Path(__file__).resolve().parents[1]
-import sys
 sys.path.insert(0, str(ROOT))
 
 from webapp.Smart_Elections_Parser_Webapp import app

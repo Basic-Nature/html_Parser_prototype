@@ -5,23 +5,26 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple, cast
 
+from ...config import ENABLE_PARALLEL
 from ...Context_Integration.Context_Library.constants import (
     CONTEST_TITLE_SKIP_PHRASES,
 )
-from ...config import ENABLE_PARALLEL
+from ...Context_Integration.librarian import parse_filename_for_location
 from ...utils.contest_detection import (
     CONTEST_PATTERN as _CONTEST_RX,
+)
+from ...utils.contest_detection import (
     detect_contest_titles_from_text,
     gather_lines_for_contest_detection,
 )
 from ...utils.contest_selector import (
     select_contest_auto_first,
 )
+from ...utils.header_utils import normalize_table_headers
 from ...utils.location_helpers import (
     attach_precinct_column,
     collect_location_headers,
 )
-from ...Context_Integration.librarian import parse_filename_for_location
 from ...utils.logger_singleton import logger
 from ...utils.output_utils import finalize_election_output
 from ...utils.pivot import expand_single_rawjson_row
@@ -33,7 +36,6 @@ from ...utils.shared_logic import (
 )
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.table_core import robust_table_extraction
-from ...utils.header_utils import normalize_table_headers
 
 # ==============================================================
 # 🗳️ Smart Elections: Universal CSV Election Results Parser

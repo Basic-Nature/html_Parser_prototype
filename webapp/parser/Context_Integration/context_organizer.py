@@ -30,7 +30,6 @@ from ..utils.logger_singleton import console, logger
 from ..utils.misc_utils import load_output_cache, load_processed_urls
 from ..utils.model_registry import ModelRegistry
 from ..utils.shared_logic import (
-    sync_type_and_election_types,
     flatten_raw_field,
     infer_contest_fields,
     normalize_label,
@@ -42,6 +41,7 @@ from ..utils.shared_logic import (
     safe_model_encode,
     safe_update,
     scan_environment,
+    sync_type_and_election_types,
 )
 from .Context_Library.constants import (
     BALLOT_TYPES,

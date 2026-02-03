@@ -5,11 +5,14 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple, cast
 
+from ...config import ENABLE_PARALLEL
 from ...Context_Integration.Context_Library.constants import (
     CONTEST_TITLE_SKIP_PHRASES,
 )
 from ...utils.contest_detection import (
     CONTEST_PATTERN as _CONTEST_RX,
+)
+from ...utils.contest_detection import (
     detect_contest_titles_from_text,
     gather_lines_for_contest_detection,
 )
@@ -29,7 +32,6 @@ from ...utils.shared_logic import (
 )
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.table_core import robust_table_extraction
-from ...config import ENABLE_PARALLEL
 
 _HANDLER_NAME = "txt_handler"
 # Allow flexible delimiters commonly used in exported text tables

@@ -5,7 +5,6 @@ a flexible signature like (page, html_context=None, coordinator=None, context=No
 This script is conservative: it only prints suggested changes unless run with --apply.
 """
 import ast
-import os
 import sys
 from pathlib import Path
 

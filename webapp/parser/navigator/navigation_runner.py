@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+import threading
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
-import threading
 from typing import Any, Dict, List, Optional
 
-from ..utils.logger_singleton import logger
-from ..utils.browser_utils import autoscroll_until_stable, SCROLL_METRIC_KEYS
+from ..utils.browser_utils import SCROLL_METRIC_KEYS, autoscroll_until_stable
 from ..utils.html_scanner import scan_html_for_context
+from ..utils.logger_singleton import logger
 from .keyword_bias import load_keyword_bias
-from .navigation_recipes import NavigationRecipeStore, DEFAULT_RECIPE_PATH
-
+from .navigation_recipes import DEFAULT_RECIPE_PATH, NavigationRecipeStore
 
 DEFAULT_BIAS_CUTOFF = 0.55
 

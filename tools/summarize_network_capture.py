@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import json
-from collections import Counter
 import os
+from collections import Counter
 
 PATH = os.path.join('tools','debug_headless_output','network_capture.json')
 if not os.path.exists(PATH):

@@ -8,12 +8,15 @@ import orjson
 from .config import (
     PIPELINE_HEARTBEAT_INTERVAL,
     PIPELINE_MAX_WORKERS,
-    URL_LIST_FILE,
     PROCESSED_URLS_FILE,
+    URL_LIST_FILE,
 )
 from .html_election_parser import main
 from .utils.logger_singleton import logger, prompt
 from .utils.shared_logic import safe_clear, safe_is_set, safe_set
+
+SLOW_NLP_AUDIT_THRESHOLD = float(os.environ.get("SLOW_NLP_AUDIT_THRESHOLD", "0.6"))
+SLOW_NLP_AUDIT_MIN_HITS = int(os.environ.get("SLOW_NLP_AUDIT_MIN_HITS", "1"))
 
 
 class CancellationManager(threading.Thread):
@@ -127,6 +130,8 @@ def process_urls_for_web(
     disable_internal_heartbeat=False,
     force_parse_format=None,
     force_parse_input_file=None,
+    principal=None,
+    principal_source=None,
     **kwargs
 ) -> None:
     """
@@ -144,6 +149,33 @@ def process_urls_for_web(
     if emit_func:
         prompt.set_mode("webapp")
         prompt.set_socketio_emit_func(emit_func)
+    
+    # --- Multi-tenant isolation setup ---
+    from .health.session_branching import get_isolated_branch, get_principal_tier
+    
+    if principal and principal_source:
+        try:
+            # Ensure principal has an isolation branch
+            branch = get_isolated_branch(principal)
+            if branch:
+                tier = get_principal_tier(principal, principal_source)
+                logger.info({
+                    "level": "INFO",
+                    "type": "isolation",
+                    "message": f"[MultiTenant] Initialized isolation branch for principal (tier={tier.name})",
+                    "session_id": session_id,
+                    "principal": principal,
+                    "principal_source": principal_source,
+                    "privilege_tier": tier.value
+                })
+        except Exception as e:
+            logger.warning({
+                "level": "WARNING",
+                "type": "isolation",
+                "message": f"[MultiTenant] Failed to initialize isolation: {e}",
+                "session_id": session_id,
+                "principal": principal
+            })
 
     if not disable_internal_heartbeat:
         threading.Thread(
@@ -230,6 +262,8 @@ def process_urls_for_web(
             manual_source=manual_source,
             force_parse_input_file=force_parse_input_file,
             force_parse_format=force_parse_format,
+            principal=principal,
+            principal_source=principal_source,
             # If uploads is selected, do not fall back to URL list on failure
             continue_on_override_failure=False if manual_source == 'uploads' else True,
             prompt_queue=prompt_queue,
@@ -275,6 +309,56 @@ def process_urls_for_web(
                 cancellation_manager.remove(session_id)
                 return
 
+            # --- Pre-processing: Validate raw_urls against principal's isolation ---
+            if principal and principal_source and raw_urls:
+                try:
+                    from .health.session_branching import validate_url_access
+                    blocked_urls = []
+                    for url in raw_urls:
+                        allowed, reason = validate_url_access(principal, url, "view", principal_source)
+                        if not allowed:
+                            blocked_urls.append((url, reason))
+                            logger.warning({
+                                "level": "WARNING",
+                                "type": "isolation",
+                                "message": f"[MultiTenant] URL blocked due to isolation: {reason}",
+                                "session_id": session_id,
+                                "principal": principal,
+                                "url": url,
+                                "block_reason": reason
+                            })
+                    
+                    if blocked_urls:
+                        logger.warning({
+                            "level": "WARNING",
+                            "type": "isolation",
+                            "message": f"[MultiTenant] {len(blocked_urls)} URL(s) filtered by isolation policy",
+                            "session_id": session_id,
+                            "principal": principal,
+                            "blocked_count": len(blocked_urls)
+                        })
+                        # Filter out blocked URLs
+                        raw_urls = [url for url in raw_urls if url not in [b[0] for b in blocked_urls]]
+                        
+                        if not raw_urls:
+                            logger.error({
+                                "level": "ERROR",
+                                "type": "isolation",
+                                "message": "[MultiTenant] No URLs remain after isolation filtering",
+                                "session_id": session_id,
+                                "principal": principal
+                            })
+                            cancellation_manager.remove(session_id)
+                            return
+                except Exception as e:
+                    logger.error({
+                        "level": "ERROR",
+                        "type": "isolation",
+                        "message": f"[MultiTenant] Isolation validation failed: {e}",
+                        "session_id": session_id,
+                        "principal": principal
+                    })
+
             main(**main_kwargs)
         else:
             # Explicit URLs provided (pass through to main; let it batch internally)
@@ -289,6 +373,56 @@ def process_urls_for_web(
                 })
                 cancellation_manager.remove(session_id)
                 return
+
+            # --- Pre-processing: Validate explicit URLs against principal's isolation ---
+            if principal and principal_source and urls:
+                try:
+                    from .health.session_branching import validate_url_access
+                    blocked_urls = []
+                    for url in urls:
+                        allowed, reason = validate_url_access(principal, url, "view", principal_source)
+                        if not allowed:
+                            blocked_urls.append((url, reason))
+                            logger.warning({
+                                "level": "WARNING",
+                                "type": "isolation",
+                                "message": f"[MultiTenant] URL blocked due to isolation: {reason}",
+                                "session_id": session_id,
+                                "principal": principal,
+                                "url": url,
+                                "block_reason": reason
+                            })
+                    
+                    if blocked_urls:
+                        logger.warning({
+                            "level": "WARNING",
+                            "type": "isolation",
+                            "message": f"[MultiTenant] {len(blocked_urls)} URL(s) filtered by isolation policy",
+                            "session_id": session_id,
+                            "principal": principal,
+                            "blocked_count": len(blocked_urls)
+                        })
+                        # Filter out blocked URLs
+                        urls = [url for url in urls if url not in [b[0] for b in blocked_urls]]
+                        
+                        if not urls:
+                            logger.error({
+                                "level": "ERROR",
+                                "type": "isolation",
+                                "message": "[MultiTenant] No URLs remain after isolation filtering",
+                                "session_id": session_id,
+                                "principal": principal
+                            })
+                            cancellation_manager.remove(session_id)
+                            return
+                except Exception as e:
+                    logger.error({
+                        "level": "ERROR",
+                        "type": "isolation",
+                        "message": f"[MultiTenant] Isolation validation failed: {e}",
+                        "session_id": session_id,
+                        "principal": principal
+                    })
 
             logger.info({
                 "level": "INFO",
@@ -424,6 +558,86 @@ def process_urls_for_web(
                 else:
                     results = {"total_entries": 0, "status_counts": {}, "sample_recent": [], "errors": [], "flagged_count": 0}
 
+                audit_hits = []
+                if "entries" in locals() and isinstance(entries, list):
+                    for e in entries:
+                        if not isinstance(e, dict):
+                            continue
+                        md = e.get("metadata") if isinstance(e.get("metadata"), dict) else {}
+                        audit_signals = md.get("audit_signals") or e.get("audit_signals")
+                        if not isinstance(audit_signals, dict):
+                            continue
+                        score = audit_signals.get("audit_weighted_score")
+                        try:
+                            score_val = float(score) if score is not None else None
+                        except Exception:
+                            score_val = None
+                        if score_val is not None and score_val >= SLOW_NLP_AUDIT_THRESHOLD:
+                            audit_hits.append({
+                                "url": e.get("url"),
+                                "audit_signals": audit_signals,
+                                "metadata": md,
+                            })
+
+                if audit_hits and len(audit_hits) >= SLOW_NLP_AUDIT_MIN_HITS:
+                    def _run_slow_nlp_audit():
+                        try:
+                            from .health.health_router import get_learning_engine
+                            engine = get_learning_engine()
+                            for hit in audit_hits:
+                                md = hit.get("metadata") or {}
+                                session_context = {
+                                    "state": md.get("state"),
+                                    "county": md.get("county"),
+                                    "contest": md.get("contest"),
+                                    "handler": md.get("handler"),
+                                    "url": hit.get("url"),
+                                }
+                                engine.ingest_training_signal(
+                                    session_context,
+                                    success=False,
+                                    quality_metrics=hit.get("audit_signals") or {},
+                                )
+                            logger.warning({
+                                "level": "WARNING",
+                                "type": "audit",
+                                "message": "[SlowNLPAudit] Session-level audit completed.",
+                                "session_id": session_id,
+                                "audit_hit_count": len(audit_hits),
+                                "threshold": SLOW_NLP_AUDIT_THRESHOLD,
+                            })
+                            if emit_func:
+                                emit_func({
+                                    "type": "slow_nlp_audit",
+                                    "session_id": session_id,
+                                    "status": "completed",
+                                    "audit_hit_count": len(audit_hits),
+                                    "threshold": SLOW_NLP_AUDIT_THRESHOLD,
+                                    "timestamp": time.time(),
+                                })
+                        except Exception as exc:
+                            logger.warning({
+                                "level": "WARNING",
+                                "type": "audit",
+                                "message": f"[SlowNLPAudit] Session audit failed: {exc}",
+                                "session_id": session_id,
+                            })
+
+                    try:
+                        audit_thread = threading.Thread(target=_run_slow_nlp_audit, daemon=True)
+                        audit_thread.start()
+                        if emit_func:
+                            emit_func({
+                                "type": "slow_nlp_audit",
+                                "session_id": session_id,
+                                "status": "started",
+                                "audit_hit_count": len(audit_hits),
+                                "threshold": SLOW_NLP_AUDIT_THRESHOLD,
+                                "timestamp": time.time(),
+                            })
+                    except Exception:
+                        pass
+
                 # compute confidence metrics
                 conf_metrics = {}
                 if confidences:
@@ -473,6 +687,27 @@ def process_urls_for_web(
             "traceback": traceback.format_exc()
         })
     finally:
+        # --- Clean up multi-tenant isolation on session end ---
+        if principal and principal_source:
+            try:
+                from .health.session_branching import cleanup_principal_isolation
+                cleanup_principal_isolation(principal)
+                logger.info({
+                    "level": "INFO",
+                    "type": "isolation",
+                    "message": "[MultiTenant] Principal isolation branch cleaned up on session end",
+                    "session_id": session_id,
+                    "principal": principal
+                })
+            except Exception as e:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "isolation",
+                    "message": f"[MultiTenant] Cleanup failed: {e}",
+                    "session_id": session_id,
+                    "principal": principal
+                })
+        
         cancellation_manager.remove(session_id)
 
 def cancel_processing(session_id) -> None:

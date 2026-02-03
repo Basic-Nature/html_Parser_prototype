@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import os
 import re
-from collections import Counter, defaultdict, OrderedDict
+from collections import Counter, OrderedDict, defaultdict
 from pathlib import Path
 from typing import Any, DefaultDict, Dict, Iterable, List, Optional, Set, Tuple, cast
 
 import orjson
 
+from ...config import ENABLE_PARALLEL
 from ...Context_Integration.Context_Library.constants import (
     BALLOT_TYPES,
     BALLOT_TYPES_SORT_ORDER,
@@ -21,25 +22,23 @@ from ...Context_Integration.Context_Library.constants import (
     PARTY_KEYWORDS,
     canonical_ballot_group,
 )
-from ...utils.salvage import normalize_ballot_column_name
+from ...Context_Integration.librarian import parse_filename_for_location
 from ...utils.contest_selector import (
     select_contest_auto_first,
 )
-from ...config import ENABLE_PARALLEL
 from ...utils.json_export_loader import _ALL_COUNTIES_LABEL, load_json_export
 from ...utils.location_helpers import (
     attach_precinct_column,
     collect_location_headers,
 )
-from ...Context_Integration.librarian import parse_filename_for_location
 from ...utils.logger_singleton import logger
 from ...utils.output_utils import finalize_election_output
 from ...utils.pivot import expand_single_rawjson_row
+from ...utils.salvage import normalize_ballot_column_name
 from ...utils.shared_logic import (
     format_county_label,
     format_state_label,
     normalize_county_name,
-    normalize_state_name,
     safe_get,
     safe_slug,
 )

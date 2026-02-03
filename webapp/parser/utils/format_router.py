@@ -4,14 +4,14 @@ import tempfile
 import time
 from difflib import get_close_matches
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import unquote, urljoin, urlparse
+from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import requests
 
-from ..config import DISABLE_HTML_FALLBACK, SUPPORTED_FORMATS
+from ..config import ALLOW_GOOGLE_DOCS, DISABLE_HTML_FALLBACK, SUPPORTED_FORMATS, URL_MAX_REDIRECTS
 from ..Context_Integration.Context_Library.constants import CONTEST_KEYWORDS
-from ..handlers.formats import csv_handler, json_handler, pdf_handler, txt_handler, xlsx_handler
 from ..handlers import fec_handler
+from ..handlers.formats import csv_handler, json_handler, pdf_handler, txt_handler, xlsx_handler
 from .browser_utils import (
     safe_click,
     safe_content,
@@ -143,6 +143,51 @@ def _extract_filename_from_disposition(disposition: Optional[str]) -> Optional[s
     return _clean_filename(filename)
 
 
+def _extract_google_sheet_metadata(url: str) -> Optional[Dict[str, str]]:
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return None
+    host = (parsed.hostname or "").lower()
+    if host not in {"docs.google.com", "drive.google.com", "spreadsheets.google.com"}:
+        return None
+
+    spreadsheet_id = None
+    gid = None
+    path_parts = [p for p in (parsed.path or "").split("/") if p]
+    if "spreadsheets" in path_parts and "d" in path_parts:
+        try:
+            d_idx = path_parts.index("d")
+            spreadsheet_id = path_parts[d_idx + 1] if d_idx + 1 < len(path_parts) else None
+        except Exception:
+            spreadsheet_id = None
+    if not spreadsheet_id:
+        qs = parse_qs(parsed.query or "")
+        spreadsheet_id = (qs.get("id") or [None])[0]
+    if not spreadsheet_id:
+        return None
+
+    qs = parse_qs(parsed.query or "")
+    gid = (qs.get("gid") or [None])[0]
+    if not gid and parsed.fragment and "gid=" in parsed.fragment:
+        frag_qs = parse_qs(parsed.fragment)
+        gid = (frag_qs.get("gid") or [None])[0]
+    gid = gid or "0"
+
+    base = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export"
+    export_csv = f"{base}?format=csv&gid={gid}"
+    export_xlsx = f"{base}?format=xlsx&gid={gid}"
+    return {
+        "spreadsheet_id": spreadsheet_id,
+        "gid": gid,
+        "export_csv": export_csv,
+        "export_xlsx": export_xlsx,
+        "source_url": url,
+    }
+
+
 def _probe_remote_format(page, resolved_url: str, session_id: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
     referer = getattr(page, "url", "") if page is not None else ""
     headers = {**_browser_headers(page, referer), **_cookies_header_from_page(page)}
@@ -163,6 +208,10 @@ def _probe_remote_format(page, resolved_url: str, session_id: Optional[str] = No
                 status = getattr(resp, "status_code", None)
                 if status and status >= 400:
                     resp = None
+                if resp is not None and hasattr(resp, "history"):
+                    history = resp.history or []
+                    if len(history) > URL_MAX_REDIRECTS:
+                        raise ValueError("Too many redirects during HEAD probe")
                 response = resp
             except Exception:
                 response = None
@@ -237,6 +286,8 @@ def extract_contest_from_filename(filename: str) -> str:
     Extracts contest/race/type from a filename using canonical keywords, regex, and fuzzy matching.
     Returns the best match or "Other".
     """
+    if not filename:
+        return "Other"
     name = filename.lower().replace("_", " ").replace("-", " ")
     # 1. Exact/substring match (prefer longest keyword)
     best_kw = ""
@@ -572,6 +623,38 @@ def prompt_and_handle_download(
     probe_cache: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
     probe_budget = 6
 
+    google_sheet_links: List[Dict[str, str]] = []
+    google_sheet_meta = None
+    if ALLOW_GOOGLE_DOCS:
+        google_sheet_meta = _extract_google_sheet_metadata(target_url) or _extract_google_sheet_metadata(page_url)
+    if google_sheet_meta:
+        sheet_id = google_sheet_meta.get("spreadsheet_id", "sheet")
+        gid = google_sheet_meta.get("gid", "0")
+        google_sheet_links = [
+            {
+                "href": google_sheet_meta.get("export_csv"),
+                "format": "csv",
+                "source": "google_sheets",
+                "label": "Google Sheets CSV Export",
+                "filename": f"google_sheet_{sheet_id}_{gid}.csv",
+            },
+            {
+                "href": google_sheet_meta.get("export_xlsx"),
+                "format": "xlsx",
+                "source": "google_sheets",
+                "label": "Google Sheets XLSX Export",
+                "filename": f"google_sheet_{sheet_id}_{gid}.xlsx",
+            },
+        ]
+        logger.info({
+            "level": "INFO",
+            "type": "download",
+            "message": "[format_router] Google Sheets export detected; offering CSV/XLSX export.",
+            "session_id": session_id,
+            "sheet_id": sheet_id,
+            "gid": gid,
+        })
+
     def probe_format_for_url(resolved_url: str) -> Tuple[Optional[str], Optional[str]]:
         nonlocal probe_budget
         if not resolved_url:
@@ -595,6 +678,8 @@ def prompt_and_handle_download(
             supported_links = [link for link in download_links if isinstance(link, dict)]
     except Exception:
         supported_links = []
+    if google_sheet_links:
+        supported_links.extend(google_sheet_links)
     # 2) DOM anchors for supported formats
     dom_links: List[Dict[str, str]] = []
     try:
@@ -715,6 +800,8 @@ def prompt_and_handle_download(
         context_result = safe_context_result(page, session_id=session_id)
         if isinstance(context_result, dict):
             context_result.setdefault("metadata", {})["download_links"] = merged_links
+            if google_sheet_meta:
+                context_result["metadata"]["google_sheet"] = google_sheet_meta
             logger.debug({
                 "level": "DEBUG",
                 "type": "download",
@@ -868,6 +955,7 @@ def prompt_and_handle_download(
         hdrs = {**_browser_headers(page, page_url), **cookie_hdr}
 
         local_file_path = None
+        selected_filename = selected_option.get("filename") or ""
 
         # 1) Playwright request if available
         try:
@@ -876,7 +964,7 @@ def prompt_and_handle_download(
                 if getattr(resp, "ok", False):
                     from ..config import INPUT_DIR
                     ensure_input_directory()
-                    fname = os.path.basename(resolved_url) or f"download.{fmt}"
+                    fname = selected_filename or os.path.basename(resolved_url) or f"download.{fmt}"
                     save_path = os.path.join(INPUT_DIR, fname)
                     with open(save_path, "wb") as f:
                         f.write(resp.body())
@@ -899,7 +987,13 @@ def prompt_and_handle_download(
         # 2) Fallback: our downloader
         if not local_file_path:
             try:
-                local_file_path = download_file(page_url, resolved_url, headers=hdrs, check_hash=True)
+                local_file_path = download_file(
+                    page_url,
+                    resolved_url,
+                    headers=hdrs,
+                    check_hash=True,
+                    filename_override=selected_filename or None,
+                )
             except TypeError:
                 # 3) Last resort: raw requests
                 try:
@@ -908,7 +1002,7 @@ def prompt_and_handle_download(
                     if status and status >= 400:
                         raise requests.HTTPError(f"HTTP {status}")
                     os.makedirs("downloads", exist_ok=True)
-                    suffix = os.path.splitext(os.path.basename(resolved_url))[1] or f".{fmt}"
+                    suffix = os.path.splitext(selected_filename or "")[1] or os.path.splitext(os.path.basename(resolved_url))[1] or f".{fmt}"
                     fd, tmp = tempfile.mkstemp(prefix="dl_", suffix=suffix, dir="downloads")
                     os.close(fd)
                     with open(tmp, "wb") as f:

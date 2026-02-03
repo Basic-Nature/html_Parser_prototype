@@ -1,6 +1,6 @@
-from PIL import Image
 from pathlib import Path
-import math
+
+from PIL import Image
 
 ROOT = Path('tools/screenshots')
 files = sorted(ROOT.glob('*.png'))

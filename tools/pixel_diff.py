@@ -1,7 +1,8 @@
-from PIL import Image, ImageChops
-import os
 import json
+import os
 import shutil
+
+from PIL import Image, ImageChops
 
 OUT_DIR = os.path.join('tools', 'debug_screenshots')
 BASELINE_DIR = os.path.join(OUT_DIR, 'baseline')

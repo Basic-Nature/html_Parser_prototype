@@ -4,7 +4,6 @@ Modern Parser UI - Deployment Verification Script
 Validates that Steps 1-3 of the Quick Start implementation are correctly in place.
 """
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -39,7 +38,7 @@ def print_check(passed, description, details=""):
 
 def main():
     print(f"\n{BLUE}{'='*70}")
-    print(f"Modern Parser UI - Deployment Verification")
+    print("Modern Parser UI - Deployment Verification")
     print(f"{'='*70}{RESET}\n")
     
     checks = []
@@ -64,7 +63,7 @@ def main():
             r'@app\.route\("/ballot_lens_modern"',
             "Flask route decorator @app.route(/ballot_lens_modern)"
         )
-        print_check(found, "Route decorator present", f"Pattern: @app.route('/ballot_lens_modern')")
+        print_check(found, "Route decorator present", "Pattern: @app.route('/ballot_lens_modern')")
         checks.append(found)
         
         # Check for function definition
@@ -226,10 +225,10 @@ def main():
     
     if all(checks):
         print(f"{GREEN}✓ All checks passed! Implementation is complete.{RESET}\n")
-        print(f"Next steps:")
-        print(f"  1. Start Flask app: python -m flask run")
-        print(f"  2. Visit http://localhost:5000/ballot_lens_modern")
-        print(f"  3. Follow MODERN_UI_ROLLOUT_TESTING.md for full test suite\n")
+        print("Next steps:")
+        print("  1. Start Flask app: python -m flask run")
+        print("  2. Visit http://localhost:5000/ballot_lens_modern")
+        print("  3. Follow MODERN_UI_ROLLOUT_TESTING.md for full test suite\n")
         return 0
     else:
         print(f"{RED}✗ Some checks failed. Review the output above.{RESET}\n")

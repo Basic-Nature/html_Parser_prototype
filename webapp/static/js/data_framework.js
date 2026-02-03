@@ -18,11 +18,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- Config hydration ----------
   const cfgEl = document.getElementById('dataFrameworkConfig');
-  const hydratedUrl = cfgEl?.dataset.apiUrl;
+  const hydratedUrl = cfgEl?.dataset?.apiUrl;
   const apiUrl =
-  hydratedUrl ||  // server now injects absolute path via url_for
-  ((/** @type {any} */ (window)).__DATA_FRAMEWORK__ && (/** @type {any} */ (window)).__DATA_FRAMEWORK__.apiUrl) ||
-  '/api/warehouse_election_results';
+    hydratedUrl ||  // server now injects absolute path via url_for
+    ((/** @type {any} */ (window)).__DATA_FRAMEWORK__ && (/** @type {any} */ (window)).__DATA_FRAMEWORK__.apiUrl) ||
+    '/api/warehouse_election_results';
+  // Additional injectable endpoints
+  const uploadUrl = cfgEl?.dataset?.uploadUrl || '/upload/input';
+  const scaffoldJsonUrl = cfgEl?.dataset?.scaffoldJsonUrl || '/api/data_framework/scaffold';
+  const scaffoldCsvUrl = cfgEl?.dataset?.scaffoldCsvUrl || '/api/data_framework/scaffold.csv';
+  const csrfToken = cfgEl?.dataset?.csrfToken || null;
 
   // ---------- Elements ----------
   const el = {
@@ -37,6 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
     last: document.getElementById('lastPageBtn'),
     pageInfo: document.getElementById('pageInfo'),
     exportCsv: document.getElementById('exportCsvBtn'),
+    scaffoldJson: document.getElementById('scaffoldJsonBtn'),
+    scaffoldCsv: document.getElementById('scaffoldCsvBtn'),
     resetFilters: document.getElementById('resetFiltersBtn'),
     refresh: document.getElementById('refreshBtn'),
     colBtn: document.getElementById('columnChooserBtn'),
@@ -136,22 +143,73 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       setStatus(el.uploadStatus, 'info', 'Uploading...');
-      fetch('/api/upload_csv', { method: 'POST', body: fd })
-        .then(r => r.json().catch(() => ({ success: false, error: 'Upload endpoint did not return JSON' })))
-        .then(data => {
-          if (data.success) {
+      (async () => {
+        try {
+          const fetchInit = { method: 'POST', body: fd };
+          if (csrfToken) {
+            const hdrs = new Headers();
+            hdrs.append('X-CSRFToken', csrfToken);
+            fetchInit.headers = hdrs;
+          }
+          const resp = await fetch(uploadUrl, fetchInit);
+          const json = await resp.json().catch(() => ({ success: false, error: 'Upload endpoint did not return JSON' }));
+          if (!resp.ok) {
+            const errMsg = json && json.error ? json.error : `Server returned ${resp.status}`;
+            setStatus(el.uploadStatus, 'error', `Upload failed: ${errMsg}`);
+            showErrorToast('Upload failed.');
+            return;
+          }
+          if (json && json.success) {
             setStatus(el.uploadStatus, 'ok', 'Upload successful!');
             showInfoToast('Upload successful.');
             fetchData(true);
           } else {
-            setStatus(el.uploadStatus, 'error', `Upload failed: ${data.error || 'Unknown error'}`);
+            setStatus(el.uploadStatus, 'error', `Upload failed: ${json.error || 'Unknown error'}`);
             showErrorToast('Upload failed.');
           }
+        } catch (err) {
+          setStatus(el.uploadStatus, 'error', `Upload failed: ${err?.message || err}`);
+          showErrorToast('Upload failed.');
+        }
+      })();
+    });
+  }
+
+  // ---------- Scaffold actions ----------
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  if (el.scaffoldJson) {
+    el.scaffoldJson.addEventListener('click', () => {
+      setStatus(el.status, 'info', 'Building scaffold...');
+      fetch(scaffoldJsonUrl + '?limit=200', { headers: { 'Accept': 'application/json' } })
+        .then(r => r.json())
+        .then(data => {
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          downloadBlob(blob, 'data_framework_scaffold.json');
+          setStatus(el.status, 'ok', 'Scaffold JSON ready.');
+          showInfoToast('Scaffold JSON downloaded.');
         })
         .catch(err => {
-          setStatus(el.uploadStatus, 'error', `Upload failed: ${err}`);
-          showErrorToast('Upload failed.');
+          setStatus(el.status, 'error', `Scaffold download failed: ${err}`);
+          showErrorToast('Scaffold JSON failed.');
         });
+    });
+  }
+
+  if (el.scaffoldCsv) {
+    el.scaffoldCsv.addEventListener('click', () => {
+      setStatus(el.status, 'info', 'Preparing scaffold CSV...');
+      // navigate to server-provided scaffold CSV endpoint
+      window.location.href = scaffoldCsvUrl + '?limit=200';
     });
   }
 

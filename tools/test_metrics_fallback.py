@@ -6,12 +6,12 @@ POST /test/metrics/increment that increments a test counter. Exits with 0
 when verification succeeds.
 """
 import http.server
+import json
 import socket
 import threading
 import time
-import json
-from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST, REGISTRY
 
+from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, Counter, generate_latest
 
 TEST_COUNTER = Counter('test_metrics_increment_total', 'Test-only increment counter')
 
@@ -66,8 +66,8 @@ def run_server(port, ready_evt):
 
 
 def verify(port):
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     base = f'http://127.0.0.1:{port}'
     # Hit increment endpoint

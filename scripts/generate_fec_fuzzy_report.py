@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+import argparse
 import csv
+import csv as _csv
 import json
-import os
+import sys
 from pathlib import Path
 from typing import Any
 
-import sys
-import argparse
-import csv as _csv
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from webapp.parser.fec_lookup import load_fec_candidates, get_candidate_by_id, find_candidate_by_name
-from webapp.parser.config import MIN_FUZZY_SCORE_MANUAL, FUZZY_SCORER
 from html import escape as _html_escape
 
+from webapp.parser.config import FUZZY_SCORER, MIN_FUZZY_SCORE_MANUAL
+from webapp.parser.fec_lookup import (
+    find_candidate_by_name,
+    get_candidate_by_id,
+    load_fec_candidates,
+)
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / 'webapp' / 'parser' / 'fixtures'
 OUT_PATH = FIXTURES_DIR / 'fuzzy_match_report.jsonl'

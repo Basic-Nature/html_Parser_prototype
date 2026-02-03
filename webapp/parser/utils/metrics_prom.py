@@ -4,7 +4,6 @@ Provides lightweight counters and optional Pushgateway pushes.
 """
 import os
 import threading
-import time
 from typing import Dict
 
 _ENABLED = os.environ.get('ENABLE_PROMETHEUS', 'false').lower() in ('1', 'true', 'yes')
@@ -15,8 +14,6 @@ _counters: Dict[str, object] = {}
 try:
     if _ENABLED:
         from prometheus_client import Counter
-        from prometheus_client.core import CollectorRegistry
-        from prometheus_client import push_to_gateway
 
         # Define counters in default registry
         _counters['processed_total'] = Counter('smart_processed_total', 'Total processed URLs')
@@ -55,8 +52,8 @@ def _push_registry_async():
     if not _PUSHGATEWAY:
         return
     try:
-        from prometheus_client.core import REGISTRY
         from prometheus_client import push_to_gateway
+        from prometheus_client.core import REGISTRY
         def _p():
             try:
                 push_to_gateway(_PUSHGATEWAY, job='smart_parser', registry=REGISTRY)

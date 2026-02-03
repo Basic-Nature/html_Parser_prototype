@@ -1,5 +1,6 @@
-from playwright.sync_api import sync_playwright
 import os
+
+from playwright.sync_api import sync_playwright
 
 URL = "http://127.0.0.1:5000/"
 WIDTHS = [360, 768, 1024, 1280]

@@ -1,4 +1,5 @@
-import importlib, sys
+import importlib
+import sys
 
 try:
     m = importlib.import_module('webapp.Smart_Elections_Parser_Webapp')
@@ -27,7 +28,7 @@ try:
         print('STATUS', r.status_code)
         data = r.get_data(as_text=True)
         print(data[:1000])
-except Exception as e:
+except Exception:
     import traceback
     traceback.print_exc()
     sys.exit(3)

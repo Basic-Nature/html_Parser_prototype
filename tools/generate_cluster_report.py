@@ -1,6 +1,7 @@
-from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
 import json
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path('tools/screenshots')
 MAPPING = Path('tools/cluster_dom_mapping.json')

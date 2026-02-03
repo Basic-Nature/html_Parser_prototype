@@ -32,6 +32,7 @@ from selectolax.parser import HTMLParser
 from ..config import MODEL_DIR, PROJECT_ROOT, TABLE_MODEL_PATH, VOCAB_DIR
 from ..Context_Integration.librarian import load_context_library
 from .logger_singleton import logger
+
 SentenceTransformer = None  # defer import to use-sites
 spacy = None  # defer import to use-sites
 Language = None

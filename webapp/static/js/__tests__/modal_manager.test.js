@@ -1,3 +1,4 @@
+/* eslint-env jest */
 /**
  * Scaffold unit tests for ModalManager behavior.
  * These are scaffolds — fill assertions and require/eval strategy as needed.

@@ -265,7 +265,7 @@ def format_markdown(
         "",
         f"- Roots: {roots_text}",
         f"- Tracked markers: {', '.join(KEYWORDS)}",
-        f"- Priority map: " + "; ".join(f"{lvl}: {', '.join(sorted(vals)) or 'none'}" for lvl, vals in legend.items()),
+        "- Priority map: " + "; ".join(f"{lvl}: {', '.join(sorted(vals)) or 'none'}" for lvl, vals in legend.items()),
         f"- Exclusions (sample): {exclusions_text}",
         f"- Regex: \\b({'|'.join(KEYWORDS)})\\b (case-insensitive)",
         "",

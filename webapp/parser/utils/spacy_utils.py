@@ -16,11 +16,13 @@ from collections import Counter
 from typing import Any, Dict, List, Set, Tuple
 
 import orjson
+
 spacy = None  # lazy import to avoid thinc->torch chain at module import
 
 from ..Context_Integration.Context_Library.constants import KNOWN_STATE_TO_COUNTY_MAP
 from .logger_singleton import logger
 from .shared_logic import safe_get, safe_lower
+
 
 def _get_nlp():
     """

@@ -6,15 +6,23 @@ from __future__ import annotations
 # ---------------------------------------------------------------
 import hashlib
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List
-import re
 
 import orjson
 
-from ..config import CONTEXT_LIBRARY_PATH, OUTPUT_CACHE, PROCESSED_URLS_FILE
+from ..config import (
+    CONTEXT_LIBRARY_PATH,
+    OUTPUT_CACHE,
+    PROCESSED_URLS_FILE,
+    URL_ALLOWLIST_HOSTS,
+    URL_ALLOWLIST_SUFFIXES,
+    URL_BLOCK_PRIVATE_IPS,
+    URL_ENFORCE_ALLOWLIST,
+)
 from .logger_singleton import logger
-from .shared_logic import safe_get
+from .shared_logic import safe_get, safe_validate_external_url
 
 
 # --- Utility: Processed URL cache (unchanged, not DB) ---
@@ -107,6 +115,21 @@ def extract_url_and_label(line: str) -> tuple[str | None, str | None]:
     if not m:
         return None, None
     url = m.group(1).strip().rstrip('.,;')
+    allowed, reason = safe_validate_external_url(
+        url,
+        allowlist_suffixes=URL_ALLOWLIST_SUFFIXES,
+        allowlist_hosts=URL_ALLOWLIST_HOSTS,
+        enforce_allowlist=URL_ENFORCE_ALLOWLIST,
+        block_private_ips=URL_BLOCK_PRIVATE_IPS,
+    )
+    if not allowed:
+        logger.warning({
+            "level": "WARNING",
+            "type": "security",
+            "message": f"Rejected URL in list: {reason}",
+            "url": url,
+        })
+        return None, None
     # build label by removing the matched url and common separators
     label = s.replace(m.group(0), '').strip()
     # remove leading/trailing separators

@@ -7,8 +7,8 @@ Verifies:
 3. Interactive elements exist and are accessible
 """
 import os
-from playwright.sync_api import sync_playwright
 
+from playwright.sync_api import sync_playwright
 
 URL = os.environ.get("WEBAPP_URL", "http://127.0.0.1:5000/ballot_lens")
 

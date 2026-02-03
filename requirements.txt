@@ -2,6 +2,7 @@
 playwright>=1.54.0
 rich>=14.1.0
 flask-socketio>=5.5.1
+Flask-Limiter>=3.8.0
 gunicorn>=23.0.0
 selectolax>=0.3.32
 langdetect>=1.0.9

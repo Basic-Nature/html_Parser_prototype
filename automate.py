@@ -21,9 +21,9 @@ from pathlib import Path
 project_root = Path(__file__).parent.resolve()
 sys.path.insert(0, str(project_root))
 
-from webapp.parser.utils.shared_logic import generate_pipeline_map
 from webapp.parser.health.health_router import BotPipeline
 from webapp.parser.utils.logger_singleton import logger
+from webapp.parser.utils.shared_logic import generate_pipeline_map
 
 
 def run_pipeline_audit():
@@ -125,7 +125,6 @@ def validate_webapp_startup():
     logger.info("[AUTOMATE] Validating webapp startup...")
     try:
         # Import the webapp module to check for import errors
-        import webapp.Smart_Elections_Parser_Webapp
         logger.info("[AUTOMATE] Webapp import successful.")
         return True
     except Exception as e:

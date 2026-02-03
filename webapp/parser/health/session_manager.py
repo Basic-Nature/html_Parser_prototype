@@ -534,3 +534,114 @@ class SessionManager:
         self._ip_ua_to_session = {k: v for k, v in self._ip_ua_to_session.items() if v != session_id}
         self._thread_session_map = {k: v for k, v in self._thread_session_map.items() if v != session_id}
         self._principal_to_session = {k: v for k, v in self._principal_to_session.items() if v != session_id}
+
+    # ------------------------------------------------------------------
+    # Session branching and multi-tenant isolation support
+    # ------------------------------------------------------------------
+    def validate_principal_url_access(
+        self,
+        session_id: str,
+        url: str,
+        access_type: str = "view"
+    ) -> tuple[bool, str]:
+        """
+        Validate multi-tenant URL access for a session's principal.
+        
+        Args:
+            session_id: Session to validate for
+            url: URL to check access for
+            access_type: Type of access ("view", "quarantine", "reject")
+        
+        Returns:
+            (allowed: bool, reason: str)
+        
+        Multi-tenant safety:
+            - ROOT_ADMIN tier principals bypass (with audit logging)
+            - Other principals: checked against isolation branch
+        """
+        from webapp.parser.health.session_branching import validate_url_access
+        
+        meta = self.get_metadata(session_id)
+        if not meta:
+            return False, "invalid_session"
+        
+        principal = meta.get("principal")
+        principal_source = meta.get("principal_source")
+        
+        if not principal:
+            return False, "missing_principal"
+        
+        return validate_url_access(principal, url, access_type, principal_source)
+
+    def add_url_to_principal_isolation(
+        self,
+        session_id: str,
+        url: str,
+        status: str
+    ) -> bool:
+        """
+        Add URL to principal's isolation branch (quarantine or reject).
+        
+        Args:
+            session_id: Session to isolate for
+            url: URL to isolate
+            status: Isolation status ("quarantine" or "reject")
+        
+        Returns:
+            True if added, False otherwise.
+        """
+        from webapp.parser.health.session_branching import add_url_to_isolation
+        
+        meta = self.get_metadata(session_id)
+        if not meta:
+            return False
+        
+        principal = meta.get("principal")
+        if not principal:
+            return False
+        
+        return add_url_to_isolation(principal, url, status)
+
+    def get_principal_isolation_summary(self, session_id: str) -> dict[str, Any] | None:
+        """
+        Get isolation summary for session's principal (admin audit).
+        
+        Args:
+            session_id: Session to get summary for
+        
+        Returns:
+            Isolation branch summary dict, or None if not found.
+        """
+        from webapp.parser.health.session_branching import get_isolation_summary
+        
+        meta = self.get_metadata(session_id)
+        if not meta:
+            return None
+        
+        principal = meta.get("principal")
+        if not principal:
+            return None
+        
+        return get_isolation_summary(principal)
+
+    def cleanup_principal_isolation(self, session_id: str) -> bool:
+        """
+        Clean up isolation branch for session's principal (on logout).
+        
+        Args:
+            session_id: Session to clean up for
+        
+        Returns:
+            True if cleaned up, False otherwise.
+        """
+        from webapp.parser.health.session_branching import cleanup_principal_isolation
+        
+        meta = self.get_metadata(session_id)
+        if not meta:
+            return False
+        
+        principal = meta.get("principal")
+        if not principal:
+            return False
+        
+        return cleanup_principal_isolation(principal)

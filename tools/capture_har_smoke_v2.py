@@ -3,11 +3,12 @@
 
 Usage: python tools/capture_har_smoke_v2.py [url]
 """
-from playwright.sync_api import sync_playwright
 import json
 import os
-import time
 import sys
+import time
+
+from playwright.sync_api import sync_playwright
 
 OUT_DIR = os.path.join("tools", "debug_headless_output")
 os.makedirs(OUT_DIR, exist_ok=True)

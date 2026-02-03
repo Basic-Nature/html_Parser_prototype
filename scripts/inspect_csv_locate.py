@@ -1,4 +1,8 @@
-import importlib, os, sys, traceback
+import importlib
+import os
+import sys
+import traceback
+
 m = importlib.import_module('webapp.Smart_Elections_Parser_Webapp')
 # provide minimal globals
 m.INPUT_DIR = getattr(m, 'INPUT_DIR', os.path.abspath(os.path.join(os.getcwd(),'input')))

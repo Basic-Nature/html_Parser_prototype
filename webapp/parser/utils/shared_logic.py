@@ -9,10 +9,12 @@ import copy
 import difflib
 import gc
 import inspect
+import ipaddress
 import os
 import platform
 import re
 import shutil
+import socket
 import textwrap
 import time
 from pathlib import Path
@@ -36,7 +38,7 @@ from typing import (
     Union,
     runtime_checkable,
 )
-from urllib.parse import ParseResult, SplitResult
+from urllib.parse import ParseResult, SplitResult, urlparse
 
 import numpy as np
 import orjson
@@ -487,6 +489,115 @@ def safe_geturl(parsed: Union[ParseResult, SplitResult]) -> str:
         return getattr(parsed, "geturl", "")
     except Exception:
         return ""
+
+def _resolve_host_ips(host: str) -> List[str]:
+    ips: List[str] = []
+    try:
+        for res in socket.getaddrinfo(host, None):
+            if len(res) >= 5 and res[4]:
+                ip = res[4][0]
+                if ip and ip not in ips:
+                    ips.append(ip)
+    except Exception:
+        return []
+    return ips
+
+def safe_validate_external_url(
+    url: str,
+    *,
+    allowlist_suffixes: Optional[List[str]] = None,
+    allowlist_hosts: Optional[List[str]] = None,
+    enforce_allowlist: Optional[bool] = None,
+    block_private_ips: Optional[bool] = None,
+    allow_localhost: bool = False,
+    logger=logger,
+) -> tuple[bool, str]:
+    """
+    Validate external URLs against scheme, allowlists, and private IP blocks.
+    Returns (allowed, reason).
+    """
+    if not isinstance(url, str) or not url.strip():
+        return False, "empty_url"
+    try:
+        parsed = urlparse(url.strip())
+    except Exception:
+        return False, "parse_error"
+
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in {"http", "https"}:
+        return False, "invalid_scheme"
+    host = (parsed.hostname or "").strip().lower()
+    if not host:
+        return False, "missing_host"
+    if not allow_localhost and host in {"localhost", "localhost.localdomain"}:
+        return False, "localhost_blocked"
+
+    if allowlist_suffixes is None or allowlist_hosts is None or enforce_allowlist is None or block_private_ips is None:
+        try:
+            from ..config import (
+                URL_ALLOWLIST_HOSTS,
+                URL_ALLOWLIST_SUFFIXES,
+                URL_BLOCK_PRIVATE_IPS,
+                URL_ENFORCE_ALLOWLIST,
+            )
+            if allowlist_suffixes is None:
+                allowlist_suffixes = URL_ALLOWLIST_SUFFIXES
+            if allowlist_hosts is None:
+                allowlist_hosts = URL_ALLOWLIST_HOSTS
+            if enforce_allowlist is None:
+                enforce_allowlist = URL_ENFORCE_ALLOWLIST
+            if block_private_ips is None:
+                block_private_ips = URL_BLOCK_PRIVATE_IPS
+        except Exception:
+            if allowlist_suffixes is None:
+                allowlist_suffixes = []
+            if allowlist_hosts is None:
+                allowlist_hosts = []
+            if enforce_allowlist is None:
+                enforce_allowlist = False
+            if block_private_ips is None:
+                block_private_ips = True
+
+    allowlist_hosts = [h.strip().lower() for h in (allowlist_hosts or []) if h.strip()]
+    allowlist_suffixes = [s.strip().lower() for s in (allowlist_suffixes or []) if s.strip()]
+
+    if allowlist_hosts and host in allowlist_hosts:
+        pass
+    elif allowlist_suffixes:
+        matched = False
+        for suffix in allowlist_suffixes:
+            suffix_norm = suffix if suffix.startswith(".") else f".{suffix}"
+            if host.endswith(suffix_norm):
+                matched = True
+                break
+        if enforce_allowlist and not matched:
+            return False, "allowlist_blocked"
+    elif enforce_allowlist:
+        return False, "allowlist_blocked"
+
+    if block_private_ips:
+        ips = _resolve_host_ips(host)
+        if not ips:
+            if logger:
+                try:
+                    logger.warning({
+                        "level": "WARNING",
+                        "type": "security",
+                        "message": f"URL host did not resolve: {host}",
+                        "url": url,
+                    })
+                except Exception:
+                    pass
+            return False, "dns_unresolved"
+        for ip_str in ips:
+            try:
+                ip = ipaddress.ip_address(ip_str)
+            except Exception:
+                return False, "invalid_ip"
+            if not ip.is_global or ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False, "private_ip_blocked"
+
+    return True, "ok"
 
 def safe_extract(plugin: ExtractPlugin, page: Any, extraction_context: Any) -> List[Any]:
     """
@@ -2670,7 +2781,6 @@ def _resolve_targets(modules: list[dict], def_index: dict) -> tuple[list[dict], 
 
 def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], inbound: dict[str, list[dict]], root: Path) -> str:
     import re
-    import os
     
     # Diagram rendering constants
     MAX_DIAGRAM_EDGES = 15  # Maximum number of edges to show in mermaid diagrams

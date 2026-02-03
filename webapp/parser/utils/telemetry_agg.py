@@ -1,7 +1,7 @@
-import os
 import json
+import os
 import time
-from typing import Dict, Any
+from typing import Any, Dict
 
 try:
     from ..config import LOG_DIR

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Validate UI implementation changes"""
 
-import re
 
 # Quick validation of JavaScript changes
 js_file = 'webapp/static/js/ballot_lens_modern.js'

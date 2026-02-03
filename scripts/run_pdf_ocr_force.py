@@ -66,8 +66,8 @@ def main():
     _set_default_env_flags()
 
     # Import after env flags are set
-    from webapp.parser.utils.logger_singleton import logger
     from webapp.parser.html_election_parser import main as parser_main
+    from webapp.parser.utils.logger_singleton import logger
 
     logger.set_mode("cli")
 

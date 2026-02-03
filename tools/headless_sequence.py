@@ -1,5 +1,8 @@
-import os, time, json
+import json
+import os
+import time
 from pathlib import Path
+
 from playwright.sync_api import sync_playwright
 
 URL = os.environ.get('WEBAPP_URL', 'http://127.0.0.1:5000/')

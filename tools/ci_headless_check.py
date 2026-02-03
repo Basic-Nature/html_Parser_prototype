@@ -4,9 +4,10 @@
 Exits with code 0 on success, 2 on failure.
 Writes snapshot artifacts to `tools/debug_headless_output/` for debugging.
 """
+import json
 import os
 import sys
-import json
+
 from playwright.sync_api import sync_playwright
 
 

@@ -14,15 +14,14 @@ from collections import Counter
 from typing import Any, Iterable, Sequence
 
 from ..Context_Integration.Context_Library.constants import (
-    BALLOT_TYPES,
     BALLOT_INLINE_TOKEN_ALIASES,
-    TABLE_ANCHOR_LABELS,
-    PARTY_KEYWORDS,
+    BALLOT_TYPES,
     CONTEST_KEYWORDS,
+    PARTY_KEYWORDS,
+    TABLE_ANCHOR_LABELS,
     normalize_party_label,
 )
 from .header_utils import collapse_multiline_header
-
 
 _RECON_DEBUG_EVENTS: list[dict] = []
 

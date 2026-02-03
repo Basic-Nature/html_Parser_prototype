@@ -211,6 +211,66 @@ FORCE_PARSE_INPUT_FILE = os.environ.get("FORCE_PARSE_INPUT_FILE", "false").lower
 FORCE_PARSE_FORMAT = os.environ.get("FORCE_PARSE_FORMAT", "").strip().lower()
 MAX_URLS_DISPLAYED = os.environ.get("MAX_URLS_DISPLAYED")
 
+# === Security & Safety Limits ===
+try:
+    MAX_UPLOAD_SIZE_MB = max(1, int(os.environ.get("MAX_UPLOAD_SIZE_MB", "100")))
+except Exception:
+    MAX_UPLOAD_SIZE_MB = 100
+MAX_UPLOAD_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+try:
+    MAX_PDF_PAGES = max(1, int(os.environ.get("MAX_PDF_PAGES", "200")))
+except Exception:
+    MAX_PDF_PAGES = 200
+try:
+    MAX_CSV_ROWS = max(1000, int(os.environ.get("MAX_CSV_ROWS", "100000")))
+except Exception:
+    MAX_CSV_ROWS = 100000
+try:
+    MAX_XLSX_BYTES = max(1, int(os.environ.get("MAX_XLSX_BYTES", str(50 * 1024 * 1024))))
+except Exception:
+    MAX_XLSX_BYTES = 50 * 1024 * 1024
+try:
+    MAX_DOWNLOAD_BYTES = max(1, int(os.environ.get("MAX_DOWNLOAD_BYTES", str(100 * 1024 * 1024))))
+except Exception:
+    MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
+
+URL_ALLOWLIST_SUFFIXES = [
+    s.strip().lower()
+    for s in os.environ.get("URL_ALLOWLIST_SUFFIXES", ".gov,.us").split(",")
+    if s.strip()
+]
+URL_ALLOWLIST_HOSTS = [
+    s.strip().lower()
+    for s in os.environ.get("URL_ALLOWLIST_HOSTS", "").split(",")
+    if s.strip()
+]
+ALLOW_GOOGLE_DOCS = os.environ.get("ALLOW_GOOGLE_DOCS", "false").lower() in ("1", "true", "yes")
+GOOGLE_DOCS_ALLOWED_HOSTS = [
+    "docs.google.com",
+    "drive.google.com",
+    "spreadsheets.google.com",
+]
+if ALLOW_GOOGLE_DOCS:
+    for host in GOOGLE_DOCS_ALLOWED_HOSTS:
+        if host not in URL_ALLOWLIST_HOSTS:
+            URL_ALLOWLIST_HOSTS.append(host)
+URL_ENFORCE_ALLOWLIST = os.environ.get("URL_ENFORCE_ALLOWLIST", "true").lower() in ("1", "true", "yes")
+URL_BLOCK_PRIVATE_IPS = os.environ.get("URL_BLOCK_PRIVATE_IPS", "true").lower() in ("1", "true", "yes")
+try:
+    URL_MAX_REDIRECTS = max(0, int(os.environ.get("URL_MAX_REDIRECTS", "3")))
+except Exception:
+    URL_MAX_REDIRECTS = 3
+
+ALLOW_LEGACY_OUTPUT_DOWNLOAD = os.environ.get("ALLOW_LEGACY_OUTPUT_DOWNLOAD", "false").lower() in ("1", "true", "yes")
+try:
+    MAX_SOCKET_EVENT_BYTES = max(1024, int(os.environ.get("MAX_SOCKET_EVENT_BYTES", "65536")))
+except Exception:
+    MAX_SOCKET_EVENT_BYTES = 65536
+try:
+    MAX_SOCKET_LOG_BYTES = max(2048, int(os.environ.get("MAX_SOCKET_LOG_BYTES", "131072")))
+except Exception:
+    MAX_SOCKET_LOG_BYTES = 131072
+
 # Agent selection / navigation hardening
 ENABLE_SELENIUM_FALLBACK = os.environ.get("ENABLE_SELENIUM_FALLBACK", "false").lower() in ("1", "true", "yes")
 try:
@@ -847,3 +907,46 @@ def log_extraction_quality(
             "session_id": session_id,
         })
         return {}
+
+
+# === Verification Framework Configuration ===
+
+# Path to verification audit trail (DL2 → DL1 verification decisions)
+VERIFICATION_LOG_DIR = CONTEXT_LIBRARY_DIR / "verification"
+VERIFICATION_LOG_DIR.mkdir(parents=True, exist_ok=True)
+VERIFICATION_LOG_FILE = VERIFICATION_LOG_DIR / "verification_log.jsonl"
+
+# DL1/DL2 Verification Storage (Local Filesystem)
+# DL1: Human-verified ground truth (authoritative source of truth)
+# DL2: AI-extracted working dataset (subject to hallucination)
+# NOTE: Both DL1 and DL2 are now stored in CONTEXT_LIBRARY_DIR/verification
+# See webapp/parser/verification/local_dl_sync.py for sync management
+# (No external dependencies - completely local filesystem-based)
+
+# Verification workflow toggles
+ENABLE_VERIFICATION_FRAMEWORK = os.environ.get("ENABLE_VERIFICATION_FRAMEWORK", "true").lower() in ("1", "true", "yes")
+ALLOW_UNVERIFIED_EXPORTS = os.environ.get("ALLOW_UNVERIFIED_EXPORTS", "false").lower() in ("1", "true", "yes")
+
+# Verification confidence threshold for automatic DL1 promotion
+# (ADMIN_FULL_TRUST can override, but ROOT_ADMIN required for bypass)
+try:
+    MIN_VERIFICATION_CONFIDENCE = float(os.environ.get("MIN_VERIFICATION_CONFIDENCE", "0.85"))
+except Exception:
+    MIN_VERIFICATION_CONFIDENCE = 0.85
+
+# Maximum time to keep DL2 (extracted) rows before requiring verification
+# (0 = indefinite; > 0 = days before archival)
+try:
+    DL2_RETENTION_DAYS = max(0, int(os.environ.get("DL2_RETENTION_DAYS", "90")))
+except Exception:
+    DL2_RETENTION_DAYS = 90
+
+# System authorship & mission (immutable)
+SYSTEM_AUTHOR = "Juancarlos Barragan"
+SYSTEM_AUTHOR_DOB = "1996-03-18"
+SYSTEM_AUTHOR_LOCATION = "6858 S 12th Ave, Tucson, AZ"
+SYSTEM_GOVERNANCE_FILE = PROJECT_ROOT / "SYSTEM_GOVERNANCE.md"
+SYSTEM_MISSION = (
+    "Protect the voice of the people by preserving the accurate count of legitimate votes. "
+    "Detect unintentional data errors at acceptable thresholds."
+)

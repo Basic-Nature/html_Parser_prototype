@@ -13,10 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import os
 import time
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -34,7 +32,7 @@ except ImportError:
     TORCH_AVAILABLE = False
 
 try:
-    from transformers import pipeline, AutoTokenizer, AutoModel
+    from transformers import AutoModel, AutoTokenizer, pipeline
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
@@ -523,7 +521,7 @@ class IntegrityMonitor:
             # Atomic write
             atomic_write_json(self.context_library_path, clean_for_json(library))
             
-            logger.info(f"[IntegrityMonitor] Persisted high-priority health check to context library")
+            logger.info("[IntegrityMonitor] Persisted high-priority health check to context library")
             
         except Exception as e:
             logger.error(f"[IntegrityMonitor] Failed to persist to context library: {e}")

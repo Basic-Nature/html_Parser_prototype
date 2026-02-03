@@ -4,9 +4,9 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from webapp.parser.config import CONTEXT_LIBRARY_PATH
 from webapp.parser.Context_Integration.Integrity_check import print_integrity_summary
 from webapp.parser.Context_Integration.librarian import load_context_library
-from webapp.parser.config import CONTEXT_LIBRARY_PATH
 from webapp.parser.utils.logger_singleton import logger
 
 

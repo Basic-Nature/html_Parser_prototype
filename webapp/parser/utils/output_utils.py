@@ -10,23 +10,32 @@ import os
 # Output utilities for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
 import re
+from collections import deque
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import orjson
 import pandas as pd
 
-from ..config import BASE_DIR, OUTPUT_CACHE, OUTPUT_DIR, LOG_DIR
-from collections import deque
+from ..config import BASE_DIR, LOG_DIR, OUTPUT_CACHE, OUTPUT_DIR
 from .logger_singleton import logger
+from .pivot import transform_wide_to_smart_standard
 from .rawjson_utils import (
     extract_rawjson_enrichment_from_rows,
 )
 from .rawjson_utils import (
     offload_rawjson_to_ndjson as _shared_offload_rawjson_to_ndjson,
 )
-from .pivot import transform_wide_to_smart_standard
-from .shared_logic import safe_filename, safe_get, safe_get_first, safe_items, safe_lower, safe_resolve_path, safe_join_path, is_path_safe
+from .shared_logic import (
+    is_path_safe,
+    safe_filename,
+    safe_get,
+    safe_get_first,
+    safe_items,
+    safe_join_path,
+    safe_lower,
+    safe_resolve_path,
+)
 
 PERCENT_COL_REGEX = re.compile(r"(% Vote|Cumulative %|Percent Reported| - %)$", re.I)
 
@@ -541,7 +550,7 @@ def finalize_election_output(
     try:
         idxp = _build_csv_index(csv_path)
         if idxp:
-            meta['csv_index_path'] = idxp
+            context['csv_index_path'] = idxp
     except Exception:
         pass
 
@@ -711,7 +720,6 @@ def finalize_election_output(
 
         # Build/update daily manifest with most recent N entries (keep last 500)
         try:
-            from collections import deque as _dq
             manifest_path = exports_dir / f"exports-{datetime.now().strftime('%Y%m%d')}-manifest.json"
             # read last 500 lines from exports_file
             last_n = 500

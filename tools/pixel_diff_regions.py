@@ -1,5 +1,6 @@
-import os
 import json
+import os
+
 from PIL import Image, ImageChops
 
 OUT_DIR = os.path.join('tools', 'debug_screenshots')

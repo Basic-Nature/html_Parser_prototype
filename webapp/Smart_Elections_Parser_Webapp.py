@@ -41,7 +41,9 @@ SOCKETIO_CLIENT_CONFIG = {
     "pingTimeout": int(_SOCKETIO_ENGINE_OPTIONS["ping_timeout"] * 1000),
 }
 
+import csv
 import gzip
+import json
 import re
 import secrets
 import shutil
@@ -49,17 +51,14 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
 from threading import Event, Thread
 from typing import Callable, Tuple
 from urllib.parse import urlparse
 
 import orjson
 import psycopg2
-import json
-from psycopg2 import errors as pg_errors
-from sqlalchemy.exc import OperationalError
 from flask import (
     Flask,
     Response,
@@ -71,11 +70,13 @@ from flask import (
     request,
     send_file,
     send_from_directory,
-    url_for,
     session,
+    url_for,
 )
-import csv
-from werkzeug.exceptions import NotFound, HTTPException
+from psycopg2 import errors as pg_errors
+from sqlalchemy.exc import OperationalError
+from werkzeug.exceptions import HTTPException, NotFound
+
 # Socket.IO imports
 try:
     from flask_socketio import SocketIO, emit, join_room
@@ -104,13 +105,13 @@ last_contest_options = {}
 _tables_initialized = False
 
 # Local health/session utilities
-from webapp.parser.health.session_manager import SessionManager
 from webapp.parser.health.integrity_monitor import get_integrity_monitor
+from webapp.parser.health.session_manager import SessionManager
 from webapp.parser.utils.logger_singleton import logger, prompt
 from webapp.parser.utils.session_state import (
-    SessionState,
-    PipelinePhase,
     DEFAULT_PHASE_BY_STATE,
+    PipelinePhase,
+    SessionState,
     export_session_enums,
 )
 
@@ -123,57 +124,52 @@ except ImportError:
 
 # Import shared config constants and helper utilities used by many routes
 from webapp.parser.config import (
-    PROJECT_ROOT,
-    INPUT_DIR,
-    OUTPUT_DIR,
-    UPLOADS_DIR,
-    URL_LIST_FILE,
-    PROCESSED_URLS_FILE,
-    LOG_DIR,
-    RUN_HISTORY_FILE,
-    DATA_API_URL,
-    DEPLOY_ENV,
-    POSTGRES_DB,
-    POSTGRES_USER_RAW,
-    POSTGRES_PASSWORD_RAW,
-    POSTGRES_HOST,
-    POSTGRES_PORT,
-    SUPPORTED_EXTENSION_SET,
-    MAX_UPLOAD_BYTES,
-    MAX_UPLOAD_SIZE_MB,
-    MAX_PDF_PAGES,
-    MAX_CSV_ROWS,
-    MAX_XLSX_BYTES,
-    MAX_DOWNLOAD_BYTES,
-    URL_ALLOWLIST_SUFFIXES,
-    URL_ALLOWLIST_HOSTS,
-    URL_ENFORCE_ALLOWLIST,
-    URL_BLOCK_PRIVATE_IPS,
-    URL_MAX_REDIRECTS,
     ALLOW_GOOGLE_DOCS,
     ALLOW_LEGACY_OUTPUT_DOWNLOAD,
+    DATA_API_URL,
+    DEPLOY_ENV,
+    INPUT_DIR,
+    LOG_DIR,
+    MAX_CSV_ROWS,
+    MAX_PDF_PAGES,
     MAX_SOCKET_EVENT_BYTES,
     MAX_SOCKET_LOG_BYTES,
-)
-
-from webapp.parser.utils.shared_logic import (
-    safe_split,
-    safe_get,
-    safe_lower,
-    safe_strip,
-    safe_rsplit,
-    safe_sid,
-    safe_is_set,
-    safe_filename,
-    safe_validate_external_url,
+    MAX_UPLOAD_BYTES,
+    MAX_UPLOAD_SIZE_MB,
+    MAX_XLSX_BYTES,
+    OUTPUT_DIR,
+    POSTGRES_DB,
+    POSTGRES_HOST,
+    POSTGRES_PASSWORD_RAW,
+    POSTGRES_PORT,
+    POSTGRES_USER_RAW,
+    PROJECT_ROOT,
+    RUN_HISTORY_FILE,
+    SUPPORTED_EXTENSION_SET,
+    UPLOADS_DIR,
+    URL_ALLOWLIST_HOSTS,
+    URL_ALLOWLIST_SUFFIXES,
+    URL_BLOCK_PRIVATE_IPS,
+    URL_ENFORCE_ALLOWLIST,
+    URL_LIST_FILE,
 )
 from webapp.parser.utils.cert_utils import extract_client_principal
 from webapp.parser.utils.misc_utils import extract_url_and_label
-
+from webapp.parser.utils.shared_logic import (
+    safe_filename,
+    safe_get,
+    safe_is_set,
+    safe_lower,
+    safe_rsplit,
+    safe_sid,
+    safe_split,
+    safe_strip,
+    safe_validate_external_url,
+)
 from webapp.parser.web_pipeline import (
+    cancel_processing,
     cancellation_manager,
     process_urls_for_web,
-    cancel_processing,
 )
 
 # Health task security controls
@@ -276,7 +272,7 @@ TEST_METRICS_ROUTE_ENABLED = os.environ.get('ENABLE_TEST_METRICS_ROUTE', 'false'
 TEST_UI_ROUTES_ENABLED = os.environ.get('ENABLE_TEST_UI_ROUTES', 'false').lower() in ('1', 'true', 'yes') or os.environ.get('FLASK_ENV', '').lower() == 'development'
 if ENABLE_PROMETHEUS:
     try:
-        from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, REGISTRY
+        from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 
         @app.route('/metrics')
         def metrics():
@@ -312,7 +308,7 @@ if ENABLE_PROMETHEUS:
 # If Prometheus is enabled, try to import the internal metrics module so counters are registered
 if os.environ.get('ENABLE_PROMETHEUS', 'false').lower() in ('1', 'true', 'yes'):
     try:
-        import webapp.parser.utils.metrics_prom  # ensure counters are created on import
+        pass  # ensure counters are created on import
     except Exception:
         try:
             logger.debug({"level": "DEBUG", "type": "metrics", "message": "Failed to import metrics_prom on startup."})
@@ -2595,7 +2591,7 @@ def view_csv():
         parts.append(f"<h2>{esc(name)}</h2>")
         parts.append(f"<div class=\"pv\"><a href=\"/download_fs?root={esc(root)}&path={esc(subpath)}&name={esc(name)}\" target=\"_blank\">Download CSV</a>")
         parts.append(f" &nbsp; <form style=\"display:inline;margin-left:12px;\" method=\"get\" action=\"/view_csv\">\n<input type=\"hidden\" name=\"root\" value=\"{esc(root)}\">\n<input type=\"hidden\" name=\"path\" value=\"{esc(subpath)}\">\n<input type=\"hidden\" name=\"name\" value=\"{esc(name)}\">\nSearch: <input name=\"q\" value=\"{esc(q)}\"> <input type=\"submit\" value=\"Find\">\n</form>")
-        parts.append(f" &nbsp; <span style='margin-left:12px'>Filter page: <input id=\"inview-search\" placeholder=\"Filter visible rows...\" style=\"padding:4px 6px;border:1px solid #ccc;border-radius:4px\"></span></div>")
+        parts.append(" &nbsp; <span style='margin-left:12px'>Filter page: <input id=\"inview-search\" placeholder=\"Filter visible rows...\" style=\"padding:4px 6px;border:1px solid #ccc;border-radius:4px\"></span></div>")
 
         # pagination summary & controls
         total = total_matches
@@ -3321,7 +3317,7 @@ def api_quality_metrics():
             
             if len(results) >= limit:
                 break
-        except Exception as e:
+        except Exception:
             continue
     
     # Sort by timestamp (newest first)

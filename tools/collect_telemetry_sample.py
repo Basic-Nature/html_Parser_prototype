@@ -6,18 +6,15 @@ from __future__ import annotations
 
 import json
 import os
-import time
 import uuid
 
 try:
-    from webapp.parser.utils.telemetry import emit_telemetry_event, TELEMETRY_PATH
-    from webapp.parser.utils.logger_singleton import logger
+    from webapp.parser.utils.telemetry import TELEMETRY_PATH, emit_telemetry_event
 except Exception:
     # Fallback: try package-relative imports if run from different cwd
     import sys
     sys.path.insert(0, os.getcwd())
-    from webapp.parser.utils.telemetry import emit_telemetry_event, TELEMETRY_PATH
-    from webapp.parser.utils.logger_singleton import logger
+    from webapp.parser.utils.telemetry import TELEMETRY_PATH, emit_telemetry_event
 
 
 def main():

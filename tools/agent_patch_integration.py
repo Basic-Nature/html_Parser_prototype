@@ -10,8 +10,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Set
 
-from tools.agent_patch_utils import apply_patch_safe, _sha256_bytes
-
+from tools.agent_patch_utils import _sha256_bytes, apply_patch_safe
 
 HISTORY_PATH = Path(__file__).parent / "patch_history.jsonl"
 SUSPICIOUS_EXT = {".html", ".htm", ".js", ".css"}

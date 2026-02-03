@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 import os
+from contextlib import contextmanager
 from typing import Generator, List, Optional
 
 # webapp/parser/utils/db_utils.py

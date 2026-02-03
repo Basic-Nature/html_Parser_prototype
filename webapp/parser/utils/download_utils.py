@@ -6,16 +6,16 @@ from __future__ import annotations
 # ---------------------------------------------------------------
 import os
 from datetime import datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import orjson
 import requests
 
-from ..config import DOWNLOAD_MANIFEST, INPUT_DIR, OUTPUT_DIR
+from ..config import DOWNLOAD_MANIFEST, INPUT_DIR, MAX_DOWNLOAD_BYTES, OUTPUT_DIR, URL_MAX_REDIRECTS
 from ..Context_Integration.context_organizer import ContextOrganizer
 from ..utils.logger_singleton import logger
 from ..utils.misc_utils import file_hash
-from ..utils.shared_logic import safe_get
+from ..utils.shared_logic import safe_get, safe_validate_external_url
 
 
 def ensure_input_directory():
@@ -67,12 +67,12 @@ def is_already_downloaded(url, filename=None, check_hash=False):
                     return True
     return False
 
-def download_file(page_url, href, headers=None, context_info=None, check_hash=False):
+def download_file(page_url, href, headers=None, context_info=None, check_hash=False, filename_override: str | None = None):
     """
     Download the linked file and save it into the input directory.
     """
     ensure_input_directory()
-    filename = os.path.basename(href)
+    filename = (filename_override or os.path.basename(href) or "download").strip()
     save_path = os.path.join(INPUT_DIR, filename)
     file_url = urljoin(page_url, href)
     logger.info(f"[DEBUG][download_file] page_url={page_url}, href={href}, file_url={file_url}, save_path={save_path}")
@@ -81,10 +81,49 @@ def download_file(page_url, href, headers=None, context_info=None, check_hash=Fa
         return save_path
 
     try:
-        response = requests.get(file_url, headers=headers or {})
+        allowed, reason = safe_validate_external_url(file_url)
+        if not allowed:
+            raise ValueError(f"Blocked download URL: {reason}")
+
+        response = requests.get(file_url, headers=headers or {}, stream=True, allow_redirects=True, timeout=30)
         response.raise_for_status()
+
+        if len(response.history or []) > URL_MAX_REDIRECTS:
+            raise ValueError("Too many redirects during download")
+
+        origin_host = urlparse(file_url).netloc.lower()
+        for hop in response.history or []:
+            hop_url = getattr(hop, "url", "") or ""
+            if not hop_url:
+                continue
+            hop_host = urlparse(hop_url).netloc.lower()
+            if hop_host and hop_host != origin_host:
+                raise ValueError("Redirected to a different domain")
+            hop_allowed, hop_reason = safe_validate_external_url(hop_url)
+            if not hop_allowed:
+                raise ValueError(f"Redirect blocked: {hop_reason}")
+
+        final_url = getattr(response, "url", "") or file_url
+        final_host = urlparse(final_url).netloc.lower()
+        if final_host and final_host != origin_host:
+            raise ValueError("Final redirect host mismatch")
+
+        total = 0
+        max_bytes = int(MAX_DOWNLOAD_BYTES)
+        try:
+            content_len = response.headers.get("Content-Length") if hasattr(response, "headers") else None
+            if content_len and int(content_len) > max_bytes:
+                raise ValueError("Remote file exceeds size limit")
+        except Exception:
+            pass
         with open(save_path, "wb") as f:
-            f.write(response.content)
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValueError("Downloaded file exceeded size limit")
+                f.write(chunk)
         filehash = file_hash(save_path)
         logger.info(f"[DOWNLOAD] Downloaded: {filename} -> {INPUT_DIR}/")
         entry = {
@@ -111,7 +150,7 @@ def download_file(page_url, href, headers=None, context_info=None, check_hash=Fa
         update_download_manifest(entry)
         return None
 
-def download_multiple_files(page_url, href_list, confirmed: bool = True, context_info=None, check_hash=False):
+def download_multiple_files(page_url, href_list, confirmed: bool = True, context_info=None, check_hash=False, filename_override: str | None = None):
     """
     Download multiple files (given as a list of hrefs) to the input directory.
     Returns a list of file paths for successfully downloaded files.
@@ -122,12 +161,12 @@ def download_multiple_files(page_url, href_list, confirmed: bool = True, context
     ensure_input_directory()
     downloaded_files = []
     for href in href_list:
-        file_path = download_file(page_url, href, context_info=context_info, check_hash=check_hash)
+        file_path = download_file(page_url, href, context_info=context_info, check_hash=check_hash, filename_override=filename_override)
         if file_path:
             downloaded_files.append(file_path)
     return downloaded_files
 
-def download_confirmed_file(file_url: str, page_url: str, confirmed: bool = True, context_info=None, check_hash=False):
+def download_confirmed_file(file_url: str, page_url: str, confirmed: bool = True, context_info=None, check_hash=False, filename_override: str | None = None):
     """
     Download the file if confirmed by the user.
     If not confirmed, return None so the pipeline can skip to HTML handler.
@@ -135,7 +174,7 @@ def download_confirmed_file(file_url: str, page_url: str, confirmed: bool = True
     if not confirmed:
         logger.info("[DOWNLOAD] Download skipped by user.")
         return None
-    return download_file(page_url, file_url, context_info=context_info, check_hash=check_hash)
+    return download_file(page_url, file_url, context_info=context_info, check_hash=check_hash, filename_override=filename_override)
 
 def summarize_downloads():
     """Print a summary of all downloads from the manifest."""

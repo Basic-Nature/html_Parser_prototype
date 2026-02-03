@@ -47,8 +47,8 @@ from ..Context_Integration.librarian import load_context_library
 from ..utils.db_utils import get_engine
 from ..utils.logger_singleton import console, logger
 from ..utils.models import Base
-from .navigation_feedback_ingest import ingest_navigation_feedback
 from .integrity_monitor import get_integrity_monitor
+from .navigation_feedback_ingest import ingest_navigation_feedback
 
 # =============================================================================
 # LOCAL LEARNING SYSTEM: Election Data Integrity & Accuracy Preservation

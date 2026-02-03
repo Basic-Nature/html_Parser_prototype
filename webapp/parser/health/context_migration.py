@@ -6,7 +6,7 @@ import orjson
 
 from ..config import CACHE_DIR, CONTEXT_LIBRARY_DIR, LOG_DIR, OUTPUT_DIR
 from ..Context_Integration.librarian import clean_for_json
-from ..utils.db_utils import get_session, get_or_create_county, get_or_create_state
+from ..utils.db_utils import get_or_create_county, get_or_create_state, get_session
 from ..utils.html_scanner import export_context_cache_for_db
 from ..utils.logger_singleton import console
 from ..utils.models import (

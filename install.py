@@ -3,7 +3,6 @@
 Smart Elections Parser - Installation Script
 Automates dependency installation with proper error handling
 """
-import os
 import platform
 import subprocess
 import sys

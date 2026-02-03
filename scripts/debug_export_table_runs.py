@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, List
-
 from unittest.mock import patch
 
-from webapp.parser.utils import logger_singleton
 from webapp.parser.handlers.formats import json_handler
+from webapp.parser.utils import logger_singleton
 
 logger_singleton.set_log_level("ERROR")
 logger_singleton.logger.suppress(True)

@@ -1,4 +1,5 @@
 from playwright.sync_api import sync_playwright
+
 URL='http://127.0.0.1:5000/'
 with sync_playwright() as p:
     b=p.chromium.launch(headless=True)

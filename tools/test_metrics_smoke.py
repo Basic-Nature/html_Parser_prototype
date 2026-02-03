@@ -3,12 +3,11 @@ Smoke test: start the webapp with ENABLE_PROMETHEUS=true and verify /metrics ret
 and contains the expected metric names.
 """
 import os
-import time
 import subprocess
-import urllib.request
-import tempfile
-import shutil
 import sys
+import tempfile
+import time
+import urllib.request
 
 HOST = os.environ.get('TEST_HOST', '127.0.0.1')
 START_PORT = int(os.environ.get('TEST_PORT', '5000'))

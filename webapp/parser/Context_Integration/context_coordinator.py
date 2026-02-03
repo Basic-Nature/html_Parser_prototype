@@ -49,7 +49,6 @@ from ..utils.html_scanner import (
 from ..utils.logger_singleton import logger
 from ..utils.model_registry import ModelRegistry
 from ..utils.shared_logic import (
-    sync_type_and_election_types,
     keyphrase_match,
     normalize_county_name,
     normalize_state_name,
@@ -67,6 +66,7 @@ from ..utils.shared_logic import (
     safe_startswith,
     safe_strip,
     safe_tolist,
+    sync_type_and_election_types,
 )
 from ..utils.spacy_utils import extract_dates, extract_entities, extract_locations
 from .Context_Library.constants import (

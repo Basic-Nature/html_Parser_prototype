@@ -184,7 +184,7 @@ def _db_write_allowed() -> bool:
     if _db_readonly:
         if not _db_readonly_logged:
             console.print(
-                f"[yellow][EMBEDDING CACHE] DB is read-only (mode=ro); write operations will be skipped.[/yellow]",
+                "[yellow][EMBEDDING CACHE] DB is read-only (mode=ro); write operations will be skipped.[/yellow]",
                 highlight=False,
             )
             _db_readonly_logged = True

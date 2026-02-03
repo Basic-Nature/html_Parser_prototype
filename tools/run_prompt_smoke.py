@@ -1,6 +1,7 @@
-from playwright.sync_api import sync_playwright
-import time
 import os
+import time
+
+from playwright.sync_api import sync_playwright
 
 html_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'prompt_smoke.html'))
 file_url = 'file://' + html_path.replace('\\', '/')

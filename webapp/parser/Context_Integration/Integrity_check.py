@@ -23,6 +23,7 @@ from ..utils import misc_utils
 from ..utils.db_utils import get_session
 from ..utils.logger_singleton import console
 from ..utils.models import Alert
+from ..utils.privilege_tiers import PrivilegeTier
 from ..utils.shared_logic import (
     safe_all,
     safe_encode,
@@ -96,7 +97,9 @@ def detect_anomalies_with_ml(
     contamination: float = 0.05,
     n_estimators: int = 100,
     random_state: int = 42,
-    embedding_model=None
+    embedding_model=None,
+    trust_factors: Dict[str, Any] | None = None,
+    privilege_tier: PrivilegeTier | None = None
 ) -> Tuple[List[int], np.ndarray]:
     if not contexts:
         return [], np.array([])
@@ -111,13 +114,8 @@ def detect_anomalies_with_ml(
     le_county.fit(counties)
     le_type.fit(types)
     for c in contexts:
-        # Optionally add embedding features
-        emb = []
-        title = safe_get(c, "title", "")
-        if embedding_model and title:
-            emb_encoded = safe_encode(title) if hasattr(embedding_model, "encode") else embedding_model.encode([title])
-            emb = safe_tolist(emb_encoded[0] if isinstance(emb_encoded, (list, tuple)) and emb_encoded else emb_encoded)
-        features.append([
+        # Base features (7 dimensions)
+        base_features = [
             le_state.transform([safe_get(c, "state", "unknown")])[0],
             le_county.transform([safe_get(c, "county", "unknown")])[0],
             le_type.transform([safe_get(c, "type_", "unknown")])[0],
@@ -125,10 +123,43 @@ def detect_anomalies_with_ml(
             len(str(safe_get(c, "title", ""))),
             len(str(safe_get(c, "candidate", ""))) if safe_get(c, "candidate") else 0,
             len(str(safe_get(c, "party", ""))) if safe_get(c, "party") else 0,
-            # ...add more features as needed...
-            *emb
-        ])
+        ]
+        
+        # Trust factors (9 dimensions) - normalized to [0, 1]
+        trust_features = []
+        if trust_factors:
+            trust_features = [
+                float(trust_factors.get("verified_domain", False)),        # 0 or 1
+                float(trust_factors.get("gov_domain", False)),             # 0 or 1
+                float(trust_factors.get("ssl_valid", False)) if trust_factors.get("ssl_valid") is not None else 0.5,  # 0-1
+                float(trust_factors.get("suspicious_tld", False)),         # 0 or 1 (penality)
+                float(len(trust_factors.get("phishing_indicators", []))) / 10.0,  # 0-1 (normalized count)
+                float(trust_factors.get("historical_success", 0.0)),       # 0.0-1.0
+                float(trust_factors.get("admin_boost_applied", False)),    # 0 or 1
+                float(trust_factors.get("domain_mimicry", {}).get("detected", False)),  # 0 or 1
+                float(trust_factors.get("allowlist_match", False)),        # 0 or 1
+            ]
+        else:
+            # Default to neutral values (0.5) if no trust factors provided
+            trust_features = [0.5] * 9
+        
+        # Embedding features (N dimensions, optional)
+        emb = []
+        title = safe_get(c, "title", "")
+        if embedding_model and title:
+            emb_encoded = safe_encode(title) if hasattr(embedding_model, "encode") else embedding_model.encode([title])
+            emb = safe_tolist(emb_encoded[0] if isinstance(emb_encoded, (list, tuple)) and emb_encoded else emb_encoded)
+        
+        # Combine all features (7 base + 9 trust + N embedding)
+        features.append(base_features + trust_features + emb)
+    
     X = np.array(features)
+    
+    # Admin bypass: For FULL_TRUST + verified domain, use stricter anomaly detection
+    if privilege_tier and privilege_tier >= PrivilegeTier.ADMIN_FULL_TRUST and trust_factors and trust_factors.get("verified_domain"):
+        # Only flag SEVERE anomalies (raise contamination threshold)
+        contamination = min(contamination, 0.01)  # Much stricter
+    
     clf = IsolationForest(
         contamination=contamination,
         n_estimators=n_estimators,
@@ -140,7 +171,13 @@ def detect_anomalies_with_ml(
     clusters = clustering.labels_
     return anomalies, clusters
 
-feature_names = ["state", "county", "year", "title_length"]
+feature_names = [
+    "state", "county", "type", "year", "title_length", "candidate_length", "party_length",
+    # Trust factor dimensions (9)
+    "verified_domain", "gov_domain", "ssl_valid", "suspicious_tld", "phishing_count",
+    "historical_success", "admin_boost_applied", "domain_mimicry", "allowlist_match",
+    # Embedding dimensions follow (N)
+]
 
 def election_integrity_checks(contests: List[Dict[str, Any]]) -> List[Tuple[str, Dict[str, Any]]]:
     seen = set()
@@ -181,13 +218,32 @@ def summarize_context_entities(contests) -> Dict[str, int]:
             entity_counter[label] += 1
     return dict(entity_counter)
 
-def analyze_contests(contests, expected_year=None, context_library_path=None) -> Dict[str, Any]:
+def analyze_contests(contests, expected_year=None, context_library_path=None, trust_factors: Dict[str, Any] | None = None, privilege_tier: PrivilegeTier | None = None) -> Dict[str, Any]:
     integrity_issues = election_integrity_checks(contests)
     date_anomalies = find_date_anomalies(contests, expected_year=expected_year)
-    anomalies, clusters = detect_anomalies_with_ml(contests)
+    anomalies, clusters = detect_anomalies_with_ml(contests, trust_factors=trust_factors, privilege_tier=privilege_tier)
     if context_library_path is None:
         context_library_path = CONTEXT_LIBRARY_PATH
     flagged = flag_suspicious_contests(contests, context_library_path=context_library_path)
+    
+    # Build tier-specific summary
+    tier_summary = {
+        "privilege_tier": privilege_tier.value if privilege_tier else None,
+        "tier_name": privilege_tier.name if privilege_tier else "UNKNOWN",
+        "trust_factors_present": bool(trust_factors),
+        "verified_domain": trust_factors.get("verified_domain") if trust_factors else None,
+        "admin_boost_applied": trust_factors.get("admin_boost_applied") if trust_factors else False,
+    }
+    
+    # Tier-specific anomaly thresholds (logging)
+    if privilege_tier:
+        if privilege_tier >= PrivilegeTier.ADMIN_FULL_TRUST and trust_factors and trust_factors.get("verified_domain"):
+            tier_summary["anomaly_strategy"] = "strict_verified (only severe anomalies flagged)"
+        elif privilege_tier == PrivilegeTier.ROOT_ADMIN:
+            tier_summary["anomaly_strategy"] = "all_anomalies_reviewed (root admin bypass)"
+        else:
+            tier_summary["anomaly_strategy"] = "standard (default thresholds)"
+    
     log_integrity_monitor({
         "type": "integrity_summary",
         "contests": len(contests or []),
@@ -195,13 +251,17 @@ def analyze_contests(contests, expected_year=None, context_library_path=None) ->
         "date_anomalies": len(date_anomalies),
         "ml_anomalies": len(anomalies or []),
         "flagged_suspicious": len(flagged or []),
+        "privilege_tier": tier_summary["privilege_tier"],
+        "trust_factors_present": tier_summary["trust_factors_present"],
     })
+    
     return {
         "integrity_issues": integrity_issues,
         "date_anomalies": date_anomalies,
         "ml_anomalies": anomalies,
         "clusters": clusters.tolist() if hasattr(clusters, "tolist") else clusters,
         "flagged_suspicious": flagged,
+        "tier_summary": tier_summary,
     }
 
 def auto_tune_contamination(

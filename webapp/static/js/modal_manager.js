@@ -1,6 +1,7 @@
+/* global _getPlaceholder, _deletePlaceholder */
 /* Minimal Modal Manager - scaffold implementation
-   Exposes `window.modalManager` with a small API per UX contract.
-   Lightweight, dependency-free, suitable for progressive migration.
+  Exposes `window.modalManager` with a small API per UX contract.
+  Lightweight, dependency-free, suitable for progressive migration.
 */
 (function () {
   class ModalManager {

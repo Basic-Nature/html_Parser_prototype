@@ -10,6 +10,7 @@ from typing import Any, Protocol
 # Core database models for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
 from sqlalchemy import (
+    JSON,  # portable JSON for all dialects
     Boolean,
     Column,
     DateTime,
@@ -23,7 +24,6 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     inspect,
-    JSON,  # portable JSON for all dialects
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.engine.base import Engine

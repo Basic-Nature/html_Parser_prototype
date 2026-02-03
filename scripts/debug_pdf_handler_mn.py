@@ -12,7 +12,6 @@ if str(ROOT) not in sys.path:
 from webapp.parser.Context_Integration.context_coordinator import ContextCoordinator  # noqa: E402
 from webapp.parser.handlers.formats import pdf_handler  # noqa: E402
 
-
 SESSION_ID = "mn_pdf_diagnostic"
 
 

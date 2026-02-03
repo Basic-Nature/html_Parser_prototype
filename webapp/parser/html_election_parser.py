@@ -3,10 +3,8 @@ from __future__ import annotations
 # ==============================================================
 # 🗳️ Smart Elections: HTML Election Results Parser
 # ==============================================================
-import json
 import os
 import re
-import sys
 import threading
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -21,44 +19,42 @@ from sqlalchemy.exc import OperationalError
 from .config import (
     CACHE_LOCK,
     CACHE_RESET,
-    ENABLE_SELENIUM_FALLBACK,
     ENABLE_AI_ANALYSIS,
     ENABLE_PARALLEL,
     ENABLE_REALTIME_STREAM,
+    ENABLE_SELENIUM_FALLBACK,
     INPUT_DIR,
+    MAX_URLS_DISPLAYED,
     NAV_MAX_ATTEMPTS,
     NAV_TIMEOUT_PLAYWRIGHT_MS,
     NAV_TIMEOUT_SELENIUM_MS,
-    MAX_URLS_DISPLAYED,
     OUTPUT_DIR,
     PROCESSED_URLS_FILE,
     UPLOADS_DIR,
     URL_LIST_FILE,
 )
-from .state_router import get_handler, preload_handler_map
 from .navigator import NavigationInstructionRunner, NavigationRecipeStore
-from .utils.captcha_tools import detect_cloudflare_challenge
+from .navigator.dom_snapshot import snapshot_mode_pipeline
+from .state_router import get_handler, preload_handler_map
 from .utils.browser_utils import (
+    SCROLL_METRIC_KEYS,
+    TABLE_DISCOVERY_SELECTOR,
     autoscroll_until_stable,
     safe_content,
-    sync_browser_pipeline,
-    sync_safe_browser_close,
-    TABLE_DISCOVERY_SELECTOR,
-    TABLE_DISCOVERY_SELECTOR_JS,
-    SCROLL_METRIC_KEYS,
-    safe_query_selector_all,
     safe_count,
     safe_locator,
+    safe_query_selector_all,
+    sync_browser_pipeline,
+    sync_safe_browser_close,
 )
-from .utils.seleniumbase_launcher import SELENIUMBASE_AVAILABLE, close_driver, launch_browser
+from .utils.captcha_tools import detect_cloudflare_challenge
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.dynamic_table_extractor import dynamic_table_extractor
 from .utils.format_router import prompt_and_handle_download, route_format_handler
 from .utils.logger_singleton import logger, prompt
-from .utils.telemetry import emit_telemetry_event
-from .utils.telemetry_agg import increment_counter
-from .utils.misc_utils import load_processed_urls, extract_url_and_label
+from .utils.misc_utils import extract_url_and_label, load_processed_urls
 from .utils.output_utils import finalize_election_output
+from .utils.seleniumbase_launcher import SELENIUMBASE_AVAILABLE, close_driver, launch_browser
 from .utils.shared_logic import (
     infer_state_county_from_url,
     safe_is_set,
@@ -67,6 +63,14 @@ from .utils.shared_logic import (
     safe_strip,
 )
 from .utils.table_builder import build_table_noninteractive
+from .utils.telemetry import emit_telemetry_event
+from .utils.telemetry_agg import increment_counter
+from .utils.url_trust_scorer import (
+    compute_trust_score,
+    should_quarantine,
+    should_reject,
+    should_use_snapshot_mode,
+)
 
 if CACHE_RESET and PROCESSED_URLS_FILE.exists():
     logger.warning("Deleting .processed_urls cache for fresh start...")
@@ -614,7 +618,7 @@ def process_format_override(
     })
     return None
 
-def ai_analyze_results(headers, data, contest, metadata, target_url=None, session_id=None):
+def ai_analyze_results(headers, data, contest, metadata, target_url=None, session_id=None, trust_factors=None, privilege_tier=None):
     if ENABLE_AI_ANALYSIS:
         try:
             from .Context_Integration.Integrity_check import (  # noqa: E402
@@ -634,11 +638,34 @@ def ai_analyze_results(headers, data, contest, metadata, target_url=None, sessio
                     c["_data"] = data
                     c["_metadata"] = metadata
 
-            results = analyze_contests(contests)
+            results = analyze_contests(contests, trust_factors=trust_factors, privilege_tier=privilege_tier)
             anomalies = results.get("ml_anomalies", [])
             flagged = results.get("flagged_suspicious", [])
             integrity_issues = results.get("integrity_issues", [])
             summary_stats = results.get("summary_stats", {})
+            tier_summary = results.get("tier_summary", {})
+
+            contest_count = len(contests) if isinstance(contests, list) else 0
+            anomalies_count = len(anomalies) if isinstance(anomalies, list) else 0
+            semantic_mismatch_count = len(flagged) if isinstance(flagged, list) else 0
+            denom = max(1, contest_count)
+            anomaly_rate = anomalies_count / denom
+            semantic_rate = semantic_mismatch_count / denom
+            weighted_score = (2.0 / 3.0) * anomaly_rate + (1.0 / 3.0) * semantic_rate
+
+            if isinstance(metadata, dict):
+                metadata["audit_signals"] = {
+                    "contest_count": contest_count,
+                    "anomaly_count": anomalies_count,
+                    "semantic_mismatch_count": semantic_mismatch_count,
+                    "anomaly_rate": anomaly_rate,
+                    "semantic_mismatch_rate": semantic_rate,
+                    "audit_weighted_score": weighted_score,
+                    "weights": {
+                        "anomaly": 2.0 / 3.0,
+                        "semantic_mismatch": 1.0 / 3.0,
+                    },
+                }
 
             if anomalies or flagged or integrity_issues:
                 msg = "AI analysis results"
@@ -651,6 +678,8 @@ def ai_analyze_results(headers, data, contest, metadata, target_url=None, sessio
                     "flagged": flagged,
                     "integrity_issues": integrity_issues,
                     "summary_stats": summary_stats,
+                    "tier_summary": tier_summary,
+                    "audit_signals": metadata.get("audit_signals") if isinstance(metadata, dict) else None,
                     "metadata": metadata
                 }
                 logger.error(payload_1)
@@ -663,6 +692,7 @@ def ai_analyze_results(headers, data, contest, metadata, target_url=None, sessio
                     "flagged": flagged,
                     "integrity_issues": integrity_issues,
                     "summary_stats": summary_stats,
+                    "tier_summary": tier_summary,
                     "metadata": metadata
                 }
                 logger.warning(payload_2)
@@ -674,6 +704,7 @@ def ai_analyze_results(headers, data, contest, metadata, target_url=None, sessio
                     "type": "info",
                     "message": msg,
                     "session_id": session_id,
+                    "tier_summary": tier_summary,
                     "metadata": metadata
                 }
                 logger.info(payload)
@@ -1194,6 +1225,195 @@ def orchestrate_url(
     nav_meta: Dict[str, Any] = {}
     agent_used = None
     state, county = infer_state_county_from_url(target_url)
+    
+    # Extract principal/tier info from kwargs
+    principal = kwargs.get("principal")
+    principal_source = kwargs.get("principal_source")
+    privilege_tier = None
+    if principal and principal_source:
+        try:
+            from .utils.privilege_tiers import get_principal_tier
+            privilege_tier = get_principal_tier(principal, principal_source)
+        except Exception:
+            privilege_tier = None
+    
+    # --- URL Trust Scoring (Step 1: Intelligent Verification) ---
+    trust_context = {
+        "state": state,
+        "county": county,
+        "source_url": target_url,
+    }
+    trust_score, trust_factors = compute_trust_score(
+        target_url, 
+        trust_context, 
+        session_id,
+        principal=principal,
+        principal_source=principal_source
+    )
+    
+    # Check if URL should be rejected outright (tier-aware)
+    if should_reject(trust_score, target_url, privilege_tier=privilege_tier):
+        logger.error({
+            "level": "ERROR",
+            "type": "trust_scorer",
+            "message": f"URL rejected due to low trust score ({trust_score}/100).",
+            "session_id": session_id,
+            "url": target_url,
+            "trust_score": trust_score,
+            "trust_factors": trust_factors,
+            "privilege_tier": privilege_tier.value if privilege_tier else None
+        })
+        mark_url_processed(target_url, status="rejected", session_id=session_id, trust_score=trust_score)
+        return
+    
+    # Check if URL should be quarantined for manual review (tier-aware)
+    if should_quarantine(trust_score, target_url, privilege_tier=privilege_tier):
+        logger.warning({
+            "level": "WARNING",
+            "type": "trust_scorer",
+            "message": f"URL quarantined for manual review (trust score: {trust_score}/100).",
+            "session_id": session_id,
+            "url": target_url,
+            "trust_score": trust_score,
+            "trust_factors": trust_factors,
+            "privilege_tier": privilege_tier.value if privilege_tier else None
+        })
+        mark_url_processed(target_url, status="quarantined", session_id=session_id, trust_score=trust_score)
+        # TODO: Step 6 - Automated quarantine review pipeline integration
+        return
+    
+    # Log trust decision for allowed URLs
+    use_snapshot = should_use_snapshot_mode(trust_score, target_url)
+    if use_snapshot:
+        logger.info({
+            "level": "INFO",
+            "type": "trust_scorer",
+            "message": f"Using DOM snapshot mode for medium-trust URL (score: {trust_score}/100).",
+            "session_id": session_id,
+            "url": target_url,
+            "trust_score": trust_score,
+            "privilege_tier": privilege_tier.value if privilege_tier else None
+        })
+        # Execute DOM snapshot mode pipeline (Step 2)
+        # This captures static HTML without JS execution for safety
+        snapshot_context = {
+            "state": state,
+            "county": county,
+            "url": target_url,
+            "trust_score": trust_score,
+            "trust_factors": trust_factors,
+            "principal": principal,
+            "principal_source": principal_source,
+            "privilege_tier": privilege_tier.value if privilege_tier else None,
+        }
+        
+        # Use Playwright to navigate but capture snapshot instead of full interaction
+        snapshot_browser = snapshot_page = None
+        try:
+            with sync_playwright() as p:
+                snapshot_browser, _, snapshot_page, _, _ = sync_browser_pipeline(
+                    p,
+                    target_url,
+                    cache_exit_callback=mark_url_processed,
+                    session_id=session_id,
+                    nav_timeout_ms=NAV_TIMEOUT_PLAYWRIGHT_MS,
+                    cancel_flag=cancel_flag,
+                )
+                
+                if cancel_flag is not None and safe_is_set(cancel_flag):
+                    logger.info({
+                        "level": "INFO",
+                        "type": "cancel",
+                        "message": f"Processing cancelled for {target_url}",
+                        "session_id": session_id,
+                    })
+                    _close_browser_quietly(snapshot_browser, session_id)
+                    return
+                
+                if not snapshot_page:
+                    logger.error({
+                        "level": "ERROR",
+                        "type": "dom_snapshot",
+                        "message": f"[DOMSnapshot] Could not open page for {target_url}",
+                        "session_id": session_id,
+                    })
+                    _close_browser_quietly(snapshot_browser, session_id)
+                    mark_url_processed(target_url, status="error", session_id=session_id)
+                    return
+                
+                # Execute snapshot mode pipeline
+                headers, data, contest, metadata = snapshot_mode_pipeline(
+                    snapshot_page,
+                    snapshot_context,
+                    session_id
+                )
+                
+                # Finalize output (same as normal pipeline)
+                from .Context_Integration.context_coordinator import ContextCoordinator
+                from .utils.output_utils import finalize_election_output
+                
+                coordinator = ContextCoordinator()
+                export_context = dict(snapshot_context)
+                export_context.update(metadata)
+                
+                try:
+                    export_result = finalize_election_output(
+                        headers=headers,
+                        data=data,
+                        coordinator=coordinator,
+                        contest=contest,
+                        state=state,
+                        county=county,
+                        context=export_context,
+                        enable_user_feedback=False,
+                        session_id=session_id,
+                    )
+                    
+                    metadata["output_file"] = export_result.get("csv_path")
+                    metadata["metadata_path"] = export_result.get("metadata_path")
+                    
+                    logger.info({
+                        "level": "INFO",
+                        "type": "dom_snapshot",
+                        "message": f"[DOMSnapshot] Output written to: {export_result.get('csv_path')}",
+                        "session_id": session_id,
+                        "output_file": export_result.get("csv_path")
+                    })
+                    
+                    ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id, trust_factors=trust_factors, privilege_tier=privilege_tier)
+                    stream_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
+                    mark_url_processed(target_url, status="success", session_id=session_id, snapshot_mode=True)
+                except Exception as exc:
+                    logger.error({
+                        "level": "ERROR",
+                        "type": "dom_snapshot",
+                        "message": f"[DOMSnapshot] Output finalization failed: {exc}",
+                        "session_id": session_id
+                    })
+                    mark_url_processed(target_url, status="error", session_id=session_id)
+        except Exception as exc:
+            logger.error({
+                "level": "ERROR",
+                "type": "dom_snapshot",
+                "message": f"[DOMSnapshot] Snapshot mode pipeline failed: {exc}",
+                "session_id": session_id
+            })
+            mark_url_processed(target_url, status="error", session_id=session_id)
+        finally:
+            _close_browser_quietly(snapshot_browser, session_id)
+        
+        # Early return after snapshot mode completes
+        return
+    else:
+        logger.info({
+            "level": "INFO",
+            "type": "trust_scorer",
+            "message": f"High-trust URL (score: {trust_score}/100) - proceeding with direct navigation.",
+            "session_id": session_id,
+            "url": target_url,
+            "trust_score": trust_score
+        })
+    
     strategies = [
         {"agent": "playwright", "timeout_ms": NAV_TIMEOUT_PLAYWRIGHT_MS},
     ]
@@ -1340,7 +1560,7 @@ def orchestrate_url(
         if agent_used == "selenium" and result is not None:
             headers, data, contest, metadata = result
             if all([headers, data, contest, metadata]):
-                ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
+                ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id, trust_factors=trust_factors, privilege_tier=privilege_tier)
                 stream_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
                 mark_url_processed(target_url, status="success", session_id=session_id)
             else:
@@ -1480,7 +1700,9 @@ def orchestrate_url(
             **nav_context,
             "url": target_url,
             "session_id": session_id,
-            "output_bypass": output_bypass
+            "output_bypass": output_bypass,
+            "principal": kwargs.get("principal"),
+            "principal_source": kwargs.get("principal_source"),
         }
         if result is None:
             active_state = context.get("state") or state
@@ -1634,7 +1856,7 @@ def orchestrate_url(
                 return
 
             if all([headers, data, contest, metadata]):
-                ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
+                ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id, trust_factors=trust_factors, privilege_tier=privilege_tier)
                 stream_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
                 output_file = metadata.get("output_file") if isinstance(metadata, dict) else None
                 if output_file:
@@ -1811,7 +2033,9 @@ def main(
                     "state": kwargs.get("state"),
                     "county": kwargs.get("county"),
                     "source_file": kwargs.get("force_parse_input_file"),
-                    "fallback_reason": "manual_override_failed"
+                    "fallback_reason": "manual_override_failed",
+                    "principal": kwargs.get("principal"),
+                    "principal_source": kwargs.get("principal_source"),
                 }
                 fallback = generate_generic_html_result(
                     context=context,

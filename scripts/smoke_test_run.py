@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
+import json
 import os
 import time
-import json
+
 import orjson
+import webapp.parser.html_election_parser as hep
 
 # Import the pipeline and config
 from webapp.parser import web_pipeline
 from webapp.parser.config import PROCESSED_URLS_FILE
-import webapp.parser.html_election_parser as hep
+
 
 # Stub out the heavy main() with a lightweight simulator
 def stub_main(**kwargs):

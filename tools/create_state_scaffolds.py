@@ -4,8 +4,8 @@ Each scaffold delegates to the `html_dynamic_fallback.parse` handler so the site
 
 Run: python tools/create_state_scaffolds.py
 """
-from pathlib import Path
 import importlib
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STATES_DIR = ROOT / 'webapp' / 'parser' / 'handlers' / 'states'
@@ -43,7 +43,9 @@ def main():
         except Exception:
             try:
                 # 3) direct attribute import style
-                from webapp.parser.Context_Integration.Context_Library import constants as const_attr  # type: ignore
+                from webapp.parser.Context_Integration.Context_Library import (
+                    constants as const_attr,  # type: ignore
+                )
                 states = list(getattr(const_attr, 'KNOWN_STATE_TO_COUNTY_MAP', {}).keys())
             except Exception:
                 # Final fallback: try reading constants.py directly from workspace

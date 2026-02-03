@@ -1,4 +1,6 @@
-import importlib, sys, os, json
+import importlib
+import os
+import sys
 
 try:
     m = importlib.import_module('webapp.Smart_Elections_Parser_Webapp')
@@ -40,7 +42,7 @@ try:
         text = r2.get_data(as_text=True)
         print('VIEWER SNIPPET', text[:1000].replace('\n',' '))
 
-except Exception as e:
+except Exception:
     import traceback
     traceback.print_exc()
     sys.exit(5)

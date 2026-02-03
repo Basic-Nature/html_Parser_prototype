@@ -1,5 +1,6 @@
-import time
 import sys
+import time
+
 try:
     import requests
 except Exception:

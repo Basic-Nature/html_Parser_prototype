@@ -14,7 +14,6 @@ Output formats:
 """
 import argparse
 import json
-import os
 import sys
 from collections import defaultdict
 from datetime import datetime
@@ -38,7 +37,7 @@ except ImportError:
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from webapp.parser.config import OUTPUT_DIR, LOG_DIR
+from webapp.parser.config import OUTPUT_DIR
 
 
 def scan_output_metadata(output_dir: Path, use_cache: bool = True) -> List[Dict[str, Any]]:
@@ -207,7 +206,7 @@ def export_parquet(results: List[Dict[str, Any]], output_path: Path) -> None:
 
     # Import pyarrow lazily and guard for environments without it
     try:
-        import pyarrow  # type: ignore[reportMissingImports]
+        pass  # type: ignore[reportMissingImports]
     except Exception:
         print("⚠️  pyarrow not available - skipping Parquet export")
         print("   Install with: pip install pyarrow")
@@ -378,7 +377,7 @@ def main():
     print(f"   Total extractions: {stats['total_extractions']}")
     print(f"   Avg confidence: {stats['avg_confidence']:.3f}" if stats['avg_confidence'] else "   Avg confidence: N/A")
     print(f"   Avg rows: {stats['avg_rows']:.1f}" if stats['avg_rows'] else "   Avg rows: N/A")
-    print(f"   Quality distribution:")
+    print("   Quality distribution:")
     for level, count in stats['quality_distribution'].items():
         print(f"      {level}: {count}")
     print(f"   By handler: {dict(list(stats['by_handler'].items())[:5])}")

@@ -1,10 +1,11 @@
+/* eslint-env jest */
 const fs = require('fs');
-const vm = require('vm');
+const _vm = require('vm');
 const path = require('path');
 
 describe('Placeholder migration helpers (integration)', () => {
   const filePath = path.join(__dirname, '..', 'ballot_lens_modern.js');
-  let sandbox = null;
+  let _sandbox = null;
   let code = null;
 
   beforeAll(() => {

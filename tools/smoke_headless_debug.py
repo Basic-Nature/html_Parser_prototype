@@ -1,7 +1,7 @@
-from playwright.sync_api import sync_playwright
-import time
 import json
 import os
+
+from playwright.sync_api import sync_playwright
 
 OUT_DIR = os.path.join("tools", "debug_headless_output")
 os.makedirs(OUT_DIR, exist_ok=True)

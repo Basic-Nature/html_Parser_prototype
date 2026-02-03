@@ -7,9 +7,8 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 import orjson
-
-from webapp.parser.Context_Integration.librarian import clean_for_json
 from webapp.parser.config import OUTPUT_DIR
+from webapp.parser.Context_Integration.librarian import clean_for_json
 from webapp.parser.utils.db_utils import (
     create_batch_metadata,
     create_warehouse_election_result,

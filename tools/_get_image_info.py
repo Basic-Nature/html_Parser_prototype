@@ -1,4 +1,6 @@
-import os,sys
+import os
+import sys
+
 p='tools/debug_headless_output/debug_screenshot.png'
 try:
     with open(p,'rb') as f:

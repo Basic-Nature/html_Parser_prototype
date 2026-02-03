@@ -11,6 +11,7 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 # Wait for server to be available
 import requests
 
+
 def wait_for_server(url, timeout=20):
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -19,7 +20,7 @@ def wait_for_server(url, timeout=20):
             if r.status_code < 500:
                 print(f"server OK: {url} (status={r.status_code})")
                 return True
-        except Exception as e:
+        except Exception:
             # print('.', end='', flush=True)
             pass
         time.sleep(1)
@@ -32,7 +33,7 @@ if not wait_for_server(URL, timeout=30):
 # Try Playwright
 try:
     from playwright.sync_api import sync_playwright
-except Exception as e:
+except Exception:
     print("Playwright not installed or not available. Install with: pip install playwright && playwright install")
     sys.exit(3)
 

@@ -994,6 +994,16 @@ def build_dynamic_table(
     except Exception as e:
         _emit("warning", "builder", "[TABLE_BUILDER] ensure division totals failed", session_id, error=str(e))
 
+    # --- Add Division Type column if requested (before canonical ordering) ---
+    if context.get("include_division_type_column") and merged_headers and merged_rows:
+        if "Division Type" not in merged_headers:
+            merged_headers.insert(0, "Division Type")
+            # Infer division type from context (default to "State" if no division info)
+            div_type = context.get("division_type") or "State"
+            for row in merged_rows:
+                row["Division Type"] = div_type
+            _emit("debug", "builder", "[TABLE_BUILDER] Added Division Type column", session_id, division_type=div_type)
+
     # Apply canonical ordering at the end for consistency
     try:
         merged_headers = _apply_canonical_order(merged_headers)

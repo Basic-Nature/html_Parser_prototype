@@ -5,7 +5,6 @@ import hashlib
 import json
 from typing import Mapping, Optional, Tuple
 
-
 CERT_HEADER_CANDIDATES = [
     "X-ARR-ClientCert",  # Azure App Service / ARR
     "X-Client-Cert",     # Generic reverse proxy
