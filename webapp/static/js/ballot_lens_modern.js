@@ -132,28 +132,9 @@
       }
       return new WeakMap();
     })();
-
-    function _getPlaceholder(el) {
-      try {
-        if (!el) return null;
-        // Migrate legacy property if present
-        if (el.__mm_placeholder) {
-          try { _mmPlaceholderGlobal.set(el, el.__mm_placeholder); } catch (e) { /* noop */ }
-          try { delete el.__mm_placeholder; } catch (e) { el.__mm_placeholder = null; }
-        }
-        return /** @type {Comment|null} */ (_mmPlaceholderGlobal.get(el) || null);
-      } catch (e) {
-        return null;
-      }
-    }
-
-    function _setPlaceholder(el, ph) {
-      try { if (el) _mmPlaceholderGlobal.set(el, ph); } catch (e) { /* noop */ }
-    }
-
-    function _deletePlaceholder(el) {
-      try { if (el) _mmPlaceholderGlobal.delete(el); } catch (e) { /* noop */ }
-    }
+    // Placeholder helpers are exposed as global functions later in the file
+    // to ensure they are available across modules and avoid redeclaration
+    // warnings from linters when defined inside this IIFE.
     /**
      * Safely set disabled on buttons/inputs
      * @param {Element|null|undefined} el
@@ -1033,20 +1014,20 @@ const _TablePreview = (() => {
     /** @type {string[]} */
     const keys = Object.keys(rows[0] || {});
 
-    let html = '<table class="preview-table"><thead><tr>';
-    keys.forEach(k => html += `<th>${escapeHtml(k)}</th>`);
-    html += '</tr></thead><tbody>';
+    const htmlParts = ['<table class="preview-table"><thead><tr>'];
+    keys.forEach(k => htmlParts.push(`<th>${escapeHtml(k)}</th>`));
+    htmlParts.push('</tr></thead><tbody>');
 
     rows.forEach(/** @param {PreviewRow} row */ (row) => {
-      html += '<tr>';
-      keys.forEach(k => html += `<td>${escapeHtml(String(row[k] || ''))}</td>`);
-      html += '</tr>';
+      htmlParts.push('<tr>');
+      keys.forEach(k => htmlParts.push(`<td>${escapeHtml(String(row[k] || ''))}</td>`));
+      htmlParts.push('</tr>');
     });
 
-    html += '</tbody></table>';
-    if (data.length > maxRows) html += `<p class="text-muted small">${data.length - maxRows} more rows...</p>`;
+    htmlParts.push('</tbody></table>');
+    if (data.length > maxRows) htmlParts.push(`<p class="text-muted small">${data.length - maxRows} more rows...</p>`);
 
-    return html;
+    return htmlParts.join('');
   }
   
   /* PreviewRow/PreviewData typedefs consolidated at top of file. */
@@ -1616,21 +1597,18 @@ function showFlaggedModal(flagged, report_path) {
         const metaStrJson = JSON.stringify(metaObj || {});
         const metaEsc = escapeHtml(metaStrJson);
         const metaDataAttr = encodeURIComponent(metaStrJson);
-        const urlText = escapeHtml(f.url || f['url'] || '');
-        const status = escapeHtml(f.status || '');
+        // url/status text values are used directly when building elements below
         const tr = document.createElement('tr');
         // build per-row extra actions (Open output / Jump to CSV row) when metadata provides paths/indexes
         const rowMeta = f.metadata_excerpt || {};
-        let openLinkHtml = '';
         const possibleFile = rowMeta.output_file || rowMeta.output_file_path || rowMeta.output_path || rowMeta.output_filename || '';
-        const baseName = possibleFile ? String(possibleFile).split(/[\\\/]/).pop() : '';
+        const baseName = possibleFile ? String(possibleFile).split(new RegExp('[\\\\/]')).pop() : '';
         if (possibleFile) {
-          openLinkHtml = `<a class="btn btn-xs" href="/download_fs?root=output&path=&name=${encodeURIComponent(baseName)}" target="_blank" rel="noopener">Open output</a>`;
+          /* element created below */
         }
-        let jumpBtnHtml = '';
         const rowIndex = rowMeta.output_row || rowMeta.output_row_index || rowMeta.row_index || '';
         if (rowIndex !== '' && rowIndex !== undefined && rowIndex !== null) {
-          jumpBtnHtml = `<button class="btn btn-xs jump-row" data-row="${escapeHtml(String(rowIndex))}">Jump to CSV row ${escapeHtml(String(rowIndex))}</button>`;
+          /* element created below */
         }
 
         // Build row cells safely without using innerHTML so user content isn't injected as HTML
@@ -1957,32 +1935,7 @@ async function runIntegrationTests() {
  * @param {unknown} payload
  * @returns {void}
  */
-function debugLog(label, payload) {
-  if (!CONFIG.debug) return;
-  try {
-    console.debug(label, payload);
-  } catch (e) { /* noop */ }
-}
-
-/**
- * Measure execution time of a callback when debug logging is enabled.
- * @template T
- * @param {string} label
- * @param {() => T} fn
- * @returns {T}
- */
-function debugPerf(label, fn) {
-  const enabled = !!CONFIG.debug;
-  const start = enabled ? (performance.now ? performance.now() : Date.now()) : 0;
-  try {
-    return fn();
-  } finally {
-    if (enabled) {
-      const elapsed = (performance.now ? performance.now() : Date.now()) - start;
-      console.debug(`[perf] ${label}: ${elapsed.toFixed(2)}ms`);
-    }
-  }
-}
+// Reuse `debugLog` and `debugPerf` defined earlier to avoid duplicate declarations.
 
 // ============================================
 // Log Level Colors
@@ -1999,7 +1952,7 @@ function debugPerf(label, fn) {
  * @typedef {Object.<string, LevelColor>} LevelColorMap
  */
 
-const LevelColors = (() => {
+const _LevelColors = (() => {
   /** @type {LevelColorMap} */
   const levelColors = {
     'INFO': { bg: '#ecf0f1', border: '#3498db', text: '#2c3e50' },
@@ -2102,7 +2055,7 @@ const LogTypeBadges = (() => {
  * P3.3: Search Highlighting
  * Highlight matching text in log messages
  */
-const SearchHighlighter = (() => {
+const _SearchHighlighter = (() => {
   /**
    * @typedef {Object} HighlightMatch
    * @property {string} original - original matched text
@@ -2640,31 +2593,31 @@ socket.on('run_summary', /**
     const counts = summary.status_counts || {};
     /** @type {number} */
     const total = summary.total_entries || 0;
-    let html = `<strong>Run:</strong> ${escapeHtml(data.session_id)} — <em>completed</em> <span class="small muted">(${new Date((data.timestamp || Date.now())*1000).toLocaleString()})</span>`;
-    html += `<div class="mt-2">Total: ${total} — `;
-    html += Object.entries(counts).map(([k,v])=>`${escapeHtml(k)}: ${v}`).join(' · ');
-    html += `</div>`;
+    let _html = `<strong>Run:</strong> ${escapeHtml(data.session_id)} — <em>completed</em> <span class="small muted">(${new Date((data.timestamp || Date.now())*1000).toLocaleString()})</span>`;
+    _html += `<div class="mt-2">Total: ${total} — `;
+    _html += Object.entries(counts).map(([k,v])=>`${escapeHtml(k)}: ${v}`).join(' · ');
+    _html += `</div>`;
     // flagged count
     if (typeof summary.flagged_count !== 'undefined') {
-      html += `<div class="mt-1">Flagged for review: ${Number(summary.flagged_count)}</div>`;
+      _html += `<div class="mt-1">Flagged for review: ${Number(summary.flagged_count)}</div>`;
     }
     // confidence metrics
     /** @type {RunConfidenceMetrics} */
     const conf = summary.confidence_metrics || {};
     if (conf && conf.count) {
-      html += `<div class="mt-1">Confidence — avg: ${Number(conf.avg).toFixed(2)} min: ${Number(conf.min).toFixed(2)} max: ${Number(conf.max).toFixed(2)} median: ${Number(conf.median).toFixed(2)} (n=${conf.count})</div>`;
+      _html += `<div class="mt-1">Confidence — avg: ${Number(conf.avg).toFixed(2)} min: ${Number(conf.min).toFixed(2)} max: ${Number(conf.max).toFixed(2)} median: ${Number(conf.median).toFixed(2)} (n=${conf.count})</div>`;
     }
     // errors list (collapsible)
     /** @type {RunErrorEntry[]} */
     const errors = summary.errors || [];
     if (Array.isArray(errors) && errors.length) {
-      html += `<div class="mt-2"><details><summary>Errors (${errors.length})</summary><ul class="small">`;
+      _html += `<div class="mt-2"><details><summary>Errors (${errors.length})</summary><ul class="small">`;
       for (const e of errors.slice(0, 20)) {
         const msg = e.error ? ` — ${escapeHtml(e.error)}` : '';
-        html += `<li>${escapeHtml(e.url || e['url'] || String(e))} (${escapeHtml(String(e.status || ''))})${msg}</li>`;
+        _html += `<li>${escapeHtml(e.url || e['url'] || String(e))} (${escapeHtml(String(e.status || ''))})${msg}</li>`;
       }
-      if (errors.length > 20) html += `<li class="muted small">...and ${errors.length-20} more</li>`;
-      html += `</ul></details></div>`;
+      if (errors.length > 20) _html += `<li class="muted small">...and ${errors.length-20} more</li>`;
+      _html += `</ul></details></div>`;
     }
     // flagged_details (expanded, limited view)
     /** @type {FlaggedDetail[]} */
@@ -2673,7 +2626,7 @@ socket.on('run_summary', /**
       // store last flagged set for modal access
       window.__lastRunFlagged = flagged;
       window.__lastRunReportPath = data.report_path || '';
-      html += `<div class="mt-2"><details><summary>Flagged Details (${flagged.length})</summary><ul class="small flagged-list">`;
+      _html += `<div class="mt-2"><details><summary>Flagged Details (${flagged.length})</summary><ul class="small flagged-list">`;
       for (const f of flagged.slice(0, 20)) {
         const reasons = Array.isArray(f.reasons) ? f.reasons.join(', ') : (f.reasons || '');
         const meta = f.metadata_excerpt ? escapeHtml(JSON.stringify(f.metadata_excerpt)) : '';
@@ -2687,11 +2640,11 @@ socket.on('run_summary', /**
           const href = `/download_fs?root=output&path=reports&name=${encodeURIComponent(name)}`;
           reportLink = ` <a href="${href}" target="_blank" rel="noopener">View report</a>`;
         }
-        html += `<li><strong>${urlText}</strong>${when} — ${escapeHtml(f.status || '')} — ${escapeHtml(reasons)}${reportLink}<pre class="muted small pre-wrap mt-6px">${meta}</pre></li>`;
+        _html += `<li><strong>${urlText}</strong>${when} — ${escapeHtml(f.status || '')} — ${escapeHtml(reasons)}${reportLink}<pre class="muted small pre-wrap mt-6px">${meta}</pre></li>`;
       }
-      if (flagged.length > 20) html += `<li class="muted small">...and ${flagged.length-20} more</li>`;
-      html += `</ul></details></div>`;
-      html += `<div class="mt-1"><button id="btnViewFlagged" class="btn btn-sm btn-primary">View flagged details</button></div>`;
+      if (flagged.length > 20) _html += `<li class="muted small">...and ${flagged.length-20} more</li>`;
+      _html += `</ul></details></div>`;
+      _html += `<div class="mt-1"><button id="btnViewFlagged" class="btn btn-sm btn-primary">View flagged details</button></div>`;
     }
     if (data.report_path) {
       const parts = data.report_path.replace(/\\/g, '/').split('/');
