@@ -1,0 +1,122 @@
+# Common Terms in Election Result Tables
+# Authority: Observed in official SoS result exports
+# Source: Real-world election result tables from state SoS websites
+# Updated: 2026-02-03
+# Trust Score: 0.90
+# Maintenance: Update bi-weekly during election season (add new terms as observed)
+# Last Verified By: result_analysis_team
+#
+# Format: One term per line (grouped by semantic category)
+# Rules:
+#   - These are header keywords used in result tables
+#   - One per line only
+#   - Group by category for organization
+#   - Include variations of common headers
+#
+# Purpose: Vocabulary for header matching and normalization
+# These terms help the parser recognize table columns even if exact names vary
+
+# Candidate Information
+Candidate
+Candidate Name
+Full Name
+Name
+Nominee
+
+# Office/Contest Information
+Office
+Office Title
+Race
+Contest
+Contest Name
+Contest Description
+District
+District Number
+
+# Party & Affiliation
+Party
+Party Affiliation
+Party Name
+Designation
+
+# Vote Tallies
+Votes
+Votes Received
+Votes Cast
+Vote Count
+Total
+Total Votes
+Vote Total
+Ballots
+Ballots Cast
+Valid Ballots
+
+# Percentages & Proportions
+Percent
+Percentage
+Vote Percentage
+Vote Percent
+Vote %
+Vote %age
+Percent of Votes
+
+# Comparative Metrics
+Margin
+Vote Margin
+Margin of Victory
+Spread
+Difference
+
+# Election-Specific Terms
+Blank Votes
+Blank Ballots
+Over Votes
+Over Vote
+Invalid Votes
+Invalid
+Scattering
+Write-in Votes
+Write-in Count
+
+# Precinct & Geographic Terms
+Precinct
+Precinct Number
+Precinct ID
+Precinct Number Reporting
+Precincts Reporting
+Precincts Total
+Precincts Reporting Pct
+County
+County Name
+District
+District Name
+
+# Administrative Terms
+Registered Voters
+Voter Registration
+Ballots Issued
+Ballots Cast
+Turnout
+Voter Turnout
+Turnout Percent
+Poll Place Votes
+Mail Votes
+Mail-in Votes
+Early Votes
+Early Vote
+Absentee Votes
+Provisional Votes
+Polling Place
+Vote Type
+Election Type
+
+# Timestamps
+Date
+Time
+Last Updated
+Updated
+Reporting Time
+Result Time
+
+# Note: Add new terms as you observe them in real election data
+# These help the parser be more robust to format variations

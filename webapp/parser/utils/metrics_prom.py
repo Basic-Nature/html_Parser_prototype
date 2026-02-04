@@ -24,6 +24,23 @@ try:
         _counters['fallbacks'] = Counter('smart_fallbacks_total', 'Fallback extractions')
         _counters['tables_seen_total'] = Counter('smart_tables_seen_total', 'Total tables seen')
 
+        # Phase A: Decision Gate Metrics (Task 2)
+        _counters['decision_proceed_total'] = Counter(
+            'smart_decision_proceed_total',
+            'Entities passed confidence checks (decision: PROCEED)',
+            labelnames=['entity_type', 'reason', 'state']
+        )
+        _counters['decision_caution_total'] = Counter(
+            'smart_decision_caution_total',
+            'Entities with mixed signals requiring manual review (decision: CAUTION)',
+            labelnames=['entity_type', 'reason', 'state']
+        )
+        _counters['decision_stop_total'] = Counter(
+            'smart_decision_stop_total',
+            'Entities failed confidence checks (decision: STOP)',
+            labelnames=['entity_type', 'reason', 'state']
+        )
+
         # Add a test-only counter for deterministic test increments
         _counters['test_metrics_increment_total'] = Counter('test_metrics_increment_total', 'Test-only: increments for /test/metrics/increment')
     else:

@@ -11,6 +11,7 @@ import logging
 # -----------------------------------------------------------------------------------
 import os
 import re
+import threading
 import time
 import traceback
 from contextlib import contextmanager
@@ -226,6 +227,55 @@ class SharedLogger(logging.Logger):
     def enable_console_echo_webapp(self, flag: bool):
         """Optionally mirror webapp emissions to console (off by default to prevent duplicates)."""
         self.console_echo_webapp = bool(flag)
+
+    # --- Decision Event Filtering (Task 1: Phase A) ---
+    # Track decision events to deduplicate within 5-minute window
+    _decision_event_cache: Dict[str, Tuple[float, str]] = {}  # (cache_key) -> (timestamp, decision_code)
+    _decision_filter_lock = threading.RLock()
+    DECISION_FILTER_WINDOW = 300  # 5 minutes in seconds
+    
+    def _filter_decision_noise(
+        self, 
+        entity_value: str, 
+        decision_code: str, 
+        current_time: Optional[float] = None
+    ) -> bool:
+        """
+        Deduplicate decision events: skip if same entity + same decision_code logged within 5 min.
+        
+        Args:
+            entity_value: The entity being decided (e.g., "office:Governor")
+            decision_code: The decision outcome (e.g., "PROCEED", "CAUTION", "STOP")
+            current_time: Unix timestamp (defaults to time.time())
+            
+        Returns:
+            True if event should be logged (not a duplicate), False if it should be skipped.
+        """
+        if not entity_value or not decision_code:
+            return True
+        
+        current_time = current_time or time.time()
+        cache_key = f"{entity_value}:{decision_code}"
+        
+        with self._decision_filter_lock:
+            if cache_key in self._decision_event_cache:
+                last_time, _ = self._decision_event_cache[cache_key]
+                if (current_time - last_time) < self.DECISION_FILTER_WINDOW:
+                    # Duplicate within window; skip
+                    return False
+            
+            # Log this event (new or older than window)
+            self._decision_event_cache[cache_key] = (current_time, decision_code)
+            
+            # Clean up old entries (prevent unbounded cache growth)
+            expired_keys = [
+                k for k, (ts, _) in self._decision_event_cache.items()
+                if (current_time - ts) > self.DECISION_FILTER_WINDOW
+            ]
+            for k in expired_keys:
+                del self._decision_event_cache[k]
+            
+            return True
 
     def _setup_python_logger(self) -> None:
         """Set up / update the internal Python logger with RichHandler (idempotent)."""

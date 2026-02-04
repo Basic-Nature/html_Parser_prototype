@@ -1,0 +1,38 @@
+# Party name aliases for fuzzy matching and normalization
+# Format: ABBREVIATION_OR_VARIANT -> CANONICAL_NAME
+# Used by safe_decide_party() for fuzzy matches and alias detection
+
+Dem -> Democratic Party
+Dems -> Democratic Party
+D -> Democratic Party
+Dem Party -> Democratic Party
+Democratic -> Democratic Party
+Dem. -> Democratic Party
+
+Rep -> Republican Party
+Reps -> Republican Party
+R -> Republican Party
+Rep Party -> Republican Party
+Republican -> Republican Party
+Rep. -> Republican Party
+GOP -> Republican Party
+
+Lib -> Libertarian Party
+Libertarian -> Libertarian Party
+Green -> Green Party
+Green Party USA -> Green Party
+Constitution -> Constitution Party
+American Ind -> American Independent Party
+Working Families -> Working Families Party
+Peace and Freedom -> Peace and Freedom Party
+Socialist -> Socialist Party
+Progressive -> Progressive Party
+Reform -> Reform Party
+
+# Non-partisan / Independent
+Ind -> Independent
+I -> Independent
+Non-Partisan -> Independent
+NP -> Independent
+Unaffiliated -> Independent
+No Party -> Independent

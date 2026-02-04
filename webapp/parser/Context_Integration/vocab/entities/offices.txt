@@ -1,0 +1,73 @@
+# Official Election Office Titles
+# Authority: State election codes + Secretary of State registries
+# Source: https://www.sos.ca.gov/elections/ (California example)
+# Updated: 2026-02-03
+# Trust Score: 0.99
+# Maintenance: Update annually when state adds new offices
+# Last Verified By: elections@ca.gov
+#
+# Format: One canonical office name per line
+# Rules:
+#   - No abbreviations (e.g., NOT "Pres.", "Sen.", etc.)
+#   - Use full official title
+#   - Case: Title Case
+#   - One per line only
+#
+# Note: Aliases (e.g., "President" vs. "Pres.") go in validators/office_aliases.txt
+
+# Federal Offices (in California ballot)
+President
+Vice President
+Senator
+House Representative
+
+# State Offices
+Governor
+Lieutenant Governor
+Attorney General
+Secretary of State
+State Treasurer
+State Controller
+Insurance Commissioner
+Superintendent of Public Instruction
+
+# State Legislative Offices
+State Senator
+State Assembly Member
+
+# County/Local Offices
+County Supervisor
+County Board Member
+County Assessor
+County Clerk
+County Recorder
+County Sheriff
+County Treasurer
+District Attorney
+Public Defender
+
+# City Offices
+Mayor
+City Council Member
+City Treasurer
+City Attorney
+
+# School Board & Special Districts
+School Board Member
+Community College Trustee
+Water Board Member
+Transit Board Member
+Harbor Commission Member
+Airport Commission Member
+
+# Judicial Offices
+Superior Court Judge
+Appellate Court Judge
+Supreme Court Justice
+District Court Judge
+
+# Other Constitutional Offices
+State Auditor
+State Auditor Controller
+Chief Justice
+Associate Justice

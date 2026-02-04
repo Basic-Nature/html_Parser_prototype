@@ -68,6 +68,42 @@ if TYPE_CHECKING:
 assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
     "STATE_MODULE_MAP and KNOWN_STATE_TO_COUNTY_MAP keys are out of sync!"
 
+
+# ==================================================================================
+# DECISION TUPLE TYPE FOR CONFIDENCE/CAUTION GATES
+# ==================================================================================
+
+class DecisionTuple(TypedDict, total=False):
+    """Result of a safe_decide_* function: (value, confidence, decision_code).
+    
+    Used throughout the pipeline for guarded decisions: URL trust, handler selection,
+    contest validation, anomaly quarantine, data ingestion. All decisions logged
+    to JSONL for audit trail.
+    
+    Fields:
+        value: The resolved entity/data (e.g., office name, jurisdiction ID, URL)
+        decision_code: "proceed" | "caution" | "stop"
+        confidence_score: ∈ [0, 1]; normalized weighted signal match
+        caution_score: ∈ [0, 1]; normalized weighted anomaly detection
+        override_score: ≥ 0; unbounded override magnitude
+        signals_observed: [SignalType]; which signals fired
+        anomalies_observed: [AnomalyType]; which anomalies detected
+        reasoning: Human-readable explanation
+        timestamp: ISO8601 decision timestamp
+        session_id: Audit linkage to request session
+    """
+    value: Any
+    decision_code: str                    # "proceed" | "caution" | "stop"
+    confidence_score: float
+    caution_score: float
+    override_score: float
+    signals_observed: List[str]           # Signal types (string names)
+    anomalies_observed: List[str]         # Anomaly types (string names)
+    reasoning: str
+    timestamp: str                        # ISO8601
+    session_id: Optional[str]
+
+
 class ExtractPlugin(Protocol):
     def extract(self, page: Any, extraction_context: Any) -> List[Any]: ...
 

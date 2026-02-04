@@ -1,0 +1,70 @@
+# Whitelist of verified, trusted election result sources
+# Format: One domain per line (lowercase)
+# Used by safe_decide_source() for source authority scoring
+
+# Federal
+sos.gov
+fec.gov
+election.gov
+eac.gov
+
+# State Election Officials (SOS and State Elections)
+sos.alabama.gov
+sos.alaska.gov
+azsos.gov
+sos.arkansas.gov
+elections.ca.gov
+sos.colorado.gov
+ct.gov
+delaware.gov
+dos.myflorida.com
+sos.ga.gov
+elections.hawaii.gov
+sos.idaho.gov
+cyberdriveillinois.com
+sos.in.gov
+elections.iowa.gov
+sos.kansas.gov
+elections.ky.gov
+sos.la.gov
+maine.gov
+elections.maryland.gov
+sec.state.ma.us
+michigan.gov
+sos.state.mn.us
+sos.mississippi.org
+sos.mo.gov
+sos.mt.gov
+sos.nebraska.gov
+sos.nv.gov
+sos.nh.gov
+nj.gov
+sos.state.nm.us
+elections.ny.gov
+ncsbe.gov
+sos.nd.gov
+sos.state.oh.us
+sos.ok.gov
+oregonvotes.org
+dos.pa.gov
+sos.ri.gov
+scvotes.gov
+sos.sd.gov
+tn.gov
+elections.texas.gov
+elections.utah.gov
+sos.vermont.gov
+elections.virginia.gov
+sos.wa.gov
+sos.wv.gov
+elections.wi.gov
+sos.wyoming.gov
+dcvotes.dc.gov
+
+# Major County Election Offices (sample)
+la-county.com
+sfelections.org
+sdvote.com
+sacvote.sos.ca.gov
+acvote.org
+sccgov.org

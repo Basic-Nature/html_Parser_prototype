@@ -1,0 +1,82 @@
+# Canonical US jurisdiction names
+# Format: STATE_ABBREVIATION | JURISDICTION_NAME | FIPS_CODE (where available)
+# This is a simplified flat list; production system should use FIPS registry
+
+# Federal Level
+United States
+Federal
+
+# State Level (50 states + DC)
+Alabama
+Alaska
+Arizona
+Arkansas
+California
+Colorado
+Connecticut
+Delaware
+Florida
+Georgia
+Hawaii
+Idaho
+Illinois
+Indiana
+Iowa
+Kansas
+Kentucky
+Louisiana
+Maine
+Maryland
+Massachusetts
+Michigan
+Minnesota
+Mississippi
+Missouri
+Montana
+Nebraska
+Nevada
+New Hampshire
+New Jersey
+New Mexico
+New York
+North Carolina
+North Dakota
+Ohio
+Oklahoma
+Oregon
+Pennsylvania
+Rhode Island
+South Carolina
+South Dakota
+Tennessee
+Texas
+Utah
+Vermont
+Virginia
+Washington
+West Virginia
+Wisconsin
+Wyoming
+District of Columbia
+
+# Sample County Jurisdictions (production should dynamically load from FIPS)
+# CA Counties
+Los Angeles County
+San Francisco County
+San Diego County
+Sacramento County
+Alameda County
+Santa Clara County
+
+# NY Counties
+New York County
+Kings County
+Queens County
+Bronx County
+Richmond County
+
+# TX Counties
+Harris County
+Dallas County
+Tarrant County
+Travis County

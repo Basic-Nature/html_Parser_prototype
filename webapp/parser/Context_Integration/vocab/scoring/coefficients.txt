@@ -1,0 +1,33 @@
+# Signal and Anomaly Coefficients (Reference)
+# Format: TYPE|NAME|WEIGHT|BASELINE|DESCRIPTION
+# This is a reference file; actual coefficients are hardcoded in entity_confidence_map.py
+
+# Signals (entity_id, entity_type, signal_type) -> weight, baseline_confidence
+Signal|EXACT_MATCH_VERIFIED|1.0|0.99|Exact match in official registry (FIPS, FEC, statute)
+Signal|EXACT_MATCH_CURATED|0.95|0.98|Exact match in curated list (SoS, community)
+Signal|FUZZY_MATCH_HIGH|0.75|0.85|Fuzzy Levenshtein >= 0.90
+Signal|FUZZY_MATCH_MEDIUM|0.50|0.70|Fuzzy Levenshtein 0.75-0.89
+Signal|FUZZY_MATCH_LOW|0.30|0.55|Fuzzy Levenshtein < 0.75
+Signal|CONTEXTUAL_MATCH|0.65|0.78|Inferred from surrounding data
+Signal|PATTERN_MATCH|0.45|0.60|HTML/CSV heuristic
+Signal|ALIAS_MATCH|0.80|0.88|Common abbreviation (Pres -> President)
+Signal|HEADER_ALIGNMENT|0.55|0.72|Column count/names match
+Signal|HANDLER_SUCCESS|0.70|0.80|Historical parse success rate
+
+# Anomalies (entity_id, anomaly_type) -> weight, baseline_caution
+Anomaly|MISMATCHED_TOTALS|1.0|0.90|Row/column count unexpected
+Anomaly|MISSING_CANDIDATE|0.85|0.85|Expected candidate absent
+Anomaly|SUSPICIOUS_HEADER|0.75|0.80|Unexpected column names
+Anomaly|VALUE_INCONSISTENCY|0.70|0.75|Data type mismatch, NaN
+Anomaly|TYPOSQUAT_PATTERN|1.0|0.95|Domain/name looks like typo
+Anomaly|SSL_CERTIFICATE_AGE|0.50|0.60|Old/expired cert
+Anomaly|CONFLICTING_SOURCES|0.80|0.85|Multiple sources disagree
+Anomaly|CONTEXTUAL_MISMATCH|0.65|0.70|State/county/contest mismatch
+
+# Override Triggers (override_score) -> increment_value
+Override|ADMIN_FLAG|0.30|Admin manually trusted/rejected
+Override|VERIFIED_SOURCE_CORRECTION|0.20|Matches official correction
+Override|ANOMALY_COUNT|0.15|Per anomaly beyond first
+Override|ML_MODEL_LOW_CONFIDENCE|0.15|Sentence-Transformers < 0.5
+Override|CONTEXTUAL_MISMATCH|0.10|State/county/contest mismatch
+Override|MULTIPLE_CORRECTIONS|0.10|Entity corrected > 2x in 30d

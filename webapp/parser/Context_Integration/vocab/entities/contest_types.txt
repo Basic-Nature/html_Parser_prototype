@@ -1,0 +1,49 @@
+# Election Result Contest Types
+# Authority: State election codes + official SoS definitions
+# Source: California Government Code §26000+ (example)
+# Updated: 2026-02-03
+# Trust Score: 0.99
+# Maintenance: Update annually when state adds new contest types
+# Last Verified By: state_sos@example.gov
+#
+# Format: One canonical contest type per line (grouped by category)
+# Rules:
+#   - Use official contest type names
+#   - Case: Title Case
+#   - One per line only
+#   - Group related types with section header comments
+#
+# Each line represents a type appearing in official election results
+
+# Primary Contests
+General Election
+Primary Election
+
+# Special Elections
+Special Election
+Runoff Election
+Special Runoff Election
+
+# Ballot Measures (Propositions)
+Proposition
+Bond Measure
+Recall Election
+Recall Candidate
+
+# Local/Regional
+County Election
+City Election
+District Election
+Special District Election
+
+# Judicial Elections
+Judicial Retention
+Judicial Contest
+
+# School Elections
+School Board Election
+School Measure
+
+# Note: Customize this list for your state's election types
+# Different states may have different contest types
+# Add types as they appear in official SoS result exports

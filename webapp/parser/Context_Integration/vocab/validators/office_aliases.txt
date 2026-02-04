@@ -1,0 +1,30 @@
+# Office name aliases for fuzzy matching and normalization
+# Format: ABBREVIATION -> CANONICAL_NAME
+# Used by safe_decide_office() for fuzzy matches and alias detection
+
+Pres -> President
+VP -> Vice President
+Sen -> U.S. Senator
+Rep -> U.S. Representative
+Gov -> Governor
+Lt. Gov -> Lieutenant Governor
+SOS -> Secretary of State
+AG -> Attorney General
+ST -> State Treasurer
+State Treas -> State Treasurer
+State Aud -> State Auditor
+State Comp -> State Comptroller
+State Leg -> State Senator
+State Rep -> State Representative
+House -> U.S. Representative
+House Mem -> U.S. Representative
+Cong -> U.S. Representative
+Judge -> District Court Judge
+Ct -> Court
+DA -> District Attorney
+Dist. Atty -> District Attorney
+County Comm -> County Commissioner
+County Super -> County Supervisor
+City Coun -> City Council Member
+Ald -> Alderman
+School Bd -> School Board Member

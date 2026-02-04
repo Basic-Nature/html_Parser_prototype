@@ -1,0 +1,41 @@
+# Recognized Political Parties in US Elections
+# Authority: Federal Election Commission (FEC) registry
+# Source: https://www.fec.gov/updates/election-data/ 
+# Updated: 2026-02-03
+# Trust Score: 0.98
+# Maintenance: Update annually (new parties via FEC registration)
+# Last Verified By: FEC registry
+#
+# Format: One canonical party name per line
+# Rules:
+#   - No abbreviations (e.g., NOT "D", "R", "Ind", etc.)
+#   - Use official registered name
+#   - Case: Title Case
+#   - One per line only
+#
+# Note: Aliases (e.g., "Democratic" vs. "Dem.") and codes (e.g., "D") 
+#       go in validators/party_aliases.txt
+
+# Major Parties
+Democratic Party
+Republican Party
+
+# State Recognized Parties (California example)
+American Independent Party
+Green Party
+Libertarian Party
+Peace and Freedom Party
+American Solidarity Party
+United States Pirate Party
+
+# Parties to monitor (may vary by state)
+American Party
+Constitution Party
+Decline to State
+No Party Preference
+Reform Party
+Socialist Workers Party
+Working Families Party
+
+# Note: Include parties that appear in official SoS ballots for your jurisdiction
+# Party names vary by state—customize for your target state(s)
