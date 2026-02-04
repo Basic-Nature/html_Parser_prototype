@@ -3041,7 +3041,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             if path:
                 try:
                     path = Path(path).name
-                except:
+                except Exception:
                     pass
             lines.append(f"- {key} ← {cnt} refs ({path})")
     else:
@@ -3068,7 +3068,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             try:
                 rel_p = Path(p).name
                 lines.append(f"- `{rel_p}`")
-            except:
+            except Exception:
                 lines.append(f"- `{p}`")
         if len(leaves) > 50:
             lines.append(f"- (+{len(leaves)-50} more hidden)")
@@ -3301,7 +3301,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                             try:
                                 rel_res = Path(res_path).name
                                 res = f" → {rel_res}:{di.get('lineno')}"
-                            except:
+                            except Exception:
                                 res = f" → {res_path}:{di.get('lineno')}"
                         break
                 lines.append(f"  - {tgt} (line {c.get('lineno','?')}){res}")
@@ -3319,7 +3319,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                 if src:
                     try:
                         src = Path(src).name
-                    except:
+                    except Exception:
                         pass
                 lines.append(f"  - {tgt} ← {src}:{e.get('src_line','?')}")
         lines.append("")
@@ -3373,7 +3373,7 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
                 try:
                     rel_path = Path(path).relative_to(root)
                     path = str(rel_path)
-                except:
+                except Exception:
                     pass
             todos = m.get("todo_lines", [])
             for ln, keyword, cleaned_txt in todos:
@@ -3794,7 +3794,7 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
                     rel_path = Path(path).relative_to(root)
                     path_str = str(rel_path).replace("\\", "/")
                     link = f"../{path_str}"
-                except:
+                except Exception:
                     path_str = path.replace("\\", "/")
                     link = path_str
             else:
