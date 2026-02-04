@@ -786,7 +786,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.self_heal:
         sys.exit(self_heal_context_library(args.max_retries, args.cooldown))
-def parse_filename_for_location(filename: str) -> dict:
+def parse_filename_for_location(filename: str) -> Dict[str, Any]:
     """
     Parse filename for location hints, returning a dict with 'state', 'county', 'location', 'contest'.
     Special handling for known patterns like 'New York' locations.

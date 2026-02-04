@@ -730,7 +730,6 @@ def prompt_and_handle_download(
                             fmt = fmt or _infer_format_from_attr_value(hint_attr, hint_val)
                             if fmt:
                                 break
-                    text_based_fmt = fmt
                     remote_fmt = None
                     remote_filename = None
                     cached_probe = probe_cache.get(resolved)

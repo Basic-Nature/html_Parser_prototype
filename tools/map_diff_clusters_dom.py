@@ -41,8 +41,12 @@ def compute_clusters(base_fp, cur_fp):
         for x in range(w):
             if visited[y][x] or diff_mask[y][x]==0:
                 continue
-            stack=[(x,y)]
-            minx=x; miny=y; maxx=x; maxy=y; area=0
+            stack = [(x, y)]
+            minx = x
+            miny = y
+            maxx = x
+            maxy = y
+            area = 0
             while stack:
                 cx,cy = stack.pop()
                 if cx<0 or cy<0 or cx>=w or cy>=h:
@@ -50,11 +54,15 @@ def compute_clusters(base_fp, cur_fp):
                 if visited[cy][cx] or diff_mask[cy][cx]==0:
                     continue
                 visited[cy][cx]=True
-                area+=1
-                if cx<minx: minx=cx
-                if cy<miny: miny=cy
-                if cx>maxx: maxx=cx
-                if cy>maxy: maxy=cy
+                area += 1
+                if cx < minx:
+                    minx = cx
+                if cy < miny:
+                    miny = cy
+                if cx > maxx:
+                    maxx = cx
+                if cy > maxy:
+                    maxy = cy
                 stack.extend([(cx+1,cy),(cx-1,cy),(cx,cy+1),(cx,cy-1)])
             if area>20:
                 clusters.append((minx,miny,maxx+1,maxy+1,area))
@@ -62,8 +70,12 @@ def compute_clusters(base_fp, cur_fp):
     mapped = []
     for c in clusters:
         x1,y1,x2,y2,a = c
-        ox1 = int(x1/scale); oy1 = int(y1/scale); ox2 = int(x2/scale); oy2 = int(y2/scale)
-        cx = (ox1+ox2)//2; cy = (oy1+oy2)//2
+        ox1 = int(x1/scale)
+        oy1 = int(y1/scale)
+        ox2 = int(x2/scale)
+        oy2 = int(y2/scale)
+        cx = (ox1+ox2)//2
+        cy = (oy1+oy2)//2
         mapped.append({'box':(ox1,oy1,ox2,oy2),'center':(cx,cy),'area':a})
     return mapped
 
@@ -101,7 +113,6 @@ def map_clusters_to_dom(pairs):
             mapped_info = []
             for idx, c in enumerate(clusters):
                 cx,cy = c['center']
-                vw = page.evaluate('() => window.innerWidth')
                 vh = page.evaluate('() => window.innerHeight')
                 # scroll so cy is vertically centered
                 scroll_y = max(0, cy - vh//2)

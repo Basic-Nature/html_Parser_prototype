@@ -381,7 +381,6 @@ def get_principal_decisions(
 ) -> list[Dict[str, Any]]:
     """Retrieve recent decisions by a principal (for audit review)."""
     entries = []
-    cutoff_date = datetime.now(timezone.utc).isoformat()[:10]  # YYYY-MM-DD
     
     for log_file in [
         ADMIN_FULL_TRUST_LOG,

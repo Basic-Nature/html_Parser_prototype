@@ -8,7 +8,7 @@ from typing import Any, DefaultDict, Dict, Iterable, List, Optional, Set, Tuple,
 
 import orjson
 
-from ...config import ENABLE_PARALLEL
+from ...config import ENABLE_PARALLEL  # type: ignore[attr-defined]
 from ...Context_Integration.Context_Library.constants import (
     BALLOT_TYPES,
     BALLOT_TYPES_SORT_ORDER,
@@ -84,16 +84,12 @@ _CONTEST_RX: re.Pattern = _build_contest_regex(CONTEST_KEYWORDS)
 
 
 def _canonical_contest_key(title: str) -> str:
-    if not isinstance(title, str):
-        return ""
     normalized = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
     return re.sub(r"\s+", " ", normalized)
 
 
 def _split_primary_title_for_grouping(title: str) -> tuple[str, str]:
     """Split an office title into (office, variant/locality) parts."""
-    if not isinstance(title, str):
-        return "", ""
     text = title.strip()
     if not text:
         return "", ""
@@ -389,7 +385,6 @@ def _fastpath_county_results(
     if not export.county_rows and not export.statewide_rows:
         return None
 
-    fname = os.path.basename(json_path).lower()
     parsed_location = parse_filename_for_location(os.path.basename(json_path))
     fallback_state = parsed_location.get('state', '')
     fallback_county = parsed_location.get('county', '')
@@ -515,7 +510,7 @@ def _fastpath_county_results(
     bundle_metadata: Optional[Dict[str, Any]] = None
     bundle_summary_text: Optional[str] = None
     if selected_metadata.get("bundle_mode") == "aggregate":
-        row_counts = Counter()
+        row_counts: Counter = Counter()
         for record in selected_county_rows + selected_statewide_rows:
             if getattr(record, "contest_id", None) is not None:
                 row_counts[str(record.contest_id)] += 1
@@ -971,7 +966,7 @@ def _fastpath_county_results(
     })
     
     # Add ML quality metrics
-    from ...config import log_extraction_quality
+    from ...config import log_extraction_quality  # type: ignore[attr-defined]
     quality = log_extraction_quality(
         headers_final, data_final, metadata, "json_handler", logger, session_id
     )
@@ -1245,7 +1240,6 @@ def parse_json_election_results(
     }
     headers, rows = expand_single_rawjson_row(headers, rows, context=pre_builder_context)
 
-    fname = os.path.basename(json_path).lower()
     parsed_location = parse_filename_for_location(os.path.basename(json_path))
     fallback_state = parsed_location.get('state', '')
     fallback_county = parsed_location.get('county', '')
@@ -1345,7 +1339,7 @@ def parse_json_election_results(
     })
     
     # Add ML quality metrics
-    from ...config import log_extraction_quality
+    from ...config import log_extraction_quality  # type: ignore[attr-defined]
     quality = log_extraction_quality(
         headers_final, data_final, metadata, "json_handler", logger, session_id
     )
@@ -1432,7 +1426,7 @@ def parse(
         }
         
         # Add ML quality metrics
-        from ...config import log_extraction_quality
+        from ...config import log_extraction_quality  # type: ignore[attr-defined]
         quality = log_extraction_quality(
             headers_final, data_final, metadata, "json_handler", logger, session_id
         )

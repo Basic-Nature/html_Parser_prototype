@@ -814,7 +814,6 @@ def _recover_stale_session(session_id: str, reason: str) -> bool:
         return False
     if safe_is_alive(session_id):
         return False
-    meta = session_manager.get_metadata(session_id) or {}
     last_active = session_manager.get_last_active(session_id) or 0
     age = time.time() - last_active
     if age < SESSION_STALE_RECOVERY_SEC:
@@ -2194,7 +2193,7 @@ def api_data_framework_exports():
             try:
                 # read all lines and take last `limit`
                 with open(exports_file, 'rb') as ef:
-                    lines = [l for l in ef if l.strip()]
+                    lines = [line for line in ef if line.strip()]
                 last_lines = lines[-limit:]
                 for line in last_lines:
                     try:
@@ -2711,7 +2710,7 @@ def _build_or_load_csv_index(csv_path: str, max_rows: int = 200000) -> tuple[int
             # quick validation: try reading first line
             try:
                 with open(idx_path, 'rb') as f:
-                    lines = f.readline()
+                    _ = f.readline()
                 # assume present
                 # count entries
                 with open(idx_path, 'rb') as f:
@@ -2724,7 +2723,7 @@ def _build_or_load_csv_index(csv_path: str, max_rows: int = 200000) -> tuple[int
         offsets = []
         with open(csv_path, 'rb') as fh:
             # read header line
-            header = fh.readline()
+            _ = fh.readline()
             pos = fh.tell()
             idx = 0
             while True:

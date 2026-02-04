@@ -185,7 +185,6 @@ def detect_breaking_chains(chain: FactorChain) -> List[Dict[str, Any]]:
     start_factors = chain.snapshots[0].factors
     
     for i in range(1, len(chain.snapshots)):
-        prev_factors = chain.snapshots[i - 1].factors
         current_factors = chain.snapshots[i].factors
         decision_name = chain.snapshots[i].decision_name
         

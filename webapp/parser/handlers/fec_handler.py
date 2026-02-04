@@ -134,7 +134,6 @@ def parse(page, coordinator, context: Dict[str, Any] | None = None, session_id: 
                                     if match:
                                         out['_fec_candidate_match'] = match
                                         if (match.get('score') or 0) >= 85:
-                                            cid = match.get('cand_id')
                                             rec = match.get('record')
                                             if rec:
                                                 out['_fec_candidate'] = rec

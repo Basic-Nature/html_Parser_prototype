@@ -326,7 +326,6 @@ def main():
     
     # Apply filters
     if args.min_confidence is not None:
-        before = len(results)
         results = [
             r for r in results
             if r.get("quality_metrics", {}).get("extraction_confidence", 0) >= args.min_confidence
@@ -334,12 +333,10 @@ def main():
         print(f"Filtered to {len(results)} extractions (confidence >= {args.min_confidence})")
     
     if args.handler:
-        before = len(results)
         results = [r for r in results if r.get("handler") == args.handler]
         print(f"Filtered to {len(results)} extractions (handler={args.handler})")
     
     if args.state:
-        before = len(results)
         results = [r for r in results if r.get("state") == args.state]
         print(f"Filtered to {len(results)} extractions (state={args.state})")
     

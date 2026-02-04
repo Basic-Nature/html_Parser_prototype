@@ -19,9 +19,11 @@ def short_elem(el):
         return f"ERROR:{el.get('error')[:60]}"
     parts = []
     tag = el.get('tag')
-    if tag: parts.append(tag.lower())
+    if tag:
+        parts.append(tag.lower())
     eid = el.get('id')
-    if eid: parts.append(f"#{eid}")
+    if eid:
+        parts.append(f"#{eid}")
     cls = el.get('class')
     if cls:
         clsshort = ' '.join(cls.split()[:2])

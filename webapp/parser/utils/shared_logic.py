@@ -3793,13 +3793,10 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
                 try:
                     rel_path = Path(path).relative_to(root)
                     path_str = str(rel_path).replace("\\", "/")
-                    link = f"../{path_str}"
                 except Exception:
                     path_str = path.replace("\\", "/")
-                    link = path_str
             else:
                 path_str = "unknown"
-                link = "#"
             display_path = path_str.replace("webapp/parser/", "") or path_str
             mod_name = display_path.replace("/", "_").replace(".py", "")
             # Emit a normal Markdown heading (avoid inline HTML to satisfy

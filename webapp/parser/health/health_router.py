@@ -250,8 +250,6 @@ class BotPipeline:
         llm_provider = str(LLM_PROVIDER or "huggingface").lower()
         llm_model = LLM_MODEL or "sentence-transformers/all-MiniLM-L6-v2"
         
-        # Initialize integrity monitor
-        monitor = get_integrity_monitor()
         if llm_api_key:
             args.extend([
                 "--llm-api-key", llm_api_key,
@@ -621,13 +619,6 @@ class BotPipeline:
             self.results["orchestration_plugins"] = "fail"
 
     def self_improve(self):
-        logs = logger.summarize_logs()
-        prompt = (
-            "You are an AI pipeline assistant. Given the following pipeline results and logs, "
-            "suggest improvements or next steps for the pipeline. "
-            "Results: " + orjson.dumps(self.results).decode() +
-            "\nLogs:\n" + logs[-1000:]
-        )
         suggestion = None
         # Use LOCAL LEARNING ENGINE for session health and improvement suggestions
         if LLM_PROVIDER == "huggingface":

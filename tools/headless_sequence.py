@@ -40,7 +40,6 @@ def find_and_click(page, selectors, timeout=1500):
         try:
             el = page.query_selector(sel)
             if el:
-                box = el.bounding_box()
                 # attempt DOM-dispatched MouseEvent first (bubbles, cancelable)
                 try:
                     res = page.evaluate("sel => { const el = document.querySelector(sel); if(!el) return false; el.dispatchEvent(new MouseEvent('click', {bubbles:true,cancelable:true, view:window})); return true; }", sel)

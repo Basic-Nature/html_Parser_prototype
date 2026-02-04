@@ -100,7 +100,7 @@ def install_requirements(dev_mode=False):
     # Install main requirements
     print_info("Installing main dependencies...")
     try:
-        result = subprocess.run(
+        subprocess.run(
             [sys.executable, "-m", "pip", "install", "-r", str(requirements_file)],
             check=True,
             capture_output=False
@@ -188,7 +188,7 @@ def verify_spacy_model():
     try:
         import spacy
         try:
-            nlp = spacy.load("en_core_web_sm")
+            spacy.load("en_core_web_sm")
             print_success("spaCy model 'en_core_web_sm' is installed")
             return True
         except OSError:

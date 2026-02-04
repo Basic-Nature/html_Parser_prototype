@@ -97,8 +97,6 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = ContextCoordinator()
-
-    parts = []
     # Use coordinator to try to fill missing info if available
     state = safe_get(metadata, "state", "") or (
         safe_get_first(getattr(coordinator, "get_states", lambda: [])(), "state", None, logger, default="") if coordinator and hasattr(coordinator, "get_states") and coordinator.get_states() else ""
@@ -528,7 +526,7 @@ def finalize_election_output(
             offsets = []
             with open(csv_path, 'rb') as fh:
                 # read header
-                header = fh.readline()
+                _ = fh.readline()
                 pos = fh.tell()
                 count = 0
                 while True:

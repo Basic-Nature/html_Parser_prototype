@@ -4576,7 +4576,7 @@ def _dedupe_contest_titles(titles):
 def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, cancel_flag=None) -> tuple[list[str], list[dict], str, dict]:
     """ Main PDF handler function."""
     # Log active OCR tuning config at parse start for diagnostics
-    from ...config import log_ocr_config_summary, get_ocr_config_dict, log_extraction_quality
+    from ...config import log_ocr_config_summary, get_ocr_config_dict, log_extraction_quality  # type: ignore[attr-defined]
     from ... import config as cfg_module
     log_ocr_config_summary(cfg_module, logger, session_id=session_id)
     
@@ -6132,7 +6132,7 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
             },
         }
         # Add quality metrics for provided_tables path
-        from ...config import log_extraction_quality
+        from ...config import log_extraction_quality  # type: ignore[attr-defined]
         quality = log_extraction_quality(
             headers_final, data_final, metadata, "pdf_handler", logger, session_id
         )

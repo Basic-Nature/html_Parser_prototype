@@ -5,7 +5,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple, cast
 
-from ...config import ENABLE_PARALLEL
+from ...config import ENABLE_PARALLEL  # type: ignore[attr-defined]
 from ...Context_Integration.Context_Library.constants import (
     CONTEST_TITLE_SKIP_PHRASES,
 )
@@ -200,9 +200,11 @@ def parse_csv_election_results(
     year = int(m.group(0)) if m else None
     if year is None:
         try:
-            year_candidate = int(html_context.get("year")) if html_context.get("year") else None
-            if year_candidate and 1800 <= year_candidate <= 2100:
-                year = year_candidate
+            year_raw = html_context.get("year")
+            if year_raw is not None:
+                year_candidate = int(year_raw)
+                if 1800 <= year_candidate <= 2100:
+                    year = year_candidate
         except (TypeError, ValueError):
             pass
     domain = safe_slug(os.path.basename(csv_path))
@@ -314,7 +316,7 @@ def parse_csv_election_results(
     })
     
     # Add ML quality metrics
-    from ...config import log_extraction_quality
+    from ...config import log_extraction_quality  # type: ignore[attr-defined]
     quality = log_extraction_quality(
         headers_final, data_final, metadata, "csv_handler", logger, session_id
     )
@@ -403,7 +405,7 @@ def parse(
         }
         
         # Add ML quality metrics
-        from ...config import log_extraction_quality
+        from ...config import log_extraction_quality  # type: ignore[attr-defined]
         quality = log_extraction_quality(
             headers_final, data_final, metadata, "csv_handler", logger, session_id
         )

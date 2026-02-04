@@ -52,10 +52,14 @@ def find_bright_regions(img, downscale=1):
                 if cv < bright_thresh and cv > dark_thresh:
                     continue
                 area += 1
-                if cx < minx: minx = cx
-                if cy < miny: miny = cy
-                if cx > maxx: maxx = cx
-                if cy > maxy: maxy = cy
+                if cx < minx:
+                    minx = cx
+                if cy < miny:
+                    miny = cy
+                if cx > maxx:
+                    maxx = cx
+                if cy > maxy:
+                    maxy = cy
                 # neighbours
                 stack.append((cx+1, cy))
                 stack.append((cx-1, cy))
@@ -73,7 +77,10 @@ def find_bright_regions(img, downscale=1):
             mx1,my1,mx2,my2,ma = m
             # if overlap or close
             if not (x2 < mx1-4 or x1 > mx2+4 or y2 < my1-4 or y1 > my2+4):
-                nx1 = min(x1,mx1); ny1 = min(y1,my1); nx2 = max(x2,mx2); ny2 = max(y2,my2)
+                nx1 = min(x1, mx1)
+                ny1 = min(y1, my1)
+                nx2 = max(x2, mx2)
+                ny2 = max(y2, my2)
                 merged[i] = (nx1,ny1,nx2,ny2, ma + a)
                 merged_flag = True
                 break
@@ -97,7 +104,8 @@ for fp in files:
     scale = 1.0
     if ow > MAX_W:
         scale = MAX_W/ow
-        w = int(ow*scale); h = int(oh*scale)
+        w = int(ow*scale)
+        h = int(oh*scale)
         small = im.resize((w,h))
     else:
         w,h = ow,oh
@@ -105,16 +113,23 @@ for fp in files:
     regions = find_bright_regions(small)
     print('Detected overlay-like regions by brightness (downscaled coords):', len(regions))
     for i, r in enumerate(regions[:8]):
-        x1,y1,x2,y2,a = r
+        x1, y1, x2, y2, a = r
         # map to original coords
-        ox1 = int(x1/scale); oy1 = int(y1/scale); ox2 = int(x2/scale); oy2 = int(y2/scale)
+        ox1 = int(x1/scale)
+        oy1 = int(y1/scale)
+        ox2 = int(x2/scale)
+        oy2 = int(y2/scale)
         print(f'  Region {i}: box={ox1,oy1,ox2,oy2} area~{a} (downscaled)')
         # sample mean color in original
-        crop = im.crop((ox1,oy1,ox2,oy2)).convert('RGB')
+        crop = im.crop((ox1, oy1, ox2, oy2)).convert('RGB')
         px = crop.getdata()
-        cnt = 0; rs=gs=bs=0
+        cnt = 0
+        rs = gs = bs = 0
         for p in px:
-            rs += p[0]; gs += p[1]; bs += p[2]; cnt +=1
+            rs += p[0]
+            gs += p[1]
+            bs += p[2]
+            cnt += 1
         if cnt:
             print('    mean RGB:', (rs//cnt, gs//cnt, bs//cnt))
         # check clipping
@@ -175,27 +190,38 @@ for fp in files:
                     if visited[y][x] or diff_mask[y][x]==0:
                         continue
                     # flood
-                    stack=[(x,y)]
-                    minx = x; miny = y; maxx = x; maxy = y; area=0
+                    stack = [(x, y)]
+                    minx = x
+                    miny = y
+                    maxx = x
+                    maxy = y
+                    area = 0
                     while stack:
                         cx,cy = stack.pop()
                         if cx<0 or cy<0 or cx>=bw or cy>=bh:
                             continue
                         if visited[cy][cx] or diff_mask[cy][cx]==0:
                             continue
-                        visited[cy][cx]=True
-                        area+=1
-                        if cx<minx: minx=cx
-                        if cy<miny: miny=cy
-                        if cx>maxx: maxx=cx
-                        if cy>maxy: maxy=cy
+                        visited[cy][cx] = True
+                        area += 1
+                        if cx < minx:
+                            minx = cx
+                        if cy < miny:
+                            miny = cy
+                        if cx > maxx:
+                            maxx = cx
+                        if cy > maxy:
+                            maxy = cy
                         stack.extend([(cx+1,cy),(cx-1,cy),(cx,cy+1),(cx,cy-1)])
                     if area>20:
                         clusters.append((minx,miny,maxx+1,maxy+1,area))
             print('Detected diff clusters (downscaled coords):', len(clusters))
-            for i,c in enumerate(clusters[:6]):
-                x1,y1,x2,y2,a = c
-                ox1=int(x1/scale); oy1=int(y1/scale); ox2=int(x2/scale); oy2=int(y2/scale)
+            for i, c in enumerate(clusters[:6]):
+                x1, y1, x2, y2, a = c
+                ox1 = int(x1/scale)
+                oy1 = int(y1/scale)
+                ox2 = int(x2/scale)
+                oy2 = int(y2/scale)
                 print(f'  Cluster {i}: box={ox1,oy1,ox2,oy2} area~{a} (downscaled)')
         except Exception as e:
             print('Diff analysis failed:', e)

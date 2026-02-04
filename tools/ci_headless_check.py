@@ -160,14 +160,11 @@ def main():
 
             # Click left toggle (use exposed floating if present) and verify overlay + sidebar open + body overflow
             try:
-                attempted = None
                 if try_selector(page, '#sidebarToggleFloating'):
                     page.click('#sidebarToggleFloating', timeout=8000, force=True)
-                    attempted = 'click_floating'
                 else:
                     # prefer programmatic hook if available; fallback to clicking the visible toggle
-                    invoked = page.evaluate("() => { if (typeof openLeft === 'function') { openLeft(); return 'openLeft'; } const el = document.querySelector('.sidebar-toggle'); if (el) { el.click(); return 'clicked'; } return null; }")
-                    attempted = invoked or 'none'
+                    page.evaluate("() => { if (typeof openLeft === 'function') { openLeft(); return 'openLeft'; } const el = document.querySelector('.sidebar-toggle'); if (el) { el.click(); return 'clicked'; } return null; }")
                 page.wait_for_timeout(900)
 
                 def _check_sidebar_open():

@@ -388,7 +388,6 @@ def flush_harmonic_score(score: HarmonicScore) -> bool:
     Returns True if flushed, False if write failed.
     """
     try:
-        start_time = time.time()
         with _FLUSH_LOCK:
             txt_entry = score.to_txt_entry()
             with open(HARMONIC_RANKINGS_FILE, "a", encoding="utf-8") as f:
@@ -396,7 +395,6 @@ def flush_harmonic_score(score: HarmonicScore) -> bool:
                 f.flush()
                 os.fsync(f.fileno())
         
-        elapsed_ms = (time.time() - start_time) * 1000
         return True
     except Exception as exc:
         logger.error({
@@ -433,7 +431,6 @@ def store_traceback_in_memory(chain_id: str, traceback_text: str) -> None:
         
         # Auto-expire chains older than 1 hour
         if len(_TRACEBACK_MEMORY) > 1000:
-            now_ts = time.time()
             # This is simplified; in production would parse timestamps
             to_delete = [cid for cid in list(_TRACEBACK_MEMORY.keys()) if len(_TRACEBACK_MEMORY[cid]) == 0]
             for cid in to_delete:

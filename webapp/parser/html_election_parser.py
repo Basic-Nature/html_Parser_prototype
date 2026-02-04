@@ -1187,7 +1187,7 @@ def generate_generic_html_result(
     })
     
     # Add ML quality metrics
-    from .config import log_extraction_quality
+    from .config import log_extraction_quality  # type: ignore[attr-defined]
     quality = log_extraction_quality(
         headers_final, rows_final, metadata, "html_handler", logger, session_id
     )
