@@ -617,6 +617,24 @@ except Exception as e:
         "session_id": None
     })
 
+# Register Data Assurance Blueprint
+try:
+    from webapp.parser.quality_assurance import qa_bp
+    app.register_blueprint(qa_bp)
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Data Assurance (DL1/DL2 Classification) blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register Data Assurance blueprint: {e}",
+        "session_id": None
+    })
+
 # 3. Session & State Management
 session_manager = SessionManager()
 

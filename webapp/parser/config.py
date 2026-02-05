@@ -133,6 +133,14 @@ else:
 # Auth mode: "password" (default) or "aad"
 POSTGRES_AUTH = os.environ.get("POSTGRES_AUTH", "password").lower()
 POSTGRES_AAD_USER = os.environ.get("POSTGRES_AAD_USER")  # DB role name created for your MI/user
+
+# === Verified Data Database Configuration (DL1/DL2 Classification) ===
+# Separate database for storing verified election data with full audit trail
+VERIFIED_DATA_DB_HOST = os.environ.get("VERIFIED_DATA_DB_HOST", os.environ.get("POSTGRES_HOST", "localhost"))
+VERIFIED_DATA_DB_PORT = os.environ.get("VERIFIED_DATA_DB_PORT", "5432")
+VERIFIED_DATA_DB_NAME = os.environ.get("VERIFIED_DATA_DB_NAME", "verified_data")
+VERIFIED_DATA_DB_USER = os.environ.get("VERIFIED_DATA_DB_USER", os.environ.get("POSTGRES_USER", "postgres"))
+VERIFIED_DATA_DB_PASSWORD = os.environ.get("VERIFIED_DATA_DB_PASSWORD", os.environ.get("POSTGRES_PASSWORD", ""))
  
 # === LLM & Pipeline Configuration ===
 
