@@ -5,6 +5,18 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'webapp/**'
+      - 'Dockerfile'
+      - '.Dockerfile'
+      - '.dockerignore'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+      - 'pyproject.toml'
+      - 'gunicorn.conf.py'
+      - 'install.py'
+      - 'install.sh'
+      - '.github/workflows/main_ballotlens.yml'
   workflow_dispatch:
 
 env:
