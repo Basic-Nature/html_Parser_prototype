@@ -114,7 +114,9 @@ const QAPanel = (() => {
   async function promoteToQL2(dataset_id, certification_reason) {
     if (pendingPromotions.has(dataset_id)) {
       console.warn('[QA] Promotion already in progress for', dataset_id);
-      return classificationCache.get(dataset_id) || {};
+      const cached = classificationCache.get(dataset_id);
+      if (!cached) throw new Error('Classification not found in cache');
+      return cached;
     }
 
     pendingPromotions.add(dataset_id);
@@ -340,7 +342,9 @@ const QAPanel = (() => {
       // Check cache first
       if (classificationCache.has(resultId)) {
         const cachedStatus = classificationCache.get(resultId);
-        injectQAPanelIntoCard(card, cachedStatus, initiatePromotion);
+        if (cachedStatus && card instanceof HTMLElement) {
+          injectQAPanelIntoCard(card, cachedStatus, initiatePromotion);
+        }
         continue;
       }
 
@@ -367,9 +371,10 @@ const QAPanel = (() => {
     }
 
     // Disable button during promotion
-    buttonElement.disabled = true;
-    const originalText = buttonElement.textContent;
-    buttonElement.textContent = '⏳ Promoting...';
+    if (buttonElement instanceof HTMLButtonElement) {
+      buttonElement.disabled = true;
+      const originalText = buttonElement.textContent;
+      buttonElement.textContent = '⏳ Promoting...';
 
     try {
       const updatedStatus = await promoteToQL2(dataset_id, reason.trim());
@@ -380,14 +385,19 @@ const QAPanel = (() => {
       const panel = document.getElementById(`qa-${dataset_id}`);
       if (panel && panel.parentElement) {
         const parentCard = panel.closest('.result-card');
-        if (parentCard && updatedStatus) {
+        if (parentCard instanceof HTMLElement && updatedStatus) {
           injectQAPanelIntoCard(parentCard, updatedStatus, initiatePromotion);
         }
       }
     } catch (error) {
       showToast(`Promotion failed: ${error.message}`, 'warning');
-      buttonElement.disabled = false;
-      buttonElement.textContent = originalText;
+      if (buttonElement instanceof HTMLButtonElement) {
+        buttonElement.disabled = false;
+        buttonElement.textContent = originalText;
+      }
+    }
+    } else {
+      console.error('[QA] Button element is not an HTMLButtonElement');
     }
   }
 
@@ -432,12 +442,12 @@ const QAPanel = (() => {
     /**
      * Manually trigger promotion for a dataset
      * @param {string} dataset_id - Dataset identifier
-     * @returns {Promise<QAStatus>}
+     * @returns {Promise<void>}
      */
     async promoteDataset(dataset_id) {
       const btn = document.querySelector(`[data-dataset-id="${dataset_id}"]`);
-      if (!btn) throw new Error('Promote button not found');
-      return initiatePromotion(dataset_id, btn);
+      if (!btn || !(btn instanceof HTMLElement)) throw new Error('Promote button not found');
+      await initiatePromotion(dataset_id, btn);
     },
 
     /**

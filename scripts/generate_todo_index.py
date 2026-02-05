@@ -34,10 +34,10 @@ PRIORITY = {
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 WEBAPP_DIR = DEFAULT_ROOT / "webapp"
-OUTPUT_PATH = DEFAULT_ROOT / "docs" / "todos.md"
-OUTPUT_HIGH_PATH = DEFAULT_ROOT / "docs" / "todos_high.md"
-OUTPUT_MEDIUM_PATH = DEFAULT_ROOT / "docs" / "todos_medium.md"
-OUTPUT_LOW_PATH = DEFAULT_ROOT / "docs" / "todos_low.md"
+OUTPUT_PATH = DEFAULT_ROOT / "docs" / "DEVELOPMENT" / "todos.md"
+OUTPUT_HIGH_PATH = DEFAULT_ROOT / "docs" / "DEVELOPMENT" / "todos_high.md"
+OUTPUT_MEDIUM_PATH = DEFAULT_ROOT / "docs" / "DEVELOPMENT" / "todos_medium.md"
+OUTPUT_LOW_PATH = DEFAULT_ROOT / "docs" / "DEVELOPMENT" / "todos_low.md"
 
 IGNORED_DIRS = {
     ".git",

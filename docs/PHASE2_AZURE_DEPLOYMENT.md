@@ -11,6 +11,7 @@
 The Phase 2 QA data assurance endpoints require certificate authentication via the `@_require_reviewer` decorator. On Azure App Service, client certificate headers are not automatically forwarded to the Flask app, causing all QA API calls to return `401 Unauthorized`.
 
 **Symptoms**:
+
 - QA panels don't appear on parsed results
 - Certificate welcome page doesn't show
 - API calls to `/api/data-assurance/*` fail with 401
@@ -39,6 +40,7 @@ This allows the QA framework to work in Azure environments where certificate hea
 **File**: `webapp/parser/quality_assurance/qa_endpoints.py`
 
 The `@_require_reviewer` decorator now:
+
 - Checks `QA_REQUIRE_CERT_AUTH` environment variable
 - If `true`: Requires valid client certificate (strict mode)
 - If `false`: Uses fallback principal `system:development` (permissive mode)
@@ -47,6 +49,7 @@ The `@_require_reviewer` decorator now:
 ### 3. Enhanced Error Messages
 
 The decorator now returns helpful error messages:
+
 ```json
 {
   "error": "Unauthorized: Certificate authentication required",
@@ -59,6 +62,7 @@ The decorator now returns helpful error messages:
 **File**: `webapp/static/js/quality_assurance_panel.js`
 
 Enhanced API calls to:
+
 - Parse error responses and show helpful messages
 - Display `showToast()` notifications when QA framework is unavailable
 - Log debugging information to browser console
@@ -72,7 +76,8 @@ Enhanced API calls to:
 **In Azure Portal → Configuration → Application Settings**:
 
 Add environment variable:
-```
+
+```txt
 QA_REQUIRE_CERT_AUTH = false
 ```
 
@@ -82,7 +87,7 @@ This allows QA endpoints to work without certificate headers. All actions will b
 
 ### Option B: Enable Client Certificates (Production)
 
-**Step 1: Azure App Service Configuration**
+***Step 1: Azure App Service Configuration***
 
 1. Navigate to Azure Portal → Your App Service
 2. Go to **Configuration** → **TLS/SSL settings**
@@ -91,22 +96,24 @@ This allows QA endpoints to work without certificate headers. All actions will b
    - **Client certificate location**: HTTP header
    - **Header name**: `X-ARR-ClientCert` (default)
 
-**Step 2: Environment Variables**
+***Step 2: Environment Variables***
 
-```
+```txt
 QA_REQUIRE_CERT_AUTH = true
 ```
 
-**Step 3: Application Gateway / Front Door**
+***Step 3: Application Gateway / Front Door***
 
 If using Application Gateway or Azure Front Door:
+
 - Configure **SSL passthrough** to forward client certificates
 - Or configure **certificate re-encryption** with header forwarding
 - Ensure `X-ARR-ClientCert` header is preserved
 
-**Step 4: Certificate Trust Chain**
+***Step 4: Certificate Trust Chain***
 
 Upload trusted CA certificates to App Service:
+
 1. Go to **Certificates** → **Bring your own certificates**
 2. Upload root/intermediate CA certificates
 3. Configure trust chain validation
@@ -118,12 +125,14 @@ Upload trusted CA certificates to App Service:
 ### 1. Verify Configuration
 
 **Check environment variables**:
+
 ```bash
 # In Azure SSH/Console
 echo $QA_REQUIRE_CERT_AUTH
 ```
 
 **Check Flask app logs**:
+
 ```python
 # Should see during startup:
 [QA] Certificate auth: disabled (QA_REQUIRE_CERT_AUTH=false)
@@ -134,6 +143,7 @@ echo $QA_REQUIRE_CERT_AUTH
 ### 2. Test QA Endpoints
 
 **Test classification endpoint**:
+
 ```bash
 curl -X POST https://your-app.azurewebsites.net/api/data-assurance/parse-and-classify \
   -H "Content-Type: application/json" \
@@ -147,6 +157,7 @@ curl -X POST https://your-app.azurewebsites.net/api/data-assurance/parse-and-cla
 ```
 
 **Expected with `QA_REQUIRE_CERT_AUTH=false`**:
+
 ```json
 {
   "dataset_id": "uuid-here",
@@ -158,6 +169,7 @@ curl -X POST https://your-app.azurewebsites.net/api/data-assurance/parse-and-cla
 ```
 
 **Expected with `QA_REQUIRE_CERT_AUTH=true` and no cert**:
+
 ```json
 {
   "error": "Unauthorized: Certificate authentication required",
@@ -175,15 +187,18 @@ curl -X POST https://your-app.azurewebsites.net/api/data-assurance/parse-and-cla
    - Should show "Promote to DL2" button
 
 **Browser Console** should show:
-```
+
+```txt
 [QA Integration] Initialized successfully
 [QA] Classification succeeded for Result #1
 ```
 
 If errors appear:
-```
+
+```txt
 [QA] Classification failed: API error: 401 Unauthorized
 ```
+
 → Check `QA_REQUIRE_CERT_AUTH` setting and restart App Service
 
 ---
@@ -195,7 +210,8 @@ The QA framework requires PostgreSQL tables. Ensure these are created:
 ### 1. Check Database Connection
 
 **Environment variables needed**:
-```
+
+```txt
 VERIFIED_DATA_DB_HOST = your-postgres.postgres.database.azure.com
 VERIFIED_DATA_DB_PORT = 5432
 VERIFIED_DATA_DB_NAME = verified_data
@@ -204,6 +220,7 @@ VERIFIED_DATA_DB_PASSWORD = your_password
 ```
 
 **Or reuse main app database** (default):
+
 - `VERIFIED_DATA_DB_*` defaults to `POSTGRES_*` values if not set
 
 ### 2. Create Tables
@@ -238,6 +255,7 @@ WHERE table_schema = 'public' AND table_name LIKE 'verified%';
 ```
 
 Should return:
+
 - `verified_datasets`
 - `verification_lineage`
 
@@ -248,11 +266,13 @@ Should return:
 ### Development/Testing Mode (`QA_REQUIRE_CERT_AUTH=false`)
 
 **Risks**:
+
 - Any user can promote data to DL2 (verified status)
 - All actions attributed to `system:development` (no audit trail)
 - No principal-based access control
 
 **Mitigations**:
+
 - Use only in non-production environments
 - Restrict App Service network access (private endpoint, VNet integration)
 - Enable Azure AD authentication for the web app
@@ -261,11 +281,13 @@ Should return:
 ### Production Mode (`QA_REQUIRE_CERT_AUTH=true`)
 
 **Requirements**:
+
 - Client certificates issued by trusted CA
 - Certificate headers properly forwarded from Azure infrastructure
 - Configured privilege tiers in `webapp/parser/utils/privilege_tiers.py`
 
 **Audit Trail**:
+
 - All actions logged in `verification_lineage` table
 - Principal attribution from certificate CN
 - Immutable append-only audit log
@@ -277,21 +299,25 @@ Should return:
 ### QA Panels Not Showing
 
 **Check 1**: Browser console for errors
-```
+
+```txt
 F12 → Console → Look for "[QA]" messages
 ```
 
 **Check 2**: Network tab for API calls
-```
+
+```txt
 F12 → Network → Filter "data-assurance" → Check status codes
 ```
 
 **Check 3**: App Service logs
-```
+
+```txt
 Azure Portal → App Service → Log stream → Look for "[QA]" or "data_assurance"
 ```
 
 **Common fixes**:
+
 - Set `QA_REQUIRE_CERT_AUTH=false` in Application Settings
 - Restart App Service after changing environment variables
 - Verify PostgreSQL connection (check `VERIFIED_DATA_DB_*` variables)
@@ -300,23 +326,27 @@ Azure Portal → App Service → Log stream → Look for "[QA]" or "data_assuran
 ### Certificate Welcome Page Not Showing
 
 **If `QA_REQUIRE_CERT_AUTH=true`**:
+
 - Verify client certificates are enabled in App Service TLS/SSL settings
 - Check that `X-ARR-ClientCert` header is being sent (use browser dev tools)
 - Ensure certificate is valid and trusted by App Service
 
 **If `QA_REQUIRE_CERT_AUTH=false`**:
+
 - Certificate welcome page is optional (not required for QA framework)
 - Users can access QA endpoints directly
 
 ### Database Connection Errors
 
 **Check connection string**:
+
 ```python
 # In App Service SSH console
 python3 -c "from webapp.parser.quality_assurance.data_classifier import get_db_connection; print(get_db_connection())"
 ```
 
 **Common issues**:
+
 - Firewall rules blocking App Service outbound IP
 - Incorrect credentials or database name
 - SSL/TLS mode mismatch
@@ -328,12 +358,14 @@ python3 -c "from webapp.parser.quality_assurance.data_classifier import get_db_c
 ### Application Insights
 
 **Custom events to track**:
+
 - `QA.Classification.Success` (dataset classified as DL1)
 - `QA.Classification.Failed` (API error)
 - `QA.Promotion.Success` (DL1 → DL2)
 - `QA.Promotion.Failed` (promotion rejected)
 
 **Custom metrics**:
+
 - `QA.Confidence.Average` (average confidence score)
 - `QA.Issues.Count` (detected quality issues)
 - `QA.DL2.Count` (total verified datasets)
@@ -341,6 +373,7 @@ python3 -c "from webapp.parser.quality_assurance.data_classifier import get_db_c
 ### Log Analytics
 
 **Query for QA activity**:
+
 ```kusto
 traces
 | where message contains "[QA]"
@@ -349,6 +382,7 @@ traces
 ```
 
 **Query for authentication failures**:
+
 ```kusto
 requests
 | where url contains "data-assurance"

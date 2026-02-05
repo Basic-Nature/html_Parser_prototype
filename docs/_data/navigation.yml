@@ -1,0 +1,67 @@
+# Jekyll Navigation Configuration for Smart Elections Parser Documentation
+# This file defines the hierarchical navigation structure displayed in GitHub Pages sidebar
+
+main:
+  - title: Home
+    url: /html_Parser_prototype/
+
+  - title: Core Architecture
+    url: /html_Parser_prototype/core/architecture/
+    items:
+      - title: System Architecture
+        url: /html_Parser_prototype/core/architecture/
+      - title: Data Models
+        url: /html_Parser_prototype/core/data-models/
+      - title: Constants Reference
+        url: /html_Parser_prototype/core/constants/
+
+  - title: Deployment
+    url: /html_Parser_prototype/deployment/deployment/
+    items:
+      - title: Deployment Guide
+        url: /html_Parser_prototype/deployment/deployment/
+      - title: Security & Authentication
+        url: /html_Parser_prototype/deployment/security/
+      - title: Operations & Monitoring
+        url: /html_Parser_prototype/deployment/operations/
+
+  - title: Quality Assurance
+    url: /html_Parser_prototype/quality/verification/
+    items:
+      - title: Verification Framework
+        url: /html_Parser_prototype/quality/verification/
+      - title: Quarantine System
+        url: /html_Parser_prototype/quality/quarantine-system/
+      - title: ML Framework
+        url: /html_Parser_prototype/quality/ml-framework/
+
+  - title: Features & Guides
+    url: /html_Parser_prototype/features/guides/
+    items:
+      - title: Developer Guides
+        url: /html_Parser_prototype/features/guides/
+      - title: FEC Fuzzy Matching
+        url: /html_Parser_prototype/features/fec-fuzzy-matching/
+      - title: Confidence Framework
+        url: /html_Parser_prototype/features/confidence-framework/
+      - title: Election Operations
+        url: /html_Parser_prototype/features/election-operations/
+      - title: Integrity Guidelines
+        url: /html_Parser_prototype/features/integrity-guidelines/
+
+  - title: Governance
+    url: /html_Parser_prototype/governance/governance/
+
+  - title: Development
+    url: /html_Parser_prototype/development/todos/
+    items:
+      - title: TODO Overview
+        url: /html_Parser_prototype/development/todos-overview/
+      - title: All TODOs
+        url: /html_Parser_prototype/development/todos/
+      - title: High Priority
+        url: /html_Parser_prototype/development/todos-high/
+      - title: Medium Priority
+        url: /html_Parser_prototype/development/todos-medium/
+      - title: Low Priority
+        url: /html_Parser_prototype/development/todos-low/

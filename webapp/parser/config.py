@@ -936,8 +936,9 @@ ENABLE_VERIFICATION_FRAMEWORK = os.environ.get("ENABLE_VERIFICATION_FRAMEWORK", 
 ALLOW_UNVERIFIED_EXPORTS = os.environ.get("ALLOW_UNVERIFIED_EXPORTS", "false").lower() in ("1", "true", "yes")
 
 # QA Framework: Require certificate authentication for data assurance endpoints
-# Set to false for development/Azure environments where cert headers aren't forwarded
-QA_REQUIRE_CERT_AUTH = os.environ.get("QA_REQUIRE_CERT_AUTH", "false").lower() in ("1", "true", "yes")
+# SECURITY: Defaults to TRUE (cert auth required). Set to "false" only for local development.
+# Production deployments MUST use certificate authentication (X-ARR-ClientCert header).
+QA_REQUIRE_CERT_AUTH = os.environ.get("QA_REQUIRE_CERT_AUTH", "true").lower() in ("1", "true", "yes")
 
 # Verification confidence threshold for automatic DL1 promotion
 # (ADMIN_FULL_TRUST can override, but ROOT_ADMIN required for bypass)

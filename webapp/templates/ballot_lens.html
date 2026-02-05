@@ -631,6 +631,8 @@
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot_lens_modern.js') }}?v={{ static_version }}" defer></script>
     <!-- Quality Assurance Panel Integration -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/quality_assurance_panel.js') }}?v={{ static_version }}" defer></script>
+    <!-- Quality Assurance Socket Integration (Phase 2b) -->
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/quality_assurance_integration.js') }}?v={{ static_version }}" defer></script>
 
     <footer id="sessionFooter" class="minimized">
       <div class="footer-inner">
