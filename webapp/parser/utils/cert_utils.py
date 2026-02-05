@@ -3,7 +3,15 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from typing import Mapping, Optional, Tuple
+from datetime import datetime, timezone
+from typing import Any, Dict, Mapping, Optional, Tuple
+
+try:
+    from cryptography import x509
+    from cryptography.hazmat.backends import default_backend
+    CRYPTOGRAPHY_AVAILABLE = True
+except ImportError:
+    CRYPTOGRAPHY_AVAILABLE = False
 
 CERT_HEADER_CANDIDATES = [
     "X-ARR-ClientCert",  # Azure App Service / ARR
@@ -30,11 +38,106 @@ def _decode_base64(value: str) -> Optional[bytes]:
         return None
 
 
-def extract_client_cert_fingerprint(headers: Mapping[str, str]) -> Tuple[Optional[str], Optional[str]]:
-    """Return (fingerprint, source_header) if a client certificate header is present.
+def _extract_cert_metadata(der_bytes: bytes) -> Dict[str, Any]:
+    """Parse X.509 certificate DER bytes and extract human-readable metadata.
+    
+    Returns dict with keys:
+    - cn: Common Name from Subject
+    - issuer: Issuer DN string
+    - expiry_date: ISO 8601 datetime string
+    - expiry_days: Days until expiration (negative if expired)
+    - serial_number: Certificate serial number (hex)
+    - key_algorithm: Public key algorithm name
+    - subject_dn: Full Subject Distinguished Name
+    - is_expired: Boolean indicating if cert has expired
+    """
+    if not CRYPTOGRAPHY_AVAILABLE:
+        return {
+            "cn": None,
+            "issuer": None,
+            "expiry_date": None,
+            "expiry_days": None,
+            "serial_number": None,
+            "key_algorithm": None,
+            "subject_dn": None,
+            "is_expired": None,
+            "error": "cryptography library not available",
+        }
+    
+    try:
+        cert = x509.load_der_x509_certificate(der_bytes, default_backend())
+        
+        # Extract Common Name
+        cn = None
+        try:
+            cn_attr = cert.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)
+            if cn_attr:
+                cn = cn_attr[0].value
+        except Exception:
+            pass
+        
+        # Extract Subject DN
+        subject_dn = None
+        try:
+            subject_dn = cert.subject.rfc4514_string()
+        except Exception:
+            pass
+        
+        # Extract Issuer DN
+        issuer_dn = None
+        try:
+            issuer_dn = cert.issuer.rfc4514_string()
+        except Exception:
+            pass
+        
+        # Extract Expiry Date
+        expiry_date = cert.not_valid_after()
+        expiry_iso = expiry_date.isoformat()
+        
+        # Calculate days until expiry
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        delta = expiry_date - now
+        expiry_days = delta.days
+        
+        # Extract Serial Number
+        serial_number = f"{cert.serial_number:X}"
+        
+        # Extract Key Algorithm
+        key_algorithm = cert.public_key().__class__.__name__
+        
+        # Is expired?
+        is_expired = expiry_days < 0
+        
+        return {
+            "cn": cn,
+            "issuer": issuer_dn,
+            "expiry_date": expiry_iso,
+            "expiry_days": expiry_days,
+            "serial_number": serial_number,
+            "key_algorithm": key_algorithm,
+            "subject_dn": subject_dn,
+            "is_expired": is_expired,
+        }
+    except Exception as e:
+        return {
+            "cn": None,
+            "issuer": None,
+            "expiry_date": None,
+            "expiry_days": None,
+            "serial_number": None,
+            "key_algorithm": None,
+            "subject_dn": None,
+            "is_expired": None,
+            "error": str(e),
+        }
+
+
+def extract_client_cert_fingerprint(headers: Mapping[str, str]) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]]]:
+    """Return (fingerprint, source_header, cert_metadata) if a client certificate header is present.
 
     - For PEM/DER values (ARR and many proxies), we base64-decode and hash the DER bytes.
-    - For DN-only values (SSL_CLIENT_S_DN), we hash the raw string.
+    - For DN-only values (SSL_CLIENT_S_DN), we hash the raw string (no metadata available).
+    - Metadata is extracted from DER bytes if cryptography library is available.
     """
     for header in CERT_HEADER_CANDIDATES:
         raw = headers.get(header) or headers.get(header.lower())
@@ -45,13 +148,16 @@ def extract_client_cert_fingerprint(headers: Mapping[str, str]) -> Tuple[Optiona
             continue
         if header == "SSL_CLIENT_S_DN":
             fp = _sha256_hex(value.encode("utf-8", "replace"))
-            return fp, header
+            return fp, header, None  # No metadata for DN-only header
         decoded = _decode_base64(value)
         if decoded:
-            return _sha256_hex(decoded), header
-        # If not base64, hash the raw string
-        return _sha256_hex(value.encode("utf-8", "replace")), header
-    return None, None
+            fp = _sha256_hex(decoded)
+            metadata = _extract_cert_metadata(decoded)
+            return fp, header, metadata
+        # If not base64, hash the raw string (no metadata)
+        fp = _sha256_hex(value.encode("utf-8", "replace"))
+        return fp, header, None
+    return None, None, None
 
 
 def extract_sso_principal(headers: Mapping[str, str]) -> Tuple[Optional[str], Optional[str]]:
@@ -80,15 +186,16 @@ def extract_sso_principal(headers: Mapping[str, str]) -> Tuple[Optional[str], Op
     return None, None
 
 
-def extract_client_principal(headers: Mapping[str, str]) -> Tuple[Optional[str], Optional[str]]:
+def extract_client_principal(headers: Mapping[str, str]) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]]]:
     """Preferred principal: client cert fingerprint; fallback: SSO object ID.
 
-    Returns (principal, source), where principal is prefixed to denote source.
+    Returns (principal, source, cert_metadata), where principal is prefixed to denote source.
+    cert_metadata is populated only for cert-based auth; None for SSO.
     """
-    cert_fp, cert_src = extract_client_cert_fingerprint(headers)
+    cert_fp, cert_src, cert_meta = extract_client_cert_fingerprint(headers)
     if cert_fp:
-        return f"cert:{cert_fp}", cert_src
+        return f"cert:{cert_fp}", cert_src, cert_meta
     oid, sso_src = extract_sso_principal(headers)
     if oid:
-        return f"sso:{oid}", sso_src
-    return None, None
+        return f"sso:{oid}", sso_src, None
+    return None, None, None

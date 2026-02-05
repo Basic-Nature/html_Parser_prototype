@@ -37,6 +37,85 @@ class SessionManager:
         self._profile_counts: Dict[str, int] = {}
         self._profile_durations: Dict[str, float] = {}
         self._profile_max: Dict[str, float] = {}
+        # Certificate caching: session_id -> {fingerprint, last_seen, metadata_hash, expiry_epoch, principal}
+        self._cert_cache: Dict[str, Dict[str, Any]] = {}
+
+    # ------------------------------------------------------------------
+    # Certificate caching & change detection
+    # ------------------------------------------------------------------
+    def cache_cert(self, session_id: str, fingerprint: str, metadata: Optional[Dict[str, Any]] = None, principal: Optional[str] = None) -> None:
+        """
+        Cache certificate fingerprint and metadata for change detection.
+        metadata: {cn, issuer, expiry_date, expiry_days, serial_number, key_algorithm, is_expired, error}
+        """
+        import hashlib
+        with self._lock:
+            expiry_epoch = None
+            metadata_hash = None
+            if metadata and isinstance(metadata, dict):
+                expiry_str = metadata.get("expiry_date")
+                if expiry_str:
+                    try:
+                        # Parse ISO format datetime string
+                        from datetime import datetime as dt
+                        exp_dt = dt.fromisoformat(expiry_str.replace('Z', '+00:00'))
+                        expiry_epoch = int(exp_dt.timestamp())
+                    except Exception:
+                        expiry_epoch = None
+                # Create hash of metadata for change detection
+                try:
+                    meta_str = str(sorted((k, v) for k, v in metadata.items() if k not in {'error'}))
+                    metadata_hash = hashlib.sha256(meta_str.encode('utf-8')).hexdigest()[:16]
+                except Exception:
+                    metadata_hash = None
+            self._cert_cache[session_id] = {
+                "fingerprint": fingerprint,
+                "last_seen": time.time(),
+                "metadata_hash": metadata_hash,
+                "expiry_epoch": expiry_epoch,
+                "principal": principal,
+            }
+
+    def get_cached_cert(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Get cached certificate for a session."""
+        with self._lock:
+            return self._cert_cache.get(session_id)
+
+    def cert_changed(self, session_id: str, new_fingerprint: str, new_metadata: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Check if certificate has changed since last cache.
+        Returns True if certificate is different (fingerprint mismatch or metadata hash changed).
+        """
+        import hashlib
+        cached = self.get_cached_cert(session_id)
+        if not cached:
+            return True  # No cache = first time (considered "changed")
+        # Check fingerprint mismatch
+        if cached.get("fingerprint") != new_fingerprint:
+            return True
+        # Check metadata hash mismatch
+        if new_metadata and isinstance(new_metadata, dict):
+            try:
+                meta_str = str(sorted((k, v) for k, v in new_metadata.items() if k not in {'error'}))
+                new_hash = hashlib.sha256(meta_str.encode('utf-8')).hexdigest()[:16]
+                if cached.get("metadata_hash") != new_hash:
+                    return True
+            except Exception:
+                pass
+        return False
+
+    def cert_expired(self, session_id: str) -> bool:
+        """Check if cached certificate is expired."""
+        cached = self.get_cached_cert(session_id)
+        if not cached or cached.get("expiry_epoch") is None:
+            return False
+        current_time = time.time()
+        return current_time > cached["expiry_epoch"]
+
+    def clear_cert_cache(self, session_id: str) -> None:
+        """Clear certificate cache for a session."""
+        with self._lock:
+            self._cert_cache.pop(session_id, None)
 
     # ------------------------------------------------------------------
     # Session metadata lifecycle

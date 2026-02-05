@@ -1,0 +1,119 @@
+name: Validate Election Fixtures
+
+on:
+  push:
+    paths:
+      - 'webapp/parser/fixtures/*.csv'
+      - 'scripts/build_election_index.py'
+      - 'webapp/parser/election_fixtures.py'
+      - '.github/workflows/validate-fixtures.yml'
+    branches:
+      - main
+      - develop
+  pull_request:
+    paths:
+      - 'webapp/parser/fixtures/*.csv'
+      - 'scripts/build_election_index.py'
+      - 'webapp/parser/election_fixtures.py'
+
+jobs:
+  validate-fixtures:
+    runs-on: ubuntu-latest
+    name: Build & Validate Election Fixtures
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install jsonschema rapidfuzz
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      
+      - name: Build election index
+        run: |
+          python scripts/build_election_index.py \
+            --src webapp/parser/fixtures \
+            --out webapp/parser/fixtures/election_results_index.json \
+            --schema webapp/parser/fixtures/election_results_schema.json \
+            --audit-report webapp/parser/fixtures/fixture_audit_report.jsonl \
+            --max-file-size-mb 10 \
+            --shard-threshold-mb 8
+      
+      - name: Validate schema
+        run: |
+          python -c "
+          import json
+          with open('webapp/parser/fixtures/election_results_index.json') as f:
+              index = json.load(f)
+          print(f'✓ Index valid JSON: {len(index)} entries')
+          "
+      
+      - name: Check audit report
+        if: always()
+        run: |
+          if [ -f "webapp/parser/fixtures/fixture_audit_report.jsonl" ]; then
+            lines=$(wc -l < "webapp/parser/fixtures/fixture_audit_report.jsonl")
+            echo "📋 Audit events: $lines"
+            # Show errors and warnings
+            grep -E '"type":\s*"(error|validation_error)"' "webapp/parser/fixtures/fixture_audit_report.jsonl" || echo "✓ No validation errors"
+          fi
+      
+      - name: Test fixture loader
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, 'webapp')
+          from parser import election_fixtures
+          idx = election_fixtures.load_election_results_index()
+          print(f'✓ Fixture loader OK: {len(idx)} entries cached')
+          metrics = election_fixtures.get_cache_metrics()
+          print(f'  Cache metrics: {metrics}')
+          "
+      
+      - name: Commit updated index (if on main)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          
+          # Check if index changed
+          if git diff --quiet webapp/parser/fixtures/election_results_index.json; then
+            echo "✓ Index unchanged; no commit needed"
+          else
+            git add webapp/parser/fixtures/election_results_index.json
+            git add webapp/parser/fixtures/election_results_shards/ || true
+            git add webapp/parser/fixtures/fixture_audit_report.jsonl || true
+            git commit -m "chore: regenerate election fixture index" || true
+            git push
+          fi
+      
+      - name: Create release tag (if on main)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          TAG="fixture-$(date +%Y%m%d-%H%M%S)"
+          git tag "$TAG" || echo "Tag already exists"
+          git push origin "$TAG" || echo "Could not push tag"
+      
+      - name: Report status
+        if: failure()
+        run: |
+          echo "❌ Fixture validation failed"
+          exit 1
+      
+      - name: Report success
+        if: success()
+        run: |
+          echo "✅ Fixture validation passed"
+          echo "  - Index built successfully"
+          echo "  - Schema validated"
+          echo "  - Loader tested"

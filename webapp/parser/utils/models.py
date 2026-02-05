@@ -415,6 +415,12 @@ class WarehouseElectionResult(Base):
     precinct = Column(String)
     election_date = Column(DateTime)
     processed_at = Column(DateTime, default=datetime.now(timezone.utc))
+    verification_status = Column(String(16), default='unverified')  # unverified, pending, verified, rejected
+    source_url = Column(String(2048), nullable=True)  # Track which URL produced this data
+    source_principal = Column(String(256), nullable=True)  # Who/what added this
+    verification_notes = Column(Text, nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+    verified_by = Column(String(256), nullable=True)
     metastats = Column(JSON, default=dict)
 
     def __repr__(self):

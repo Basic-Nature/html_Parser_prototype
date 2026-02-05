@@ -599,6 +599,24 @@ except Exception as e:
         "session_id": None
     })
 
+# Register Quarantine Review Blueprint
+try:
+    from webapp.parser.quarantine_endpoints import quarantine_bp
+    app.register_blueprint(quarantine_bp)
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Quarantine Review blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register Quarantine Review blueprint: {e}",
+        "session_id": None
+    })
+
 # 3. Session & State Management
 session_manager = SessionManager()
 
@@ -936,10 +954,10 @@ def client_fingerprint():
 
 
 def get_request_principal():
-    """Return (principal, source) preferring client cert, then SSO OID."""
-    principal, source = extract_client_principal(request.headers)
+    """Return (principal, source, cert_metadata) preferring client cert, then SSO OID."""
+    principal, source, cert_meta = extract_client_principal(request.headers)
     if principal:
-        return principal, source
+        return principal, source, cert_meta
 
     # Dev-only bypass for localhost when explicitly enabled
     host = (request.host or "").lower()
@@ -951,8 +969,8 @@ def get_request_principal():
     )
     if ALLOW_DEV_NO_PRINCIPAL and is_local:
         remote = request.remote_addr or "local"
-        return f"dev:{remote}", "dev_bypass"
-    return None, None
+        return f"dev:{remote}", "dev_bypass", None
+    return None, None, None
 
 def resolve_session_id(data=None, create_if_missing=True):
     def _log_resolution(decision: str, sid_val: str | None, reason: str | None = None):
@@ -984,7 +1002,7 @@ def resolve_session_id(data=None, create_if_missing=True):
         socket_sid = getattr(request, 'sid', None)
     if not isinstance(socket_sid, str) or not socket_sid:
         return None
-    principal, principal_source = get_request_principal()
+    principal, principal_source, _ = get_request_principal()
 
     # Determine whether automatic session reuse is permitted
     reuse_hint = False
@@ -2004,61 +2022,6 @@ def api_urls():
     except Exception as exc:
         logger.error({"level": "ERROR", "type": "api", "message": f"api_urls GET/POST failed: {exc}", "session_id": None})
         return jsonify({"urls": [], "error": "internal"}), 500
-        data = request.get_json() or {}
-        raw_url = safe_strip(safe_get(data, "url", ""))
-        if not raw_url:
-            return jsonify({"success": False, "error": "URL required."}), 400
-        url, lbl = extract_url_and_label(raw_url)
-        if not url:
-            return jsonify({"success": False, "error": "No valid http(s) URL found."}), 400
-
-        parsed = urlparse(url)
-        host = (parsed.hostname or "").lower()
-        session_id = safe_strip(safe_get(data, "session_id"))
-        suspicious_tokens = (
-            "dropbox.com",
-            "drive.google",
-            "docs.google",
-            "googleusercontent.com",
-            "storage.googleapis",
-            "amazonaws.com",
-            "s3.amazonaws.com",
-            "digitaloceanspaces.com",
-            "box.com",
-            "onedrive",
-            "sharepoint",
-            "github.com",
-            "raw.githubusercontent",
-            "gitlab",
-            "pastebin",
-            "notion.so",
-            "cloudfront.net",
-        )
-        if ALLOW_GOOGLE_DOCS:
-            suspicious_tokens = tuple(
-                tok for tok in suspicious_tokens
-                if tok not in {"drive.google", "docs.google", "googleusercontent.com"}
-            )
-        if parsed.scheme not in {"http", "https"} or not host:
-            log_flagged_url({
-                "url": url,
-                "reason": "invalid_url",
-                "session_id": session_id,
-            })
-            return jsonify({"success": False, "error": "Only http/https URLs with a host are accepted."}), 400
-
-        if any(tok in host for tok in suspicious_tokens):
-            log_flagged_url({
-                "url": url,
-                "reason": "suspicious_host",
-                "host": host,
-                "session_id": session_id,
-            })
-            return jsonify({"success": False, "error": "Host requires manual review; URL logged for safety."}), 400
-
-        with open(urls_file, "a", encoding="utf-8") as f:
-            f.write(url + "\n")
-        return jsonify({"success": True})
 
 @app.route("/data_framework", methods=["GET"])
 def data_framework():
@@ -2121,7 +2084,7 @@ def _collect_data_framework_scaffold(limit: int = 100) -> dict:
 
 @app.route("/api/data_framework/scaffold", methods=["GET"])
 def api_data_framework_scaffold():
-    principal, _ = get_request_principal()
+    principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
         return jsonify({"error": "Unauthorized"}), 403
     try:
@@ -2135,7 +2098,7 @@ def api_data_framework_scaffold():
 
 @app.route("/api/data_framework/scaffold.csv", methods=["GET"])
 def api_data_framework_scaffold_csv():
-    principal, _ = get_request_principal()
+    principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
         return Response("Unauthorized", status=403, mimetype="text/plain")
     try:
@@ -2161,7 +2124,7 @@ def api_data_framework_scaffold_csv():
 @app.route("/api/data_framework/exports", methods=["GET"])
 def api_data_framework_exports():
     """Return daily manifest or fallback to NDJSON exports; read-only endpoint for UI backfill."""
-    principal, _ = get_request_principal()
+    principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
         return jsonify({"error": "Unauthorized"}), 403
     try:
@@ -2367,6 +2330,7 @@ def api_list_dir_compat():
 def api_fs_mkdir():
     import os
     data = request.get_json(force=True) or {}
+    principal, _, _ = get_request_principal()
     root = (data.get("root") or "").lower().strip()
     subpath = (data.get("path") or "").strip().replace("\\", "/")
     name = (data.get("name") or "").strip()
@@ -2395,6 +2359,7 @@ def api_fs_mkdir():
 @app.route("/api/fs/delete", methods=["POST"])
 def api_fs_delete():
     data = request.get_json(force=True) or {}
+    principal, _, _ = get_request_principal()
     root = (data.get("root") or "").lower().strip()
     subpath = (data.get("path") or "").strip().replace("\\", "/")
     name = (data.get("name") or "").strip()
@@ -2451,7 +2416,7 @@ def download_fs():
         raise NotFound()
         
     # Get principal and session for tracking
-    principal, _ = get_request_principal()
+    principal, _, _ = get_request_principal()
     if not principal:
         principal = "anonymous"
     try:
@@ -2864,188 +2829,248 @@ def serve_well_known_appspecific(filename):
 
 @app.route("/api/warehouse_election_results", methods=["GET"])
 def api_warehouse_election_results():
+    """
+    Query election results from warehouse and/or fixtures.
+    
+    Parameters:
+      - state: Two-letter state code (required if searching)
+      - county: County name filter (optional)
+      - contest: Contest name filter (optional)
+      - year: Election year filter (optional)
+      - limit: Max results (default 500, max 1000)
+      - data_source: "fixture" | "live" | "both" (default "both")
+        - "fixture": Return only fixture data
+        - "live": Return only database data
+        - "both": Return both with provenance labels
+    """
+    principal, principal_source, _ = get_request_principal()
     state = request.args.get("state")
     county = request.args.get("county")
     contest = request.args.get("contest")
+    year_str = request.args.get("year")
+    data_source = (request.args.get("data_source") or "both").lower()
+    
+    # Validate data_source parameter
+    if data_source not in ("fixture", "live", "both"):
+        return jsonify({"error": "data_source must be 'fixture', 'live', or 'both'"}), 400
+    
     limit = request.args.get("limit", type=int)
     limit = max(1, min(1000, limit or 500))
-    if os.environ.get("AUTO_INIT_DB", "true").lower() not in ("1", "true", "yes"):
-        log_db_monitor_event({
-            "type": "warehouse_query",
-            "status": "db_disabled",
-            "state": state,
-            "county": county,
-            "contest": contest,
-            "limit": limit,
-        })
-        return jsonify({
-            "items": [],
-            "count": 0,
-            "unavailable": True,
-            "error": "Database disabled (AUTO_INIT_DB=false).",
-        })
-    try:
-        state = _validate_filter_value("state", state, max_len=64)
-        county = _validate_filter_value("county", county, max_len=64)
-        contest = _validate_filter_value("contest", contest, max_len=140)
-    except ValueError as exc:
-        log_db_monitor_event({
-            "type": "warehouse_query",
-            "status": "invalid_filter",
-            "error": str(exc),
-        })
-        return jsonify({"error": str(exc)}), 400
-    where = []
-    params = []
-    if state:
-        where.append("state = %s")
-        params.append(state)
-    if county:
-        where.append("county = %s")
-        params.append(county)
-    if contest:
-        where.append("contest ILIKE %s")
-        params.append(f"%{contest}%")
-    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-    limit_sql = "LIMIT %s"
-    params.append(limit)
-    ensure_db_tables()  # attempt upfront (idempotent)
-    try:
-        conn = psycopg2.connect(
-            dbname=POSTGRES_DB,
-            user=POSTGRES_USER_RAW,
-            password=POSTGRES_PASSWORD_RAW,
-            host=POSTGRES_HOST,
-            port=POSTGRES_PORT,
-            sslmode=(
-                "require"
-                if (POSTGRES_HOST not in ("localhost", "127.0.0.1")
-                    and os.environ.get("PG_REQUIRE_SSL", "true").lower() == "true")
-                else "prefer"
-            )
-        )
-        with conn, conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT *
-                FROM warehouse_election_results
-                {where_sql}
-                ORDER BY 1 DESC
-                {limit_sql}
-                """,
-                params
-            )
-            cols = [d[0] for d in cur.description]
-            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-        log_db_monitor_event({
-            "type": "warehouse_query",
-            "status": "ok",
-            "state": state,
-            "county": county,
-            "contest": contest,
-            "limit": limit,
-            "count": len(rows),
-        })
-        return jsonify({"items": rows, "count": len(rows)})
-    except Exception as e:
-        msg = str(e)
-        if isinstance(e, (psycopg2.OperationalError, OperationalError)):
+    
+    # Determine if DB is available
+    db_enabled = os.environ.get("AUTO_INIT_DB", "true").lower() in ("1", "true", "yes")
+    
+    # Collect all results
+    all_results = []
+    
+    # Query fixtures if requested
+    if data_source in ("fixture", "both"):
+        try:
+            from webapp.parser import election_fixtures
+            if state:
+                state_clean = state.upper()
+                year_val = None
+                if year_str:
+                    try:
+                        year_val = int(year_str)
+                    except ValueError:
+                        pass
+                
+                fixture_results = election_fixtures.get_results_by_state(
+                    state_clean,
+                    year=year_val,
+                    include_data_source=True
+                )
+                
+                # Filter by contest if provided
+                if contest:
+                    contest_lower = contest.lower()
+                    fixture_results = [
+                        r for r in fixture_results
+                        if contest_lower in r.get('contest', '').lower()
+                    ]
+                
+                all_results.extend(fixture_results[:limit])
+        except Exception as e:
             logger.warning({
                 "level": "WARNING",
-                "type": "db",
-                "message": f"DB unavailable: {e}",
+                "type": "api",
+                "message": f"Failed to query fixtures: {e}",
                 "session_id": None
             })
+    
+    # Query database if requested and enabled
+    if data_source in ("live", "both") and db_enabled:
+        try:
+            state_clean = _validate_filter_value("state", state, max_len=64)
+            county_clean = _validate_filter_value("county", county, max_len=64)
+            contest_clean = _validate_filter_value("contest", contest, max_len=140)
+        except ValueError as exc:
             log_db_monitor_event({
                 "type": "warehouse_query",
-                "status": "db_unavailable",
-                "error": str(e),
+                "status": "invalid_filter",
+                "error": str(exc),
+            })
+            return jsonify({"error": str(exc)}), 400
+        # Build database query
+        where = []
+        params = []
+        if state_clean:
+            where.append("state = %s")
+            params.append(state_clean)
+        if county_clean:
+            where.append("county = %s")
+            params.append(county_clean)
+        if contest_clean:
+            where.append("contest ILIKE %s")
+            params.append(f"%{contest_clean}%")
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        limit_sql = "LIMIT %s"
+        params.append(limit)
+        
+        ensure_db_tables()  # attempt upfront (idempotent)
+        try:
+            conn = psycopg2.connect(
+                dbname=POSTGRES_DB,
+                user=POSTGRES_USER_RAW,
+                password=POSTGRES_PASSWORD_RAW,
+                host=POSTGRES_HOST,
+                port=POSTGRES_PORT,
+                sslmode=(
+                    "require"
+                    if (POSTGRES_HOST not in ("localhost", "127.0.0.1")
+                        and os.environ.get("PG_REQUIRE_SSL", "true").lower() == "true")
+                    else "prefer"
+                )
+            )
+            with conn, conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT *
+                    FROM warehouse_election_results
+                    {where_sql}
+                    ORDER BY 1 DESC
+                    {limit_sql}
+                    """,
+                    params
+                )
+                cols = [d[0] for d in cur.description]
+                db_rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+                
+                # Add data_source field
+                for row in db_rows:
+                    row['data_source'] = 'live'
+                
+                all_results.extend(db_rows[:limit])
+            
+            log_db_monitor_event({
+                "type": "warehouse_query",
+                "status": "ok",
                 "state": state,
                 "county": county,
                 "contest": contest,
                 "limit": limit,
+                "count": len(db_rows),
+                "data_source": data_source,
             })
-            return jsonify({
-                "items": [],
-                "count": 0,
-                "unavailable": True,
-                "error": f"Database unavailable: {e}",
-            })
-        missing = ("does not exist" in msg.lower()) or isinstance(e, getattr(pg_errors, "UndefinedTable", tuple()))
-        if missing:
-            logger.warning({
-                "level": "WARNING",
-                "type": "db",
-                "message": f"Detected missing tables, attempting auto-create then retry: {e}",
-                "session_id": None
-            })
-            ensure_db_tables(force=True)
-            try:
-                conn = psycopg2.connect(
-                    dbname=POSTGRES_DB,
-                    user=POSTGRES_USER_RAW,
-                    password=POSTGRES_PASSWORD_RAW,
-                    host=POSTGRES_HOST,
-                    port=POSTGRES_PORT,
-                    sslmode="require" if (POSTGRES_HOST not in ("localhost","127.0.0.1")
-                        and os.environ.get("PG_REQUIRE_SSL","true").lower() == "true") else "prefer"
-                )
-                with conn, conn.cursor() as cur:
-                    cur.execute(
-                        f"""
-                        SELECT *
-                        FROM warehouse_election_results
-                        {where_sql}
-                        ORDER BY 1 DESC
-                        {limit_sql}
-                        """,
-                        params
-                    )
-                    cols = [d[0] for d in cur.description]
-                    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-                log_db_monitor_event({
-                    "type": "warehouse_query",
-                    "status": "ok_after_create",
-                    "state": state,
-                    "county": county,
-                    "contest": contest,
-                    "limit": limit,
-                    "count": len(rows),
-                })
-                return jsonify({"items": rows, "count": len(rows), "auto_created": True})
-            except Exception as e2:
-                logger.error({
-                    "level": "ERROR",
+        except Exception as e:
+            msg = str(e)
+            if isinstance(e, (psycopg2.OperationalError, OperationalError)):
+                logger.warning({
+                    "level": "WARNING",
                     "type": "db",
-                    "message": f"DB error after retry: {e2}",
+                    "message": f"DB unavailable: {e}",
                     "session_id": None
                 })
                 log_db_monitor_event({
                     "type": "warehouse_query",
-                    "status": "error_after_create",
-                    "error": str(e2),
+                    "status": "db_unavailable",
+                    "error": str(e),
                     "state": state,
                     "county": county,
                     "contest": contest,
                     "limit": limit,
                 })
-                return jsonify({"error": f"Data API error after init attempt: {e2}"}), 500
-        logger.error({
-            "level": "ERROR",
-            "type": "db",
-            "message": f"DB error: {e}",
-            "session_id": None
-        })
-        log_db_monitor_event({
-            "type": "warehouse_query",
-            "status": "error",
-            "error": str(e),
-            "state": state,
-            "county": county,
-            "contest": contest,
-            "limit": limit,
-        })
-        return jsonify({"error": f"Data API error: {e}"}), 500
+            missing = ("does not exist" in msg.lower()) or isinstance(e, getattr(pg_errors, "UndefinedTable", tuple()))
+            if missing:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "db",
+                    "message": f"Detected missing tables, attempting auto-create then retry: {e}",
+                    "session_id": None
+                })
+                ensure_db_tables(force=True)
+                try:
+                    conn = psycopg2.connect(
+                        dbname=POSTGRES_DB,
+                        user=POSTGRES_USER_RAW,
+                        password=POSTGRES_PASSWORD_RAW,
+                        host=POSTGRES_HOST,
+                        port=POSTGRES_PORT,
+                        sslmode="require" if (POSTGRES_HOST not in ("localhost","127.0.0.1")
+                            and os.environ.get("PG_REQUIRE_SSL","true").lower() == "true") else "prefer"
+                    )
+                    with conn, conn.cursor() as cur:
+                        cur.execute(
+                            f"""
+                            SELECT *
+                            FROM warehouse_election_results
+                            {where_sql}
+                            ORDER BY 1 DESC
+                            {limit_sql}
+                            """,
+                            params
+                        )
+                        cols = [d[0] for d in cur.description]
+                        db_rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+                        for row in db_rows:
+                            row['data_source'] = 'live'
+                        all_results.extend(db_rows[:limit])
+                    log_db_monitor_event({
+                        "type": "warehouse_query",
+                        "status": "ok_after_create",
+                        "state": state,
+                        "county": county,
+                        "contest": contest,
+                        "limit": limit,
+                        "count": len(db_rows),
+                        "data_source": data_source,
+                    })
+                except Exception as e2:
+                    logger.error({
+                        "level": "ERROR",
+                        "type": "db",
+                        "message": f"DB error after retry: {e2}",
+                        "session_id": None
+                    })
+                    log_db_monitor_event({
+                        "type": "warehouse_query",
+                        "status": "error_after_create",
+                        "error": str(e2),
+                        "state": state,
+                        "county": county,
+                        "contest": contest,
+                        "limit": limit,
+                    })
+            else:
+                logger.error({
+                    "level": "ERROR",
+                    "type": "db",
+                    "message": f"DB error: {e}",
+                    "session_id": None
+                })
+                log_db_monitor_event({
+                    "type": "warehouse_query",
+                    "status": "error",
+                    "error": str(e),
+                    "state": state,
+                    "county": county,
+                    "contest": contest,
+                    "limit": limit,
+                })
+    
+    # Return merged results
+    return jsonify({"items": all_results, "count": len(all_results), "data_source": data_source})
 
 @app.route("/delete/input/<filename>", methods=["POST"])
 def delete_input_file(filename) -> str:
@@ -3324,6 +3349,73 @@ def api_quality_metrics():
     
     return jsonify({"metrics": results, "count": len(results)})
 
+@app.route("/api/auth/certificate_info", methods=["GET"])
+def api_auth_certificate_info():
+    """
+    Return certificate metadata for the current session.
+    This endpoint is used by the auth welcome page to display cert info to users.
+    """
+    principal, principal_source, cert_metadata = get_request_principal()
+    
+    if not principal:
+        return jsonify({
+            "error": "No certificate found",
+            "principal": None,
+            "cert_metadata": None
+        }), 401
+    
+    # Build response with certificate metadata
+    response = {
+        "principal": principal,
+        "principal_source": principal_source,
+        "cert_metadata": cert_metadata or {},
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "session_context": {
+            "host": request.host or "unknown",
+            "remote_addr": request.remote_addr or "unknown"
+        }
+    }
+    
+    # Add privilege tier information if available
+    if cert_metadata and cert_metadata.get("cn"):
+        try:
+            from webapp.parser.utils.privilege_tiers import get_principal_tier
+            tier = get_principal_tier(principal, principal_source)
+            if tier:
+                response["privilege_tier"] = tier.value
+        except Exception:
+            response["privilege_tier"] = "STANDARD_USER"
+    
+    return jsonify(response)
+
+@app.route("/auth/welcome")
+def auth_welcome():
+    """
+    Render the certificate authentication welcome screen.
+    This page displays certificate information to the user and allows them to proceed
+    to the main application or view additional details.
+    """
+    # Get principal to verify cert is present
+    principal, principal_source, cert_metadata = get_request_principal()
+    
+    if not principal:
+        # Redirect to error page or main app
+        return redirect(url_for("index"))
+    
+    # Get session ID if available
+    try:
+        session_id = resolve_session_id({}, create_if_missing=False)
+    except Exception:
+        session_id = None
+    
+    # Pass metadata to template
+    return render_template("auth_welcome.html", 
+                         principal=principal,
+                         principal_source=principal_source,
+                         cert_metadata=cert_metadata,
+                         session_id=session_id)
+
+
 @app.route("/upload/input", methods=["POST"])
 @_rate_limit("5/minute")
 def upload_to_input() -> str:
@@ -3335,7 +3427,7 @@ def upload_to_input() -> str:
         "session_id": None
     })
     # Gate uploads: require client principal or ADMIN_JWT_TOKEN fallback
-    principal, _ = get_request_principal()
+    principal, _, _ = get_request_principal()
     admin_token = os.environ.get("ADMIN_JWT_TOKEN")
     auth_hdr = (request.headers.get("Authorization") or "").strip()
     token_ok = False
@@ -3387,7 +3479,7 @@ def upload_to_output() -> str:
         "message": f"Upload to output: {file.filename if file else 'No file'}",
         "session_id": None
     })
-    principal, _ = get_request_principal()
+    principal, _, _ = get_request_principal()
     admin_token = os.environ.get("ADMIN_JWT_TOKEN")
     auth_hdr = (request.headers.get("Authorization") or "").strip()
     token_ok = False
@@ -3432,7 +3524,7 @@ def upload_to_output() -> str:
 @_rate_limit("5/minute")
 def upload_to_uploads() -> str:
     file = request.files.get("data_file") or request.files.get("file")
-    principal, _ = get_request_principal()
+    principal, _, _ = get_request_principal()
     admin_token = os.environ.get("ADMIN_JWT_TOKEN")
     auth_hdr = (request.headers.get("Authorization") or "").strip()
     token_ok = False
@@ -3760,7 +3852,7 @@ def handle_connect(auth=None):
     try:
         cleanup_sessions()
         session['log_format'] = "json"
-        principal, principal_source = get_request_principal()
+        principal, principal_source, cert_metadata = get_request_principal()
         if not principal:
             emit('parser_output', {
                 "level": "ERROR",
@@ -3769,6 +3861,32 @@ def handle_connect(auth=None):
                 "session_id": None
             }, room=getattr(request, 'sid', None))
             return False
+        
+        # --- Certificate validation (Step 4: Check for expiry/changes) ---
+        cert_fingerprint = None
+        cert_expired = False
+        cert_changed = False
+        if cert_metadata and isinstance(cert_metadata, dict):
+            # Extract fingerprint from metadata or headers (SHA256)
+            try:
+                cert_header = request.headers.get('X-ARR-ClientCert', '')
+                if cert_header:
+                    import hashlib
+                    cert_fingerprint = hashlib.sha256(cert_header.encode('utf-8')).hexdigest()[:16]
+                    cert_expired = cert_metadata.get('is_expired', False)
+                    if cert_expired:
+                        logger.warning({
+                            "level": "WARNING",
+                            "type": "auth",
+                            "message": "Client certificate is expired.",
+                            "session_id": None,
+                            "principal": principal,
+                            "cert_cn": cert_metadata.get('cn'),
+                            "expiry_date": cert_metadata.get('expiry_date'),
+                        })
+            except Exception:
+                pass
+        
         if principal_source == "dev_bypass":
             logger.warning({
                 "level": "WARNING",
@@ -3839,6 +3957,53 @@ def handle_connect(auth=None):
         if resolved:
             session_manager.touch_session(resolved)
             _recover_stale_session(resolved, reason="connect")
+            
+            # Cache certificate and check for changes (Step 4)
+            if cert_fingerprint and cert_metadata:
+                # Check if cert has changed since last seen
+                if session_manager.cert_changed(resolved, cert_fingerprint, cert_metadata):
+                    logger.info({
+                        "level": "INFO",
+                        "type": "auth",
+                        "message": "Certificate changed or new for session.",
+                        "session_id": resolved,
+                        "principal": principal,
+                        "cert_cn": cert_metadata.get('cn'),
+                        "fingerprint": cert_fingerprint,
+                    })
+                    # Emit cert_changed event for frontend to trigger UI update
+                    try:
+                        socketio.emit('cert_changed', {
+                            "session_id": resolved,
+                            "fingerprint": cert_fingerprint,
+                            "cert_metadata": cert_metadata,
+                            "principal": principal
+                        }, room=resolved)
+                    except Exception:
+                        pass
+                
+                # Cache the cert for future comparisons
+                session_manager.cache_cert(resolved, cert_fingerprint, cert_metadata, principal)
+                
+                # Check if cert is expired
+                if session_manager.cert_expired(resolved):
+                    logger.warning({
+                        "level": "WARNING",
+                        "type": "auth",
+                        "message": "Cached certificate is expired.",
+                        "session_id": resolved,
+                        "principal": principal,
+                        "expiry_date": cert_metadata.get('expiry_date'),
+                    })
+                    # Emit cert_expired event for frontend
+                    try:
+                        socketio.emit('cert_expired', {
+                            "session_id": resolved,
+                            "principal": principal,
+                            "expiry_date": cert_metadata.get('expiry_date')
+                        }, room=resolved)
+                    except Exception:
+                        pass
 
         if revived:
             session_manager.mark_active(revived)

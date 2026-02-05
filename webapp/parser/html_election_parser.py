@@ -1250,40 +1250,172 @@ def orchestrate_url(
         principal=principal,
         principal_source=principal_source
     )
+
+    force_snapshot_mode = False
+
+    # Check for prior quarantine review decisions (approval/rejection)
+    quarantine_status = None
+    quarantine_approved = False
+    quarantine_rejected = False
+    hard_blockers = bool(trust_factors.get("phishing_indicators")) or bool(trust_factors.get("domain_mimicry"))
+    try:
+        from .health.quarantine_queue import get_quarantine_queue, ReviewStatus
+        queue = get_quarantine_queue()
+        quarantine_status = queue.get_latest_review_status_for_url(target_url)
+        if quarantine_status == ReviewStatus.APPROVED.value:
+            quarantine_approved = True
+        elif quarantine_status == ReviewStatus.REJECTED.value:
+            quarantine_rejected = True
+    except Exception:
+        quarantine_status = None
     
     # Check if URL should be rejected outright (tier-aware)
     if should_reject(trust_score, target_url, privilege_tier=privilege_tier):
-        logger.error({
-            "level": "ERROR",
-            "type": "trust_scorer",
-            "message": f"URL rejected due to low trust score ({trust_score}/100).",
-            "session_id": session_id,
-            "url": target_url,
-            "trust_score": trust_score,
-            "trust_factors": trust_factors,
-            "privilege_tier": privilege_tier.value if privilege_tier else None
-        })
-        mark_url_processed(target_url, status="rejected", session_id=session_id, trust_score=trust_score)
-        return
+        if quarantine_rejected:
+            logger.error({
+                "level": "ERROR",
+                "type": "trust_scorer",
+                "message": f"URL rejected (prior review rejected; score {trust_score}/100).",
+                "session_id": session_id,
+                "url": target_url,
+                "trust_score": trust_score,
+                "trust_factors": trust_factors,
+                "privilege_tier": privilege_tier.value if privilege_tier else None
+            })
+            mark_url_processed(target_url, status="rejected", session_id=session_id, trust_score=trust_score)
+            return
+        if quarantine_approved and not hard_blockers:
+            logger.warning({
+                "level": "WARNING",
+                "type": "trust_scorer",
+                "message": f"URL approved by quarantine review despite low trust score ({trust_score}/100).",
+                "session_id": session_id,
+                "url": target_url,
+                "trust_score": trust_score,
+                "trust_factors": trust_factors,
+                "review_status": quarantine_status,
+                "privilege_tier": privilege_tier.value if privilege_tier else None
+            })
+            force_snapshot_mode = True
+        else:
+            logger.error({
+                "level": "ERROR",
+                "type": "trust_scorer",
+                "message": f"URL rejected due to low trust score ({trust_score}/100).",
+                "session_id": session_id,
+                "url": target_url,
+                "trust_score": trust_score,
+                "trust_factors": trust_factors,
+                "privilege_tier": privilege_tier.value if privilege_tier else None
+            })
+            mark_url_processed(target_url, status="rejected", session_id=session_id, trust_score=trust_score)
+            return
     
     # Check if URL should be quarantined for manual review (tier-aware)
     if should_quarantine(trust_score, target_url, privilege_tier=privilege_tier):
-        logger.warning({
-            "level": "WARNING",
-            "type": "trust_scorer",
-            "message": f"URL quarantined for manual review (trust score: {trust_score}/100).",
-            "session_id": session_id,
-            "url": target_url,
-            "trust_score": trust_score,
-            "trust_factors": trust_factors,
-            "privilege_tier": privilege_tier.value if privilege_tier else None
-        })
-        mark_url_processed(target_url, status="quarantined", session_id=session_id, trust_score=trust_score)
-        # TODO: Step 6 - Automated quarantine review pipeline integration
-        return
-    
+        if quarantine_rejected:
+            logger.error({
+                "level": "ERROR",
+                "type": "trust_scorer",
+                "message": f"URL rejected (prior review rejected; score {trust_score}/100).",
+                "session_id": session_id,
+                "url": target_url,
+                "trust_score": trust_score,
+                "trust_factors": trust_factors,
+                "review_status": quarantine_status,
+                "privilege_tier": privilege_tier.value if privilege_tier else None
+            })
+            mark_url_processed(target_url, status="rejected", session_id=session_id, trust_score=trust_score)
+            return
+        if quarantine_approved and not hard_blockers:
+            logger.info({
+                "level": "INFO",
+                "type": "trust_scorer",
+                "message": f"URL approved by quarantine review (score {trust_score}/100); proceeding in snapshot mode.",
+                "session_id": session_id,
+                "url": target_url,
+                "trust_score": trust_score,
+                "trust_factors": trust_factors,
+                "review_status": quarantine_status,
+                "privilege_tier": privilege_tier.value if privilege_tier else None
+            })
+            force_snapshot_mode = True
+        else:
+            logger.warning({
+                "level": "WARNING",
+                "type": "trust_scorer",
+                "message": f"URL quarantined for manual review (trust score: {trust_score}/100).",
+                "session_id": session_id,
+                "url": target_url,
+                "trust_score": trust_score,
+                "trust_factors": trust_factors,
+                "privilege_tier": privilege_tier.value if privilege_tier else None
+            })
+            
+            # --- Enqueue for transparent review with audit trail ---
+            try:
+                from .health.quarantine_queue import (
+                    get_quarantine_queue,
+                    QuarantineReason,
+                    DataCollectionNotice,
+                )
+                
+                queue = get_quarantine_queue()
+                if not queue.has_pending_url(target_url):
+                    data_notices = [
+                        DataCollectionNotice(
+                            data_type="trust_score",
+                            description=f"Computed trust score: {trust_score}/100. Indicates URL reliability confidence.",
+                            usage="Security filtering to prevent extraction from untrusted/malicious sources",
+                            retention_days=30,
+                        ),
+                        DataCollectionNotice(
+                            data_type="trust_factors",
+                            description=f"Breakdown of trust assessment: {orjson.dumps(trust_factors).decode('utf-8') if trust_factors else 'none'}",
+                            usage="Forensic analysis; helps identify why URL was flagged",
+                            retention_days=30,
+                        ),
+                    ]
+                    
+                    queue.enqueue(
+                        url=target_url,
+                        reason=QuarantineReason.LOW_TRUST_SCORE,
+                        session_id=session_id,
+                        principal=principal,
+                        trust_score=trust_score,
+                        trust_factors=trust_factors,
+                        data_notices=data_notices,
+                    )
+                    
+                    logger.info({
+                        "level": "INFO",
+                        "type": "quarantine",
+                        "message": "[Quarantine] URL enqueued for transparent review",
+                        "session_id": session_id,
+                        "url": target_url,
+                        "reason": "LOW_TRUST_SCORE",
+                    })
+                else:
+                    logger.info({
+                        "level": "INFO",
+                        "type": "quarantine",
+                        "message": "[Quarantine] URL already pending review",
+                        "session_id": session_id,
+                        "url": target_url,
+                    })
+            except Exception as e:
+                logger.error({
+                    "level": "ERROR",
+                    "type": "quarantine",
+                    "message": f"[Quarantine] Failed to enqueue: {e}",
+                    "session_id": session_id,
+                    "url": target_url,
+                })
+            
+            mark_url_processed(target_url, status="quarantined", session_id=session_id, trust_score=trust_score)
+            return
     # Log trust decision for allowed URLs
-    use_snapshot = should_use_snapshot_mode(trust_score, target_url)
+    use_snapshot = force_snapshot_mode or should_use_snapshot_mode(trust_score, target_url)
     if use_snapshot:
         logger.info({
             "level": "INFO",

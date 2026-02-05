@@ -16,6 +16,8 @@ from webapp.parser.utils.db_utils import (
 )
 from webapp.parser.utils.logger_singleton import logger
 from webapp.parser.utils.models import StatusEnum
+from webapp.parser.health.promotion_helpers import check_exact_duplicate, get_url_verification_tier
+
 
 PRECINCT_HINTS: tuple[str, ...] = (
     "precinct",
@@ -275,8 +277,47 @@ def promote_dataset(
         status=StatusEnum.PENDING,
     )
     inserted = 0
+    duplicates_skipped = 0
+    blocked_urls_skipped = 0
+    
+    # Get URL from metadata for verification tier
+    source_url = metadata.get('source_url')
+    url_tier = get_url_verification_tier(source_url) if source_url else 'pending'
+    
     try:
+        from webapp.parser.utils.db_utils import get_session
+        session = get_session()
+        
         for payload in payloads:
+            # Set verification status based on URL tier
+            if url_tier == 'blocked':
+                blocked_urls_skipped += 1
+                logger.warning(f"[PROMOTE] Skipping blocked URL: {source_url}")
+                continue
+            elif url_tier == 'trusted':
+                payload['verification_status'] = 'verified'
+                payload['verified_at'] = datetime.now(timezone.utc)
+            else:  # pending
+                payload['verification_status'] = 'pending'
+            
+            payload['source_url'] = source_url
+            payload['source_principal'] = metadata.get('source_principal')
+            
+            # Check for exact duplicate
+            if check_exact_duplicate(
+                session,
+                state=payload.get('state'),
+                county=payload.get('county'),
+                contest=payload.get('contest'),
+                candidate=payload.get('candidate'),
+                party=payload.get('party'),
+                votes=payload.get('votes'),
+                precinct=payload.get('precinct'),
+                election_date=payload.get('election_date'),
+            ):
+                duplicates_skipped += 1
+                continue
+            
             create_warehouse_election_result(batch_id=batch.batch_id, **payload)
             inserted += 1
     except Exception as exc:  # pragma: no cover - safety net
@@ -289,7 +330,10 @@ def promote_dataset(
         metastats={
             "dataset_dir": str(dataset_dir),
             "records_inserted": inserted,
+            "duplicates_skipped": duplicates_skipped,
+            "blocked_urls_skipped": blocked_urls_skipped,
             "skipped_rows": skipped,
+            "url_tier": url_tier,
             "contest": metadata.get("contest"),
             "state": metadata.get("state"),
             "county": metadata.get("county"),
@@ -297,7 +341,10 @@ def promote_dataset(
     )
     summary["batch_id"] = str(batch.batch_id)
     summary["inserted_records"] = inserted
-    print(f"[PROMOTE] Inserted {inserted} rows into warehouse_election_results (batch={batch.batch_id}).")
+    summary["duplicates_skipped"] = duplicates_skipped
+    summary["blocked_urls_skipped"] = blocked_urls_skipped
+    summary["url_tier"] = url_tier
+    print(f"[PROMOTE] Inserted {inserted} rows (duplicates_skipped={duplicates_skipped}, blocked={blocked_urls_skipped}) from {dataset_dir} (batch={batch.batch_id}).")
     return summary
 
 

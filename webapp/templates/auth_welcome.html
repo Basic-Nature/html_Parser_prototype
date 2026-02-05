@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Certificate Authentication - Smart Elections Parser</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <style>
+        .auth-welcome-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+        }
+
+        .auth-welcome-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .auth-welcome-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .auth-welcome-header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            color: #1a232a;
+            margin-bottom: 8px;
+        }
+
+        .auth-welcome-header p {
+            color: #666;
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .cert-status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .cert-status-badge.valid {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .cert-status-badge.expired {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .cert-status-badge.warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .cert-info-section {
+            background: #f8f9fa;
+            border-left: 4px solid #2563eb;
+            padding: 16px;
+            border-radius: 6px;
+            margin-bottom: 24px;
+        }
+
+        .cert-info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+        }
+
+        .cert-info-row:last-child {
+            border-bottom: none;
+        }
+
+        .cert-info-label {
+            font-weight: 600;
+            color: #555;
+            min-width: 120px;
+            flex-shrink: 0;
+        }
+
+        .cert-info-value {
+            color: #333;
+            text-align: right;
+            word-break: break-word;
+            flex: 1;
+            margin-left: 16px;
+        }
+
+        .cert-info-value.monospace {
+            font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+            font-size: 12px;
+            color: #666;
+            max-height: 60px;
+            overflow-y: auto;
+            background: white;
+            padding: 4px 8px;
+            border-radius: 3px;
+        }
+
+        .auth-welcome-explanation {
+            color: #555;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 24px;
+            background: #f0f7ff;
+            padding: 12px 16px;
+            border-radius: 6px;
+            border-left: 3px solid #2563eb;
+        }
+
+        .auth-welcome-explanation strong {
+            color: #1a232a;
+        }
+
+        .tier-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+            font-size: 13px;
+            color: #555;
+        }
+
+        .tier-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            background: #e7f1ff;
+            color: #2563eb;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 11px;
+        }
+
+        .tier-badge.admin {
+            background: #fef3c7;
+            color: #b45309;
+        }
+
+        .tier-badge.reviewer {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .tier-badge.standard {
+            background: #f3f4f6;
+            color: #4b5563;
+        }
+
+        .auth-welcome-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .btn-auth {
+            flex: 1;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-auth.primary {
+            background: #2563eb;
+            color: white;
+        }
+
+        .btn-auth.primary:hover {
+            background: #1d4ed8;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+
+        .btn-auth.secondary {
+            background: #e5e7eb;
+            color: #1a232a;
+        }
+
+        .btn-auth.secondary:hover {
+            background: #d1d5db;
+        }
+
+        .error-message {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border-left: 3px solid #dc2626;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .warning-message {
+            background: #fef3c7;
+            color: #92400e;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border-left: 3px solid #f59e0b;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .footer-note {
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .icon {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            background-size: contain;
+            background-repeat: no-repeat;
+        }
+
+        @media (max-width: 640px) {
+            .auth-welcome-card {
+                padding: 24px;
+            }
+
+            .auth-welcome-header h1 {
+                font-size: 24px;
+            }
+
+            .cert-info-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .cert-info-value {
+                margin-left: 0;
+                margin-top: 4px;
+                text-align: left;
+            }
+
+            .auth-welcome-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body style="margin: 0; padding: 0;">
+    <div class="auth-welcome-container">
+        <div class="auth-welcome-card">
+            <!-- Header -->
+            <div class="auth-welcome-header">
+                <h1>🔐 Certificate Authentication</h1>
+                <p>Smart Elections Parser</p>
+                <span class="cert-status-badge valid" id="statusBadge">Certificate Verified</span>
+            </div>
+
+            <!-- Error/Warning Messages -->
+            <div id="messageContainer"></div>
+
+            <!-- Certificate Information -->
+            <div class="cert-info-section" id="certInfoSection">
+                <div class="cert-info-row">
+                    <span class="cert-info-label">Common Name (CN)</span>
+                    <span class="cert-info-value" id="certCN">—</span>
+                </div>
+                <div class="cert-info-row">
+                    <span class="cert-info-label">Issuer</span>
+                    <span class="cert-info-value" id="certIssuer">—</span>
+                </div>
+                <div class="cert-info-row">
+                    <span class="cert-info-label">Serial Number</span>
+                    <span class="cert-info-value monospace" id="certSerial">—</span>
+                </div>
+                <div class="cert-info-row">
+                    <span class="cert-info-label">Issued</span>
+                    <span class="cert-info-value" id="certIssued">—</span>
+                </div>
+                <div class="cert-info-row">
+                    <span class="cert-info-label">Expires</span>
+                    <span class="cert-info-value" id="certExpiry">—</span>
+                </div>
+                <div class="cert-info-row">
+                    <span class="cert-info-label">Key Algorithm</span>
+                    <span class="cert-info-value" id="certAlgorithm">—</span>
+                </div>
+            </div>
+
+            <!-- Privilege Tier -->
+            <div class="tier-info">
+                <span>Access Tier:</span>
+                <span class="tier-badge standard" id="tierBadge">Standard User</span>
+            </div>
+
+            <!-- Explanation -->
+            <div class="auth-welcome-explanation">
+                <strong>What is this?</strong> Your client certificate has been verified. This certificate is used to authenticate your identity and determine your access level within the Smart Elections Parser system. You can now proceed to the main application.
+            </div>
+
+            <!-- Actions -->
+            <div class="auth-welcome-actions">
+                <button class="btn-auth primary" id="continueBtn" onclick="continueToPlatform()">
+                    Continue to Parser
+                </button>
+                <button class="btn-auth secondary" id="certDetailsBtn" onclick="toggleCertDetails()">
+                    ℹ Show Details
+                </button>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer-note">
+                <p>Certificate verified at: <span id="verifiedTime">—</span></p>
+                <p>Session ID: <code id="sessionId" style="font-size: 10px; color: #999;">—</code></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize page with certificate metadata from query params or session storage
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                // Get cert metadata from URL params or fetch from API
+                const params = new URLSearchParams(window.location.search);
+                const certData = params.get('cert_data');
+                const sessionId = params.get('session_id');
+                
+                let metadata = null;
+                
+                if (certData) {
+                    // Decode base64 cert data from URL
+                    try {
+                        metadata = JSON.parse(atob(certData));
+                    } catch (e) {
+                        console.error('Failed to parse cert data:', e);
+                    }
+                } else if (sessionId) {
+                    // Fetch from API
+                    try {
+                        const resp = await fetch(`/api/auth/certificate_info?session_id=${encodeURIComponent(sessionId)}`);
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            metadata = data.cert_metadata;
+                        }
+                    } catch (e) {
+                        console.error('Failed to fetch cert metadata:', e);
+                    }
+                }
+                
+                // Populate the page with metadata
+                if (metadata) {
+                    populateCertInfo(metadata);
+                    updateStatusBadge(metadata);
+                    updateTierBadge(metadata);
+                }
+                
+                // Show session ID
+                if (sessionId) {
+                    document.getElementById('sessionId').textContent = sessionId;
+                }
+                
+                // Show verification time
+                document.getElementById('verifiedTime').textContent = new Date().toLocaleString();
+                
+            } catch (error) {
+                console.error('Error initializing auth page:', error);
+                showErrorMessage('Failed to load certificate information. Please try again.');
+            }
+        });
+
+        function populateCertInfo(metadata) {
+            if (!metadata) return;
+            
+            // Common Name
+            if (metadata.cn) {
+                document.getElementById('certCN').textContent = metadata.cn;
+            }
+            
+            // Issuer
+            if (metadata.issuer) {
+                document.getElementById('certIssuer').textContent = metadata.issuer;
+            }
+            
+            // Serial Number
+            if (metadata.serial_number) {
+                document.getElementById('certSerial').textContent = metadata.serial_number;
+            }
+            
+            // Issued date (if available)
+            if (metadata.issued_date) {
+                try {
+                    const issuedDate = new Date(metadata.issued_date).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                    });
+                    document.getElementById('certIssued').textContent = issuedDate;
+                } catch (e) {
+                    document.getElementById('certIssued').textContent = metadata.issued_date;
+                }
+            }
+            
+            // Expiry date
+            if (metadata.expiry_date) {
+                try {
+                    const expiryDate = new Date(metadata.expiry_date).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                    });
+                    let expiryText = expiryDate;
+                    
+                    // Add days until expiry if available
+                    if (metadata.expiry_days !== undefined) {
+                        const days = parseInt(metadata.expiry_days);
+                        if (days > 0) {
+                            expiryText += ` (${days} days)`;
+                        } else if (days === 0) {
+                            expiryText += ' (expires today)';
+                        } else {
+                            expiryText += ' (expired)';
+                        }
+                    }
+                    
+                    document.getElementById('certExpiry').textContent = expiryText;
+                } catch (e) {
+                    document.getElementById('certExpiry').textContent = metadata.expiry_date;
+                }
+            }
+            
+            // Key Algorithm
+            if (metadata.key_algorithm) {
+                document.getElementById('certAlgorithm').textContent = metadata.key_algorithm;
+            }
+        }
+
+        function updateStatusBadge(metadata) {
+            const badge = document.getElementById('statusBadge');
+            if (!metadata) return;
+            
+            if (metadata.is_expired) {
+                badge.textContent = 'Certificate Expired';
+                badge.className = 'cert-status-badge expired';
+                showErrorMessage('⚠️ Your certificate has expired. Please renew it to continue.');
+            } else if (metadata.expiry_days !== undefined && metadata.expiry_days < 30) {
+                badge.textContent = `Expires Soon (${metadata.expiry_days} days)`;
+                badge.className = 'cert-status-badge warning';
+                if (metadata.expiry_days < 7) {
+                    showWarningMessage(`⚠️ Your certificate expires in ${metadata.expiry_days} days. Please renew it soon.`);
+                }
+            } else {
+                badge.textContent = 'Certificate Valid';
+                badge.className = 'cert-status-badge valid';
+            }
+        }
+
+        function updateTierBadge(metadata) {
+            const tierBadge = document.getElementById('tierBadge');
+            if (!metadata) return;
+            
+            const tier = (metadata.privilege_tier || 'STANDARD_USER').toUpperCase();
+            const tierDisplay = {
+                'ROOT_ADMIN': { text: 'Root Administrator', class: 'admin' },
+                'ADMIN_FULL_TRUST': { text: 'Full Trust Admin', class: 'admin' },
+                'ADMIN_REVIEWER': { text: 'Admin Reviewer', class: 'reviewer' },
+                'STANDARD_USER': { text: 'Standard User', class: 'standard' }
+            };
+            
+            const tierInfo = tierDisplay[tier] || tierDisplay['STANDARD_USER'];
+            tierBadge.textContent = tierInfo.text;
+            tierBadge.className = `tier-badge ${tierInfo.class}`;
+        }
+
+        function showErrorMessage(message) {
+            const container = document.getElementById('messageContainer');
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = message;
+            container.appendChild(errorDiv);
+        }
+
+        function showWarningMessage(message) {
+            const container = document.getElementById('messageContainer');
+            const warningDiv = document.createElement('div');
+            warningDiv.className = 'warning-message';
+            warningDiv.textContent = message;
+            container.appendChild(warningDiv);
+        }
+
+        function toggleCertDetails() {
+            const section = document.getElementById('certInfoSection');
+            const btn = document.getElementById('certDetailsBtn');
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                btn.textContent = '✓ Hide Details';
+            } else {
+                section.style.display = 'none';
+                btn.textContent = 'ℹ Show Details';
+            }
+        }
+
+        function continueToPlatform() {
+            // Get session ID from params or storage
+            const params = new URLSearchParams(window.location.search);
+            const sessionId = params.get('session_id') || document.getElementById('sessionId').textContent;
+            
+            if (sessionId && sessionId !== '—') {
+                // Redirect to main app with session
+                window.location.href = `/ballot_lens?session_id=${encodeURIComponent(sessionId)}`;
+            } else {
+                // Fallback: just redirect to main app
+                window.location.href = '/ballot_lens';
+            }
+        }
+
+        // Optional: Auto-continue after 3 seconds if cert is valid
+        setTimeout(function() {
+            const statusBadge = document.getElementById('statusBadge');
+            if (statusBadge.classList.contains('valid')) {
+                // User can still click, but we could auto-continue after brief delay
+                // Uncomment to enable auto-continue:
+                // continueToPlatform();
+            }
+        }, 3000);
+    </script>
+</body>
+</html>
