@@ -38,8 +38,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install jsonschema rapidfuzz
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Check for fixture CSVs
+        id: csv_check
+        run: |
+          shopt -s nullglob
+          files=(webapp/parser/fixtures/*.csv)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "has_csv=false" >> "$GITHUB_OUTPUT"
+            echo "No fixture CSVs found; skipping index build."
+          else
+            echo "has_csv=true" >> "$GITHUB_OUTPUT"
+            echo "Found ${#files[@]} fixture CSVs."
+          fi
       
       - name: Build election index
+        if: steps.csv_check.outputs.has_csv == 'true'
         run: |
           python scripts/build_election_index.py \
             --src webapp/parser/fixtures \
@@ -50,6 +64,7 @@ jobs:
             --shard-threshold-mb 8
       
       - name: Validate schema
+        if: steps.csv_check.outputs.has_csv == 'true'
         run: |
           python -c "
           import json
@@ -59,7 +74,7 @@ jobs:
           "
       
       - name: Check audit report
-        if: always()
+        if: steps.csv_check.outputs.has_csv == 'true'
         run: |
           if [ -f "webapp/parser/fixtures/fixture_audit_report.jsonl" ]; then
             lines=$(wc -l < "webapp/parser/fixtures/fixture_audit_report.jsonl")
@@ -69,6 +84,7 @@ jobs:
           fi
       
       - name: Test fixture loader
+        if: steps.csv_check.outputs.has_csv == 'true'
         run: |
           python -c "
           import sys
@@ -81,7 +97,7 @@ jobs:
           "
       
       - name: Commit updated index (if on main)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: steps.csv_check.outputs.has_csv == 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
@@ -98,11 +114,16 @@ jobs:
           fi
       
       - name: Create release tag (if on main)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: steps.csv_check.outputs.has_csv == 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           TAG="fixture-$(date +%Y%m%d-%H%M%S)"
           git tag "$TAG" || echo "Tag already exists"
           git push origin "$TAG" || echo "Could not push tag"
+
+      - name: Report skip
+        if: steps.csv_check.outputs.has_csv != 'true'
+        run: |
+          echo "ℹ️  No fixture CSVs found; skipping fixture validation."
       
       - name: Report status
         if: failure()
