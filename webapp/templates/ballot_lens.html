@@ -32,6 +32,7 @@
   <!-- Modern dashboard interface -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/ballot_lens_modern.css') }}?v={{ static_version }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modal_manager.css') }}?v={{ static_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/quality_assurance_panel.css') }}?v={{ static_version }}">
 </head>
 <body data-page="run-parser" data-allow-style="1">
   <!-- Init script moved to external file (CSP-friendly) -->
@@ -628,6 +629,8 @@
     </script>
     <!-- Modern dashboard interface (includes all features) -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot_lens_modern.js') }}?v={{ static_version }}" defer></script>
+    <!-- Quality Assurance Panel Integration -->
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/quality_assurance_panel.js') }}?v={{ static_version }}" defer></script>
 
     <footer id="sessionFooter" class="minimized">
       <div class="footer-inner">

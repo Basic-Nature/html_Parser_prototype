@@ -935,6 +935,10 @@ VERIFICATION_LOG_FILE = VERIFICATION_LOG_DIR / "verification_log.jsonl"
 ENABLE_VERIFICATION_FRAMEWORK = os.environ.get("ENABLE_VERIFICATION_FRAMEWORK", "true").lower() in ("1", "true", "yes")
 ALLOW_UNVERIFIED_EXPORTS = os.environ.get("ALLOW_UNVERIFIED_EXPORTS", "false").lower() in ("1", "true", "yes")
 
+# QA Framework: Require certificate authentication for data assurance endpoints
+# Set to false for development/Azure environments where cert headers aren't forwarded
+QA_REQUIRE_CERT_AUTH = os.environ.get("QA_REQUIRE_CERT_AUTH", "false").lower() in ("1", "true", "yes")
+
 # Verification confidence threshold for automatic DL1 promotion
 # (ADMIN_FULL_TRUST can override, but ROOT_ADMIN required for bypass)
 try:

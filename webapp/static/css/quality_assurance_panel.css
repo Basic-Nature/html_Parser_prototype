@@ -1,0 +1,362 @@
+/**
+ * Quality Assurance Panel Styles
+ * Styling for DL1/DL2 badges, issues list, and promotion workflow
+ * 
+ * Uses ballot_lens_modern.css tokens and patterns
+ */
+
+/* ============================================
+   QA Status Badges
+   ============================================ */
+
+.badge-dl-dl1 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--surface-variant, #f5f5f5);
+  color: var(--text-secondary, #666);
+  border: 1px solid var(--border-light, #ddd);
+}
+
+.badge-dl-dl2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--accent-success-soft, #e8f5e9);
+  color: var(--accent-success-strong, #2e7d32);
+  border: 1px solid var(--accent-success-strong, #2e7d32);
+}
+
+.badge-dl-rejected {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--brand-red, #eb4f43);
+  color: white;
+  border: 1px solid var(--brand-red, #eb4f43);
+}
+
+.badge-dl-disputed {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--accent-warn-soft, #fff3cd);
+  color: var(--accent-warn-strong, #856404);
+  border: 1px solid var(--accent-warn-strong, #856404);
+}
+
+.badge-label {
+  display: inline-block;
+  font-weight: 700;
+}
+
+.badge-confidence {
+  display: inline-block;
+  opacity: 0.8;
+  font-size: 0.8em;
+  font-weight: 500;
+}
+
+/* ============================================
+   QA Panel Card Layout
+   ============================================ */
+
+.qa-panel {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border-light, #e0e0e0);
+  border-radius: 0.5rem;
+  background: var(--surface-secondary, #fafafa);
+  border-left: 4px solid var(--brand-blue, #45818e);
+}
+
+.qa-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-light, #e0e0e0);
+}
+
+.qa-panel-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+
+/* ============================================
+   Issue Display  
+   ============================================ */
+
+.qa-issues-section {
+  margin: 0.75rem 0;
+}
+
+.qa-issues-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.qa-issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.qa-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  border-left: 3px solid transparent;
+}
+
+.qa-issue-info {
+  background: var(--surface-variant, #f5f5f5);
+  border-left-color: var(--accent-info, #0288d1);
+  color: var(--text-secondary, #666);
+}
+
+.qa-issue-warning {
+  background: var(--accent-warn-soft, #fff3cd);
+  border-left-color: var(--accent-warn-strong, #ff9800);
+  color: var(--text-primary, #333);
+}
+
+.qa-issue-error {
+  background: var(--accent-error-soft, #ffe5e5);
+  border-left-color: var(--brand-red, #eb4f43);
+  color: var(--text-primary, #333);
+}
+
+.qa-issue-critical {
+  background: var(--brand-red, #eb4f43);
+  border-left-color: #8b0000;
+  color: white;
+}
+
+.issue-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  flex-shrink: 0;
+  font-size: 0.9rem;
+}
+
+.issue-text {
+  flex: 1;
+}
+
+.issue-text strong {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.125rem;
+}
+
+.issue-meta {
+  display: inline-block;
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin-left: 0.5rem;
+  font-style: italic;
+}
+
+/* ============================================
+   Action Buttons
+   ============================================ */
+
+.qa-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-light, #e0e0e0);
+}
+
+.qa-promote-btn {
+  flex: 1;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 0.25rem;
+  background: var(--accent-success-strong, #2e7d32);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.qa-promote-btn:hover:not(:disabled) {
+  background: #1b5e20;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.qa-promote-btn:disabled {
+  background: var(--surface-variant, #e0e0e0);
+  color: var(--text-secondary, #999);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.qa-promote-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* ============================================
+   Metadata & Timestamps
+   ============================================ */
+
+.qa-meta {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-light, #e0e0e0);
+  font-size: 0.8rem;
+  color: var(--text-secondary, #999);
+  font-style: italic;
+}
+
+/* ============================================
+   Animated Loading State
+   ============================================ */
+
+.qa-panel.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.qa-panel.loading::after {
+  content: '';
+  display: block;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* ============================================
+   Responsive Adjustments
+   ============================================ */
+
+@media (max-width: 640px) {
+  .qa-panel {
+    margin: 0.75rem 0;
+    padding: 0.75rem;
+  }
+
+  .qa-panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .badge-dl-dl1,
+  .badge-dl-dl2,
+  .badge-dl-rejected,
+  .badge-dl-disputed {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+  }
+
+  .qa-actions {
+    flex-direction: column;
+  }
+
+  .qa-promote-btn {
+    width: 100%;
+  }
+
+  .qa-issues-list {
+    gap: 0.375rem;
+  }
+
+  .qa-issue {
+    padding: 0.375rem;
+    font-size: 0.8rem;
+  }
+}
+
+/* ============================================
+   Dark Mode Support (if needed)
+   ============================================ */
+
+@media (prefers-color-scheme: dark) {
+  .qa-panel {
+    background: var(--surface-secondary, #1e1e1e);
+    border-color: var(--border-dark, #333);
+  }
+
+  .qa-panel-header {
+    border-bottom-color: var(--border-dark, #333);
+  }
+
+  .qa-issues-section,
+  .qa-actions,
+  .qa-meta {
+    border-color: var(--border-dark, #333);
+  }
+
+  .qa-issue-info {
+    background: var(--surface-variant, #2a2a2a);
+  }
+
+  .qa-issues-title {
+    color: var(--text-secondary-dark, #bbb);
+  }
+}
+
+/* ============================================
+   Integration with Ballot Lens Result Cards
+   ============================================ */
+
+.result-card .qa-panel {
+  margin: 0.75rem 0 0 0;
+  border-left-width: 4px;
+}
+
+.result-card .qa-panel-header {
+  gap: 0.5rem;
+}
+
+/* Ensure QA panel badge takes full width when needed */
+@media (min-width: 641px) {
+  .result-card .badge-dl-dl1,
+  .result-card .badge-dl-dl2,
+  .result-card .badge-dl-rejected,
+  .result-card .badge-dl-disputed {
+    margin-left: auto;
+  }
+}

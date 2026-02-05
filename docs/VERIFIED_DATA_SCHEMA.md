@@ -247,7 +247,8 @@ WHERE year >= 2024;  -- Load recent data only
 
 ## Queries You'll Use
 
-### Get all DL2 (verified) data for a state:
+### Get all DL2 (verified) data for a state
+
 ```sql
 SELECT ds.dataset_id, ds.contest_name, ds.county_name, ds.extracted_at,
        ds.extraction_confidence, ds.trust_score
@@ -258,7 +259,8 @@ WHERE ds.state_abbr = 'CA'
 ORDER BY ds.extracted_at DESC;
 ```
 
-### Get unresolved QA issues:
+### Get unresolved QA issues
+
 ```sql
 SELECT qi.issue_type, COUNT(*) as count
 FROM quality_issues qi
@@ -268,7 +270,8 @@ GROUP BY qi.issue_type
 ORDER BY count DESC;
 ```
 
-### Get full audit trail for a dataset:
+### Get full audit trail for a dataset
+
 ```sql
 SELECT action_type, action_timestamp, reviewer_principal, certification_reason
 FROM verification_lineage
@@ -276,7 +279,8 @@ WHERE dataset_id = $1
 ORDER BY action_timestamp ASC;
 ```
 
-### Check if dataset was updated (version tracking):
+### Check if dataset was updated (version tracking)
+
 ```sql
 SELECT version_number, change_summary, created_at
 FROM data_versions
@@ -289,6 +293,7 @@ ORDER BY version_number ASC;
 ## Environment Configuration
 
 Add to `.env`:
+
 ```bash
 # PostgreSQL for Verified Data
 VERIFIED_DATA_DB_HOST=ballotlens-server.postgres.database.azure.com

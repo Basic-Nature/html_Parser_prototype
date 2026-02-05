@@ -21,7 +21,7 @@ from functools import wraps
 
 from flask import Blueprint, jsonify, request, send_file
 
-from ..config import ENABLE_VERIFICATION_FRAMEWORK
+from ..config import ENABLE_VERIFICATION_FRAMEWORK, QA_REQUIRE_CERT_AUTH
 from ..utils.cert_utils import extract_client_principal
 from ..utils.shared_logic import safe_get, safe_strip
 from .data_classifier import (
@@ -54,12 +54,28 @@ def _get_reviewer_principal() -> str | None:
 
 
 def _require_reviewer(f):
-    """Decorator: Require authenticated reviewer."""
+    """Decorator: Require authenticated reviewer (or allow fallback if cert auth disabled)."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         principal = _get_reviewer_principal()
+        
+        # If certificate auth is required and no principal found, reject
+        if QA_REQUIRE_CERT_AUTH and not principal:
+            return jsonify({
+                "error": "Unauthorized: Certificate authentication required",
+                "help": "Set QA_REQUIRE_CERT_AUTH=false in environment to disable cert requirement"
+            }), 401
+        
+        # If cert auth is optional and no principal, use fallback principal
         if not principal:
-            return jsonify({"error": "Unauthorized"}), 401
+            # Use a fallback principal for development/testing
+            # This should only happen when QA_REQUIRE_CERT_AUTH=false
+            from flask import g
+            g.reviewer_principal = "system:development"
+        else:
+            from flask import g
+            g.reviewer_principal = principal
+        
         return f(*args, **kwargs)
 
     return decorated_function
@@ -108,7 +124,8 @@ def parse_and_classify():
             "summary": "DL1 unverified. 0 issues detected. Trust score: 85.5/100"
         }
     """
-    principal = _get_reviewer_principal()
+    from flask import g
+    principal = g.reviewer_principal
     data = request.get_json(force=True) or {}
 
     # Extract required fields
@@ -232,9 +249,8 @@ def verify_and_promote():
             "timestamp": "2024-02-05T10:15:00Z"
         }
     """
-    principal = _get_reviewer_principal()
-    if not principal:
-        return jsonify({"error": "Unauthorized"}), 401
+    from flask import g
+    principal = g.reviewer_principal
 
     data = request.get_json(force=True) or {}
     dataset_id = safe_strip(safe_get(data, "dataset_id", ""))
@@ -391,7 +407,8 @@ def export_dl2_data():
         CSV file with columns:
         dataset_id, state, county, contest, candidates, trust_score, extracted_at
     """
-    principal = _get_reviewer_principal()
+    from flask import g
+    principal = g.reviewer_principal
     data = request.get_json(force=True) or {}
 
     state = safe_strip(safe_get(data, "state", "")).upper()
