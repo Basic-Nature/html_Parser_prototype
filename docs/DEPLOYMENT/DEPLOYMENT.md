@@ -3,11 +3,12 @@ layout: default
 title: Deployment Guide
 ---
 
-# Deployment Guide
+## Deployment Guide
 
 Complete guide for deploying the Smart Elections Parser to production environments, including local testing, cloud platforms (Azure), and general best practices.
 
 > **Note**: This document consolidates content from:
+>
 > - [DEPLOYMENT_GUIDE.md](../DEPLOYMENT_GUIDE.md) - General deployment procedures
 > - [AZURE_DEPLOYMENT_CHECKLIST.md](../AZURE_DEPLOYMENT_CHECKLIST.md) - Azure-specific checklist
 > - [PHASE2_AZURE_DEPLOYMENT.md](../PHASE2_AZURE_DEPLOYMENT.md) - Phase 2 Azure details
@@ -46,12 +47,14 @@ python Smart_Elections_Parser_Webapp.py
 ## 📋 Pre-Deployment Requirements
 
 ### System Requirements
+
 - **Python**: 3.8–3.12
 - **Memory**: Minimum 2GB (4GB+ recommended)
 - **Disk**: Minimum 1GB (5GB+ recommended for caching)
 - **Browser**: Playwright (included) or Selenium (optional)
 
 ### Dependencies
+
 ```bash
 # Core
 python >= 3.8
@@ -63,6 +66,7 @@ Poppler (for pdf2image)
 ```
 
 ### Credentials & Configuration
+
 - `.env` file with required keys (see `.env.example`)
 - Optional: Azure credentials (for cloud deployment)
 - Optional: Client certificate (for QA endpoints)
@@ -91,17 +95,20 @@ python -c "import webapp; print('Installation successful')"
 ### Method 2: Automated Installation Scripts
 
 **Windows**:
+
 ```bash
 install.bat
 ```
 
 **Linux/macOS**:
+
 ```bash
 chmod +x install.sh
 ./install.sh
 ```
 
 **Python-based installer** (all platforms):
+
 ```bash
 python install.py
 ```
@@ -175,6 +182,7 @@ az group create \
 ### Deployment Steps
 
 1. **Create App Service Plan**
+
    ```bash
    az appservice plan create \
      --name smart-elections-parser-plan \
@@ -183,6 +191,7 @@ az group create \
    ```
 
 2. **Create Web App**
+
    ```bash
    az webapp create \
      --resource-group smart-elections-parser \
@@ -192,6 +201,7 @@ az group create \
    ```
 
 3. **Configure Application Settings**
+
    ```bash
    az webapp config appsettings set \
      --resource-group smart-elections-parser \
@@ -203,6 +213,7 @@ az group create \
    ```
 
 4. **Deploy Code**
+
    ```bash
    # Via Git
    az webapp up \
@@ -218,6 +229,7 @@ az group create \
    ```
 
 5. **Configure SSL/TLS**
+
    ```bash
    # Upload certificate
    az webapp config set \
@@ -227,6 +239,7 @@ az group create \
    ```
 
 6. **Enable Application Insights** (Optional)
+
    ```bash
    az monitor app-insights component create \
      --resource-group smart-elections-parser \
@@ -358,6 +371,7 @@ az monitor activity-log list \
 ### If Deployment Fails
 
 **Git-based deployment**:
+
 ```bash
 # Revert to previous commit
 git revert <commit-hash>
@@ -365,6 +379,7 @@ git push azure main
 ```
 
 **Azure App Service**:
+
 ```bash
 # Swap deployment slots
 az webapp deployment slot swap \
@@ -374,6 +389,7 @@ az webapp deployment slot swap \
 ```
 
 **Manual rollback**:
+
 ```bash
 # Stop app
 az webapp stop \
@@ -392,6 +408,7 @@ az webapp start \
 ## 📈 Scaling & Performance
 
 ### Local Development
+
 - Single-threaded Flask development server
 - Adequate for testing and development
 
@@ -405,6 +422,7 @@ az appservice plan update \
 ```
 
 ### Horizontal Scaling
+
 - Use Azure App Service auto-scaling
 - Configure rules based on metrics (CPU, memory, request count)
 
@@ -445,11 +463,13 @@ jobs:
 ---
 
 **Related Documents**:
+
 - [Security & Authentication](./SECURITY.md) - Certificate-based auth
 - [Operations Runbook](./OPERATIONS.md) - Operational procedures
 - [Troubleshooting](../DEPLOYMENT_GUIDE.md) - Detailed troubleshooting
 
 **Source References**:
+
 - [DEPLOYMENT_GUIDE.md](../DEPLOYMENT_GUIDE.md)
 - [AZURE_DEPLOYMENT_CHECKLIST.md](../AZURE_DEPLOYMENT_CHECKLIST.md)
 

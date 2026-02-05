@@ -3,11 +3,12 @@ layout: default
 title: ML-Powered Quality Framework
 ---
 
-# ML-Powered Quality Framework
+## ML-Powered Quality Framework
 
 Machine learning and neural network approaches to table detection, extraction quality assessment, and anomaly identification.
 
 > **Note**: This document consolidates content from:
+>
 > - [ML_QUICKSTART.md](../ML_QUICKSTART.md) - ML quickstart guide
 > - [ML_OPTIMIZATION_METRICS.md](../ML_OPTIMIZATION_METRICS.md) - Performance metrics
 > - [ML_QUALITY_METRICS_SUMMARY.md](../ML_QUALITY_METRICS_SUMMARY.md) - Quality analysis
@@ -67,6 +68,7 @@ entities = extract_entities(text)
 **Purpose**: Assess confidence in extracted data
 
 **Factors**:
+
 - Source document quality (text clarity, formatting)
 - Extraction method confidence (panel vs section vs ML)
 - Data consistency (vote totals, duplicate checks)
@@ -86,6 +88,7 @@ score = (
 **Purpose**: Identify unusual data patterns that may indicate errors
 
 **Detects**:
+
 - Outlier vote percentages
 - Vote total mismatches
 - Unusual candidate patterns
@@ -102,21 +105,24 @@ anomalies = detect_anomalies(parsed_data)
 ## 📊 Performance Metrics
 
 ### Table Detection
-```
+
+```txt
 Precision:  94.2%  (correctly identified tables)
 Recall:     91.8%  (found tables present)
 F1 Score:   92.9%  (harmonic mean)
 ```
 
 ### Entity Recognition
-```
+
+```txt
 Candidate Names:  F1 = 0.93
 Offices:          F1 = 0.89
 Parties:          F1 = 0.96
 ```
 
 ### Overall Quality Scoring
-```
+
+```txt
 MAE (Mean Absolute Error):    0.08
 RMSE (Root Mean Squared):     0.12
 Accuracy (high/low):          91.2%
@@ -235,7 +241,7 @@ python scripts/benchmark_ml_models.py
 
 ### Feedback Loop
 
-```
+```txt
 QA Correction
     ↓
 Extract labeled example
@@ -269,7 +275,7 @@ Deploy or iterate
 ## 🎯 Quality Targets
 
 | Metric | Target | Current | Status |
-|--------|--------|---------|--------|
+| -------- | -------- | --------- | -------- |
 | Table Detection Precision | > 95% | 94.2% | ⚠️ |
 | Entity Recognition F1 | > 90% | 93% | ✅ |
 | Quality Scoring MAE | < 0.10 | 0.08 | ✅ |
@@ -280,6 +286,7 @@ Deploy or iterate
 ### Issue: Low Detection Accuracy on Specific Document Type
 
 **Solution**:
+
 1. Collect samples of problematic documents (10+)
 2. Annotate with ground truth
 3. Fine-tune model on this data
@@ -288,6 +295,7 @@ Deploy or iterate
 ### Issue: Model Training Takes Too Long
 
 **Solutions**:
+
 - Reduce dataset size (start with 100 examples)
 - Use pre-trained weights (transfer learning)
 - Reduce model complexity (fewer layers)
@@ -296,6 +304,7 @@ Deploy or iterate
 ### Issue: Memory Issues During Training
 
 **Solutions**:
+
 - Reduce batch size
 - Process documents in chunks
 - Use mixed precision training
@@ -304,14 +313,16 @@ Deploy or iterate
 ## 📚 References & Resources
 
 ### Papers & Research
+
 - [Table Detection in Scanned Documents](https://papers.example.com)
 - [Named Entity Recognition for Legal Documents](https://arxiv.example.com)
 - [Quality Assessment in Automated Data Extraction](https://doi.example.com)
 
 ### Libraries
-- **SpaCy**: NLP pipeline (https://spacy.io)
-- **TensorFlow**: ML framework (https://tensorflow.org)
-- **PyTorch**: Deep learning (https://pytorch.org)
+
+- **SpaCy**: NLP pipeline (<https://spacy.io>)
+- **TensorFlow**: ML framework (<https://tensorflow.org>)
+- **PyTorch**: Deep learning (<https://pytorch.org>)
 
 ## ✅ Deployment Checklist
 
@@ -326,11 +337,13 @@ Deploy or iterate
 ---
 
 **Related Documents**:
+
 - [Verification Framework](./VERIFICATION.md) - QA workflows
 - [Quarantine System](./QUARANTINE_SYSTEM.md) - Handling low-quality results
 - [Data Models & Schema](../CORE/DATA_MODELS.md) - Data structure
 
 **Sources**:
+
 - [ML_QUICKSTART.md](../ML_QUICKSTART.md)
 - [ML_OPTIMIZATION_METRICS.md](../ML_OPTIMIZATION_METRICS.md)
 - [ML_QUALITY_METRICS_SUMMARY.md](../ML_QUALITY_METRICS_SUMMARY.md)

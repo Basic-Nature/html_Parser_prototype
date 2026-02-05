@@ -2555,6 +2555,8 @@ def _finalize_markdown_lines(lines: list[str]) -> str:
             )
             or [line]
         )
+    # Strip trailing spaces from each line to comply with markdownlint MD009
+    wrapped = [line.rstrip() for line in wrapped]
     return "\n".join(wrapped).rstrip() + "\n"
 
 def update_architecture_md(project_root: str | Path = ".", md_path: str | Path = "docs/architecture.md") -> bool:
@@ -2839,7 +2841,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
 
     # Helper function to build cluster nodes
     def _build_cluster_nodes() -> dict[str, set[str]]:
-        cluster_nodes: dict[str, set[str]] = {k: set() for k in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Context_Integration","Health","Other"]}
+        cluster_nodes: dict[str, set[str]] = {k: set() for k in ["Entry","Pipeline","Routing","State Handlers","Format Handlers","Shared Handlers","Services","Utils","Context_Integration","Health","Other"]}
         for e in edges:
             sp = e.get("src_path")
             dp = e.get("resolved_path")
@@ -2890,7 +2892,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         if "/webapp/parser/utils/" in p:
             return "Utils"
         if "/webapp/parser/Context_Integration/" in p:
-            return "Context Integration"
+            return "Context_Integration"
         if "/webapp/parser/health/" in p:
             return "Health"
         return "Other"
@@ -3315,11 +3317,13 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             lines.append("- Task markers:")
             for ln, keyword, cleaned_txt in todos[:50]:
                 safe_txt = cleaned_txt.replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('\t', ' ').replace('<', '&lt;').replace('>', '&gt;')  # avoid MD inline code breaks, link issues, tabs, inline HTML
+                # Escape Python dunder names to prevent markdown interpretation
+                safe_txt = safe_txt.replace('__', r'\_\_')
                 safe_txt = re.sub(r'(\*|_)\s+', r'\1', safe_txt)
                 safe_txt = re.sub(r'\s+(\*|_)', r'\1', safe_txt)
-                safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
-                safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
-                safe_txt = safe_txt.replace('_', '*')  # Replace any remaining _ with *
+                safe_txt = re.sub(r'(\*|_)\s*([^ *_]*)\s*(\*|_)', r'\1\2\3', safe_txt)
+                safe_txt = re.sub(r'(\*|_)\s*([^ *_]*)\s*(\*|_)', r'\1\2\3', safe_txt)
+                safe_txt = safe_txt.replace('*', '_')  # Replace asterisks with underscores for emphasis compliance
                 lines.append(f"  - L{ln} **{keyword}**: {safe_txt}")
         # Outgoing calls (cross-module)
         calls = [c for c in m.get("calls", []) if any(sep in c.get("func"," ") for sep in (".", ":"))]
@@ -3361,7 +3365,10 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         lines.append("")
     return _finalize_markdown_lines(lines)
 
-def generate_project_audit(project_root: str | Path = ".", out_markdown: str | Path = "docs/project_audit.md") -> bool:
+def generate_project_audit(
+    project_root: str | Path = ".",
+    out_markdown: str | Path = "docs/DEVELOPMENT/project_audit.md",
+) -> bool:
     """Scan webapp/ for Python modules and produce a first-pass audit report.
 
     Report includes per-file summaries, defs, imports, outgoing cross-module calls,
@@ -3381,7 +3388,10 @@ def generate_project_audit(project_root: str | Path = ".", out_markdown: str | P
         logger.error(f"[audit] Failed to generate project audit: {e}")
         return False
 
-def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Path = "docs/todos.md") -> bool:
+def generate_todos_index(
+    project_root: str | Path = ".",
+    out_markdown: str | Path = "docs/DEVELOPMENT/todos.md",
+) -> bool:
     """Aggregate task marker lines from webapp/ into a compact index.
 
     Writes a markdown file with a summary and per-module annotated lines.
@@ -3414,13 +3424,15 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
             todos = m.get("todo_lines", [])
             for ln, keyword, cleaned_txt in todos:
                 safe_txt = (cleaned_txt or "").replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('<', '&lt;').replace('>', '&gt;').replace('\t', ' ')
+                # Escape Python dunder names to prevent markdown interpretation
+                safe_txt = safe_txt.replace('__', r'\_\_')
                 # Fix emphasis spaces
                 safe_txt = re.sub(r'(\*|_)\s+', r'\1', safe_txt)
                 safe_txt = re.sub(r'\s+(\*|_)', r'\1', safe_txt)
-                safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
+                safe_txt = re.sub(r'(\*|_)\s*([^ *_]*)\s*(\*|_)', r'\1\2\3', safe_txt)
                 # Fix reversed links
                 safe_txt = re.sub(r'\(([^)]+)\)\[:(\d+)\]', r'[\1][:\2]', safe_txt)
-                safe_txt = safe_txt.replace('_', '*')  # Replace any remaining _ with *
+                safe_txt = safe_txt.replace('*', '_')  # Replace asterisks with underscores for emphasis compliance
                 item = (path, ln, keyword, safe_txt)
                 if keyword in high_keywords:
                     priority_todos['high'].append(item)
@@ -3490,7 +3502,7 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
                 lines.append(f"{{: #{raw_id} }}")
                 lines.append("")
                 for ln, keyword, safe_txt in file_groups[path]:
-                    lines.append(f"- L{ln} *{keyword}*: {safe_txt}")
+                    lines.append(f"- L{ln} **{keyword}**: {safe_txt}")
                 lines.append("")
         
         md = _finalize_markdown_lines(lines)
@@ -3626,7 +3638,10 @@ def generate_noise_override_suggestions(
         logger.error(f"[noise] Failed to generate override suggestions: {e}")
         return False
 
-def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Path = "docs/pipeline_map.md") -> bool:
+def generate_pipeline_map(
+    project_root: str | Path = ".",
+    out_markdown: str | Path = "docs/DEVELOPMENT/pipeline_map.md",
+) -> bool:
     """Emit a comprehensive pipeline audit with graph, TOC, interactive elements, and detailed file contexts.
 
     Includes hyperlinks, collapsible sections, thorough connection maps, and automated audit for optimizations.
@@ -3893,11 +3908,13 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
                 lines.append("")
                 for ln, keyword, cleaned_txt in todos[:20]:  # Increased
                     safe_txt = (cleaned_txt or "").replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('<', '&lt;').replace('>', '&gt;').replace('\t', ' ')
+                    # Escape Python dunder names to prevent markdown interpretation
+                    safe_txt = safe_txt.replace('__', r'\_\_')
                     safe_txt = re.sub(r'(\*|_)\s+', r'\1', safe_txt)
                     safe_txt = re.sub(r'\s+(\*|_)', r'\1', safe_txt)
-                    safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
+                    safe_txt = re.sub(r'(\*|_)\s*([^ *_]*)\s*(\*|_)', r'\1\2\3', safe_txt)
                     safe_txt = re.sub(r'\(([^)]+)\)\[:(\d+)\]', r'[\1][:\2]', safe_txt)
-                    safe_txt = safe_txt.replace('_', '*')  # Replace any remaining _ with *
+                    safe_txt = safe_txt.replace('*', '_')  # Replace asterisks with underscores for emphasis compliance
                     lines.append(f"- L{ln} **{keyword}**: {safe_txt}")
                 lines.append("")
         # Post-process lines for markdownlint compliance
@@ -3951,11 +3968,27 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         return False
 
 
+def generate_docs_artifacts(
+    project_root: str | Path = ".",
+    output_dir: str | Path = "docs/DEVELOPMENT",
+    include_todos: bool = False,
+) -> bool:
+    """Generate project audit + pipeline map, optionally a basic TODO index."""
+    root = Path(project_root).resolve()
+    out_dir = Path(output_dir)
+    audit_ok = generate_project_audit(root, out_dir / "project_audit.md")
+    pipeline_ok = generate_pipeline_map(root, out_dir / "pipeline_map.md")
+    todos_ok = True
+    if include_todos:
+        todos_ok = generate_todos_index(root, out_dir / "todos.md")
+    return audit_ok and pipeline_ok and todos_ok
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) < 2:
         print("Usage: python -m webapp.parser.utils.shared_logic <command>")
-        print("Commands: generate_project_audit, generate_todos_index, generate_noise_override_suggestions, generate_pipeline_map")
+        print("Commands: generate_project_audit, generate_todos_index, generate_noise_override_suggestions, generate_pipeline_map, generate_docs_artifacts")
         sys.exit(1)
     command = sys.argv[1]
     if command == "generate_project_audit":
@@ -3969,6 +4002,9 @@ if __name__ == "__main__":
         sys.exit(0 if success else 1)
     elif command == "generate_pipeline_map":
         success = generate_pipeline_map()
+        sys.exit(0 if success else 1)
+    elif command == "generate_docs_artifacts":
+        success = generate_docs_artifacts()
         sys.exit(0 if success else 1)
     else:
         print(f"Unknown command: {command}")

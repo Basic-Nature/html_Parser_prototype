@@ -3,7 +3,7 @@ layout: default
 title: Election Integrity Guidelines
 ---
 
-# Election Integrity Guidelines
+## Election Integrity Guidelines
 
 Ethical and operational guidelines ensuring the Smart Elections Parser maintains election integrity, accuracy, and voter trust through secure, transparent, and auditable operations.
 
@@ -12,30 +12,35 @@ Ethical and operational guidelines ensuring the Smart Elections Parser maintains
 ## 🏛️ Core Principles
 
 ### 1. Accuracy First
+
 - Election data must be accurate to the source document
 - Confidence scoring prevents unreliable data from being used
 - Manual verification for uncertain extractions
 - Continuous validation and error correction
 
 ### 2. Transparency
+
 - All parsing methods documented and auditable
 - Extraction confidence scores visible to users
 - Data sources and modifications tracked
 - Clear documentation of limitations
 
 ### 3. Auditability
+
 - Full audit trail of all data changes
 - Preservation of original source documents
 - Logging of all corrections and approvals
 - Chain of custody maintained
 
 ### 4. Security
+
 - Secure access controls (certificate-based)
 - Data encryption in transit and at rest
 - Access logging for compliance
 - Regular security audits
 
 ### 5. Fairness
+
 - Equal treatment of all candidates/parties
 - No bias in parsing or validation
 - Consistent application of rules
@@ -46,18 +51,21 @@ Ethical and operational guidelines ensuring the Smart Elections Parser maintains
 ### Data Accuracy Standards
 
 **Source Material Conformance**:
+
 - Extracted values must match source document
 - Tolerance: ± 1 vote for totals, ± 0.5% for percentages
 - Vote totals must balance (within rounding)
 - No invented or altered values
 
 **Candidate Identification**:
+
 - Names extracted exactly as listed on official ballots
 - Spelling preserved even if potentially incorrect
 - Abbreviations normalized consistently
 - Duplicate detection and prevention
 
 **Vote Counting**:
+
 - All votes counted and accounted for
 - Write-in candidates tracked separately
 - Percentage calculations verified
@@ -66,16 +74,19 @@ Ethical and operational guidelines ensuring the Smart Elections Parser maintains
 ### Confidence Standards
 
 **High Confidence (> 0.85)**:
+
 - Ready for automatic use
 - Minimal review required
 - Can be published without additional verification
 
 **Medium Confidence (0.70–0.85)**:
+
 - Spot-check 10% before publication
 - Flag for user awareness
 - Consider additional validation
 
 **Low Confidence (< 0.70)**:
+
 - Manual verification required
 - Cannot be published without review
 - Quarantine for expert assessment
@@ -83,16 +94,19 @@ Ethical and operational guidelines ensuring the Smart Elections Parser maintains
 ### Error Handling Standards
 
 **Critical Errors** (Stop processing):
+
 - Uncaught exceptions
 - Unrecoverable data corruption
 - Security violations
 
 **Major Errors** (Quarantine):
+
 - Validation failures
 - Vote total mismatches (> 5%)
 - Missing key data
 
 **Minor Issues** (Flag for review):
+
 - Low confidence
 - Anomalies detected
 - Unusual patterns
@@ -103,7 +117,7 @@ Ethical and operational guidelines ensuring the Smart Elections Parser maintains
 
 Before publishing any results:
 
-```
+```list
 Data Quality
 □ All vote totals balance
 □ Percentages sum correctly (± 0.5%)
@@ -133,6 +147,7 @@ Security & Access
 ### Compliance Requirements
 
 **Documentation**:
+
 - Source document preserved
 - Extraction method recorded
 - Confidence scores documented
@@ -140,12 +155,14 @@ Security & Access
 - Reviewer sign-off
 
 **Retention**:
+
 - Raw source materials: 5+ years
 - Extraction logs: 3+ years
 - Audit trail: Permanent
 - Corrections audit: 3+ years
 
 **Access Control**:
+
 - Multi-party approval for publication
 - Separate roles for extraction/review
 - Read-only archive access
@@ -156,7 +173,7 @@ Security & Access
 ### Common Risks & Mitigations
 
 | Risk | Impact | Mitigation |
-|------|--------|-----------|
+| ------ | -------- | ----------- |
 | Inaccurate extraction | Voter distrust | High confidence threshold, manual review |
 | Altered results | Election integrity | Immutable audit trail, encryption |
 | Unauthorized access | Data integrity | Certificate auth, access logging |
@@ -165,17 +182,20 @@ Security & Access
 
 ### Malicious Actor Scenarios
 
-**Scenario 1: Unauthorized Result Modification**
+***Scenario 1: Unauthorized Result Modification***
+
 - Mitigation: Certificate-based access control, audit logging
 - Detection: Checksum verification, audit trail review
 - Recovery: Restore from immutable backup
 
-**Scenario 2: False Confidence Scores**
+***Scenario 2: False Confidence Scores***
+
 - Mitigation: Independent confidence verification
 - Detection: QA review finds inconsistencies
 - Recovery: Recalculate scores, update results
 
-**Scenario 3: Source Document Manipulation**
+***Scenario 3: Source Document Manipulation***
+
 - Mitigation: Chain of custody documentation
 - Detection: Visual comparison, cryptographic signatures
 - Recovery: Revert to certified source copy
@@ -185,7 +205,8 @@ Security & Access
 ### Integrity Metrics
 
 Track and report:
-```
+
+```list
 - Extraction accuracy rate
 - Correction frequency and reasons
 - Confidence score distribution
@@ -233,24 +254,28 @@ Recommendations:
 ## 👥 Team Responsibilities
 
 ### Extraction Team
+
 - Follow accuracy standards
 - Flag uncertain extractions
 - Document methodology
 - Maintain audit trails
 
 ### QA/Review Team
+
 - Verify accuracy of extractions
 - Assess confidence appropriately
 - Spot-check samples
 - Document decisions
 
 ### Approval Authority
+
 - Final sign-off on results
 - Verification of completeness
 - Compliance with standards
 - Risk assessment
 
 ### Audit Team (if applicable)
+
 - Independent verification
 - Periodic audits
 - Documentation review
@@ -260,7 +285,7 @@ Recommendations:
 
 If integrity issue detected:
 
-```
+```tree
 Integrity Incident
     ↓
 [IMMEDIATE ACTIONS]
@@ -291,6 +316,7 @@ Integrity Incident
 ## ✅ Best Practices
 
 ### For All Team Members
+
 - ✓ When in doubt, escalate (don't guess)
 - ✓ Document everything (audit trail)
 - ✓ Triple-check critical data
@@ -298,6 +324,7 @@ Integrity Incident
 - ✓ Prioritize accuracy over speed
 
 ### For Developers
+
 - ✓ Build integrity checks into code
 - ✓ Provide confidence scoring
 - ✓ Log all operations for audit
@@ -305,6 +332,7 @@ Integrity Incident
 - ✓ Test edge cases thoroughly
 
 ### For QA Team
+
 - ✓ Understand statistical significance
 - ✓ Compare to source documents
 - ✓ Document review procedures
@@ -312,6 +340,7 @@ Integrity Incident
 - ✓ Get second opinions on hard cases
 
 ### For Management
+
 - ✓ Allocate adequate review time
 - ✓ Don't rush accuracy for speed
 - ✓ Support escalations for quality
@@ -321,11 +350,13 @@ Integrity Incident
 ---
 
 **Related Documents**:
+
 - [Verification Framework](../QUALITY/VERIFICATION.md) - QA and testing
 - [Data Models & Schema](../CORE/DATA_MODELS.md) - Data quality standards
 - [Election Operations](./ELECTION_OPERATIONS.md) - Election procedures
 
 **Source**:
+
 - [Election_Integrity_Guidelines.md](../Election_Integrity_Guidelines.md)
 
 **Last Updated**: Election integrity guidelines

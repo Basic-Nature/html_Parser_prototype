@@ -3,11 +3,12 @@ layout: default
 title: Developer Guides & How-To
 ---
 
-# Developer Guides & How-To
+## Developer Guides & How-To
 
 Comprehensive guides for developers extending and maintaining the Smart Elections Parser, including handler development, architecture, and integration patterns.
 
 > **Note**: This document consolidates content from:
+>
 > - [HANDLER_MIGRATION_GUIDE.md](../HANDLER_MIGRATION_GUIDE.md) - Handler development patterns
 > - [MODERN_UI_FEATURES.md](../MODERN_UI_FEATURES.md) - Frontend features
 > - Architecture & Handler documentation
@@ -18,7 +19,7 @@ Comprehensive guides for developers extending and maintaining the Smart Election
 
 See [System Architecture](../CORE/ARCHITECTURE.md) for the complete architecture. Quick overview:
 
-```
+```tree
 URL Input
   ↓
 state_router → state-specific handler
@@ -134,6 +135,7 @@ class TestYourStateHandler:
 ```
 
 Run test:
+
 ```bash
 pytest webapp/tests/test_your_state.py::TestYourStateHandler::test_parse_sample_page
 ```
@@ -143,6 +145,7 @@ pytest webapp/tests/test_your_state.py::TestYourStateHandler::test_parse_sample_
 Before submitting a new handler:
 
 ### Functionality
+
 - [ ] Handler parses target election page correctly
 - [ ] Returns proper tuple structure: (headers, data, contest, metadata)
 - [ ] Handles edge cases: no data, partial data, format variations
@@ -150,6 +153,7 @@ Before submitting a new handler:
 - [ ] Proper error handling (non-fatal vs fatal)
 
 ### Code Quality
+
 - [ ] Code follows project style guide
 - [ ] Proper type hints on all functions
 - [ ] Comprehensive docstrings
@@ -158,6 +162,7 @@ Before submitting a new handler:
 - [ ] No print statements (use logger)
 
 ### Testing
+
 - [ ] Unit tests for parsing logic
 - [ ] Integration tests with real/sample pages
 - [ ] Edge case testing
@@ -165,12 +170,14 @@ Before submitting a new handler:
 - [ ] All tests passing
 
 ### Documentation
+
 - [ ] Handler documented in [handlers.md](../handlers.md)
 - [ ] Known limitations documented
 - [ ] Configuration options explained
 - [ ] Sample output provided
 
 ### Security
+
 - [ ] Input validation on all data sources
 - [ ] No SQL injection risks
 - [ ] No path traversal vulnerabilities
@@ -182,6 +189,7 @@ Before submitting a new handler:
 ### UI Framework
 
 The parser uses a modern UI with:
+
 - **Neon accent colors** (#00FF41, #FF006E)
 - **Metallic backgrounds** (silver/aluminum tones)
 - **CSS-in-JS** via `static/css/run_parser.css`
@@ -190,6 +198,7 @@ The parser uses a modern UI with:
 ### JavaScript Modules
 
 Key modules in `static/js/`:
+
 - `run_parser.js` - Main application logic
 - `quality_assurance_integration.js` - QA panel integration
 - `form_handlers.js` - Form state management
@@ -198,6 +207,7 @@ Key modules in `static/js/`:
 ### Adding a Feature
 
 1. **Create CSS classes** (no inline styles):
+
    ```css
    /* static/css/run_parser.css */
    @layer components;
@@ -208,6 +218,7 @@ Key modules in `static/js/`:
    ```
 
 2. **Add JavaScript handler**:
+
    ```javascript
    // static/js/my_feature.js
    export function initMyFeature() {
@@ -216,6 +227,7 @@ Key modules in `static/js/`:
    ```
 
 3. **Integrate in run_parser.js**:
+
    ```javascript
    import { initMyFeature } from './my_feature.js';
    initMyFeature();
@@ -247,6 +259,7 @@ class MyExtractorPlugin(ExtractorPlugin):
 ```
 
 Register in `plugins/__init__.py`:
+
 ```python
 from plugins.my_extractor import MyExtractorPlugin
 PLUGINS = [MyExtractorPlugin()]
@@ -277,6 +290,7 @@ def parse(self, page, html_context: dict):
 ### Providing Context
 
 From table_core:
+
 ```python
 html_context = {
     'tables': extracted_tables,
@@ -340,6 +354,7 @@ def test_parse_real_sample(handler):
 ## 🚀 Deployment
 
 ### Staging Testing
+
 1. Deploy handler to staging environment
 2. Test with 5-10 real election documents
 3. Verify output quality
@@ -347,6 +362,7 @@ def test_parse_real_sample(handler):
 5. Iterate if needed
 
 ### Production Deployment
+
 1. Code review approval
 2. All tests passing
 3. Performance benchmarks acceptable
@@ -357,11 +373,13 @@ def test_parse_real_sample(handler):
 ---
 
 **Related Documents**:
+
 - [System Architecture](../CORE/ARCHITECTURE.md) - Architecture overview
 - [Data Models & Schema](../CORE/DATA_MODELS.md) - Data structures
 - [Verification Framework](../QUALITY/VERIFICATION.md) - Testing & QA
 
 **Sources**:
+
 - [HANDLER_MIGRATION_GUIDE.md](../HANDLER_MIGRATION_GUIDE.md)
 - [MODERN_UI_FEATURES.md](../MODERN_UI_FEATURES.md)
 

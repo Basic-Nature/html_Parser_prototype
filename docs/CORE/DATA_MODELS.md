@@ -3,11 +3,12 @@ layout: default
 title: Data Models & Schema
 ---
 
-# Data Models & Schema
+## Data Models & Schema
 
 This document defines the core data structures, schemas, and validation models used throughout the Smart Elections Parser system.
 
 > **Note**: This document consolidates content from:
+>
 > - [VERIFIED_DATA_SCHEMA.md](../VERIFIED_DATA_SCHEMA.md)
 > - [CONSTANTS_INVENTORY.md](../CONSTANTS_INVENTORY.md) - see [Constants Reference](./CONSTANTS.md)
 > - [VERIFICATION_FRAMEWORK.md](../VERIFICATION_FRAMEWORK.md)
@@ -55,7 +56,7 @@ This document defines the core data structures, schemas, and validation models u
 
 The parsed data uses standardized column headers after normalization:
 
-```
+```list
 Core Election Columns:
 - candidate_name (or: name, candidate, contender)
 - votes (or: vote_count, votes_count, total_votes)  
@@ -73,27 +74,32 @@ Core Election Columns:
 ### Validation Rules
 
 **Name Validation**:
+
 - Must contain at least one letter
 - Max 100 characters
 - No leading/trailing whitespace
 - No excessive punctuation (< 3 consecutive special chars)
 
 **Vote Count Validation**:
+
 - Non-negative integer
 - Consistent across all rows for same race
 - Reasonable bounds (< population of jurisdiction)
 
 **Percentage Validation**:
+
 - Ranges 0.0–100.0
 - Sum to ~100.0 ± 2% for complete candidate lists
 - Consistent scale (either 0-100 or 0-1.0)
 
 **Party Validation**:
+
 - Match canonical party list
 - Normalized to standard abbreviations
 - Handle affiliation variations
 
 **Jurisdiction Validation**:
+
 - Must be valid U.S. state/county/precinct
 - Matches election records when available
 - Consistent across all rows
@@ -114,6 +120,7 @@ confidence_score = (
 ```
 
 **Score Interpretation**:
+
 - **0.9+**: High confidence, ready for use without review
 - **0.7–0.9**: Medium confidence, review recommended
 - **0.5–0.7**: Low confidence, significant review needed
@@ -122,16 +129,19 @@ confidence_score = (
 ### Validation Strategies
 
 #### Schema Validation
+
 - Ensure required fields present
 - Check field types and ranges
 - Verify referential integrity
 
 #### Semantic Validation
+
 - Candidate names match canonical lists
 - Vote totals consistent across report sections
 - Percentages sum to expected total
 
 #### Cross-Site Validation
+
 - Compare with other sources for same election
 - Flag discrepancies exceeding thresholds
 - Report confidence for multi-source consensus
@@ -141,16 +151,19 @@ confidence_score = (
 The system uses a multi-level contest selection strategy:
 
 ### Level 1: Contest Detection
+
 - Identify all contests/races in source document
 - Extract contest metadata (office, jurisdiction, party)
 - Score quality of extraction (0.0–1.0)
 
 ### Level 2: Contest Filtering
+
 - Remove duplicate contests
 - Filter by user-selected criteria
 - Apply jurisdiction/date filters
 
 ### Level 3: User Selection
+
 - Present high-confidence contests to user
 - Allow manual selection/deselection
 - Provide default selections based on heuristics
@@ -202,7 +215,7 @@ All extracted data includes metadata:
 
 ## 🔄 Data Pipeline
 
-```
+```tree
 Raw Input (PDF/HTML/CSV/JSON)
     ↓
 [Format Detection]
@@ -238,16 +251,19 @@ Validated Output (CSV/JSON + Metadata)
 ## ⚠️ Special Cases & Handling
 
 ### Write-In Handling
+
 - Detect write-in candidate sections
 - Ensure write-in counts tracked separately
 - Validate write-in percentages when provided
 
 ### Multi-Level Contests
+
 - Handle contests spanning multiple tables/sections
 - Aggregate results from multiple sources
 - Mark aggregation method in metadata
 
 ### Ambiguous Data
+
 - Flag when column assignment uncertain
 - Provide alternative interpretations
 - Allow user to override automated choices
@@ -255,21 +271,24 @@ Validated Output (CSV/JSON + Metadata)
 ## 🔗 Field Normalization
 
 ### Name Normalization
-```
+
+```txt
 Input: "JOHN Q. PUBLIC"  
 ↓ [lowercase, trim, remove diacritics]
 Output: "john q public"
 ```
 
 ### Vote Normalization
-```
+
+```txt
 Input: "1,234"  
 ↓ [remove formatting, convert to int]
 Output: 1234
 ```
 
 ### Party Normalization
-```
+
+```txt
 Input: "D", "DEM", "Democratic", "Dem."  
 ↓ [map to canonical list]
 Output: "Democratic"  // Canonical
@@ -278,6 +297,7 @@ Output: "Democratic"  // Canonical
 ---
 
 **Related Documents**:
+
 - [System Architecture](./ARCHITECTURE.md) - System design and data flow
 - [Constants Reference](./CONSTANTS.md) - Enumerated values and static data
 - [Verification Framework](../QUALITY/VERIFICATION.md) - QA and testing details

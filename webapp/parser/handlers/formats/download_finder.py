@@ -35,7 +35,7 @@ def find_download_links(page: Any, base_url: str | None = None, session_id: str 
         else:
             # Evaluate fallback for environments where query_selector_all isn't present
             try:
-                found = page.evaluate("() => Array.from(document.querySelectorAll('a')).map(a=>a.href).filter(h=>h.match(/\.(csv|json)$/i))")
+                found = page.evaluate(r"() => Array.from(document.querySelectorAll('a')).map(a=>a.href).filter(h=>h.match(/\.(csv|json)$/i))")
                 if isinstance(found, list):
                     urls.extend(found)
             except Exception:

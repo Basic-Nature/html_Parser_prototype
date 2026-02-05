@@ -3,15 +3,16 @@ layout: default
 title: System Architecture
 ---
 
-# System Architecture
+## System Architecture
 
 ## Overview
 
 This document provides the comprehensive architecture overview of the Smart Elections Parser system, including all major layers, components, responsibilities, and data flow.
 
 > **Note**: This document consolidates content from:
+>
 > - [architecture.md](../architecture.md)
-> - [handlers.md](../handlers.md) 
+> - [handlers.md](../handlers.md)
 > - [pipeline_map.md](../pipeline_map.md)
 >
 > For detailed information, consult the individual source documents linked above.
@@ -21,6 +22,7 @@ This document provides the comprehensive architecture overview of the Smart Elec
 ### 1. Entry Point
 
 **`html_election_parser.py`** - Main orchestrator:
+
 - Delegates all specialized logic, never implements scraping/parsing directly
 - Handles browser setup, CAPTCHA detection, user input collection
 - Delegates parsing to state- or format-specific handlers
@@ -30,13 +32,17 @@ This document provides the comprehensive architecture overview of the Smart Elec
 ### 2. Router Layer
 
 #### State Router
+
 **`state_router.py`**:
+
 - Matches URLs to specific state handlers in `handlers/`
 - Falls back to format detection if state match not found
 - Handles dynamic routing for county-level and format-level delegation
 
 #### Format Router
+
 **`utils/format_router.py`**:
+
 - Detects HTML, PDF, JSON, or CSV formats using `html_scanner.py`
 - Handles user prompting for format selection via `prompt_user_for_format()`
 - Dispatches to appropriate format handler
@@ -44,91 +50,117 @@ This document provides the comprehensive architecture overview of the Smart Elec
 ### 3. Handlers
 
 #### State-Specific Handlers
+
 **`handlers/states/`**:
+
 - One handler per U.S. state (e.g., `arizona.py`, `new_york.py`)
 - Each exports `parse(page, html_context)` → `(headers, data, contest, metadata)`
 - County-level handlers in `handlers/states/<state>/county/`
 - Implements state-specific validation, normalization, and extraction logic
 
 #### Format Handlers
+
 **`handlers/formats/`**:
+
 - Generic format parsers: `pdf_handler.py`, `json_handler.py`, `csv_handler.py`, `html_handler.py`
 - Fallback when no state handler exists
 - Return standardized tuple: `(headers, data, contest, metadata)`
 
 #### Shared Handler Logic
+
 **`handlers/shared/`**:
+
 - Reusable templates, normalizers, and validation functions
 - Contest selection, header harmonization, data cleaning utilities
 
 ### 4. Core Utilities
 
 #### Table Detection & Extraction
+
 **`utils/table_core.py`**:
+
 - Centralized table extraction, harmonization, and feedback
 - Multi-strategy extraction: panel, section, ML/NER, plugin-based
 - Dynamic scoring and patching from multiple extraction methods
 - Keyword libraries for election-specific columns
 
 **`utils/dynamic_table_extractor.py`**:
+
 - Finds tables using panel and section heading strategies
 - Plugin-based and ML/NER-powered extraction
 - Returns candidate tables with context
 
 **`utils/ml_table_detector.py`**:
+
 - ML/LLM-powered table detection and structure learning
 - Advanced extraction and anomaly detection
 
 #### Table Processing
+
 **`utils/table_builder.py`**:
+
 - Normalizes, merges, annotates, and pivots tables
 - Applied to CSV, JSON, TXT, PDF, and state pipeline formats
 - Cached header normalization and row-salvage heuristics
 - Ensures consistent downstream testing and exports
 
 #### NLP/Entity Recognition
+
 **`utils/spacy_utils.py`**:
+
 - NLP-powered entity recognition
 - Context enrichment and semantic analysis
 - Integrates with `ml_table_detector.py` for advanced parsing
 
 #### Browser & Network
+
 **`utils/browser_utils.py`**:
+
 - Launches Playwright (default) with optional Selenium fallback
 - Supports headless and GUI modes
 - User-agent spoofing and browser profile management
 
 **`utils/download_utils.py`**:
+
 - Handles file downloads and directory creation
 - Manages temporary files and cleanup
 
 #### Content Analysis
+
 **`utils/html_scanner.py`**:
+
 - Early-stage HTML scan for election year, races, counties
 - Critical for routing and user prompt generation
 - Detects format and content patterns
 
 #### User Input & Output
+
 **`utils/user_prompt.py`**:
+
 - All user input routed through `prompt_user_input()` for CLI/web modularity
 - Supports interactive selection, validation, and retry logic
 
 **`utils/output_utils.py`**:
+
 - Handles output formatting and metadata generation
 - Audit trail and chain-of-custody tracking
 - CSV, JSON, and report generation
 
 **`utils/shared_logger.py`**:
+
 - Centralized logging (all modules)
 - CLI and Web UI support
 - Structured logging for diagnostics
 
 **`utils/shared_logic.py`**:
+
 - Common validation, normalization, and transformation utilities
 - Cross-module helper functions
 
 #### Context & State Management
+
 **`Context_Integration/` module**:
+
 - Manages extraction context across handlers
 - Handles state and contest selection
 - Validates data integrity throughout pipeline
@@ -136,12 +168,14 @@ This document provides the comprehensive architecture overview of the Smart Elec
 ### 5. Web Application
 
 **`Smart_Elections_Parser_Webapp.py`** - Flask application:
+
 - web-based parsing UI
 - Session management and state tracking
 - Integration with parser backend
 - Real-time progress and result display
 
 **`static/js/` & `static/css/`**:
+
 - Client-side logic for form handling, progress tracking
 - UI state management and event delegation
 - Responsive design and accessibility
@@ -149,17 +183,19 @@ This document provides the comprehensive architecture overview of the Smart Elec
 ### 6. Quality Assurance & Testing
 
 **`webapp/tests/`**:
+
 - Unit tests for all major components
 - Integration tests for end-to-end workflows
 - Test fixtures for common scenarios
 
 **`health/`**:
+
 - Health checks and automated validation
 - Manual correction and feedback mechanisms
 
 ## 📊 Data Flow
 
-```
+```tree
 URL Input
    ↓
 state_router.py (state match?)
@@ -187,21 +223,25 @@ CSV/JSON Output + Metadata
 ## 🔄 Extraction Strategies
 
 ### 1. Panel-Based Strategy
+
 - Identifies contiguous blocks of election data
 - Effective for standardized election templates
 - Quick and reliable for well-formatted sources
 
 ### 2. Section-Based Strategy
+
 - Uses heading hierarchies and semantic structure
 - Handles varied formatting and multiple sections
 - Integrates content across hierarchical divisions
 
 ### 3. ML/NER Strategy
+
 - Neural entity recognition for election-specific terms
 - Context-aware extraction from free-form text
 - Handles novel layouts and irregular sources
 
 ### 4. Plugin Strategy
+
 - Extensible framework for custom extraction logic
 - State-specific or format-specific plugins
 - Allows rapid addition of new recognition patterns
@@ -209,7 +249,9 @@ CSV/JSON Output + Metadata
 ## 🎯 Core Contracts
 
 ### Handler Interface
+
 All handlers must implement:
+
 ```python
 def parse(page, html_context):
     """Parse ballot data from page.
@@ -224,6 +266,7 @@ def parse(page, html_context):
 ```
 
 ### Return Tuple Structure
+
 - **headers** (list[str]): Column names after normalization
 - **data_rows** (list[dict]): Normalized data rows
 - **contest** (dict): Selected races/contests with metadata
@@ -232,16 +275,19 @@ def parse(page, html_context):
 ## 📈 Scalability Considerations
 
 ### Modular Design
+
 - Each handler can evolve independently
 - Format routers allow new format support without core changes
 - Shared utilities prevent code duplication
 
 ### Performance
+
 - Browser pooling for batch processing
 - Table caching and memoization strategies
 - Async/await support for web integration
 
 ### Maintainability
+
 - Clear separation of concerns
 - Consistent logging throughout
 - Comprehensive error handling

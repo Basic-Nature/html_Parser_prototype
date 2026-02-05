@@ -47,6 +47,7 @@ IGNORED_DIRS = {
     "node_modules",
     "venv",
     ".venv",
+    "vendor",
 }
 
 ALLOWED_SUFFIXES = {
@@ -80,6 +81,7 @@ EXCLUDED_FILES = {
     / "Context_Library"
     / "cache"
     / "context_cache.json",
+    Path("webapp") / "static" / "vendor" / "xlsx.full.min.js",
 }
 
 
@@ -318,7 +320,7 @@ def format_markdown(
         lines.append("")
         for entry in grouped[rel_path]:
             snippet = entry.text.strip()
-            prefix = f"- L{entry.lineno} *{entry.keyword}*: "
+            prefix = f"- L{entry.lineno} **{entry.keyword}**: "
             available = max(20, wrap_width - len(prefix))
             wrapped = textwrap.wrap(snippet, width=available) or [""]
             lines.append(prefix + wrapped[0])

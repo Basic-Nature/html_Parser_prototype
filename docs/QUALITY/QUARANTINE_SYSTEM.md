@@ -3,11 +3,12 @@ layout: default
 title: Quarantine & Review System
 ---
 
-# Quarantine & Review System
+## Quarantine & Review System
 
 Systematic approach to isolate, review, and remediate problematic parsed election data.
 
 > **Note**: This document references:
+>
 > - [QUARANTINE_SYSTEM_GUIDE.md](../QUARANTINE_SYSTEM_GUIDE.md) - Full quarantine procedures
 > - [QUARANTINE_INDEX.md](../QUARANTINE_INDEX.md) - Quarantine inventory
 >
@@ -29,7 +30,7 @@ The quarantine system prevents low-quality data from being used while enabling e
 Results are quarantined when any of these occur:
 
 | Trigger | Threshold | Action |
-|---------|-----------|--------|
+| --------- | ----------- | -------- |
 | Overall confidence score | < 0.50 | Auto-quarantine |
 | Field confidence score | < 0.40 | Flag for review |
 | Validation failures | > 5% of fields | Auto-quarantine |
@@ -40,7 +41,7 @@ Results are quarantined when any of these occur:
 
 ## 🔄 Quarantine Workflow
 
-```
+```tree
 Parsed Result
     ↓
 [CHECK TRIGGERS]
@@ -67,18 +68,21 @@ Parsed Result
 ## 📁 Quarantine Categories
 
 ### Critical Issues (Immediate Review)
+
 - Complete parse failures
 - No data extracted
 - Unhandled exceptions
 - Corrupt data detected
 
 ### High-Confidence Issues (Prompt Review)
+
 - Missing major races
 - Invalid vote totals
 - Duplicate candidates
 - Validation failures
 
 ### Low-Confidence Issues (Batch Review)
+
 - Low confidence scores
 - Minor anomalies
 - Partial extraction
@@ -87,7 +91,8 @@ Parsed Result
 ## 🔍 Review Process
 
 ### Step 1: Categorize Issue
-```
+
+```tree
 Q1: What type of problem?
 ├─ Extraction failure (no data)
 ├─ Data corruption (invalid values)
@@ -97,7 +102,8 @@ Q1: What type of problem?
 ```
 
 ### Step 2: Root Cause Analysis
-```
+
+```tree
 Q2: What caused the problem?
 ├─ Source document quality (OCR, format)
 ├─ Parser limitation (unsupported layout)
@@ -107,7 +113,8 @@ Q2: What caused the problem?
 ```
 
 ### Step 3: Decision
-```
+
+```tree
 Q3: How to proceed?
 ├─ APPROVE if data usable despite issues
 ├─ CORRECT if fixable errors present
@@ -156,6 +163,7 @@ When QA team chooses "REPROCESS":
    - Manual input parameters
 
 2. **Reparse Document**
+
    ```bash
    python -c "
    from webapp.parser import html_election_parser
@@ -180,6 +188,7 @@ When QA team chooses "REPROCESS":
 ## 📊 Quarantine Statistics
 
 ### Daily Report
+
 ```bash
 # Generate quarantine report
 python health/quarantine_report.py --date 2024-01-15
@@ -194,6 +203,7 @@ python health/quarantine_report.py --date 2024-01-15
 ```
 
 ### Trends & Patterns
+
 ```bash
 # Identify recurring issues
 python health/quarantine_analysis.py --lookback 30
@@ -210,12 +220,14 @@ python health/quarantine_analysis.py --lookback 30
 ## 📋 Quarantine Queue Management
 
 ### Priority Ordering
-```
+
+```txt
 Critical issues → High issues → Low issues → Archive old reviews
 ```
 
 ### SLA (Service Level Agreement)
-```
+
+```list
 - Critical: Review within 2 hours
 - High: Review within 8 hours
 - Low: Review within 24 hours
@@ -223,7 +235,8 @@ Critical issues → High issues → Low issues → Archive old reviews
 ```
 
 ### Escalation
-```
+
+```tree
 If unresolved after SLA:
 ├─ 1st escalation: Notify team lead
 ├─ 2nd escalation: Notify manager
@@ -232,7 +245,7 @@ If unresolved after SLA:
 
 ## 🎯 Performance Targets
 
-```
+```txt
 - 95%+ approval rate for new parser versions
 - < 5% quarantine rate
 - < 1% final rejection rate
@@ -243,6 +256,7 @@ If unresolved after SLA:
 ## 🛠️ Tools & Utilities
 
 ### Command-Line Tools
+
 ```bash
 # List all quarantined items
 python -m health.quarantine list
@@ -258,6 +272,7 @@ python -m health.quarantine reprocess --id 12345 --strategy ml_extraction
 ```
 
 ### Web UI
+
 - Quarantine Queue View: `/qa/quarantine`
 - Review Interface: `/qa/quarantine/{id}`
 - Statistics Dashboard: `/qa/statistics`
@@ -265,7 +280,8 @@ python -m health.quarantine reprocess --id 12345 --strategy ml_extraction
 ## 📈 Metrics & Reporting
 
 ### Key Metrics
-```
+
+```txt
 - Quarantine rate (% of total)
 - Average resolution time
 - Approval rate
@@ -275,6 +291,7 @@ python -m health.quarantine reprocess --id 12345 --strategy ml_extraction
 ```
 
 ### Monthly Report
+
 ```bash
 python health/generate_monthly_report.py \
   --month "2024-01" \
@@ -285,11 +302,13 @@ python health/generate_monthly_report.py \
 ---
 
 **Related Documents**:
+
 - [Verification Framework](./VERIFICATION.md) - QA and validation
 - [Operations Runbook](../DEPLOYMENT/OPERATIONS.md) - Operational procedures
 - [ML Framework](./ML_FRAMEWORK.md) - ML-based quality improvements
 
 **Source**:
+
 - [QUARANTINE_SYSTEM_GUIDE.md](../QUARANTINE_SYSTEM_GUIDE.md)
 
 **Last Updated**: Consolidated quarantine system guide

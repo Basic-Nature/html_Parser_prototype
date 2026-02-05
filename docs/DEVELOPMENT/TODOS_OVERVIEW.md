@@ -3,7 +3,7 @@ layout: default
 title: TODO System Overview
 ---
 
-# Development TODO System
+## Development TODO System
 
 ⚠️ **This page contains auto-generated documentation**. While this overview is manually maintained, the TODO lists below are automatically generated from your codebase. See [Auto-Generated Files](#auto-generated-files) for details.
 
@@ -18,7 +18,7 @@ This development documentation category tracks all outstanding work items, enhan
 The TODO system automatically scans Python and JavaScript files for the following markers:
 
 | Marker | Usage | Example |
-|--------|-------|---------|
+| -------- | ------- | --------- |
 | `TODO` | General improvements and future work | `# TODO: Refactor event loop` |
 | `FIXME` | Known bugs or issues to fix | `# FIXME: Race condition in auth` |
 | `HACK` | Temporary workarounds that need cleanup | `# HACK: Suppress type error` |
@@ -31,11 +31,11 @@ TODOs are automatically categorized based on context keywords:
 - **HIGH**: Critical issues, security concerns, blocking work
   - Keywords: `critical`, `security`, `urgent`, `blocking`, `regression`
   - Impact: Affects core functionality or user safety
-  
+
 - **MEDIUM**: Improvements and technical debt
   - Keywords: `improve`, `refactor`, `optimize`, `cleanup`, `tech-debt`
   - Impact: Enhances quality or maintainability
-  
+
 - **LOW**: Nice-to-haves and polish items
   - Keywords: `nice`, `polish`, `cosmetic`, `future`, `research`
   - Impact: Enhances UX or provides context
@@ -85,6 +85,7 @@ The script `scripts/generate_todo_index.py` scans all Python and JavaScript sour
 5. Outputs files to: `docs/DEVELOPMENT/todos_*.md`
 
 **Configuration**:
+
 ```python
 TODO_PATTERNS = {
     'high': ['critical', 'security', 'urgent', 'blocking', 'regression'],
@@ -99,14 +100,19 @@ TODO_PATTERNS = {
 
 1. Navigate to the relevant source file
 2. Add a comment with the marker and brief description:
+
    ```python
    # TODO: Improve error handling in retry logic
    ```
+
 3. Optionally add priority context:
+
    ```python
    # TODO: CRITICAL - Validate certificate before auth check
    ```
+
 4. Run the generation script to update documentation:
+
    ```bash
    python scripts/generate_todo_index.py
    ```
@@ -116,9 +122,11 @@ TODO_PATTERNS = {
 1. Implement the work and test thoroughly
 2. Remove the TODO marker from the source code
 3. Commit the change with reference to the TODO:
+
    ```bash
    git commit -m "fix: Address HIGH TODO - validate certificates (#42)"
    ```
+
 4. The next generation automatically removes it from TODO lists
 
 ### Finding TODOs by Category
@@ -137,6 +145,7 @@ python scripts/generate_todo_index.py [--root webapp] [--root scripts] [--root d
 ```
 
 **Automation targets**:
+
 - Scans: `webapp/`, `scripts/`, `docs/` directories
 - Output: `docs/DEVELOPMENT/todos*.md` (4 files)
 - Frequency: Runs after each commit to keep documentation in sync
@@ -145,6 +154,7 @@ python scripts/generate_todo_index.py [--root webapp] [--root scripts] [--root d
 ## Key Statistics
 
 The TODO files automatically include:
+
 - Total count of items by priority
 - File locations and line numbers
 - Function/class context
@@ -153,14 +163,16 @@ The TODO files automatically include:
 
 ## Guidelines for TODO Contributors
 
-### ✅ DO:
+### ✅ DO
+
 - Use clear, actionable descriptions
 - Include context or affected component
 - Add priority keywords when appropriate
 - Remove TODOs immediately when work is complete
 - Reference issue numbers when applicable: `TODO: Fix #42 - ...`
 
-### ❌ DON'T:
+### ❌ DON'T
+
 - Leave completed TODOs in code
 - Create obvious TODOs that could be refactored away
 - Use TODOs as replacement for issue tracking
@@ -170,12 +182,15 @@ The TODO files automatically include:
 ## Maintenance
 
 ### Regular Review
+
 - Weekly: Check [todos_high.md](/html_Parser_prototype/development/todos-high/) for blocking items
 - Monthly: Review all TODOs to identify stale/obsolete items
 - Quarterly: Assess tech-debt backlog and re-prioritize
 
 ### Cleanup
+
 Run the generation script to refresh documentation:
+
 ```bash
 python scripts/generate_todo_index.py --root webapp --root scripts --root docs
 ```
@@ -183,12 +198,14 @@ python scripts/generate_todo_index.py --root webapp --root scripts --root docs
 ### Troubleshooting
 
 **TODOs not appearing in generated files?**
+
 - Ensure marker format is correct: `# TODO: Description` or `# FIXME: Description`
 - Check that file is in scanned directories (webapp/, scripts/, docs/)
 - Verify file has correct extension (.py, .js, .ts)
 - Run script with verbose output: `python scripts/generate_todo_index.py --verbose`
 
 **Generated files showing old TODOs?**
+
 - Delete `docs/DEVELOPMENT/todos*.md` files
 - Re-run script to regenerate from scratch
 - Verify old files don't exist in other locations

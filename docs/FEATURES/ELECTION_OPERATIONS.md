@@ -3,7 +3,7 @@ layout: default
 title: Election Operations Guide
 ---
 
-# Election Operations Guide
+## Election Operations Guide
 
 Comprehensive guide for running election result parsing operations during election periods, including procedures, escalation paths, and team coordination.
 
@@ -12,6 +12,7 @@ Comprehensive guide for running election result parsing operations during electi
 ## 🗳️ Overview
 
 Election operations coordination covers:
+
 - **Pre-Election Setup**: System readiness, team preparation
 - **Election Day**: Real-time monitoring, incident response
 - **Post-Election**: Data archival, reporting, analysis
@@ -20,6 +21,7 @@ Election operations coordination covers:
 ## 📅 Pre-Election Checklist (30 Days Before)
 
 ### System Preparation
+
 - [ ] Update all handlers for target elections
 - [ ] Load election data (candidates, contests)
 - [ ] Test parser with sample documents
@@ -27,6 +29,7 @@ Election operations coordination covers:
 - [ ] Prepare database backups
 
 ### Team Preparation
+
 - [ ] Schedule election day staff
 - [ ] Brief team on expected volume
 - [ ] Document known issues/workarounds
@@ -34,6 +37,7 @@ Election operations coordination covers:
 - [ ] Prepare escalation contacts
 
 ### Infrastructure
+
 - [ ] Scale resources (CPU, memory, disk) as needed
 - [ ] Verify certificate validity (> 30 days)
 - [ ] Test failover procedures
@@ -44,7 +48,7 @@ Election operations coordination covers:
 
 ### Morning Briefing (6 AM)
 
-```
+```list
 □ Verify system online and responsive
 □ Check disk space (minimum 10GB available)
 □ Review overnight logs for issues
@@ -58,7 +62,8 @@ Election operations coordination covers:
 During peak hours (polls open through 8 PM), monitor:
 
 - **System Health**
-  ```
+
+  ```txt
   CPU Usage:      [████░░░░░] 45%  ✓ Good
   Memory:         [██████░░░░] 60%  ✓ Good
   Disk:           [██░░░░░░░░] 15%  ✓ Good
@@ -66,7 +71,8 @@ During peak hours (polls open through 8 PM), monitor:
   ```
 
 - **Parsing Metrics**
-  ```
+
+  ```txt
   Documents processed:    245/250 expected ✓
   Success rate:           98.0% (> 95% target) ✓
   Avg parse time:         0.8 sec (< 2 sec target) ✓
@@ -74,7 +80,8 @@ During peak hours (polls open through 8 PM), monitor:
   ```
 
 - **Error Monitoring**
-  ```
+
+  ```txt
   30 minutes:  3 errors (0.2% rate) ✓
   Last error:  12:45 - "Table not found in section"
   Status:      Corrected via manual input ✓
@@ -97,7 +104,7 @@ python health/data_quality_check.py --snapshot
 
 If error rate spikes:
 
-```
+```tree
 Error Rate Alert: 8.5% (threshold: 5%)
     ↓
 [CHECK]
@@ -120,7 +127,7 @@ Error Rate Alert: 8.5% (threshold: 5%)
 
 ### Evening Reporting (9 PM)
 
-```
+```txt
 Election Results Summary
 ─────────────────────────────────
 Total Documents Processed:    245
@@ -153,11 +160,13 @@ Recommendations for Next Shift:
 ### Results Finalization (Election Night)
 
 1. **Aggregate Results**
+
    ```bash
    python scripts/aggregate_results.py --election-date 2024-11-05
    ```
 
 2. **Final Validation**
+
    ```bash
    python health/final_validation.py \
      --source output/parsed_results/ \
@@ -165,6 +174,7 @@ Recommendations for Next Shift:
    ```
 
 3. **Publish Results**
+
    ```bash
    # After validation approval
    cp output/parsed_results/* public/results/
@@ -187,7 +197,7 @@ tar -czf logs_2024-11-05.tar.gz /var/log/parser/
 
 ### Post-Mortem Analysis (Within 1 Week)
 
-```
+```txt
 Election Analysis Report
 ────────────────────────
 
@@ -216,7 +226,7 @@ Date: 2024-11-12
 
 ### Election Day Staffing
 
-```
+```tree
 Operations Manager (1)
 ├─ Overall coordination
 ├─ Incident escalation
@@ -244,7 +254,7 @@ On-Call Engineering (1)
 
 ### Communication Channels
 
-```
+```txt
 #elections-ops          (real-time updates)
 #elections-incidents    (incident tracking)
 Email alerts            (critical issues)
@@ -253,7 +263,7 @@ Status Page Updates     (user-facing)
 
 ## 📞 Escalation Matrix
 
-```
+```level
 Level 1: Monitor Alert
 └─ Action: Check dashboard, determine severity
 
@@ -276,7 +286,7 @@ Level 4: Executive Escalation (Critical system failure)
 Target metrics for election day:
 
 | Metric | Target | Acceptable | Failure |
-|--------|--------|-----------|---------|
+| -------- | -------- | ----------- | --------- |
 | Uptime | 100% | > 99.5% | < 99.5% |
 | Success Rate | > 98% | 95–98% | < 95% |
 | Avg Response | < 1 sec | < 2 sec | > 2 sec |
@@ -286,11 +296,13 @@ Target metrics for election day:
 ---
 
 **Related Documents**:
+
 - [Operations Runbook](../DEPLOYMENT/OPERATIONS.md) - General operations
 - [Quarantine System](../QUALITY/QUARANTINE_SYSTEM.md) - Managing low-quality results
 - [Verification Framework](../QUALITY/VERIFICATION.md) - QA procedures
 
 **Source**:
+
 - [ELECTION_OPERATIONS_PLAYBOOK.md](../ELECTION_OPERATIONS_PLAYBOOK.md)
 
 **Last Updated**: Election operations guide

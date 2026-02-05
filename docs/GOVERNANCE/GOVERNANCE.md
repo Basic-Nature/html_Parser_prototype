@@ -3,7 +3,7 @@ layout: default
 title: System Governance & Principles
 ---
 
-# System Governance & Principles
+## System Governance & Principles
 
 Governance framework, operational principles, and decision-making structures for the Smart Elections Parser project.
 
@@ -27,7 +27,7 @@ The Smart Elections Parser enables transparent, accurate, and auditable extracti
 
 ### Decision-Making Hierarchy
 
-```
+```tree
 Steering Committee
 ├─ Project Lead (ultimate authority)
 ├─ Engineering Lead
@@ -44,7 +44,7 @@ Working Groups
 ### Decision Authority Matrix
 
 | Decision | Authority | Approval |
-|----------|-----------|----------|
+| ---------- | ----------- | ---------- |
 | Architecture changes | Engineering Lead | Steering Committee |
 | Handler additions | Engineering Lead | Code review |
 | Deployment | Operations Lead | Release checklist |
@@ -56,6 +56,7 @@ Working Groups
 ### Code of Conduct
 
 All contributors commit to:
+
 - Professional and respectful communication
 - Transparency in decision-making
 - Adherence to accuracy standards
@@ -64,7 +65,7 @@ All contributors commit to:
 
 ### Change Management
 
-```
+```tree
 Feature Request / Bug Fix
     ↓
 Design Review (if significant)
@@ -85,11 +86,13 @@ Post-Deployment Verification
 ### Version Control & Releases
 
 **Versioning**: Semantic versioning (Major.Minor.Patch)
+
 - Major: Breaking changes
 - Minor: New features (backward compatible)
 - Patch: Bug fixes
 
 **Release Cadence**:
+
 - Stable releases: Quarterly (or as needed)
 - Patch releases: As needed for critical bugs
 - Development builds: Continuous deployment to staging
@@ -97,7 +100,8 @@ Post-Deployment Verification
 ### Data Governance
 
 **Data Classification**:
-```
+
+```txt
 Public:       Election results, aggregated metrics
 Internal:     Logs, diagnostics, performance data
 Restricted:  User credentials, certificates
@@ -105,6 +109,7 @@ Confidential: Pending election data, proprietary methods
 ```
 
 **Data Handling**:
+
 - Encryption in transit and at rest
 - Access controls and audit logging
 - Regular backups and disaster recovery
@@ -114,7 +119,7 @@ Confidential: Pending election data, proprietary methods
 
 ### Key Performance Indicators (KPIs)
 
-```
+```tree
 Reliability
 ├─ System uptime: > 99.9%
 ├─ Mean time to recovery: < 15 minutes
@@ -134,6 +139,7 @@ Efficiency
 ### Reporting & Transparency
 
 **Monthly Metrics Review**:
+
 - Performance against KPIs
 - Incident summary
 - Quality trends
@@ -141,6 +147,7 @@ Efficiency
 - Resource utilization
 
 **Quarterly Business Review**:
+
 - Strategic alignment
 - Budget review
 - Staffing assessment
@@ -169,18 +176,21 @@ Efficiency
 ### Phase Goals
 
 **Current Phase** (2024):
+
 - ✓ Core parser functionality stable
 - ✓ QA framework operational
 - Handler coverage for all 50 states
 - ML-powered quality improvements
 
 **Next Phase** (2025):
+
 - Real-time result streaming
 - Advanced analytics and reporting
 - Multi-language support
 - Enhanced accessibility
 
 **Future Vision**:
+
 - AI-powered dispute resolution
 - Predictive quality modeling
 - Global election monitoring platform
@@ -213,12 +223,14 @@ Efficiency
 ## 🤝 Stakeholder Engagement
 
 ### Internal Stakeholders
+
 - Development team
 - QA team
 - Operations team
 - Project management
 
 ### External Stakeholders
+
 - Election officials
 - Voter advocacy groups
 - Media and researchers
@@ -226,7 +238,7 @@ Efficiency
 
 ### Communication Channels
 
-```
+```table
 Stakeholder     Contact Method      Frequency
 ───────────────────────────────────────────────
 Dev team        Slack #dev          Daily
@@ -258,7 +270,7 @@ Public          Status page         Real-time
 
 ### Issue Escalation Path
 
-```
+```tree
 Development Issue
     ↓
 Team Lead Review
@@ -278,6 +290,7 @@ Steering Committee (if senior decision needed)
 ## ✅ Governance Checklist
 
 **Quarterly Review**:
+
 - [ ] KPIs reviewed and on track
 - [ ] Strategic alignment confirmed
 - [ ] Budget and resources adequate
@@ -286,6 +299,7 @@ Steering Committee (if senior decision needed)
 - [ ] Team satisfaction assessed
 
 **Annual Review**:
+
 - [ ] Mission and values still appropriate
 - [ ] Organizational structure effective
 - [ ] Policies reviewed and updated
@@ -296,11 +310,13 @@ Steering Committee (if senior decision needed)
 ---
 
 **Related Documents**:
+
 - [System Architecture](../CORE/ARCHITECTURE.md) - Technical design
 - [Election Integrity Guidelines](./INTEGRITY_GUIDELINES.md) - Ethical standards
 - [Operations Runbook](../DEPLOYMENT/OPERATIONS.md) - Procedures
 
 **Source**:
+
 - [SYSTEM_GOVERNANCE.md](../SYSTEM_GOVERNANCE.md)
 
 **Last Updated**: System governance framework

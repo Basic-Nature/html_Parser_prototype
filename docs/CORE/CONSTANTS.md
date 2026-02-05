@@ -3,7 +3,7 @@ layout: default
 title: Constants & Reference Data
 ---
 
-# Constants & Reference Data
+## Constants & Reference Data
 
 Quick reference for all enumerated values, static lists, and configuration constants used throughout the Smart Elections Parser.
 
@@ -13,7 +13,7 @@ Quick reference for all enumerated values, static lists, and configuration const
 
 ### State Codes (ANSI 5-2)
 
-```
+```txt
 AL - Alabama              MT - Montana
 AK - Alaska              NE - Nebraska
 AZ - Arizona             NV - Nevada
@@ -44,7 +44,7 @@ DC - District of Columbia
 
 ## 🎯 Election Types
 
-```
+```txt
 General     - General election (primary election: no)
 Primary     - Primary election
 Special     - Special/by-election
@@ -55,12 +55,14 @@ General Runoff - General election with runoff
 ## 🏆 Office Types
 
 ### Federal
+
 - President
 - Vice President
 - U.S. Senate
 - U.S. House of Representatives
 
 ### State
+
 - Governor
 - Lieutenant Governor
 - Secretary of State
@@ -72,6 +74,7 @@ General Runoff - General election with runoff
 - State Assembly
 
 ### Local
+
 - County Commissioner
 - County Supervisor
 - Mayor
@@ -85,7 +88,8 @@ General Runoff - General election with runoff
 ## 🎭 Divisions
 
 ### Electoral Divisions
-```
+
+```txt
 Federal     - Nationwide
 State       - State-wide
 Congressional - Congressional district
@@ -99,7 +103,7 @@ Ward        - Ward/subdivision
 
 ## 🏛️ Jurisdictions
 
-```
+```txt
 Federal     - Federal jurisdiction
 State       - State-level
 County      - County-level
@@ -112,7 +116,7 @@ Judicial    - Judicial district
 
 ## 🎨 Political Parties (Canonical)
 
-```
+```txt
 Democratic
 Republican
 Libertarian
@@ -129,9 +133,9 @@ Non-Partisan
 All Parties (multi-party races)
 ```
 
-### Party Aliases/Variations Normalized To:
+### Party Aliases/Variations Normalized To
 
-```
+```txt
 D, DEM → Democratic
 R, REP, GOP → Republican
 L, LIB → Libertarian
@@ -144,7 +148,7 @@ etc.
 
 ### Header Column Names (Preferred)
 
-```
+```txt
 candidate_name          (aka: name, candidate, contender)
 votes                   (aka: vote_count, total_votes)
 vote_percentage         (aka: pct, percent, %)
@@ -160,7 +164,7 @@ registered
 
 ## ✅ Validation thresholds
 
-```
+```txt
 Name length:            1–100 characters
 Vote count:             0 to 10,000,000 (adjustable per jurisdiction)
 Vote percentage:        0.0–100.0 or 0.0–1.0
@@ -171,7 +175,7 @@ Percentage tolerance:   ±2% (sum validation)
 
 ## 🌐 Format Types
 
-```
+```txt
 HTML        - Web pages, election result pages
 PDF         - Portable document format
 CSV         - Comma/tab-separated values
@@ -181,7 +185,7 @@ XML         - Extensible markup language
 
 ## 🔍 Extraction Methods
 
-```
+```txt
 Panel       - Contiguous data blocks
 Section     - Heading-based extraction
 ML/NER      - Machine learning entity recognition
@@ -191,7 +195,7 @@ Manual      - User-entered data
 
 ## 📈 Confidence Score Ranges
 
-```
+```txt
 0.90–1.00   Very High    (auto-use)
 0.70–0.89   High         (review recommended)
 0.50–0.69   Medium       (significant review needed)
@@ -201,7 +205,7 @@ Manual      - User-entered data
 
 ## 🔐 Validation Status Values
 
-```
+```txt
 VALID           - Passed all validations
 WARNING_MINOR   - Non-critical issues detected
 WARNING_MAJOR   - Significant issues, review recommended
@@ -212,7 +216,7 @@ NEEDS_REVIEW    - Human review required
 ## 📝 Error Codes
 
 | Code | Meaning | Recovery |
-|------|---------|----------|
+| ------ | --------- | ---------- |
 | E001 | No data found | Reparse with alternative method |
 | E002 | Invalid column headers | Run header detection again |
 | E003 | Duplicate candidates | Merge duplicate entries |
@@ -227,14 +231,16 @@ NEEDS_REVIEW    - Human review required
 ## 🔄 Common Field Mappings
 
 ### Vote Field Variations
-```
+
+```txt
 votes → vote_count, votes_count, total_votes, vote_total
 percentage → pct, percent, vote_pct, vote_percentage, %
 votes_pct → percentage, pct, vote_pct
 ```
 
 ### Name Field Variations
-```
+
+```txt
 name → candidate_name, candidate, contender, person
 office → position, office_title, office_name, race
 party → party_affiliation, party_code, party_name
@@ -242,7 +248,7 @@ party → party_affiliation, party_code, party_name
 
 ## 📅 Date Formats
 
-```
+```txt
 ISO 8601:   2024-11-05, 2024-11-05T14:30:00Z
 US Format:  11/05/2024, November 5, 2024
 Text:       "Election Day", "General Election 2024"
@@ -250,7 +256,7 @@ Text:       "Election Day", "General Election 2024"
 
 ## 🎯 Contest Type Classifications
 
-```
+```txt
 Race            - Head-to-head candidate competition
 Proposition     - Ballot measure/question
 Referendum      - Yes/No question
@@ -264,6 +270,7 @@ County Measure  - County ballot measure
 ## Configuration Constants
 
 ### Parser Defaults
+
 ```python
 DEFAULT_TIMEOUT = 30  # seconds
 DEFAULT_RETRIES = 3
@@ -273,7 +280,8 @@ CACHE_TTL = 3600  # seconds
 ```
 
 ### Logging Levels
-```
+
+```txt
 DEBUG   - Detailed diagnostic information
 INFO    - General informational messages
 WARNING - Warning conditions (non-critical)
@@ -284,6 +292,7 @@ CRITICAL - Critical errors (system failure)
 ---
 
 **See Also**:
+
 - [Data Models & Schema](./DATA_MODELS.md) - Detailed schema definitions
 - [System Architecture](./ARCHITECTURE.md) - System design overview
 

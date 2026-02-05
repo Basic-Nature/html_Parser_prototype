@@ -23,20 +23,62 @@ sys.path.insert(0, str(project_root))
 
 from webapp.parser.health.health_router import BotPipeline
 from webapp.parser.utils.logger_singleton import logger
-from webapp.parser.utils.shared_logic import generate_pipeline_map
+from webapp.parser.utils.shared_logic import generate_docs_artifacts
+
+
+def run_todo_index() -> bool:
+    """Generate TODO indices (todos + high/medium/low)."""
+    print("[AUTOMATE] Generating TODO indices...")
+    logger.info("[AUTOMATE] Generating TODO indices...")
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/generate_todo_index.py",
+                "--root",
+                "webapp",
+                "--root",
+                "scripts",
+                "--root",
+                "docs",
+            ],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            print("[AUTOMATE] TODO indices generated successfully.")
+            logger.info("[AUTOMATE] TODO indices generated successfully.")
+            logger.debug(f"[AUTOMATE] TODO index output: {result.stdout}")
+            return True
+        print(f"[AUTOMATE] TODO index failed with code {result.returncode}")
+        logger.error(f"[AUTOMATE] TODO index failed with code {result.returncode}")
+        logger.error(f"[AUTOMATE] STDERR: {result.stderr}")
+        return False
+    except subprocess.TimeoutExpired:
+        print("[AUTOMATE] TODO index timed out.")
+        logger.error("[AUTOMATE] TODO index timed out.")
+        return False
+    except Exception as e:
+        print(f"[AUTOMATE] TODO index failed: {e}")
+        logger.error(f"[AUTOMATE] TODO index failed: {e}")
+        return False
 
 
 def run_pipeline_audit():
-    """Generate the comprehensive pipeline audit map."""
-    print("[AUTOMATE] Generating pipeline audit map...")
-    logger.info("[AUTOMATE] Generating pipeline audit map...")
-    success = generate_pipeline_map(project_root=str(project_root))
+    """Generate documentation artifacts (project audit + pipeline map + TODOs)."""
+    print("[AUTOMATE] Generating documentation artifacts...")
+    logger.info("[AUTOMATE] Generating documentation artifacts...")
+    docs_ok = generate_docs_artifacts(project_root=str(project_root))
+    todos_ok = run_todo_index()
+    success = docs_ok and todos_ok
     if success:
-        print("[AUTOMATE] Pipeline audit map generated successfully.")
-        logger.info("[AUTOMATE] Pipeline audit map generated successfully.")
+        print("[AUTOMATE] Documentation artifacts generated successfully.")
+        logger.info("[AUTOMATE] Documentation artifacts generated successfully.")
     else:
-        print("[AUTOMATE] Failed to generate pipeline audit map.")
-        logger.error("[AUTOMATE] Failed to generate pipeline audit map.")
+        print("[AUTOMATE] Failed to generate documentation artifacts.")
+        logger.error("[AUTOMATE] Failed to generate documentation artifacts.")
     return success
 
 

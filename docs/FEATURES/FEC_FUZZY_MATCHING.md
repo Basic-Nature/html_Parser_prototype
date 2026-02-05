@@ -3,7 +3,7 @@ layout: default
 title: FEC Fuzzy Matching
 ---
 
-# FEC Fuzzy Matching
+## FEC Fuzzy Matching
 
 Machine learning-powered candidate matching against Federal Election Commission (FEC) records for validation and deduplication.
 
@@ -12,6 +12,7 @@ Machine learning-powered candidate matching against Federal Election Commission 
 ## 🎯 Overview
 
 The FEC Fuzzy Matching system:
+
 - Matches extracted candidates against FEC database
 - Handles name variations and misspellings
 - Identifies duplicate candidates
@@ -22,7 +23,7 @@ The FEC Fuzzy Matching system:
 
 ### Matching Process
 
-```
+```tree
 Extracted Candidate "John Doe"
     ↓
 Query FEC Database
@@ -83,6 +84,7 @@ FEC_API_KEY = os.getenv("FEC_API_KEY")
 ---
 
 See [fec_fuzzy.md](../fec_fuzzy.md) for:
+
 - Complete algorithm documentation
 - Performance tuning guide
 - Troubleshooting procedures

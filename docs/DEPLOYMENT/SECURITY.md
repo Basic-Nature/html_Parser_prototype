@@ -3,11 +3,12 @@ layout: default
 title: Security & Authentication
 ---
 
-# Security & Authentication
+## Security & Authentication
 
 Comprehensive guide to certificate-based security, authentication mechanisms, and secure deployment practices for the Smart Elections Parser on Azure and other cloud platforms.
 
 > **Note**: This document references and summarizes content from:
+>
 > - [AZURE_CERTIFICATE_AUTH_SETUP.md](../AZURE_CERTIFICATE_AUTH_SETUP.md) - Detailed Azure setup
 > - [CERT_AUTH_IMPLEMENTATION.md](../CERT_AUTH_IMPLEMENTATION.md) - Implementation details
 >
@@ -25,7 +26,7 @@ The Smart Elections Parser uses **certificate-based authentication** to securely
 
 ## 🏛️ Architecture
 
-```
+```txt
 ┌─────────────────────────────────────────────────┐
 │ Client (QA Panel, Admin Tool, Browser)          │
 │ ✓ Has client certificate (PEM/PKCS12)          │
@@ -69,7 +70,7 @@ QA_FALLBACK_PRINCIPAL=system:development  # Only if explicitly enabled
 ### Security Defaults
 
 | Setting | Development | Production |
-|---------|-------------|-----------|
+| --------- | ------------- | ----------- |
 | `QA_REQUIRE_CERT_AUTH` | `false` (optional) | `true` (required) ✓ |
 | Client cert validation | Disabled | Enabled |
 | Fallback auth | Allowed | Disabled |
@@ -80,6 +81,7 @@ QA_FALLBACK_PRINCIPAL=system:development  # Only if explicitly enabled
 ### For Azure Deployment
 
 1. **Generate Client Certificate** (if you don't have one):
+
    ```bash
    # Generate private key
    openssl genrsa -out client-key.pem 2048
@@ -94,6 +96,7 @@ QA_FALLBACK_PRINCIPAL=system:development  # Only if explicitly enabled
    ```
 
 2. **Convert to PKCS12** (for browser import):
+
    ```bash
    openssl pkcs12 -export \
      -in client-cert.pem \
@@ -108,6 +111,7 @@ QA_FALLBACK_PRINCIPAL=system:development  # Only if explicitly enabled
    - Set TLS version to 1.2+ (recommended: 1.3)
 
 4. **Configure Application**:
+
    ```python
    # In your Flask app
    from flask import request
@@ -123,6 +127,7 @@ QA_FALLBACK_PRINCIPAL=system:development  # Only if explicitly enabled
 ## 🔐 QA Endpoint Protection
 
 ### Protected Endpoints
+
 All endpoints under `/qa/*` and `/api/qa/*` require certificate validation:
 
 ```python
@@ -134,10 +139,11 @@ def qa_override():
 ```
 
 ### Validation Steps
+
 1. Check if `X-ARR-ClientCert` header exists
 2. Decode certificate from header
 3. Verify certificate chain against trusted CAs
-4. Extract subject CN (Common Name)  
+4. Extract subject CN (Common Name)
 5. Compare against allowed subjects (if configured)
 6. Log access attempt with certificate details
 7. Grant or deny access
@@ -162,6 +168,7 @@ python Smart_Elections_Parser_Webapp.py
 ## 📋 Deployment Checklist
 
 ### Pre-Deployment
+
 - [ ] Generate or obtain client certificate(s)
 - [ ] Verify certificate validity (not expired, proper chain)
 - [ ] Convert to PKCS12 for browser use if needed
@@ -170,14 +177,16 @@ python Smart_Elections_Parser_Webapp.py
 - [ ] Test locally with `QA_REQUIRE_CERT_AUTH=false` first
 
 ### Azure Configuration
+
 - [ ] Upload certificate to Azure Key Vault
 - [ ] Configure App Service client certificate requirement
 - [ ] Set minimum TLS version to 1.2 (1.3 recommended)
-- [ ] Enable "Client certificate mode" in App Service  
+- [ ] Enable "Client certificate mode" in App Service
 - [ ] Test that `X-ARR-ClientCert` header is forwarded
 - [ ] Verify certificate validation in logs
 
 ### Application Configuration
+
 - [ ] Set `QA_REQUIRE_CERT_AUTH=true` in production
 - [ ] Configure `QA_ALLOWED_CERT_SUBJECTS` if restricting access
 - [ ] Set up certificate renewal process (30-60 days before expiry)
@@ -186,6 +195,7 @@ python Smart_Elections_Parser_Webapp.py
 - [ ] Test rejection of requests without certificate
 
 ### Post-Deployment
+
 - [ ] Monitor logs for certificate validation errors
 - [ ] Verify all QA endpoints return 401 without certificate
 - [ ] Test QA panel functionality with certificate
@@ -199,6 +209,7 @@ python Smart_Elections_Parser_Webapp.py
 **Cause**: Azure App Service not forwarding client certificate header
 
 **Solution**:
+
 1. Verify "Client certificate mode" enabled in App Service settings
 2. Check TLS minimum version (must be 1.2+)
 3. Restart App Service after configuration changes
@@ -210,6 +221,7 @@ python Smart_Elections_Parser_Webapp.py
 **Cause**: Certificate not in trusted chain or invalid format
 
 **Solution**:
+
 1. Verify certificate validity: `openssl x509 -in cert.pem -text -noout`
 2. Check expiry date (renewal needed if < 30 days)
 3. Verify certificate chain: `openssl verify -CAfile ca-bundle.crt cert.pem`
@@ -221,6 +233,7 @@ python Smart_Elections_Parser_Webapp.py
 **Cause**: Browser doesn't have correct client certificate installed
 
 **Solution**:
+
 1. Import PKCS12 certificate into browser (`.p12` file)
 2. Verify certificate appears in browser settings: `about:certificates`
 3. Check certificate subject matches `QA_ALLOWED_CERT_SUBJECTS`
@@ -232,6 +245,7 @@ python Smart_Elections_Parser_Webapp.py
 **Cause**: `QA_REQUIRE_CERT_AUTH` incorrectly set
 
 **Solution**:
+
 1. Check environment variable: `echo $QA_REQUIRE_CERT_AUTH`
 2. Restart application after configuration change
 3. Review application logs: `grep -i "cert" application.log`
@@ -242,13 +256,14 @@ python Smart_Elections_Parser_Webapp.py
 
 All certificate-based access is logged:
 
-```
+```bash
 [INFO] Certificate Auth: CN=qa.tool.local, Subject=/CN=qa.tool.local/O=ElevaSoft, Access granted to /qa/override
 [INFO] Certificate Auth: Missing X-ARR-ClientCert header, Access denied to /api/qa/custom_data
 [WARNING] Certificate Auth: CN=expired.key, Certificate expired (2023-12-31), Access denied
 ```
 
 ### Log Analysis
+
 ```bash
 # Count certificate validation failures
 grep "Certificate Auth.*Access denied" app.log | wc -l
@@ -263,12 +278,14 @@ grep -i "certificate.*failed\|expired\|invalid" app.log
 ## 🔄 Certificate Renewal
 
 ### Before Expiry
+
 1. Generate new certificate (30-60 days before expiry)
 2. Test new certificate locally first
 3. Schedule update during maintenance window
 4. Notify users of certificate change
 
 ### Renewal Process
+
 1. Generate new certificate (same subject/CN)
 2. Upload to Azure Key Vault (new version)
 3. Update App Service to use new version
@@ -277,7 +294,9 @@ grep -i "certificate.*failed\|expired\|invalid" app.log
 6. Document update with timestamp
 
 ### Revocation
+
 If certificate is compromised:
+
 1. Generate new certificate immediately
 2. Update all client installs within 24 hours
 3. Consider adding old cert to revocation list
@@ -287,6 +306,7 @@ If certificate is compromised:
 ## ✅ Testing
 
 ### Manual Test
+
 ```bash
 # Without certificate (should fail in production)
 curl https://your-app.azurewebsites.net/qa/health
@@ -299,6 +319,7 @@ curl --cert client-cert.pem --key client-key.pem \
 ```
 
 ### Automated Testing
+
 ```python
 import requests
 from requests.auth import HTTPCertAuth
@@ -316,6 +337,7 @@ assert response.status_code == 200
 ---
 
 **Related Documents**:
+
 - [AZURE_CERTIFICATE_AUTH_SETUP.md](../AZURE_CERTIFICATE_AUTH_SETUP.md) - Complete Azure setup guide
 - [Deployment Guide](./DEPLOYMENT.md) - General deployment procedures
 - [Operations Runbook](./OPERATIONS.md) - Operational procedures

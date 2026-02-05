@@ -3,11 +3,12 @@ layout: default
 title: Verification & QA Framework
 ---
 
-# Verification & QA Framework
+## Verification & QA Framework
 
 Comprehensive quality assurance framework for testing, validation, and verification of parsed election data.
 
 > **Note**: This document consolidates content from:
+>
 > - [VERIFICATION_FRAMEWORK.md](../VERIFICATION_FRAMEWORK.md) - QA framework
 > - [VERIFICATION_TESTING_GUIDE.md](../VERIFICATION_TESTING_GUIDE.md) - Testing procedures
 > - [VERIFICATION_SYNC_IMPLEMENTATION.md](../VERIFICATION_SYNC_IMPLEMENTATION.md) - Sync verification
@@ -17,6 +18,7 @@ Comprehensive quality assurance framework for testing, validation, and verificat
 ## 🎯 Overview
 
 The verification framework ensures election data accuracy through:
+
 - Automated validation tests
 - Data integrity checks
 - Cross-validation with source documents
@@ -27,23 +29,27 @@ The verification framework ensures election data accuracy through:
 ## ✅ Validation Levels
 
 ### Level 1: Schema Validation
+
 - Data structure conforms to expected format
 - Required fields present
 - Field types correct
 
 ### Level 2: Format Validation
+
 - Names within acceptable ranges
 - Vote counts non-negative integers
 - Percentages in valid range (0-100 or 0-1)
 - Dates in valid format
 
 ### Level 3: Semantic Validation
+
 - Party names match canonical list
 - Candidate names reasonable (not obviously corrupted)
 - Vote totals consistent across records
 - Percentages sum appropriately
 
 ### Level 4: Cross-Validation
+
 - Data matches source document (manual spot-check)
 - Multi-source consistency checks
 - Historical pattern matching
@@ -52,6 +58,7 @@ The verification framework ensures election data accuracy through:
 ## 🧪 Testing Framework
 
 ### Unit Tests
+
 Location: `webapp/tests/test_*.py`
 
 ```bash
@@ -66,6 +73,7 @@ python -m pytest --cov=webapp webapp/tests/
 ```
 
 ### Integration Tests
+
 ```bash
 # Test full parsing pipeline
 python -m pytest webapp/tests/integration/ -v
@@ -75,7 +83,9 @@ python -m pytest webapp/tests/integration/test_html_parsing.py
 ```
 
 ### Smoke Tests
+
 Quick validation of core functionality:
+
 ```bash
 # Run smoke test
 python run_statement_test.py
@@ -124,6 +134,7 @@ score = (
 ```
 
 **Interpretation**:
+
 - **0.9–1.0**: Highly confident, minimal review needed
 - **0.7–0.89**: Confident, spot-check recommended
 - **0.5–0.69**: Moderate, review recommended
@@ -135,7 +146,7 @@ score = (
 ### Common Issues & Handling
 
 | Issue | Cause | Detection | Fix |
-|-------|-------|-----------|-----|
+| ------- | ------- | ----------- | ----- |
 | Missing candidates | Extraction failed on section | Lower confidence | Re-extract or manual entry |
 | Duplicate candidates | Name normalization failed | Duplicate key detection | Merge duplicates |
 | Vote sum mismatch | Incomplete extraction or rounding | Sum validation | Flag for review |
@@ -168,7 +179,7 @@ if races_found < races_expected:
 
 ### Complete Document Verification
 
-```
+```tree
 Parse Document
     ↓
 [Auto-Validation]
@@ -197,7 +208,7 @@ Parse Document
 
 ### Key Metrics
 
-```
+```list
 - Total records extracted
 - Validation pass rate
 - Average confidence score
@@ -218,12 +229,14 @@ python health/generate_verification_report.py \
 ## ✨ Best Practices
 
 ### For Developers
+
 - [ ] Write tests for new parsing logic
 - [ ] Include validation checks in handlers
 - [ ] Document known limitations
 - [ ] Flag uncertain extractions
 
 ### For QA
+
 - [ ] Document test cases
 - [ ] Record issues in issue tracker
 - [ ] Create regression tests for bugs found
@@ -232,11 +245,13 @@ python health/generate_verification_report.py \
 ---
 
 **Related Documents**:
+
 - [Data Models & Schema](../CORE/DATA_MODELS.md) - Data structure details
 - [Quarantine System](./QUARANTINE_SYSTEM.md) - Isolation & review process
 - [ML Framework](./ML_FRAMEWORK.md) - ML-based validation
 
 **Sources**:
+
 - [VERIFICATION_FRAMEWORK.md](../VERIFICATION_FRAMEWORK.md)
 - [VERIFICATION_TESTING_GUIDE.md](../VERIFICATION_TESTING_GUIDE.md)
 
