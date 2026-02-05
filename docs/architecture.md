@@ -189,10 +189,54 @@ This project uses a modular, auditable pipeline for election data parsing, conte
   - Serve as the audit trail and as a source for manual/ML correction and retraining.
 - **Accessed by:**
   - `manual_correction.py`, `librarian.py`, retraining scripts, and context health.
-  - Store all extraction, correction, feedback, and anomaly logs as `.jsonl` files.
-  - Serve as the audit trail and as a source for manual/ML correction and retraining.
-  - **Accessed by:**
-  - `manual_correction.py`, `librarian.py`, retraining scripts, and context health.
+
+#### **F. Fixtures Pipeline (`fixtures/`, `cache/`, `log/` → PostgreSQL)**
+
+- **Purpose:**
+  - Manage election data from URL downloads through local processing to warehouse storage.
+  - Enable confidence-based filtering to ensure only validated data reaches PostgreSQL.
+- **Data Flow:**
+
+  ```txt
+  Handler Downloads (URLs) → CSVs (local, gitignored)
+                           → JSON Fixtures (fixtures/, committed)
+                           → Handler Extraction
+                           → Cache (short-term) + Log (append-only)
+                           → Confidence Filtering (≥0.7)
+                           → Index Builder (build_election_index.py)
+                           → PostgreSQL Warehouse
+  ```
+
+- **Directories:**
+  - **`webapp/parser/fixtures/`** (committed):
+    - Handler-ready JSON/JSONL fixtures from CSV conversion
+    - `election_results_index.json`, shards, schema
+    - Triggers CI validation workflow on changes
+  - **`Context_Library/cache/`** (gitignored):
+    - Short-term: `context_cache.json`, `embedding_disk_cache.pkl`, `table_builder_cache/`
+    - Cleared periodically; migrates to PostgreSQL when confidence ≥0.7
+  - **`Context_Library/log/`** (gitignored):
+    - Append-only JSONL: `field_selection_log.jsonl`, `navigation_learning_log.jsonl`, `integrity_monitor.jsonl`, `trust_history.jsonl`, session logs
+    - Grows over time; periodic archival recommended; selective migration based on health/defense criteria
+- **Source Priority (build_election_index.py):**
+  1. CSVs (local-only, if present)
+  2. Fixtures JSON/JSONL (committed)
+  3. Cache JSON (`--include-cache` flag)
+  4. Log JSONL (`--include-log` flag)
+- **Confidence Filtering:**
+  - Default threshold: 0.0 (no filtering)
+  - Production recommended: ≥0.7 (`--min-confidence 0.7`)
+  - Records below threshold logged to audit report but excluded from index
+- **Migration Criteria (to PostgreSQL):**
+  - Confidence threshold check (≥0.7)
+  - Integrity monitor flags vs established trust patterns (via `Integrity_check.py`)
+  - Deduplication and conflict resolution
+  - Anomaly detection via ML models
+  - Schema validation (`election_results_schema.json`)
+- **Best Practices:**
+  - Handlers: Download CSVs locally (never commit); convert to JSON; commit only validated JSON/JSONL with `source` URL and `confidence` score
+  - Index Building: Use `--min-confidence 0.7 --include-cache --include-log` for production; review `fixture_audit_report.jsonl` for warnings
+  - Maintenance: Archive old logs periodically; clear cache after migration; monitor PostgreSQL for duplicates
 
 ---
 
@@ -243,7 +287,12 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 | `context_library_db.json` | Structured/expanded context for ML/audit (optional) | Correction health, ML | Correction health |
 | `context_elections.db` | Legacy SQLite DB (should be phased out) | Legacy code | Legacy code |
 | `POSTGRES_URL` (PostgreSQL) | Main relational DB for all structured data | SQLAlchemy models | SQLAlchemy models |
-| `log/*.jsonl` | All logs: extraction, correction, feedback, anomalies, etc. | Correction health, ML | All pipeline components |
+| `fixtures/*.json` | Handler-ready election result fixtures (committed) | CSVs (local conversion) | Used by handlers, index builder |
+| `cache/*.json` | Short-term runtime context/table/embedding cache (gitignored) | Handlers, extractors | PostgreSQL (via migration script) |
+| `log/*.jsonl` | All logs: extraction, correction, feedback, anomalies, navigation, integrity, trust, sessions | Correction health, ML | All pipeline components |
+| `build_election_index.py` | Builds validated election index from CSV/JSON/JSONL/cache/log sources | Fixtures, cache, log | `election_results_index.json`, audit report |
+| `election_fixtures.py` | Fixture loader for handlers | `fixtures/*.json` | In-memory data structures |
+| `Integrity_check.py` | Validates data quality, deduplication, anomaly detection | Parsed data, trust history | `log/integrity_monitor.jsonl`, PostgreSQL |
 | `manual_correction.py` | Reviews logs, allows corrections, updates context library and DB | `log/`, `context_library` | `context_library`, DB |
 | `librarian.py` | Centralizes context knowledge, extends/updates context library | `context_library` | `context_library` |
 | `context_coordinator.py` | Orchestrates context enrichment, integrity, and ML checks | `context_library`, DB | `log/` |
@@ -297,7 +346,7 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 
 ### 5. **Summary Diagram**
 
-[HTML/CSV/PDF] | v [Parser/Handlers] ---> [log/*.jsonl] <---+ | | v v [context_organizer.py] <--- [context_library.json] <--- [librarian.py] | | v v [context_coordinator.py] <--- [manual_correction.py] | | v v [PostgreSQL (SQLAlchemy models)] <--- [context_migration.py] | v [ML/NLP Retraining Scripts]
+[Election URLs (handler downloads)] | v [CSVs (local-only, gitignored)] ---manual conversion---> [fixtures/*.json (committed)] | | v v [Parser/Handlers] ---> [cache/*.json (short-term)] | [log/*.jsonl (append-only)] | | +------------------------+-------------------------+ | | | v v v [context_organizer.py] <--- [context_library.json] <--- [librarian.py] | | v v [context_coordinator.py] <--- [manual_correction.py] | | +-------------------------------+ | | | v v v [build_election_index.py] ---confidence filtering (≥0.7)---> [PostgreSQL Warehouse] | | | v v [Integrity_check.py] [ML/NLP Retraining Scripts]
 
 ---
 
@@ -308,6 +357,7 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 3. **Make sure all logs are written to `log/` and processed by correction health.**
 4. **Use PostgreSQL as the only source of structured, confirmed data for ML and reporting.**
 5. **Document all key paths and their roles in your project.**
+6. **For fixture pipeline:** Convert CSVs to JSON locally; commit only validated JSON/JSONL to `fixtures/`; use `--min-confidence 0.7` for production index builds; monitor cache/log growth and archive periodically.
 
 ---
 

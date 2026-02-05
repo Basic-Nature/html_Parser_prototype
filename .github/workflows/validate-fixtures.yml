@@ -3,7 +3,11 @@ name: Validate Election Fixtures
 on:
   push:
     paths:
-      - 'webapp/parser/fixtures/*.csv'
+      - 'webapp/parser/fixtures/*.json'
+      - 'webapp/parser/fixtures/*.jsonl'
+      - 'webapp/parser/fixtures/election_results_shards/**'
+      - 'webapp/parser/Context_Integration/Context_Library/cache/*.json'
+      - 'webapp/parser/Context_Integration/Context_Library/log/*.jsonl'
       - 'scripts/build_election_index.py'
       - 'webapp/parser/election_fixtures.py'
       - '.github/workflows/validate-fixtures.yml'
@@ -12,7 +16,11 @@ on:
       - develop
   pull_request:
     paths:
-      - 'webapp/parser/fixtures/*.csv'
+      - 'webapp/parser/fixtures/*.json'
+      - 'webapp/parser/fixtures/*.jsonl'
+      - 'webapp/parser/fixtures/election_results_shards/**'
+      - 'webapp/parser/Context_Integration/Context_Library/cache/*.json'
+      - 'webapp/parser/Context_Integration/Context_Library/log/*.jsonl'
       - 'scripts/build_election_index.py'
       - 'webapp/parser/election_fixtures.py'
 
@@ -26,6 +34,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Git LFS Pull (if fixtures are LFS)
+        run: |
+          git lfs install
+          git lfs pull
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -39,21 +52,34 @@ jobs:
           pip install jsonschema rapidfuzz
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Check for fixture CSVs
-        id: csv_check
+      - name: Check for fixture sources
+        id: fixture_check
         run: |
           shopt -s nullglob
-          files=(webapp/parser/fixtures/*.csv)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "has_csv=false" >> "$GITHUB_OUTPUT"
-            echo "No fixture CSVs found; skipping index build."
+          csv_files=(webapp/parser/fixtures/*.csv)
+          json_files=(webapp/parser/fixtures/election_results_index.json)
+          jsonl_files=(webapp/parser/fixtures/election_results_index.jsonl webapp/parser/fixtures/election_results_index.jsonl.gz)
+          shard_files=(webapp/parser/fixtures/election_results_shards/election_results_*.json)
+          # Cache and log directories are gitignored; only check if they exist locally
+          cache_files=()
+          if [ -d "webapp/parser/Context_Integration/Context_Library/cache" ]; then
+            cache_files=(webapp/parser/Context_Integration/Context_Library/cache/election*.json webapp/parser/Context_Integration/Context_Library/cache/context*.json)
+          fi
+          log_files=()
+          if [ -d "webapp/parser/Context_Integration/Context_Library/log" ]; then
+            log_files=(webapp/parser/Context_Integration/Context_Library/log/*_log.jsonl webapp/parser/Context_Integration/Context_Library/log/integrity*.jsonl webapp/parser/Context_Integration/Context_Library/log/trust*.jsonl)
+          fi
+          total_sources=$(( ${#csv_files[@]} + ${#json_files[@]} + ${#jsonl_files[@]} + ${#shard_files[@]} + ${#cache_files[@]} + ${#log_files[@]} ))
+          if [ $total_sources -eq 0 ]; then
+            echo "has_sources=false" >> "$GITHUB_OUTPUT"
+            echo "No fixture sources found; skipping index build."
           else
-            echo "has_csv=true" >> "$GITHUB_OUTPUT"
-            echo "Found ${#files[@]} fixture CSVs."
+            echo "has_sources=true" >> "$GITHUB_OUTPUT"
+            echo "Found $total_sources fixture source files (CSV: ${#csv_files[@]}, JSON: ${#json_files[@]}, JSONL: ${#jsonl_files[@]}, Shards: ${#shard_files[@]}, Cache: ${#cache_files[@]}, Logs: ${#log_files[@]})."
           fi
       
       - name: Build election index
-        if: steps.csv_check.outputs.has_csv == 'true'
+        if: steps.fixture_check.outputs.has_sources == 'true'
         run: |
           python scripts/build_election_index.py \
             --src webapp/parser/fixtures \
@@ -64,7 +90,7 @@ jobs:
             --shard-threshold-mb 8
       
       - name: Validate schema
-        if: steps.csv_check.outputs.has_csv == 'true'
+        if: steps.fixture_check.outputs.has_sources == 'true'
         run: |
           python -c "
           import json
@@ -74,7 +100,7 @@ jobs:
           "
       
       - name: Check audit report
-        if: steps.csv_check.outputs.has_csv == 'true'
+        if: steps.fixture_check.outputs.has_sources == 'true'
         run: |
           if [ -f "webapp/parser/fixtures/fixture_audit_report.jsonl" ]; then
             lines=$(wc -l < "webapp/parser/fixtures/fixture_audit_report.jsonl")
@@ -84,7 +110,7 @@ jobs:
           fi
       
       - name: Test fixture loader
-        if: steps.csv_check.outputs.has_csv == 'true'
+        if: steps.fixture_check.outputs.has_sources == 'true'
         run: |
           python -c "
           import sys
@@ -97,7 +123,7 @@ jobs:
           "
       
       - name: Commit updated index (if on main)
-        if: steps.csv_check.outputs.has_csv == 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: steps.fixture_check.outputs.has_sources == 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
@@ -114,16 +140,16 @@ jobs:
           fi
       
       - name: Create release tag (if on main)
-        if: steps.csv_check.outputs.has_csv == 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: steps.fixture_check.outputs.has_sources == 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           TAG="fixture-$(date +%Y%m%d-%H%M%S)"
           git tag "$TAG" || echo "Tag already exists"
           git push origin "$TAG" || echo "Could not push tag"
 
       - name: Report skip
-        if: steps.csv_check.outputs.has_csv != 'true'
+        if: steps.fixture_check.outputs.has_sources != 'true'
         run: |
-          echo "ℹ️  No fixture CSVs found; skipping fixture validation."
+          echo "ℹ️  No fixture sources found; skipping fixture validation."
       
       - name: Report status
         if: failure()

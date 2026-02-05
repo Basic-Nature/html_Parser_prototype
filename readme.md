@@ -6,7 +6,78 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
 
 ---
 
-## 🚀 What's New (2025)
+## � Documentation Navigation
+
+> **Consolidated documentation in `docs/` folder** - All ~50 markdown files have been organized into clear categories with cross-links.
+
+### Quick Links
+
+| Purpose | Document | Read Time |
+| --------- | ---------- | ----------- |
+| **🚀 Getting Started** | [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | 10 min |
+| **🏗️ Architecture & Design** | [architecture.md](docs/architecture.md) | 20 min |
+| **📋 Quick Reference** | [QUICK_REFERENCES.md](docs/QUICK_REFERENCES.md) | Lookup |
+| **🔐 Quarantine System** | [QUARANTINE_SYSTEM_GUIDE.md](docs/QUARANTINE_SYSTEM_GUIDE.md) | 15 min |
+| **✅ System Governance** | [SYSTEM_GOVERNANCE.md](docs/SYSTEM_GOVERNANCE.md) | 15 min |
+| **🔍 Verification Framework** | [VERIFICATION_ARCHITECTURE.md](docs/VERIFICATION_ARCHITECTURE.md) | 20 min |
+| **🔐 Certificate Auth** | [CERT_AUTH_IMPLEMENTATION.md](docs/CERT_AUTH_IMPLEMENTATION.md) | 15 min |
+| **☁️ Azure Deployment** | [AZURE_DEPLOYMENT_CHECKLIST.md](docs/AZURE_DEPLOYMENT_CHECKLIST.md) | 10 min |
+
+### Documentation Organization
+
+```tree
+docs/
+├── architecture.md                    # Core system design & data flow
+├── index.md                          # Main documentation hub
+├── DEPLOYMENT_GUIDE.md               # Local/Docker/Azure setup
+├── QUICK_REFERENCES.md               # API/CLI quick lookup
+├── QUARANTINE_SYSTEM_GUIDE.md        # Transparent quarantine pipeline
+├── SYSTEM_GOVERNANCE.md              # Ethical principles & privilege model
+├── VERIFICATION_ARCHITECTURE.md      # Verification framework design
+├── WAREHOUSE_VERIFICATION_GUIDE.md   # Gated warehouse verification
+├── CERTAINTY_CAUTION_FRAMEWORK.md    # Confidence scoring system
+├── CERT_AUTH_IMPLEMENTATION.md       # Certificate authentication
+├── CERT_AUTH_REFERENCE.md           # Cert auth quick reference
+├── CERT_AUTH_STEP5_CHECKLIST.md     # Phase 5 implementation tasks
+├── AZURE_DEPLOYMENT_CHECKLIST.md    # Azure production checklist
+├── ELECTION_OPERATIONS_PLAYBOOK.md  # Operational procedures
+├── handlers.md                       # Handler architecture & routing
+├── fec_fuzzy.md                      # FEC candidate fuzzy matching
+├── session-logs/                     # Archived session reports (by date)
+├── implementation-phases/            # Archived phase completion reports
+├── implementation-history/           # Archived implementation records
+└── archived/                         # Historical/deprecated docs
+```
+
+### For Different Audiences
+
+***👨‍💻 Developers***
+
+1. Start: [architecture.md](docs/architecture.md) (overview of system layers)
+2. Reference: [QUICK_REFERENCES.md](docs/QUICK_REFERENCES.md) (APIs and common tasks)
+3. Deep Dive: [handlers.md](docs/handlers.md) (handler routing and patterns)
+
+***🚀 DevOps/Deployment***
+
+1. Start: [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) (local → Docker → Azure)
+2. Reference: [AZURE_DEPLOYMENT_CHECKLIST.md](docs/AZURE_DEPLOYMENT_CHECKLIST.md) (production checklist)
+3. Troubleshooting: [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md#known-issues--fixes)
+
+***🔐 Security/Compliance***
+
+1. Start: [SYSTEM_GOVERNANCE.md](docs/SYSTEM_GOVERNANCE.md) (ethical principles)
+2. Deep Dive: [VERIFICATION_ARCHITECTURE.md](docs/VERIFICATION_ARCHITECTURE.md) (verification framework)
+3. Operational: [ELECTION_OPERATIONS_PLAYBOOK.md](docs/ELECTION_OPERATIONS_PLAYBOOK.md) (procedures)
+
+***👥 Project Managers/Stakeholders***
+
+1. Start: [QUARANTINE_SYSTEM_GUIDE.md](docs/QUARANTINE_SYSTEM_GUIDE.md) (transparency overview)
+2. Status: [CERT_AUTH_IMPLEMENTATION.md](docs/CERT_AUTH_IMPLEMENTATION.md) (current phase status)
+3. Reference: [CURRENT_SESSION_INDEX.md](docs/CURRENT_SESSION_INDEX.md) (work tracking)
+
+---
+
+## �🚀 What's New (2025)
 
 ### Major Additions
 

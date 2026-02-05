@@ -38,6 +38,7 @@ nltk>=3.9.1
 # ⚠️ CRITICAL: orjson 3.9.5 compatible with Python 3.12+
 # Python 3.13 has ABI breaking changes; DO NOT upgrade without testing
 # See: https://github.com/ijl/orjson/issues/564 (3.13 support tracked)
+jsonschema>=4.22.0
 orjson==3.9.5
 prometheus_client>=0.16.0
 # For browser fingerprint masking (via Playwright)

@@ -130,6 +130,7 @@ webapp/ms-playwright/
 # -------------------------
 # Generated / runtime patterns
 # -------------------------
+# CSVs are local-only source files (handlers download from URLs, convert to JSON for fixtures)
 *.csv
 *.pdf
 .output_cache.json
@@ -138,6 +139,7 @@ fine_tuned_table_headers_tmp/
 fine_tuned_spacy_ner_tmp/
 .lock
 cache/context_cache.json
+# Cache and log directories contain runtime data (migrate to PostgreSQL based on confidence)
 webapp/parser/Context_Integration/Context_Library/log/
 webapp/parser/Context_Integration/Context_Library/cache/
 webapp/parser/urls.txt.bak*

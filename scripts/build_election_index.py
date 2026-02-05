@@ -8,13 +8,31 @@ Usage:
     --out webapp/parser/fixtures/election_results_index.json \\
     [--audit-against-fec] \\
     [--max-file-size-mb 10] \\
-    [--shard-threshold-mb 8]
+    [--shard-threshold-mb 8] \\
+    [--include-cache] \\
+    [--include-log] \\
+    [--min-confidence 0.7]
+
+Data Flow Architecture:
+  1. Handlers download election data from URLs → CSV format
+  2. CSV → JSON conversion (local, manual) → webapp/parser/fixtures/
+  3. Handler extraction → Cache (webapp/parser/Context_Integration/Context_Library/cache/)
+  4. Append-only logs → Log (webapp/parser/Context_Integration/Context_Library/log/)
+  5. Index builder reads from fixtures, cache, log → merges with confidence filtering
+  6. Final validated data → PostgreSQL warehouse (long-term storage)
+
+Sources (priority order):
+  - Primary: webapp/parser/fixtures/ (CSVs, JSON, JSONL, shards)
+  - Cache: Context_Library/cache/ (short-term, ready for migration based on confidence)
+  - Logs: Context_Library/log/ (append-only JSONL, slightly more persistent)
 
 Features:
   - Reads SMART Elections Database CSVs (Finalized Data, Down-Ballot Calculations)
+  - Reads JSON/JSONL from cache and log directories (handler outputs)
   - Organizes by state + year + contest
   - Validates against JSON Schema
   - Deduplicates and cleans data
+  - Filters by confidence threshold (default: no filter, use --min-confidence to set)
   - Monitors file size; shards by state if exceeds threshold
   - Optional FEC candidate name fuzzy matching (--audit-against-fec)
   - Generates audit report (fixture_audit_report.jsonl)
@@ -203,6 +221,151 @@ def read_smart_database_csv(csv_path: str, auditor: Auditor) -> Dict[str, List[D
         auditor.log('error', 0, csv_path, f"Failed to read CSV: {e}")
     
     return records_by_state_year
+
+
+# ============================================================================
+# JSON/JSONL Parsing (fixture cache sources)
+# ============================================================================
+
+def _open_text_file(path: str):
+    if path.endswith('.gz'):
+        return gzip.open(path, 'rt', encoding='utf-8')
+    return open(path, 'r', encoding='utf-8')
+
+
+def _merge_index(target: Dict[str, Dict[str, Any]], source: Dict[str, Dict[str, Any]],
+                 auditor: Auditor, source_name: str) -> None:
+    for key, record in source.items():
+        if key in target:
+            auditor.log('warning', 0, source_name, f"Duplicate key in index: {key}")
+        target[key] = record
+
+
+def read_json_index_file(path: str, auditor: Auditor) -> Dict[str, Dict[str, Any]]:
+    try:
+        with _open_text_file(path) as f:
+            payload = json.load(f)
+        if isinstance(payload, dict):
+            return payload
+        auditor.log('error', 0, path, "JSON index is not an object")
+        return {}
+    except Exception as e:
+        auditor.log('error', 0, path, f"Failed to read JSON index: {e}")
+        return {}
+
+
+def read_jsonl_index_file(path: str, auditor: Auditor) -> Dict[str, Dict[str, Any]]:
+    index: Dict[str, Dict[str, Any]] = {}
+    try:
+        with _open_text_file(path) as f:
+            for line_num, line in enumerate(f, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError as e:
+                    auditor.log('error', line_num, path, f"Invalid JSONL: {e}")
+                    continue
+                if not isinstance(entry, dict):
+                    auditor.log('skip', line_num, path, "JSONL entry is not an object")
+                    continue
+
+                key = entry.get('key') or entry.get('id')
+                record = entry.get('record') if isinstance(entry.get('record'), dict) else None
+                if record is None:
+                    record = {k: v for k, v in entry.items() if k not in ('key', 'id')}
+
+                if not key:
+                    meta = record.get('metadata') if isinstance(record, dict) else None
+                    if isinstance(meta, dict):
+                        state = meta.get('state')
+                        year = meta.get('year')
+                        contest = record.get('contest')
+                        if state and year and contest:
+                            key = f"{state}_{year}_{contest}"
+
+                if not key or not isinstance(record, dict):
+                    auditor.log('skip', line_num, path, "Missing key or record in JSONL entry")
+                    continue
+
+                if key in index:
+                    auditor.log('warning', line_num, path, f"Duplicate key in JSONL: {key}")
+                index[key] = record
+    except Exception as e:
+        auditor.log('error', 0, path, f"Failed to read JSONL index: {e}")
+    return index
+
+
+def load_index_from_json_sources(
+    src_dir: str,
+    auditor: Auditor,
+    include_cache: bool = True,
+    include_log: bool = True,
+    min_confidence: float = 0.0,
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Load fixture index from JSON/JSONL sources in fixtures, cache, and log directories.
+    
+    Args:
+        src_dir: Primary fixtures directory
+        auditor: Audit tracker
+        include_cache: Whether to load from cache directory
+        include_log: Whether to load from log directory
+        min_confidence: Minimum confidence threshold (0.0-1.0) for including records
+    
+    Returns:
+        Merged index dict
+    """
+    index: Dict[str, Dict[str, Any]] = {}
+    src_path = Path(src_dir)
+
+    # Primary fixtures sources
+    index_path = src_path / 'election_results_index.json'
+    if index_path.exists():
+        _merge_index(index, read_json_index_file(str(index_path), auditor), auditor, str(index_path))
+
+    shard_dir = src_path / 'election_results_shards'
+    if shard_dir.exists():
+        for shard_file in shard_dir.glob('election_results_*.json'):
+            _merge_index(index, read_json_index_file(str(shard_file), auditor), auditor, str(shard_file))
+
+    jsonl_path = src_path / 'election_results_index.jsonl'
+    if jsonl_path.exists():
+        _merge_index(index, read_jsonl_index_file(str(jsonl_path), auditor), auditor, str(jsonl_path))
+
+    jsonl_gz_path = src_path / 'election_results_index.jsonl.gz'
+    if jsonl_gz_path.exists():
+        _merge_index(index, read_jsonl_index_file(str(jsonl_gz_path), auditor), auditor, str(jsonl_gz_path))
+
+    # Context_Library cache sources (short-term data ready for migration)
+    if include_cache:
+        cache_dir = src_path.parent.parent / 'Context_Integration' / 'Context_Library' / 'cache'
+        if cache_dir.exists():
+            for cache_file in cache_dir.glob('*.json'):
+                if cache_file.name.startswith('election') or cache_file.name.startswith('context'):
+                    _merge_index(index, read_json_index_file(str(cache_file), auditor), auditor, str(cache_file))
+
+    # Context_Library log sources (append-only JSONL logs)
+    if include_log:
+        log_dir = src_path.parent.parent / 'Context_Integration' / 'Context_Library' / 'log'
+        if log_dir.exists():
+            for log_file in log_dir.glob('*.jsonl'):
+                if any(kw in log_file.name for kw in ['field_selection', 'navigation_learning', 'integrity', 'trust']):
+                    _merge_index(index, read_jsonl_index_file(str(log_file), auditor), auditor, str(log_file))
+
+    # Apply confidence threshold filter
+    if min_confidence > 0.0:
+        filtered_index = {}
+        for key, record in index.items():
+            confidence = record.get('confidence', 1.0)
+            if isinstance(confidence, (int, float)) and confidence >= min_confidence:
+                filtered_index[key] = record
+            else:
+                auditor.log('skip', 0, key, f"Below confidence threshold: {confidence} < {min_confidence}")
+        index = filtered_index
+
+    return index
 
 
 # ============================================================================
@@ -453,6 +616,12 @@ def main():
                        help='Threshold to trigger sharding (default: 80% of max)')
     parser.add_argument('--audit-report', default='webapp/parser/fixtures/fixture_audit_report.jsonl',
                        help='Output audit report path')
+    parser.add_argument('--include-cache', action='store_true', default=True,
+                       help='Include cache directory JSON sources')
+    parser.add_argument('--include-log', action='store_true', default=True,
+                       help='Include log directory JSONL sources')
+    parser.add_argument('--min-confidence', type=float, default=0.0,
+                       help='Minimum confidence threshold for including records (0.0-1.0)')
     
     args = parser.parse_args()
     
@@ -480,27 +649,37 @@ def main():
     csv_files = [f for f in os.listdir(args.src) if f.endswith('.csv')]
     
     if not csv_files:
-        print(f"[ERROR] No CSV files found in {args.src}")
-        return 1
-    
-    print(f"[CSV] Found {len(csv_files)} CSV files")
-    
-    for csv_file in csv_files:
-        csv_path = os.path.join(args.src, csv_file)
-        print(f"[CSV] Reading {csv_file}...")
-        file_records = read_smart_database_csv(csv_path, auditor)
-        for key, recs in file_records.items():
-            records_by_state_year[key].extend(recs)
-    
-    print(f"[CSV] Parsed {sum(len(r) for r in records_by_state_year.values())} records")
-    
-    # Build index
-    index = build_election_index(
-        dict(records_by_state_year),
-        candidates_index=candidates_index,
-        auditor=auditor,
-        audit_against_fec=args.audit_against_fec,
-    )
+        print(f"[CSV] No CSV files found in {args.src}; checking JSON/JSONL sources...")
+        index = load_index_from_json_sources(
+            args.src,
+            auditor,
+            include_cache=args.include_cache,
+            include_log=args.include_log,
+            min_confidence=args.min_confidence,
+        )
+        if not index:
+            print(f"[ERROR] No CSV or JSON sources found in {args.src}")
+            return 1
+        print(f"[JSON] Loaded index with {len(index)} entries (min confidence: {args.min_confidence})")
+    else:
+        print(f"[CSV] Found {len(csv_files)} CSV files")
+        
+        for csv_file in csv_files:
+            csv_path = os.path.join(args.src, csv_file)
+            print(f"[CSV] Reading {csv_file}...")
+            file_records = read_smart_database_csv(csv_path, auditor)
+            for key, recs in file_records.items():
+                records_by_state_year[key].extend(recs)
+        
+        print(f"[CSV] Parsed {sum(len(r) for r in records_by_state_year.values())} records")
+        
+        # Build index
+        index = build_election_index(
+            dict(records_by_state_year),
+            candidates_index=candidates_index,
+            auditor=auditor,
+            audit_against_fec=args.audit_against_fec,
+        )
     
     print(f"[INDEX] Built index with {len(index)} entries")
     
