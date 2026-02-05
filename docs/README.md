@@ -37,14 +37,16 @@ System governance, principles, and decision-making
 - [System Governance](./GOVERNANCE/GOVERNANCE.md) - Organizational structure and policies
 
 ### 🟣 [DEVELOPMENT/](./DEVELOPMENT/)
-Auto-generated TODO management and development resources
+Auto-generated documentation and development resources
 - [TODO Overview](./DEVELOPMENT/TODOS_OVERVIEW.md) - How-to guide for the TODO system
 - [All TODOs](./DEVELOPMENT/todos.md) - Complete list of outstanding work items
 - [High Priority](./DEVELOPMENT/todos_high.md) - Critical and urgent items
 - [Medium Priority](./DEVELOPMENT/todos_medium.md) - Improvements and tech debt
 - [Low Priority](./DEVELOPMENT/todos_low.md) - Future work and nice-to-haves
+- [Project Audit](./DEVELOPMENT/project_audit.md) - Comprehensive module audit with Mermaid diagrams
+- [Pipeline Map](./DEVELOPMENT/pipeline_map.md) - Detailed pipeline connections and architecture
 
-> **Note**: TODO files in `DEVELOPMENT/` are auto-generated from code comments. See [TODO Overview](./DEVELOPMENT/TODOS_OVERVIEW.md) for details.
+> **Note**: Files in `DEVELOPMENT/` are auto-generated from code analysis. See [TODO Overview](./DEVELOPMENT/TODOS_OVERVIEW.md) for the TODO system.
 
 ---
 

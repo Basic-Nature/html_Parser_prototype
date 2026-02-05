@@ -69,6 +69,11 @@ The TODO system generates four markdown files automatically on each build:
 - **[todos_medium.md](/html_Parser_prototype/development/todos-medium/)** - Medium priority items (improvements, refactoring)
 - **[todos_low.md](/html_Parser_prototype/development/todos-low/)** - Low priority items (future, nice-to-have)
 
+Additionally, comprehensive project reference documentation is generated:
+
+- **[project_audit.md](/html_Parser_prototype/development/project-audit/)** - Complete module audit with Mermaid diagrams showing all 90+ modules and their dependencies
+- **[pipeline_map.md](/html_Parser_prototype/development/pipeline-map/)** - Detailed pipeline connection map with interactive Mermaid visualizations and module contexts
+
 ### Generation Script
 
 The script `scripts/generate_todo_index.py` scans all Python and JavaScript source files and:

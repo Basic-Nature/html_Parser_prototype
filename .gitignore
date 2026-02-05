@@ -172,6 +172,12 @@ docs/DEVELOPMENT/todos_high.md
 docs/DEVELOPMENT/todos_medium.md
 docs/DEVELOPMENT/todos_low.md
 
+# Project overview files (auto-generated reference docs)
+docs/DEVELOPMENT/project_audit.md
+docs/DEVELOPMENT/pipeline_map.md
+
 # (Deprecated - old locations before migration to DEVELOPMENT/)
 docs/todos.md
 docs/todos_*.md
+docs/project_audit.md
+docs/pipeline_map.md

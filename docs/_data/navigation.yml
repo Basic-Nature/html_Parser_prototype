@@ -65,3 +65,7 @@ main:
         url: /html_Parser_prototype/development/todos-medium/
       - title: Low Priority
         url: /html_Parser_prototype/development/todos-low/
+      - title: Project Audit
+        url: /html_Parser_prototype/development/project-audit/
+      - title: Pipeline Map
+        url: /html_Parser_prototype/development/pipeline-map/

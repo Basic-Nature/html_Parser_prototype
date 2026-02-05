@@ -68,12 +68,12 @@ ALLOWED_SUFFIXES = {
 }
 
 EXCLUDED_FILES = {
-    Path("docs") / "todos.md",
-    Path("docs") / "todos_high.md",
-    Path("docs") / "todos_medium.md",
-    Path("docs") / "todos_low.md",
-    Path("docs") / "project_audit.md",
-    Path("docs") / "pipeline_map.md",
+    Path("docs") / "DEVELOPMENT" / "todos.md",
+    Path("docs") / "DEVELOPMENT" / "todos_high.md",
+    Path("docs") / "DEVELOPMENT" / "todos_medium.md",
+    Path("docs") / "DEVELOPMENT" / "todos_low.md",
+    Path("docs") / "DEVELOPMENT" / "project_audit.md",
+    Path("docs") / "DEVELOPMENT" / "pipeline_map.md",
     Path("webapp")
     / "parser"
     / "Context_Integration"
