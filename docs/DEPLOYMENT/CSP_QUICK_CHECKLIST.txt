@@ -1,0 +1,129 @@
+# STRICT CSP Deployment Quick Checklist
+
+**Print this before deploying to Azure**
+
+---
+
+## ✅ Pre-Deployment (Local Testing)
+
+### 1. Verify Vendor Files Exist
+```bash
+ls -la webapp/static/vendor/ | grep -E "bootstrap|chart|socket"
+```
+- [ ] bootstrap.min.css
+- [ ] bootstrap-5.3.8.min.css  
+- [ ] bootstrap.bundle.min.js
+- [ ] bootstrap-5.3.8.bundle.min.js
+- [ ] chart.umd.js
+- [ ] socket.io-4.7.5.min.js
+
+### 2. Run Local STRICT CSP Verification
+```bash
+export CSP_MODE=STRICT
+export ALLOW_STYLE_ATTR=0
+python scripts/verify_csp_strict_mode.py
+```
+- [ ] All vendor files found
+- [ ] Flask server starts successfully
+- [ ] CSP header contains NO cdn.jsdelivr.net
+- [ ] CSP header contains nonce-token
+- [ ] Page loads with Bootstrap styling
+- [ ] No CSP violations in browser console
+
+### 3. Manual Feature Testing
+Navigate to http://localhost:5000:
+- [ ] Ballot/results data loads
+- [ ] Bootstrap buttons/modals work
+- [ ] Quality dashboard renders (Chart.js)
+- [ ] Real-time updates work (Socket.IO)
+- [ ] File export/download functions
+- [ ] Developer Console shows zero CSP errors
+
+**If all checks pass** → Continue to Azure deployment
+
+---
+
+## ✅ Azure Deployment
+
+### 4. Configure Environment Variables
+**Azure Portal** → App Service → **Configuration** → **Application Settings**
+
+Add / Modify:
+- [ ] `CSP_MODE` = `STRICT`
+- [ ] `ALLOW_STYLE_ATTR` = `0`
+
+Click **Save** → **Confirm Restart** → Wait 60 seconds
+
+### 5. Deploy Application
+```bash
+git add .
+git commit -m "feat: Deploy with STRICT CSP hardening"
+git push origin main
+```
+Wait for GitHub Actions / Azure Pipelines to complete:
+- [ ] Build succeeds
+- [ ] Tests pass
+- [ ] Deployment completes (green checkmark)
+
+### 6. Post-Deployment Verification
+Check CSP header in production:
+```bash
+curl -I https://[your-app].azurewebsites.net/ | grep Content-Security-Policy
+```
+Verify:
+- [ ] No `cdn.jsdelivr.net` in policy
+- [ ] No `cdn.socket.io` in policy
+- [ ] Contains `'nonce-...` (nonce-based CSP)
+- [ ] Response status is 200 OK
+
+### 7. Test in Browser
+Navigate to https://[your-app].azurewebsites.net:
+- [ ] Page loads with styling (Bootstrap CSS works)
+- [ ] Open DevTools → Console
+- [ ] Zero CSP violation warnings
+- [ ] Test features (ballots, charts, real-time)
+
+**On Success** → **You're done!** Production now runs on STRICT CSP.
+
+---
+
+## ⚠️ Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Page loads but no styling | Bootstrap CSS not loading | Check vendor/ files uploaded; verify CSP allows 'self' |
+| "CSP violation" in console | Resource blocked by policy | Check which resource is blocked; add to appropriate CSP directive |
+| Real-time updates don't work | WebSocket blocked | Verify CSP has `ws: wss:` in connect-src |
+| Session/Cookies issues | SameSite policy too strict | Check Azure's Cookie Policy settings |
+
+### Emergency Fallback (if needed)
+```bash
+# Temporarily allow CDN
+CSP_MODE=RELAXED  # In Azure Configuration
+
+# Once issue fixed, return to strict:
+CSP_MODE=STRICT   # Save → Restart
+```
+
+---
+
+## 🔒 Security Checklist
+
+After deployment, verify:
+- [ ] CSP header contains NO `'unsafe-inline'`
+- [ ] CSP header contains NO `unsafe-eval`
+- [ ] All external resources use nonce or CSP whitelist
+- [ ] HTTPS is enforced (no HTTP fallback)
+- [ ] No inline styles in templates (`style="">`)
+- [ ] No inline scripts in HTML (`<script>code</script>`)
+
+---
+
+## 📞 Support
+
+If issues occur:
+1. Check logs: Azure Portal → **Log Stream**
+2. Review guide: `docs/DEPLOYMENT/CSP_SECURITY_MODEL.md`
+3. Run verification: `python scripts/verify_csp_strict_mode.py`
+
+**Questions?** Refer to CSP documentation in repo.
