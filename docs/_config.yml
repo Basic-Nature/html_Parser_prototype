@@ -18,9 +18,9 @@ exclude:
   - install.bat
   - install.sh
   - install.py
-  - *.py
-  - *.sh
-  - *.bat
+  - "*.py"
+  - "*.sh"
+  - "*.bat"
   - node_modules/
   - "*.json"
   - "*.txt"
