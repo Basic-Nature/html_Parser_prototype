@@ -10,13 +10,12 @@ from .config import (
     PIPELINE_MAX_WORKERS,
     PROCESSED_URLS_FILE,
     URL_LIST_FILE,
+    SLOW_NLP_AUDIT_THRESHOLD,
+    SLOW_NLP_AUDIT_MIN_HITS,
 )
 from .html_election_parser import main
 from .utils.logger_singleton import logger, prompt
 from .utils.shared_logic import safe_clear, safe_is_set, safe_set
-
-SLOW_NLP_AUDIT_THRESHOLD = float(os.environ.get("SLOW_NLP_AUDIT_THRESHOLD", "0.6"))
-SLOW_NLP_AUDIT_MIN_HITS = int(os.environ.get("SLOW_NLP_AUDIT_MIN_HITS", "1"))
 
 
 class CancellationManager(threading.Thread):
@@ -132,6 +131,7 @@ def process_urls_for_web(
     force_parse_input_file=None,
     principal=None,
     principal_source=None,
+    dev_isolation_bypass=False,
     **kwargs
 ) -> None:
     """
@@ -152,8 +152,23 @@ def process_urls_for_web(
     
     # --- Multi-tenant isolation setup ---
     from .health.session_branching import get_isolated_branch, get_principal_tier
-    
-    if principal and principal_source:
+
+    if dev_isolation_bypass:
+        logger.info({
+            "level": "INFO",
+            "type": "isolation",
+            "message": "[MultiTenant] Dev isolation bypass enabled for localhost run.",
+            "session_id": session_id,
+            "principal": principal,
+        })
+        if emit_func:
+            emit_func({
+                "level": "INFO",
+                "type": "isolation",
+                "message": "Dev isolation bypass enabled for localhost run.",
+                "session_id": session_id,
+            })
+    elif principal and principal_source:
         try:
             # Ensure principal has an isolation branch
             branch = get_isolated_branch(principal)
@@ -310,7 +325,16 @@ def process_urls_for_web(
                 return
 
             # --- Pre-processing: Validate raw_urls against principal's isolation ---
-            if principal and principal_source and raw_urls:
+            if dev_isolation_bypass and raw_urls:
+                logger.info({
+                    "level": "INFO",
+                    "type": "isolation",
+                    "message": f"[MultiTenant] Dev isolation bypass active; skipping isolation filter for {len(raw_urls)} URL(s).",
+                    "session_id": session_id,
+                    "principal": principal,
+                    "url_count": len(raw_urls)
+                })
+            elif principal and principal_source and raw_urls:
                 try:
                     from .health.session_branching import validate_url_access
                     blocked_urls = []
@@ -375,7 +399,16 @@ def process_urls_for_web(
                 return
 
             # --- Pre-processing: Validate explicit URLs against principal's isolation ---
-            if principal and principal_source and urls:
+            if dev_isolation_bypass and urls:
+                logger.info({
+                    "level": "INFO",
+                    "type": "isolation",
+                    "message": f"[MultiTenant] Dev isolation bypass active; skipping isolation filter for {len(urls)} URL(s).",
+                    "session_id": session_id,
+                    "principal": principal,
+                    "url_count": len(urls)
+                })
+            elif principal and principal_source and urls:
                 try:
                     from .health.session_branching import validate_url_access
                     blocked_urls = []

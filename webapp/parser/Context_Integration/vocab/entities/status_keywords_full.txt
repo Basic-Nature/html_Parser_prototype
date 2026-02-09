@@ -1,0 +1,7 @@
+incumbent
+winner
+loser
+unopposed
+write-in
+write in
+writein

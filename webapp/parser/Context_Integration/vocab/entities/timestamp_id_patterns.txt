@@ -1,0 +1,8 @@
+^timestamp$
+^time[-_]?ago$
+^last[-_]?updated$
+^update[-_]?time$
+^posted$
+^modified$
+^date$
+^datetime$

@@ -65,6 +65,10 @@ QA_CA_BUNDLE_PATH=/etc/ssl/certs/ca-bundle.crt
 
 # Optional: Fallback principal (development only, default: disabled)
 QA_FALLBACK_PRINCIPAL=system:development  # Only if explicitly enabled
+
+# Guarded ingestion key for uploads + URL ingestion
+# Required on Azure (set as GitHub secret -> Azure app setting)
+GUARDED_INGESTION_KEY=change_me
 ```
 
 ### Security Defaults
@@ -162,6 +166,11 @@ export QA_FALLBACK_PRINCIPAL=system:development
 # Start parser (certificate validation skipped)
 python Smart_Elections_Parser_Webapp.py
 ```
+
+Guarded ingestion behavior:
+
+- On Azure (DEPLOY_ENV=azure), uploads and URL ingestion require `GUARDED_INGESTION_KEY`.
+- On localhost, guarded ingestion is bypassed for developer convenience.
 
 ⚠️ **Warning**: Development-only settings must NEVER be used in production.
 

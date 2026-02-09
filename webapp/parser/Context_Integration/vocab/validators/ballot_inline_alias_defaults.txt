@@ -1,0 +1,21 @@
+ed -> Election Day
+electionday -> Election Day
+inperson -> Election Day
+in-person -> Election Day
+early -> Early Voting
+early voting -> Early Voting
+advance -> Early Voting
+advance voting -> Early Voting
+advance in-person -> Early Voting
+absentee -> Absentee
+mail -> Mail
+by mail -> Mail
+mail-in -> Mail
+mail in -> Mail
+provisional -> Provisional
+affidavit -> Affidavit
+military -> Military
+emergency -> Emergency
+public counter -> Election Day
+counter -> Election Day
+total -> Total Vote

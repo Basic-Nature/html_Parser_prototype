@@ -1,0 +1,8 @@
+alaska -> borough
+louisiana -> parish
+puerto_rico -> municipality
+guam -> village
+american_samoa -> district
+us_virgin_islands -> island
+northern_mariana_islands -> municipality
+district_of_columbia -> district

@@ -307,17 +307,21 @@ class VocabLoader:
 
         # Increment load count and audit log
         self._load_counts[cache_key] = self._load_counts.get(cache_key, 0) + 1
-        logger.info({
-            "level": "INFO",
-            "type": "vocab_loader",
-            "message": f"Loaded vocab file: {subdir}/{filename}",
-            "session_id": session_id,
-            "subdir": subdir,
-            "filename": filename,
-            "entry_count": len(entries),
-            "file_hash": file_hash,
-            "load_count": self._load_counts[cache_key],
-        })
+        try:
+            logger.info({
+                "level": "INFO",
+                "type": "vocab_loader",
+                "message": f"Loaded vocab file: {subdir}/{filename}",
+                "session_id": session_id,
+                "subdir": subdir,
+                "filename": filename,
+                "entry_count": len(entries),
+                "file_hash": file_hash,
+                "load_count": self._load_counts[cache_key],
+            })
+        except Exception:
+            # Silently skip logging if it fails (e.g., due to uninitialized dependencies)
+            pass
 
         return entries
 

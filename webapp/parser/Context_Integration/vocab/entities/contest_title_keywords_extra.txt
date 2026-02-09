@@ -1,0 +1,9 @@
+contest
+race
+office
+seat
+position
+at-large
+district
+ward
+precinct

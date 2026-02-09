@@ -1,0 +1,19 @@
+\b(general|primary|special|runoff|municipal|presidential|school|bond|proposition|referendum|recall|amendment|initiative|measure|levy|override|election)\b
+\bproposition\b|\bproposal\b|\bmeasure\b|\bamendment\b -> Proposition
+\breferendum\b -> Referendum
+\bbond\b|\bbond issue\b|\bbond question\b -> Bond
+\brecall\b -> Recall
+\binitiative\b -> Initiative
+\blevy\b|\boverride\b -> Levy
+\bschool board\b|\bschool trustee\b|\bschool director\b -> School Board
+\bboard of education\b -> School Board
+\bmayor\b|\bcouncil\b|\btrustee\b|\balderman\b|\bcommissioner\b|\bselectman\b -> Local
+\bjudge\b|\bcourt\b|\bjustice\b -> Judicial
+\bclerk\b|\btreasurer\b|\bassessor\b|\bconstable\b|\bcoroner\b -> Local
+\bpresident\b|\bvice president\b -> Presidential
+\bgovernor\b|\blieutenant governor\b -> Statewide
+\bstate senator\b|\bstate representative\b|\bassembly\b -> State Legislature
+\bcongress\b|\brepresentative\b|\bsenator\b -> Federal Legislature
+\bcounty\b -> County
+\bcity\b|\btown\b|\bvillage\b -> Local
+\bdistrict\b -> District

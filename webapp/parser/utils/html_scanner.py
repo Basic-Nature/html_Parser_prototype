@@ -28,6 +28,8 @@ from ..config import (
     CONTEXT_LIBRARY_PATH,
     ENABLE_SEGMENT_LABEL_PROMPT,
     LOG_DIR,
+    SEGMENT_ML_LABEL_THRESHOLD,
+    SEGMENT_ML_LABEL_THRESHOLD_STRICT,
 )
 from ..Context_Integration.Context_Library.constants import (
     ALLOWED_LABELS,
@@ -93,6 +95,7 @@ from .shared_logic import (
     clean_cache_inplace,
     convert_ndarrays,
     keyword_in_text,
+    log_rejection_reason,
     normalize_html_for_hash,
     safe_add,
     safe_append,
@@ -723,7 +726,7 @@ def auto_label_segment(
     context_cache=None,
     pattern_kb=None,
     model=None,
-    ml_threshold=0.7,
+    ml_threshold=SEGMENT_ML_LABEL_THRESHOLD,
     coordinator=None,
 ) -> Optional[tuple]:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -780,6 +783,17 @@ def auto_label_segment(
                     segment["ml_similarity_label"] = best_label
                     segment["ml_similarity_entry"] = best_entry
                     return best_label, "ml"
+                elif best_conf > 0.0 and best_label != "unknown":
+                    # Log that this segment did not meet ML threshold (constructive criticism)
+                    log_rejection_reason(
+                        decision_context="segment_labeling",
+                        confidence_score=best_conf,
+                        rejection_reason="below ML threshold despite match",
+                        candidate_info={"segment_hash": safe_get(segment, "segment_hash", None), "candidate_label": best_label},
+                        threshold_name="SEGMENT_ML_LABEL_THRESHOLD",
+                        threshold_value=ml_threshold,
+                        function_name="auto_label_segment",
+                    )
             else:
                 logger.warning(f"[ML SIMILARITY] No embedding computed for segment: {safe_get(segment, 'segment_hash', None)}")
         except Exception as e:
@@ -803,6 +817,17 @@ def auto_label_segment(
                 if best_conf >= ml_threshold and best_label != "unknown":
                     logger.info(f"[ML SIMILARITY] Segment matched with label '{best_label}' (sim={best_conf:.3f})")
                     return best_label, "ml_context_lib"
+                elif best_conf > 0.0 and best_label != "unknown":
+                    # Log that this segment did not meet ML threshold (constructive criticism)
+                    log_rejection_reason(
+                        decision_context="segment_labeling",
+                        confidence_score=best_conf,
+                        rejection_reason="below ML threshold with context library",
+                        candidate_info={"segment_hash": safe_get(segment, "segment_hash", None), "candidate_label": best_label},
+                        threshold_name="SEGMENT_ML_LABEL_THRESHOLD",
+                        threshold_value=ml_threshold,
+                        function_name="auto_label_segment",
+                    )
             else:
                 logger.warning(f"[ML SIMILARITY] No embedding computed for segment: {safe_get(segment, 'segment_hash', None)}")
         except Exception as e:
@@ -1177,7 +1202,7 @@ def extract_tagged_segments_with_attrs(
     model_name: Optional[str] = None,
     use_finetuned: bool = True,
     pattern_kb: list = None,
-    ml_threshold: float = 0.85,
+    ml_threshold: float = SEGMENT_ML_LABEL_THRESHOLD_STRICT,
     model=None,
     coordinator=None,
     **kwargs
@@ -2571,7 +2596,7 @@ def scan_html_for_context(
     debug=False,
     model_name: Optional[str] = None,
     use_finetuned: bool = True,
-    ml_threshold: float = 0.85,
+    ml_threshold: float = SEGMENT_ML_LABEL_THRESHOLD_STRICT,
     **kwargs
 ) -> Dict[str, Any]:
     """

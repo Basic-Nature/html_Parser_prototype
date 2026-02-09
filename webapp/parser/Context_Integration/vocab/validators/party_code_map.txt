@@ -1,0 +1,137 @@
+BLANK -> Blank/Undervote
+UNDERVOTE -> Blank/Undervote
+VOID -> Void/Overvote
+OVERVOTE -> Void/Overvote
+SCAT -> Scattering
+SCATTER -> Scattering
+AAP -> Aloha Aina Party
+AC -> American Constitution Party
+ACE -> ACE Party
+AE -> Americans Elect
+AIC -> American Independent Party
+AIP -> American Independent Party
+AKI -> Alaskan Independence Party
+ALP -> Alliance Party
+AMP -> America Party
+AMSP -> American Shopping Party
+APF -> American People's Freedom Party
+ASP -> American Solidarity Party
+AVP -> Approval Voting Party
+BET -> Better Party
+CIT -> Citizens' Party
+CMD -> Commandments Party
+CMP -> Commonwealth Party of the United States
+CNC -> Concerned Citizens Party
+COC -> Colorado Center Party
+COM -> Communist Party USA
+CON -> Constitution Party
+COU -> Other
+CRV -> Conservative Party
+CST -> Other
+D -> Democratic Party
+R -> Republican Party
+I -> Independent
+L -> Libertarian Party
+G -> Green Party
+D/C -> Democratic-Conservative Party
+DCG -> DC Statehood Green Party
+DEM -> Democratic Party
+DFL -> Minnesota Democratic-Farmer-Labor Party
+DGR -> Desert Greens Party
+DNL -> North Dakota Democratic-Nonpartisan League Party
+EPFL -> Ecology Party of Florida
+FED -> Federalist Party
+FLP -> Freedom Labor Party
+FRE -> Freedom Party
+FWD -> Forward Party
+GMPJ -> Green Mountain Peace and Justice Party
+GR -> Green Party
+GRE -> Green Party
+GRT -> Other
+GWP -> George Wallace Party
+HRP -> Human Rights Party
+IAP -> Independent American Party
+ICD -> Independent Conservative Democratic Party
+IDE -> Independent
+IDP -> Independence Party
+IFL -> Independent
+IGD -> Industrial Government Party
+IGR -> Independent Green Party
+ILA -> Independent
+IND -> Independent
+IOR -> Independent
+IP -> Independent
+JCN -> Jewish/Christian National Party
+JUS -> Justice Party
+LAB -> Labor Party
+LBL -> Liberal Party
+LBR -> Labor Party
+LBU -> Liberty Union Party
+LFT -> Less Federal Taxes Party
+LIB -> Libertarian Party
+LIP -> LaRouche Party
+LMN -> Legal Marijuana Now Party
+MTP -> Mountain Party
+N -> Nonpartisan
+NA -> New Alliance Party
+NAP -> Prohibition Party
+NDP -> National Democratic Party
+NF -> Forward Party
+NJC -> New Jersey Conservative Party
+NL -> No Labels
+NLP -> Natural Law Party
+NNE -> Other
+NON -> Other
+NOP -> Other
+NPA -> Other
+NPP -> New Progressive Party
+NYCON -> Conservative Party of New York
+OE -> One Earth Party
+ORP -> Oregon Progressive Party
+OTH -> Other
+PAF -> Peace and Freedom Party
+PCH -> Personal Choice Party
+PFD -> Peace and Freedom Party
+PFP -> Peace and Freedom Party
+PG -> Pacific Green Party
+POP -> People Over Politics Party
+PPD -> Popular Democratic Party
+PPY -> People's Party
+PRI -> Puerto Rican Independence Party
+PRO -> Progressive Party
+PSL -> Party for Socialism and Liberation
+REF -> Reform Party
+REP -> Republican Party
+RES -> Resource Party
+RTL -> Right to Life Party
+RUP -> La Raza Unida Party
+SAL -> Party for Socialism and Liberation
+SAM -> Serve America Movement
+SCW -> South Carolina Workers Party
+SEP -> Socialist Equality Party
+SLP -> Socialist Labor Party
+SOC -> Socialist Party USA
+SUS -> Socialist Party USA
+SWP -> Socialist Workers Party
+TEA -> Tea Party
+THD -> Theo-Democratic Party
+TWR -> Taxpayers Party
+TX -> Taxpayers Party
+UC -> United Citizens Party
+UCP -> United Citizens Party
+UKS -> United Kansas Party
+UN -> Other
+UNI -> Unity Party of America
+UNK -> Other
+UP -> United Party
+USC -> U.S. Constitution Party
+USP -> U.S. People's Party
+UST -> U.S. Taxpayers Party
+UUP -> United Utah Party
+VET -> Veterans Party of America
+VTP -> Vermont Progressive Party
+W -> Write-in
+WCP -> Working Class Party
+WEP -> Women's Equality Party
+WF -> Working Families Party
+WTP -> We The People Party

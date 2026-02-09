@@ -42,6 +42,7 @@ SOCKETIO_CLIENT_CONFIG = {
 }
 
 import csv
+import io
 import gzip
 import json
 import re
@@ -74,6 +75,7 @@ from flask import (
     url_for,
 )
 from psycopg2 import errors as pg_errors
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import OperationalError
 from werkzeug.exceptions import HTTPException, NotFound
 
@@ -144,6 +146,7 @@ from webapp.parser.config import (
     POSTGRES_PORT,
     POSTGRES_USER_RAW,
     PROJECT_ROOT,
+    QUICK_COPY_DIR,
     RUN_HISTORY_FILE,
     SUPPORTED_EXTENSION_SET,
     UPLOADS_DIR,
@@ -154,7 +157,8 @@ from webapp.parser.config import (
     URL_LIST_FILE,
 )
 from webapp.parser.utils.cert_utils import extract_client_principal
-from webapp.parser.utils.misc_utils import extract_url_and_label
+from webapp.parser.utils.db_utils import SessionLocal, get_engine
+from webapp.parser.utils.misc_utils import extract_url_and_label, load_processed_urls
 from webapp.parser.utils.shared_logic import (
     safe_filename,
     safe_get,
@@ -166,6 +170,7 @@ from webapp.parser.utils.shared_logic import (
     safe_strip,
     safe_validate_external_url,
 )
+from webapp.parser.utils.models import DataFrameworkPreviewCache
 from webapp.parser.web_pipeline import (
     cancel_processing,
     cancellation_manager,
@@ -228,6 +233,42 @@ def _prune_flagged_url_logs(now: datetime | None = None) -> None:
                 continue
     except Exception:
         pass
+
+
+def _is_local_request() -> bool:
+    try:
+        host = (request.host or "").split(":", 1)[0].lower()
+        if host in {"localhost", "127.0.0.1", "::1"}:
+            return True
+        forwarded_for = (request.headers.get("X-Forwarded-For") or "").split(",", 1)[0].strip()
+        remote_addr = forwarded_for or (request.remote_addr or "")
+        if remote_addr in {"127.0.0.1", "::1"}:
+            return True
+        if remote_addr.startswith("127."):
+            return True
+    except Exception:
+        return False
+    return False
+
+
+def _guarded_ingestion_allowed(action: str) -> tuple[bool, str]:
+    if DEPLOY_ENV == "local" and _is_local_request():
+        return True, "local_bypass"
+    guarded_key = (os.environ.get("GUARDED_INGESTION_KEY") or "").strip()
+    if not guarded_key:
+        return False, "guard_key_missing"
+    token_hdr = (request.headers.get("X-Guarded-Ingestion-Key") or request.headers.get("X-Guarded-Key") or "").strip()
+    if token_hdr and hmac.compare_digest(token_hdr, guarded_key):
+        return True, "guard_header"
+    auth_hdr = (request.headers.get("Authorization") or "").strip()
+    if auth_hdr.lower().startswith("bearer "):
+        try:
+            bearer = auth_hdr.split(None, 1)[1].strip()
+            if hmac.compare_digest(bearer, guarded_key):
+                return True, "guard_bearer"
+        except Exception:
+            pass
+    return False, "guard_key_invalid"
 
 
 def log_flagged_url(event: dict) -> None:
@@ -645,6 +686,10 @@ ENABLE_FINGERPRINT_SESSION_RECOVERY = os.environ.get(
 
 ALLOW_DEV_NO_PRINCIPAL = os.environ.get("ALLOW_DEV_NO_PRINCIPAL", "false").lower() in {"1", "true", "yes"}
 ALLOW_AUTO_SESSION_REUSE = os.environ.get("ALLOW_AUTO_SESSION_REUSE", "true").lower() in {"1", "true", "yes"}
+CERT_SESSION_BINDING = os.environ.get("CERT_SESSION_BINDING", "false").lower() in {"1", "true", "yes"}
+ALLOW_ANON_NO_PRINCIPAL = os.environ.get("ALLOW_ANON_NO_PRINCIPAL", "true").lower() in {"1", "true", "yes"}
+DEV_ISOLATION_BYPASS_ENABLED = os.environ.get("DEV_ISOLATION_BYPASS_ENABLED", "false").lower() in {"1", "true", "yes"}
+DEV_ISOLATION_BYPASS_IPS_RAW = os.environ.get("DEV_ISOLATION_BYPASS_IPS", "").strip()
 
 LOG_DEDUPE_WINDOW = float(os.environ.get("LOG_DEDUPE_WINDOW_SEC", "2.0"))
 MAX_CACHE_PER_SESSION = 120
@@ -819,6 +864,58 @@ def _resolve_output_metadata_path(file_path: str) -> str | None:
         return legacy
     return None
 
+def _quick_copy_session_dir(session_id: str | None) -> Path | None:
+    if not session_id:
+        return None
+    safe_sid = safe_filename(session_id)
+    if not safe_sid:
+        return None
+    return QUICK_COPY_DIR / safe_sid
+
+def _ensure_quick_copy_dir(session_id: str | None) -> Path | None:
+    target = _quick_copy_session_dir(session_id)
+    if not target:
+        return None
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": "cache",
+            "message": f"Failed to ensure quick copy dir: {exc}",
+            "session_id": session_id,
+        })
+        return None
+    return target
+
+def _cleanup_quick_copy_dir(session_id: str | None) -> None:
+    target = _quick_copy_session_dir(session_id)
+    if not target or not target.exists():
+        return
+    try:
+        shutil.rmtree(target)
+    except Exception as exc:
+        logger.warning({
+            "level": "WARNING",
+            "type": "cache",
+            "message": f"Failed to cleanup quick copy dir: {exc}",
+            "session_id": session_id,
+        })
+
+def _unique_quick_copy_name(dest_dir: Path, base_name: str) -> str:
+    safe_name = safe_filename(base_name) or "file"
+    stem, suffix = os.path.splitext(safe_name)
+    if not stem:
+        stem = "file"
+    candidate = f"{stem}{suffix}"
+    if not (dest_dir / candidate).exists():
+        return candidate
+    for idx in range(1, 1000):
+        candidate = f"{stem}-{idx}{suffix}"
+        if not (dest_dir / candidate).exists():
+            return candidate
+    return f"{stem}-{secrets.token_hex(4)}{suffix}"
+
 def _is_output_download_allowed(file_path: str, principal: str | None, session_id: str | None) -> tuple[bool, str]:
     meta_path = _resolve_output_metadata_path(file_path)
     if not meta_path:
@@ -893,6 +990,7 @@ def cleanup_sessions():
                 os.remove(log_path)
         except Exception:
             pass
+        _cleanup_quick_copy_dir(sid)
         last_contest_options.pop(sid, None)
         session_manager.unbind_fingerprints_for_session(sid)
     if expired:
@@ -979,16 +1077,84 @@ def get_request_principal():
 
     # Dev-only bypass for localhost when explicitly enabled
     host = (request.host or "").lower()
-    is_local = (
+    is_local = _is_local_host(host)
+    if ALLOW_DEV_NO_PRINCIPAL and is_local:
+        remote = request.remote_addr or "local"
+        return f"dev:{remote}", "dev_bypass", None
+    return None, None, None
+
+
+def _is_local_host(host: str) -> bool:
+    if not host:
+        return False
+    return (
         host in {"localhost", "127.0.0.1", "::1", "[::1]"}
         or host.startswith("localhost:")
         or host.startswith("127.0.0.1:")
         or host.startswith("[::1]:")
     )
-    if ALLOW_DEV_NO_PRINCIPAL and is_local:
-        remote = request.remote_addr or "local"
-        return f"dev:{remote}", "dev_bypass", None
-    return None, None, None
+
+
+def _is_azure_environment() -> bool:
+    return any(os.environ.get(key) for key in (
+        "WEBSITE_INSTANCE_ID",
+        "WEBSITE_SITE_NAME",
+        "APPSETTING_WEBSITE_SITE_NAME",
+        "WEBSITE_HOSTNAME",
+        "AZURE_HTTP_USER_AGENT",
+    ))
+
+
+def _get_dev_isolation_bypass_ips() -> set[str]:
+    if not DEV_ISOLATION_BYPASS_IPS_RAW:
+        return {"127.0.0.1", "::1"}
+    return {ip.strip() for ip in DEV_ISOLATION_BYPASS_IPS_RAW.split(",") if ip.strip()}
+
+
+def _is_dev_isolation_bypass_request() -> bool:
+    if not (ALLOW_DEV_NO_PRINCIPAL and DEV_ISOLATION_BYPASS_ENABLED):
+        return False
+    if _is_azure_environment():
+        return False
+    host = (request.host or "").lower()
+    if not _is_local_host(host):
+        return False
+    remote = request.remote_addr or ""
+    if not remote:
+        return False
+    allowed_ips = _get_dev_isolation_bypass_ips()
+    return remote in allowed_ips
+
+
+def _resolve_cert_session_id(principal: str | None) -> str | None:
+    if not principal or not principal.startswith("cert:"):
+        return None
+    fingerprint = principal.split(":", 1)[1].strip()
+    if not fingerprint:
+        return None
+    return f"cert_{fingerprint[:32]}"
+
+
+def _derive_auth_context(principal: str | None, principal_source: str | None) -> dict:
+    if principal and principal.startswith("cert:"):
+        return {"auth_tier": "cert", "auth_trusted": True, "principal_source": principal_source}
+    if principal and principal.startswith("sso:"):
+        return {"auth_tier": "sso", "auth_trusted": True, "principal_source": principal_source}
+    if principal and principal.startswith("dev:"):
+        return {"auth_tier": "dev", "auth_trusted": True, "principal_source": principal_source}
+    return {"auth_tier": "anon", "auth_trusted": False, "principal_source": principal_source}
+
+
+def _apply_auth_context(session_id: str, principal: str | None, principal_source: str | None) -> None:
+    if not session_id:
+        return
+    updates = _derive_auth_context(principal, principal_source)
+    session_manager.update_metadata(session_id, **updates)
+
+
+def _session_has_principal(session_id: str) -> bool:
+    meta = session_manager.get_metadata(session_id)
+    return bool(meta and meta.get("principal"))
 
 def resolve_session_id(data=None, create_if_missing=True):
     def _log_resolution(decision: str, sid_val: str | None, reason: str | None = None):
@@ -1045,6 +1211,7 @@ def resolve_session_id(data=None, create_if_missing=True):
         session_manager.bind_socket(socket_sid, sid)
         if principal:
             session_manager.set_principal(sid, principal, principal_source)
+        _apply_auth_context(sid, principal, principal_source)
         _log_resolution("explicit_session_id", sid, "payload session_id")
         return sid
 
@@ -1054,39 +1221,68 @@ def resolve_session_id(data=None, create_if_missing=True):
         if isinstance(mapped_principal, str) and mapped_principal:
             session_manager.bind_socket(socket_sid, mapped_principal)
             session['logical_session_id'] = mapped_principal
+            _apply_auth_context(mapped_principal, principal, principal_source)
             _log_resolution("reuse_principal", mapped_principal, principal_source)
             return mapped_principal
 
     if allow_reuse:
         mapped = session_manager.resolve_socket(socket_sid)
         if isinstance(mapped, str) and mapped:
-            if principal:
-                session_manager.set_principal(mapped, principal, principal_source)
-            _log_resolution("reuse_socket", mapped, "socket bind")
-            return mapped
+            if not principal and _session_has_principal(mapped):
+                _log_resolution("reuse_socket_blocked", mapped, "principal_required")
+            else:
+                if principal:
+                    session_manager.set_principal(mapped, principal, principal_source)
+                _apply_auth_context(mapped, principal, principal_source)
+                _log_resolution("reuse_socket", mapped, "socket bind")
+                return mapped
 
     if allow_reuse:
         cookie_sid = session.get('logical_session_id')
         if isinstance(cookie_sid, str) and cookie_sid:
-            session_manager.bind_socket(socket_sid, cookie_sid)
-            if principal:
-                session_manager.set_principal(cookie_sid, principal, principal_source)
-            _log_resolution("reuse_cookie", cookie_sid, "logical_session_id cookie")
-            return cookie_sid
+            if not principal and _session_has_principal(cookie_sid):
+                _log_resolution("reuse_cookie_blocked", cookie_sid, "principal_required")
+            else:
+                session_manager.bind_socket(socket_sid, cookie_sid)
+                if principal:
+                    session_manager.set_principal(cookie_sid, principal, principal_source)
+                _apply_auth_context(cookie_sid, principal, principal_source)
+                _log_resolution("reuse_cookie", cookie_sid, "logical_session_id cookie")
+                return cookie_sid
 
     fingerprint = client_fingerprint() if ENABLE_FINGERPRINT_SESSION_RECOVERY else None
     if allow_reuse and ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
         fp_sid = session_manager.resolve_fingerprint(fingerprint)
         if isinstance(fp_sid, str) and fp_sid:
-            session_manager.bind_socket(socket_sid, fp_sid)
-            session['logical_session_id'] = fp_sid
-            if principal:
-                session_manager.set_principal(fp_sid, principal, principal_source)
-            _log_resolution("reuse_fingerprint", fp_sid, "fingerprint")
-            return fp_sid
+            if not principal and _session_has_principal(fp_sid):
+                _log_resolution("reuse_fingerprint_blocked", fp_sid, "principal_required")
+            else:
+                session_manager.bind_socket(socket_sid, fp_sid)
+                session['logical_session_id'] = fp_sid
+                if principal:
+                    session_manager.set_principal(fp_sid, principal, principal_source)
+                _apply_auth_context(fp_sid, principal, principal_source)
+                _log_resolution("reuse_fingerprint", fp_sid, "fingerprint")
+                return fp_sid
 
     if not create_if_missing:
         return None
+
+    cert_session_id = _resolve_cert_session_id(principal) if CERT_SESSION_BINDING else None
+    if cert_session_id:
+        mapped_principal = session_manager.resolve_principal(principal) if principal else None
+        if mapped_principal and mapped_principal != cert_session_id:
+            cert_session_id = mapped_principal
+        if ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
+            session_manager.bind_fingerprint(fingerprint, cert_session_id)
+        session_manager.bind_socket(socket_sid, cert_session_id)
+        session['logical_session_id'] = cert_session_id
+        session_manager.ensure_session(cert_session_id)
+        _ensure_quick_copy_dir(cert_session_id)
+        session_manager.set_principal(cert_session_id, principal, principal_source)
+        _apply_auth_context(cert_session_id, principal, principal_source)
+        _log_resolution("new_cert_session", cert_session_id, "cert_binding")
+        return cert_session_id
 
     new_sid = 'sess_' + secrets.token_urlsafe(16)
     if ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
@@ -1094,8 +1290,10 @@ def resolve_session_id(data=None, create_if_missing=True):
     session_manager.bind_socket(socket_sid, new_sid)
     session['logical_session_id'] = new_sid
     session_manager.ensure_session(new_sid)
+    _ensure_quick_copy_dir(new_sid)
     if principal:
         session_manager.set_principal(new_sid, principal, principal_source)
+    _apply_auth_context(new_sid, principal, principal_source)
     _log_resolution("new_session", new_sid, "created")
     return new_sid
 
@@ -1968,6 +2166,15 @@ def api_urls():
                     urls.append(u or s)
             return jsonify({"urls": urls})
         elif request.method == "POST":
+            guard_ok, guard_reason = _guarded_ingestion_allowed("api_urls")
+            if not guard_ok:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "security",
+                    "message": f"URL ingestion blocked by guarded gate: {guard_reason}",
+                    "session_id": None,
+                })
+                return jsonify({"success": False, "error": "Guarded ingestion key required."}), 403
             data = request.get_json() or {}
             raw_url = safe_strip(safe_get(data, "url", ""))
             if not raw_url:
@@ -2041,6 +2248,344 @@ def api_urls():
         logger.error({"level": "ERROR", "type": "api", "message": f"api_urls GET/POST failed: {exc}", "session_id": None})
         return jsonify({"urls": [], "error": "internal"}), 500
 
+
+def _load_output_metadata(meta_path: str) -> dict:
+    try:
+        if meta_path and os.path.exists(meta_path):
+            with open(meta_path, "rb") as fh:
+                data = orjson.loads(fh.read())
+                return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+    return {}
+
+
+def _build_output_lookup_match(url: str, entry: dict) -> dict | None:
+    if not isinstance(entry, dict):
+        return None
+    output_file = entry.get("output_file")
+    metadata_path = entry.get("metadata_path")
+    output_dir = entry.get("output_dir")
+
+    if not output_dir and isinstance(output_file, str):
+        output_dir = os.path.dirname(output_file)
+    if not metadata_path and output_dir:
+        candidate = os.path.join(output_dir, "results.metadata.json")
+        if os.path.exists(candidate):
+            metadata_path = candidate
+
+    meta = _load_output_metadata(metadata_path) if metadata_path else {}
+    if not output_dir and isinstance(meta.get("output_dir"), str):
+        output_dir = meta.get("output_dir")
+
+    output_folder = os.path.basename(output_dir) if output_dir else None
+    if not output_folder and isinstance(meta.get("output_base_name"), str):
+        output_folder = meta.get("output_base_name")
+
+    if not output_folder:
+        return None
+
+    return {
+        "url": url,
+        "output_folder": output_folder,
+        "output_file": output_file or meta.get("csv_path"),
+        "metadata_path": metadata_path,
+        "created_at": meta.get("created_at"),
+        "contest": meta.get("contest") or entry.get("contest"),
+        "state": meta.get("state") or entry.get("state"),
+        "county": meta.get("county") or entry.get("county"),
+        "handler": meta.get("handler") or entry.get("handler"),
+        "source_url": meta.get("source_url") or entry.get("source_url"),
+    }
+
+
+@app.route("/api/outputs/lookup", methods=["GET"])
+def api_outputs_lookup():
+    raw_url = safe_strip(request.args.get("url", ""))
+    if not raw_url:
+        return jsonify({"matches": [], "error": "URL required."}), 400
+    url, _ = extract_url_and_label(raw_url)
+    url = url or raw_url
+
+    matches: list[dict] = []
+    processed = load_processed_urls()
+    entry = processed.get(url)
+    if isinstance(entry, dict):
+        match = _build_output_lookup_match(url, entry)
+        if match:
+            matches.append(match)
+
+    if not matches:
+        try:
+            output_root = os.path.abspath(str(OUTPUT_DIR))
+            candidates = []
+            with os.scandir(output_root) as it:
+                for de in it:
+                    if not de.is_dir(follow_symlinks=False):
+                        continue
+                    try:
+                        candidates.append((de.path, de.stat(follow_symlinks=False).st_mtime))
+                    except Exception:
+                        candidates.append((de.path, 0))
+            candidates.sort(key=lambda item: item[1], reverse=True)
+            for path, _ in candidates[:200]:
+                meta_path = os.path.join(path, "results.metadata.json")
+                if not os.path.exists(meta_path):
+                    continue
+                meta = _load_output_metadata(meta_path)
+                source_url = meta.get("source_url")
+                if source_url and source_url == url:
+                    match = _build_output_lookup_match(url, {
+                        "metadata_path": meta_path,
+                        "output_dir": path,
+                        "output_file": meta.get("csv_path"),
+                        "contest": meta.get("contest"),
+                        "state": meta.get("state"),
+                        "county": meta.get("county"),
+                        "handler": meta.get("handler"),
+                        "source_url": source_url,
+                    })
+                    if match:
+                        matches.append(match)
+        except Exception as exc:
+            logger.warning({
+                "level": "WARNING",
+                "type": "output",
+                "message": f"Output lookup fallback scan failed: {exc}",
+                "session_id": None,
+            })
+
+    return jsonify({"matches": matches, "url": url})
+
+
+def _get_warehouse_columns(engine) -> set[str]:
+    try:
+        inspector = inspect(engine)
+        cols = inspector.get_columns("warehouse_election_results")
+    except Exception:
+        return set()
+    return {col.get("name") for col in cols if col.get("name")}
+
+
+@app.route("/api/warehouse/match", methods=["GET"])
+def api_warehouse_match():
+    raw_url = safe_strip(request.args.get("url", ""))
+    if not raw_url:
+        return jsonify({"matches": [], "error": "URL required."}), 400
+    url, _ = extract_url_and_label(raw_url)
+    url = url or raw_url
+
+    ensure_db_tables()
+    engine = get_engine()
+    columns = _get_warehouse_columns(engine)
+    if "source_url" not in columns:
+        return jsonify({"matches": [], "url": url, "error": "source_url column missing"})
+
+    select_cols = []
+    group_cols = []
+    for col in ("state", "county", "contest"):
+        if col in columns:
+            select_cols.append(col)
+            group_cols.append(col)
+
+    handler_col = None
+    if "handler_name" in columns:
+        handler_col = "handler_name"
+    elif "handler" in columns:
+        handler_col = "handler"
+    if handler_col:
+        select_cols.append(f"{handler_col} AS handler")
+        group_cols.append(handler_col)
+
+    select_cols.append("source_url")
+    group_cols.append("source_url")
+
+    aggregates = ["COUNT(*) AS row_count"]
+    if "candidate" in columns:
+        aggregates.append("COUNT(DISTINCT candidate) AS candidate_count")
+    if "precinct" in columns:
+        aggregates.append("COUNT(DISTINCT precinct) AS precinct_count")
+    if "election_date" in columns:
+        aggregates.append("MAX(election_date) AS latest_election_date")
+
+    select_sql = ", ".join(select_cols + aggregates)
+    group_sql = ", ".join(group_cols)
+    query = f"""
+        SELECT {select_sql}
+        FROM warehouse_election_results
+        WHERE source_url = :url
+        GROUP BY {group_sql}
+        ORDER BY row_count DESC
+        LIMIT 25
+    """
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(query), {"url": url}).mappings().all()
+        matches = [dict(row) for row in rows]
+        qa_status = None
+        try:
+            inspector = inspect(engine)
+            if inspector.has_table("verified_datasets", schema="verified_data"):
+                with engine.connect() as conn:
+                    qa_row = conn.execute(
+                        text(
+                            """
+                            SELECT dataset_id, dl_status, extracted_at, trust_score, extraction_confidence
+                            FROM verified_data.verified_datasets
+                            WHERE source_url = :url
+                            ORDER BY extracted_at DESC
+                            LIMIT 1
+                            """
+                        ),
+                        {"url": url},
+                    ).mappings().first()
+                if qa_row:
+                    qa_status = dict(qa_row)
+        except Exception:
+            qa_status = None
+        return jsonify({"matches": matches, "url": url, "qa_status": qa_status})
+    except Exception as exc:
+        logger.warning({
+            "level": "WARNING",
+            "type": "db",
+            "message": f"Warehouse match query failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify({"matches": [], "url": url, "error": "Warehouse match query failed"}), 500
+
+
+@app.route("/api/warehouse/export", methods=["GET"])
+def api_warehouse_export():
+    raw_url = safe_strip(request.args.get("url", ""))
+    if not raw_url:
+        return jsonify({"error": "URL required."}), 400
+    url, _ = extract_url_and_label(raw_url)
+    url = url or raw_url
+
+    ensure_db_tables()
+    engine = get_engine()
+    columns = _get_warehouse_columns(engine)
+    if "source_url" not in columns:
+        return jsonify({"error": "source_url column missing"}), 400
+
+    limit = request.args.get("limit", type=int) or 5000
+    limit = max(1, min(MAX_CSV_ROWS, limit))
+
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    """
+                    SELECT *
+                    FROM warehouse_election_results
+                    WHERE source_url = :url
+                    LIMIT :limit
+                    """
+                ),
+                {"url": url, "limit": limit},
+            )
+            rows = result.fetchall()
+            cols = list(result.keys())
+    except Exception as exc:
+        logger.warning({
+            "level": "WARNING",
+            "type": "db",
+            "message": f"Warehouse export query failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify({"error": "Warehouse export failed"}), 500
+
+    if not rows:
+        return jsonify({"error": "No warehouse rows found for URL."}), 404
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(cols)
+    for row in rows:
+        writer.writerow(list(row))
+
+    response = Response(output.getvalue(), mimetype="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=warehouse_export.csv"
+    return response
+
+@app.route("/api/warehouse/coverage", methods=["GET"])
+def api_warehouse_coverage():
+    """Return coverage summary: all state/county combinations in warehouse and those missing DL1/DL2"""
+    ensure_db_tables()
+    engine = get_engine()
+    columns = _get_warehouse_columns(engine)
+    
+    # Ensure state and county columns exist
+    if "state" not in columns or "county" not in columns:
+        return jsonify({
+            "covered": [],
+            "missing": [],
+            "all_states": [],
+            "all_counties": {},
+            "total_rows": 0,
+            "error": "state or county column missing"
+        }), 400
+
+    try:
+        with engine.connect() as conn:
+            # Get all state/county combinations in warehouse
+            query = """
+                SELECT DISTINCT state, county, COUNT(*) as row_count
+                FROM warehouse_election_results
+                WHERE state IS NOT NULL AND county IS NOT NULL
+                GROUP BY state, county
+            """
+            result = conn.execute(text(query))
+            covered_rows = result.mappings().all()
+            covered = [{"state": row["state"], "county": row["county"], "row_count": row["row_count"]} for row in covered_rows]
+            
+            # Get all unique states and counties
+            state_query = """
+                SELECT DISTINCT state FROM warehouse_election_results 
+                WHERE state IS NOT NULL
+                ORDER BY state
+            """
+            all_states_result = conn.execute(text(state_query))
+            all_states = [row[0] for row in all_states_result]
+            
+            # Get total row count for health check
+            count_query = "SELECT COUNT(*) as cnt FROM warehouse_election_results"
+            count_result = conn.execute(text(count_query))
+            total_rows = count_result.mappings().first()["cnt"]
+        
+        # Build all_counties map: state -> list of counties
+        all_counties = {}
+        for state in all_states:
+            with engine.connect() as conn:
+                county_query = """
+                    SELECT DISTINCT county FROM warehouse_election_results
+                    WHERE state = :state AND county IS NOT NULL
+                    ORDER BY county
+                """
+                result = conn.execute(text(county_query), {"state": state})
+                all_counties[state] = [row[0] for row in result]
+        
+        return jsonify({
+            "covered": covered,
+            "all_states": all_states,
+            "all_counties": all_counties,
+            "total_rows": total_rows,
+            "coverage_summary": {
+                "total_states": len(all_states),
+                "total_state_county_pairs": len(covered),
+                "warehouse_healthy": total_rows > 0
+            }
+        })
+    except Exception as exc:
+        logger.warning({
+            "level": "WARNING",
+            "type": "db",
+            "message": f"Warehouse coverage query failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify({"error": "Warehouse coverage query failed", "covered": [], "all_states": [], "all_counties": {}}), 500
+
 @app.route("/data_framework", methods=["GET"])
 def data_framework():
     return render_template("data_framework.html", data_api_url=DATA_API_URL)
@@ -2100,6 +2645,256 @@ def _collect_data_framework_scaffold(limit: int = 100) -> dict:
     }
 
 
+def _extract_year_from_text(value: str | None) -> str | None:
+    if not value:
+        return None
+    match = re.search(r"(20\d{2})", str(value))
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _collect_data_framework_curated(limit: int = 80) -> dict:
+    scaffold = _collect_data_framework_scaffold(limit=limit)
+    items = []
+    for record in scaffold.get("records", []):
+        state = record.get("state") or ""
+        county = record.get("county") or ""
+        contest = record.get("contest") or ""
+        updated_at = record.get("timestamp") or ""
+        year = _extract_year_from_text(updated_at) or _extract_year_from_text(contest)
+        title_parts = [part for part in [contest, state, county] if part]
+        title = " • ".join(title_parts) if title_parts else "Curated dataset"
+        item_id = "::".join([state or "NA", county or "NA", contest or "NA", updated_at or "NA"])
+        items.append({
+            "id": item_id,
+            "title": title,
+            "state": state,
+            "county": county,
+            "contest": contest,
+            "year": year,
+            "row_count": record.get("row_count"),
+            "column_count": record.get("column_count"),
+            "extraction_confidence": record.get("extraction_confidence"),
+            "updated_at": updated_at,
+            "source_url": record.get("source_url"),
+        })
+    return {
+        "items": items,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _resolve_preview_filters() -> tuple[str | None, str | None, str | None, int | None]:
+    state = request.args.get("state")
+    county = request.args.get("county")
+    contest = request.args.get("contest")
+    year_str = request.args.get("year")
+    try:
+        state = _validate_filter_value("state", state, max_len=64)
+        county = _validate_filter_value("county", county, max_len=64)
+        contest = _validate_filter_value("contest", contest, max_len=140)
+    except ValueError as exc:
+        raise ValueError(str(exc))
+    year_val = None
+    if year_str:
+        try:
+            year_val = int(year_str)
+        except ValueError:
+            raise ValueError("year must be an integer")
+    return state, county, contest, year_val
+
+
+def _select_preview_context(conn, state: str | None, county: str | None, contest: str | None, year_val: int | None) -> dict:
+    where = []
+    params: dict[str, object] = {}
+    if state:
+        where.append("state = :state")
+        params["state"] = state
+    if county:
+        where.append("county = :county")
+        params["county"] = county
+    if contest:
+        where.append("contest ILIKE :contest")
+        params["contest"] = f"%{contest}%"
+    if year_val:
+        where.append("EXTRACT(YEAR FROM election_date) = :year")
+        params["year"] = year_val
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    row = conn.execute(text(
+        f"""
+        SELECT state,
+               county,
+               contest,
+               EXTRACT(YEAR FROM election_date) AS year
+        FROM warehouse_election_results
+        {where_sql}
+        ORDER BY random()
+        LIMIT 1
+        """
+    ), params).mappings().first()
+    return dict(row) if row else {}
+
+
+def _fetch_preview_rows(conn, state: str | None, county: str | None, contest: str | None, year_val: int | None, limit: int) -> list[dict]:
+    columns = [
+        "state",
+        "county",
+        "contest",
+        "candidate",
+        "party",
+        "votes",
+        "precinct",
+        "election_date",
+    ]
+    where = []
+    params: dict[str, object] = {"limit": limit}
+    if state:
+        where.append("state = :state")
+        params["state"] = state
+    if county:
+        where.append("county = :county")
+        params["county"] = county
+    if contest:
+        where.append("contest ILIKE :contest")
+        params["contest"] = f"%{contest}%"
+    if year_val:
+        where.append("EXTRACT(YEAR FROM election_date) = :year")
+        params["year"] = year_val
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    cols_sql = ", ".join(columns)
+    rows = conn.execute(text(
+        f"""
+        SELECT {cols_sql}
+        FROM warehouse_election_results
+        {where_sql}
+        ORDER BY election_date DESC NULLS LAST, contest ASC
+        LIMIT :limit
+        """
+    ), params).mappings().all()
+    return [dict(row) for row in rows]
+
+
+@app.route("/api/data_framework/preview", methods=["GET"])
+def api_data_framework_preview():
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+    mode = (request.args.get("mode") or "idle").lower()
+    if mode not in ("idle", "active"):
+        return jsonify({"error": "mode must be 'idle' or 'active'"}), 400
+    try:
+        state, county, contest, year_val = _resolve_preview_filters()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    try:
+        limit = int(request.args.get("limit") or 120)
+    except Exception:
+        limit = 120
+    limit = max(10, min(500, limit))
+
+    ensure_db_tables()
+    now = datetime.now(timezone.utc)
+    idle_ttl = timedelta(minutes=10)
+    active_ttl = timedelta(hours=2)
+    use_active = mode == "active" or any([state, county, contest, year_val])
+    expires_at = now + (active_ttl if use_active else idle_ttl)
+    session_id = resolve_session_id({}, create_if_missing=True) or "no_session"
+
+    session = SessionLocal()
+    try:
+        session.query(DataFrameworkPreviewCache).filter(DataFrameworkPreviewCache.expires_at < now).delete(synchronize_session=False)
+        session.commit()
+
+        query = session.query(DataFrameworkPreviewCache).filter(
+            DataFrameworkPreviewCache.session_id == session_id,
+            DataFrameworkPreviewCache.mode == mode,
+            DataFrameworkPreviewCache.expires_at > now,
+        )
+        if state:
+            query = query.filter(DataFrameworkPreviewCache.state == state)
+        if county:
+            query = query.filter(DataFrameworkPreviewCache.county == county)
+        if contest:
+            query = query.filter(DataFrameworkPreviewCache.contest == contest)
+        if year_val:
+            query = query.filter(DataFrameworkPreviewCache.year == year_val)
+        cached = query.order_by(DataFrameworkPreviewCache.created_at.desc()).first()
+        if cached and isinstance(cached.payload, dict):
+            cached.last_accessed = now
+            session.commit()
+            payload = cached.payload.copy()
+            payload["cache_id"] = str(cached.id)
+            payload["expires_at"] = cached.expires_at.isoformat() if cached.expires_at else None
+            payload.setdefault("mode", mode)
+            return jsonify(payload)
+    finally:
+        session.close()
+
+    engine = get_engine()
+    preview_context = {}
+    rows: list[dict] = []
+    try:
+        with engine.connect() as conn:
+            preview_context = _select_preview_context(conn, state, county, contest, year_val)
+            context_state = preview_context.get("state") or state
+            context_county = preview_context.get("county") or county
+            context_contest = preview_context.get("contest") or contest
+            context_year = preview_context.get("year") or year_val
+            rows = _fetch_preview_rows(conn, context_state, context_county, context_contest, context_year, limit)
+    except Exception as exc:
+        logger.warning({
+            "level": "WARNING",
+            "type": "db",
+            "message": f"Preview query failed: {exc}",
+            "session_id": session_id,
+        })
+        rows = []
+
+    schema = list(rows[0].keys()) if rows else []
+    payload = {
+        "rows": rows,
+        "schema": schema,
+        "meta": {
+            "state": preview_context.get("state") or state,
+            "county": preview_context.get("county") or county,
+            "contest": preview_context.get("contest") or contest,
+            "year": preview_context.get("year") or year_val,
+        },
+        "generated_at": now.isoformat(),
+        "mode": mode,
+    }
+
+    session = SessionLocal()
+    try:
+        cache_row = DataFrameworkPreviewCache(
+            session_id=session_id,
+            mode=mode,
+            state=payload["meta"].get("state"),
+            county=payload["meta"].get("county"),
+            contest=payload["meta"].get("contest"),
+            year=payload["meta"].get("year") if isinstance(payload["meta"].get("year"), int) else None,
+            payload=payload,
+            expires_at=expires_at,
+        )
+        session.add(cache_row)
+        session.commit()
+        payload["cache_id"] = str(cache_row.id)
+        payload["expires_at"] = expires_at.isoformat()
+    except Exception as exc:
+        session.rollback()
+        logger.warning({
+            "level": "WARNING",
+            "type": "db",
+            "message": f"Preview cache save failed: {exc}",
+            "session_id": session_id,
+        })
+    finally:
+        session.close()
+
+    return jsonify(payload)
+
+
 @app.route("/api/data_framework/scaffold", methods=["GET"])
 def api_data_framework_scaffold():
     principal, _, _ = get_request_principal()
@@ -2137,6 +2932,217 @@ def api_data_framework_scaffold_csv():
     for line in output:
         writer.writerow(line)
     return resp
+
+
+@app.route("/api/data_framework/curated", methods=["GET"])
+def api_data_framework_curated():
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+    try:
+        limit = int(request.args.get("limit") or 80)
+        limit = max(1, min(200, limit))
+    except Exception:
+        limit = 80
+    payload = _collect_data_framework_curated(limit=limit)
+    return jsonify(payload)
+
+
+@app.route("/api/data_framework/warehouse_status", methods=["GET"])
+def api_data_framework_warehouse_status():
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    ensure_db_tables()
+    engine = get_engine()
+    try:
+        with engine.connect() as conn:
+            exists = conn.execute(text("SELECT to_regclass('workflow.contests')")).scalar()
+            if not exists:
+                return jsonify({"error": "workflow.contests table not found"}), 503
+
+            summary = conn.execute(text(
+                """
+                WITH expected AS (
+                    SELECT
+                        LOWER(TRIM(state)) AS state,
+                        LOWER(COALESCE(TRIM(county), '')) AS county,
+                        LOWER(TRIM(race)) AS contest,
+                        year,
+                        priority,
+                        status
+                    FROM workflow.contests
+                    WHERE state IS NOT NULL AND race IS NOT NULL AND year IS NOT NULL
+                ),
+                warehouse AS (
+                    SELECT
+                        LOWER(TRIM(state)) AS state,
+                        LOWER(COALESCE(TRIM(county), '')) AS county,
+                        LOWER(TRIM(contest)) AS contest,
+                        EXTRACT(YEAR FROM election_date)::int AS year,
+                        COUNT(*) AS rows
+                    FROM warehouse_election_results
+                    GROUP BY 1,2,3,4
+                ),
+                missing AS (
+                    SELECT e.*
+                    FROM expected e
+                    LEFT JOIN warehouse w
+                      ON e.state = w.state
+                     AND e.county = w.county
+                     AND e.contest = w.contest
+                     AND e.year = w.year
+                    WHERE COALESCE(w.rows, 0) = 0
+                )
+                SELECT
+                    (SELECT COUNT(*) FROM expected) AS expected_total,
+                    (SELECT COUNT(*) FROM missing) AS missing_total
+                """
+            )).mappings().first()
+
+            by_priority = conn.execute(text(
+                """
+                WITH expected AS (
+                    SELECT
+                        LOWER(TRIM(state)) AS state,
+                        LOWER(COALESCE(TRIM(county), '')) AS county,
+                        LOWER(TRIM(race)) AS contest,
+                        year,
+                        priority,
+                        status
+                    FROM workflow.contests
+                    WHERE state IS NOT NULL AND race IS NOT NULL AND year IS NOT NULL
+                ),
+                warehouse AS (
+                    SELECT
+                        LOWER(TRIM(state)) AS state,
+                        LOWER(COALESCE(TRIM(county), '')) AS county,
+                        LOWER(TRIM(contest)) AS contest,
+                        EXTRACT(YEAR FROM election_date)::int AS year,
+                        COUNT(*) AS rows
+                    FROM warehouse_election_results
+                    GROUP BY 1,2,3,4
+                ),
+                missing AS (
+                    SELECT e.*
+                    FROM expected e
+                    LEFT JOIN warehouse w
+                      ON e.state = w.state
+                     AND e.county = w.county
+                     AND e.contest = w.contest
+                     AND e.year = w.year
+                    WHERE COALESCE(w.rows, 0) = 0
+                )
+                SELECT priority,
+                       COUNT(*) AS missing,
+                       (SELECT COUNT(*) FROM expected e2 WHERE e2.priority = missing.priority) AS expected
+                FROM missing
+                GROUP BY priority
+                ORDER BY missing DESC
+                """
+            )).mappings().all()
+
+            by_status = conn.execute(text(
+                """
+                WITH expected AS (
+                    SELECT
+                        LOWER(TRIM(state)) AS state,
+                        LOWER(COALESCE(TRIM(county), '')) AS county,
+                        LOWER(TRIM(race)) AS contest,
+                        year,
+                        priority,
+                        status
+                    FROM workflow.contests
+                    WHERE state IS NOT NULL AND race IS NOT NULL AND year IS NOT NULL
+                ),
+                warehouse AS (
+                    SELECT
+                        LOWER(TRIM(state)) AS state,
+                        LOWER(COALESCE(TRIM(county), '')) AS county,
+                        LOWER(TRIM(contest)) AS contest,
+                        EXTRACT(YEAR FROM election_date)::int AS year,
+                        COUNT(*) AS rows
+                    FROM warehouse_election_results
+                    GROUP BY 1,2,3,4
+                ),
+                missing AS (
+                    SELECT e.*
+                    FROM expected e
+                    LEFT JOIN warehouse w
+                      ON e.state = w.state
+                     AND e.county = w.county
+                     AND e.contest = w.contest
+                     AND e.year = w.year
+                    WHERE COALESCE(w.rows, 0) = 0
+                )
+                SELECT status,
+                       COUNT(*) AS missing,
+                       (SELECT COUNT(*) FROM expected e2 WHERE e2.status = missing.status) AS expected
+                FROM missing
+                GROUP BY status
+                ORDER BY missing DESC
+                """
+            )).mappings().all()
+
+            sample = conn.execute(text(
+                """
+                WITH expected AS (
+                    SELECT
+                        state,
+                        county,
+                        race,
+                        year,
+                        priority,
+                        status
+                    FROM workflow.contests
+                    WHERE state IS NOT NULL AND race IS NOT NULL AND year IS NOT NULL
+                ),
+                warehouse AS (
+                    SELECT
+                        LOWER(TRIM(state)) AS state,
+                        LOWER(COALESCE(TRIM(county), '')) AS county,
+                        LOWER(TRIM(contest)) AS contest,
+                        EXTRACT(YEAR FROM election_date)::int AS year,
+                        COUNT(*) AS rows
+                    FROM warehouse_election_results
+                    GROUP BY 1,2,3,4
+                )
+                SELECT e.state,
+                       e.county,
+                       e.race AS contest,
+                       e.year,
+                       e.priority,
+                       e.status
+                FROM expected e
+                LEFT JOIN warehouse w
+                  ON LOWER(TRIM(e.state)) = w.state
+                 AND LOWER(COALESCE(TRIM(e.county), '')) = w.county
+                 AND LOWER(TRIM(e.race)) = w.contest
+                 AND e.year = w.year
+                WHERE COALESCE(w.rows, 0) = 0
+                ORDER BY e.priority NULLS LAST, e.year DESC
+                LIMIT 8
+                """
+            )).mappings().all()
+
+        payload = {
+            "expected_total": int(summary.get("expected_total") or 0) if summary else 0,
+            "missing_total": int(summary.get("missing_total") or 0) if summary else 0,
+            "by_priority": [dict(row) for row in by_priority],
+            "by_status": [dict(row) for row in by_status],
+            "sample_missing": [dict(row) for row in sample],
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        return jsonify(payload)
+    except Exception as exc:
+        logger.warning({
+            "level": "WARNING",
+            "type": "db",
+            "message": f"Warehouse status query failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify({"error": "Warehouse status query failed"}), 500
 
 
 @app.route("/api/data_framework/exports", methods=["GET"])
@@ -2410,6 +3416,75 @@ def api_fs_delete():
     except Exception as e:
         logger.error({"level":"ERROR","type":"browser","message":f"delete failed: {e}","session_id":None})
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/quick_copy", methods=["POST"])
+def api_quick_copy():
+    data = request.get_json(silent=True) or {}
+    root = (data.get("root") or "output").lower().strip()
+    subpath = (data.get("path") or "").strip().replace("\\", "/")
+    name = (data.get("name") or "").strip()
+    session_id = resolve_session_id(data or {}, create_if_missing=False)
+    if not session_id:
+        return jsonify({"success": False, "error": "session_id required"}), 400
+
+    roots = {"input": INPUT_DIR, "output": OUTPUT_DIR, "uploads": UPLOADS_DIR}
+    base = roots.get(root)
+    if not base or not name:
+        return jsonify({"success": False, "error": "Invalid parameters."}), 400
+
+    abs_base = os.path.abspath(base)
+    want_dir = os.path.normpath(os.path.join(abs_base, subpath))
+    if not want_dir.startswith(abs_base):
+        return jsonify({"success": False, "error": "Path escape blocked."}), 400
+    fpath = os.path.normpath(os.path.join(want_dir, name))
+    if not fpath.startswith(abs_base) or not os.path.isfile(fpath):
+        return jsonify({"success": False, "error": "Not found."}), 404
+
+    principal, _, _ = get_request_principal()
+    if root == "output":
+        allowed, reason = _is_output_download_allowed(fpath, principal, session_id)
+        if not allowed:
+            _log_download_access({
+                "principal": principal or "anonymous",
+                "session_id": session_id,
+                "file": fpath,
+                "root": root,
+                "allowed": False,
+                "reason": reason,
+            })
+            return jsonify({"success": False, "error": "Unauthorized output copy"}), 403
+
+    dest_dir = _ensure_quick_copy_dir(session_id)
+    if not dest_dir:
+        return jsonify({"success": False, "error": "Quick copy directory unavailable."}), 500
+    try:
+        dest_name = _unique_quick_copy_name(dest_dir, name)
+        dest_path = dest_dir / dest_name
+        shutil.copy2(fpath, dest_path)
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": "cache",
+            "message": f"Quick copy failed: {exc}",
+            "session_id": session_id,
+        })
+        return jsonify({"success": False, "error": "Quick copy failed."}), 500
+
+    quick_rel = f"quick_copy/{dest_dir.name}/{dest_name}"
+    return jsonify({
+        "success": True,
+        "url": url_for("static", filename=quick_rel),
+        "filename": dest_name,
+    })
+
+@app.route("/api/quick_copy/clear", methods=["POST"])
+def api_quick_copy_clear():
+    data = request.get_json(silent=True) or {}
+    session_id = resolve_session_id(data or {}, create_if_missing=False)
+    if not session_id:
+        return jsonify({"success": False, "error": "session_id required"}), 400
+    _cleanup_quick_copy_dir(session_id)
+    return jsonify({"success": True})
 
 @app.route("/download_fs")
 def download_fs():
@@ -2845,16 +3920,69 @@ def serve_well_known_appspecific(filename):
     except Exception:
         raise NotFound()
 
+
+def _normalize_party_bucket(party: str | None) -> str:
+    if not party:
+        return "other"
+    raw = party.strip().lower()
+    if raw.startswith("dem"):
+        return "dem"
+    if raw.startswith("rep"):
+        return "rep"
+    return "other"
+
+
+def _compute_dropoff_items(rows: list[tuple], down_contest: str) -> list[dict]:
+    grouped: dict[tuple, dict] = {}
+    for county, year_val, party, pres_votes, down_votes in rows:
+        key = (county or "", int(year_val) if year_val is not None else None)
+        bucket = grouped.setdefault(key, {
+            "county": county or "",
+            "year": int(year_val) if year_val is not None else None,
+            "pres_dem": 0,
+            "pres_rep": 0,
+            "pres_other": 0,
+            "down_dem": 0,
+            "down_rep": 0,
+            "down_other": 0,
+            "pres_contest": "President",
+            "down_contest": down_contest,
+        })
+        party_bucket = _normalize_party_bucket(party)
+        pres_val = int(pres_votes or 0)
+        down_val = int(down_votes or 0)
+        bucket[f"pres_{party_bucket}"] += pres_val
+        bucket[f"down_{party_bucket}"] += down_val
+
+    items: list[dict] = []
+    for entry in grouped.values():
+        pres_total = entry["pres_dem"] + entry["pres_rep"] + entry["pres_other"]
+        down_total = entry["down_dem"] + entry["down_rep"] + entry["down_other"]
+        entry["pres_total"] = pres_total
+        entry["down_total"] = down_total
+        entry["dem_dropoff"] = entry["pres_dem"] - entry["down_dem"]
+        entry["rep_dropoff"] = entry["pres_rep"] - entry["down_rep"]
+        entry["other_dropoff"] = entry["pres_other"] - entry["down_other"]
+        entry["total_dropoff"] = pres_total - down_total
+        entry["dem_pct_dropoff"] = round((entry["dem_dropoff"] / entry["pres_dem"] * 100), 2) if entry["pres_dem"] else 0
+        entry["rep_pct_dropoff"] = round((entry["rep_dropoff"] / entry["pres_rep"] * 100), 2) if entry["pres_rep"] else 0
+        entry["total_pct_dropoff"] = round((entry["total_dropoff"] / pres_total * 100), 2) if pres_total else 0
+        items.append(entry)
+    items.sort(key=lambda item: (item.get("year") or 0, item.get("county") or ""), reverse=True)
+    return items
+
 @app.route("/api/warehouse_election_results", methods=["GET"])
 def api_warehouse_election_results():
     """
     Query election results from warehouse and/or fixtures.
     
-    Parameters:
+        Parameters:
       - state: Two-letter state code (required if searching)
       - county: County name filter (optional)
       - contest: Contest name filter (optional)
       - year: Election year filter (optional)
+            - party: Party filter (optional, elector_totals)
+            - metric: "rows" | "dropoff" | "elector_totals" (default "rows")
       - limit: Max results (default 500, max 1000)
       - data_source: "fixture" | "live" | "both" (default "both")
         - "fixture": Return only fixture data
@@ -2867,10 +3995,14 @@ def api_warehouse_election_results():
     contest = request.args.get("contest")
     year_str = request.args.get("year")
     data_source = (request.args.get("data_source") or "both").lower()
+    metric = (request.args.get("metric") or "rows").lower()
+    party = request.args.get("party")
     
     # Validate data_source parameter
     if data_source not in ("fixture", "live", "both"):
         return jsonify({"error": "data_source must be 'fixture', 'live', or 'both'"}), 400
+    if metric not in ("rows", "dropoff", "elector_totals"):
+        return jsonify({"error": "metric must be 'rows', 'dropoff', or 'elector_totals'"}), 400
     
     limit = request.args.get("limit", type=int)
     limit = max(1, min(1000, limit or 500))
@@ -2880,6 +4012,126 @@ def api_warehouse_election_results():
     
     # Collect all results
     all_results = []
+
+    if metric in ("dropoff", "elector_totals"):
+        if not db_enabled:
+            return jsonify({"error": "Database disabled"}), 503
+        try:
+            state_clean = _validate_filter_value("state", state, max_len=64)
+            county_clean = _validate_filter_value("county", county, max_len=64)
+            contest_clean = _validate_filter_value("contest", contest, max_len=140)
+            party_clean = _validate_filter_value("party", party, max_len=32)
+        except ValueError as exc:
+            log_db_monitor_event({
+                "type": "warehouse_query",
+                "status": "invalid_filter",
+                "error": str(exc),
+            })
+            return jsonify({"error": str(exc)}), 400
+
+        if not state_clean:
+            return jsonify({"error": "state is required for metric queries"}), 400
+
+        year_val = None
+        if year_str:
+            try:
+                year_val = int(year_str)
+            except ValueError:
+                return jsonify({"error": "year must be an integer"}), 400
+
+        ensure_db_tables()
+        try:
+            conn = psycopg2.connect(
+                dbname=POSTGRES_DB,
+                user=POSTGRES_USER_RAW,
+                password=POSTGRES_PASSWORD_RAW,
+                host=POSTGRES_HOST,
+                port=POSTGRES_PORT,
+                sslmode=(
+                    "require"
+                    if (POSTGRES_HOST not in ("localhost", "127.0.0.1")
+                        and os.environ.get("PG_REQUIRE_SSL", "true").lower() == "true")
+                    else "prefer"
+                )
+            )
+            with conn, conn.cursor() as cur:
+                if metric == "elector_totals":
+                    if not contest_clean:
+                        return jsonify({"error": "contest is required for elector_totals"}), 400
+                    where = ["state = %s", "contest ILIKE %s"]
+                    params = [state_clean, f"%{contest_clean}%"]
+                    if county_clean:
+                        where.append("county = %s")
+                        params.append(county_clean)
+                    if year_val:
+                        where.append("EXTRACT(YEAR FROM election_date) = %s")
+                        params.append(year_val)
+                    if party_clean:
+                        where.append("party ILIKE %s")
+                        params.append(f"%{party_clean}%")
+                    where_sql = f"WHERE {' AND '.join(where)}"
+                    cur.execute(
+                        f"""
+                        SELECT county,
+                               EXTRACT(YEAR FROM election_date) AS year,
+                               party,
+                               SUM(votes) AS votes
+                        FROM warehouse_election_results
+                        {where_sql}
+                        GROUP BY county, year, party
+                        ORDER BY year DESC NULLS LAST, county ASC
+                        LIMIT %s
+                        """,
+                        params + [limit]
+                    )
+                    items = []
+                    for county_val, year_out, party_val, votes in cur.fetchall():
+                        items.append({
+                            "county": county_val,
+                            "year": int(year_out) if year_out is not None else None,
+                            "party": party_val,
+                            "votes": int(votes or 0),
+                            "contest": contest_clean,
+                            "state": state_clean,
+                        })
+                    return jsonify({"items": items, "count": len(items), "metric": metric})
+
+                down_contest = contest_clean or "Senate"
+                where = ["state = %s", "(contest ILIKE %s OR contest ILIKE %s)"]
+                params = [state_clean, "%President%", f"%{down_contest}%"]
+                if county_clean:
+                    where.append("county = %s")
+                    params.append(county_clean)
+                if year_val:
+                    where.append("EXTRACT(YEAR FROM election_date) = %s")
+                    params.append(year_val)
+                where_sql = f"WHERE {' AND '.join(where)}"
+                cur.execute(
+                    f"""
+                    SELECT county,
+                           EXTRACT(YEAR FROM election_date) AS year,
+                           party,
+                           SUM(CASE WHEN contest ILIKE %s THEN votes ELSE 0 END) AS pres_votes,
+                           SUM(CASE WHEN contest ILIKE %s THEN votes ELSE 0 END) AS down_votes
+                    FROM warehouse_election_results
+                    {where_sql}
+                    GROUP BY county, year, party
+                    ORDER BY year DESC NULLS LAST, county ASC
+                    """,
+                    ["%President%", f"%{down_contest}%"] + params
+                )
+                items = _compute_dropoff_items(cur.fetchall(), down_contest)
+                if limit:
+                    items = items[:limit]
+                return jsonify({"items": items, "count": len(items), "metric": metric})
+        except Exception as e:
+            logger.error({
+                "level": "ERROR",
+                "type": "db",
+                "message": f"DB error (metric={metric}): {e}",
+                "session_id": None,
+            })
+            return jsonify({"error": "Database query failed"}), 500
     
     # Query fixtures if requested
     if data_source in ("fixture", "both"):
@@ -3131,7 +4383,7 @@ def download_output_file(filename) -> str:
     from pathlib import Path
     
     # Get principal for deduplication
-    principal, principal_source = get_request_principal()
+    principal, principal_source, _ = get_request_principal()
     if not principal:
         principal = "anonymous"
         
@@ -3374,7 +4626,6 @@ def api_auth_certificate_info():
     This endpoint is used by the auth welcome page to display cert info to users.
     """
     principal, principal_source, cert_metadata = get_request_principal()
-    
     if not principal:
         return jsonify({
             "error": "No certificate found",
@@ -3415,7 +4666,7 @@ def auth_welcome():
     """
     # Get principal to verify cert is present
     principal, principal_source, cert_metadata = get_request_principal()
-    
+
     if not principal:
         # Redirect to error page or main app
         return redirect(url_for("index"))
@@ -3444,6 +4695,16 @@ def upload_to_input() -> str:
         "message": f"Upload to input: {file.filename if file else 'No file'}",
         "session_id": None
     })
+    guard_ok, guard_reason = _guarded_ingestion_allowed("upload_input")
+    if not guard_ok:
+        logger.warning({
+            "level": "WARNING",
+            "type": "security",
+            "message": f"Upload blocked by guarded ingestion gate: {guard_reason}",
+            "session_id": None,
+        })
+        flash("Upload blocked: guarded ingestion key required.", "danger")
+        return redirect(request.referrer or url_for("ballot_lens"))
     # Gate uploads: require client principal or ADMIN_JWT_TOKEN fallback
     principal, _, _ = get_request_principal()
     admin_token = os.environ.get("ADMIN_JWT_TOKEN")
@@ -3497,6 +4758,16 @@ def upload_to_output() -> str:
         "message": f"Upload to output: {file.filename if file else 'No file'}",
         "session_id": None
     })
+    guard_ok, guard_reason = _guarded_ingestion_allowed("upload_output")
+    if not guard_ok:
+        logger.warning({
+            "level": "WARNING",
+            "type": "security",
+            "message": f"Upload blocked by guarded ingestion gate: {guard_reason}",
+            "session_id": None,
+        })
+        flash("Upload blocked: guarded ingestion key required.", "danger")
+        return redirect(request.referrer or url_for("ballot_lens"))
     principal, _, _ = get_request_principal()
     admin_token = os.environ.get("ADMIN_JWT_TOKEN")
     auth_hdr = (request.headers.get("Authorization") or "").strip()
@@ -3542,6 +4813,16 @@ def upload_to_output() -> str:
 @_rate_limit("5/minute")
 def upload_to_uploads() -> str:
     file = request.files.get("data_file") or request.files.get("file")
+    guard_ok, guard_reason = _guarded_ingestion_allowed("upload_uploads")
+    if not guard_ok:
+        logger.warning({
+            "level": "WARNING",
+            "type": "security",
+            "message": f"Upload blocked by guarded ingestion gate: {guard_reason}",
+            "session_id": None,
+        })
+        flash("Upload blocked: guarded ingestion key required.", "danger")
+        return redirect(request.referrer or url_for("ballot_lens"))
     principal, _, _ = get_request_principal()
     admin_token = os.environ.get("ADMIN_JWT_TOKEN")
     auth_hdr = (request.headers.get("Authorization") or "").strip()
@@ -3810,6 +5091,7 @@ def handle_clone_session(data) -> None:
             "manual_source_origin": get_manual_source_origin(new_sid),
         },
     )
+    _ensure_quick_copy_dir(new_sid)
     broadcast_sessions()
     try:
         socket_room = safe_sid()
@@ -3834,6 +5116,7 @@ def on_join(data):
     join_room(sid)
     username = safe_get(data, 'username')
     meta = session_manager.ensure_session(sid, username)
+    _ensure_quick_copy_dir(sid)
     session_manager.mark_active(sid)
     session_manager.touch_session(sid)
     try:
@@ -3871,7 +5154,7 @@ def handle_connect(auth=None):
         cleanup_sessions()
         session['log_format'] = "json"
         principal, principal_source, cert_metadata = get_request_principal()
-        if not principal:
+        if not principal and not ALLOW_ANON_NO_PRINCIPAL:
             emit('parser_output', {
                 "level": "ERROR",
                 "type": "auth",
@@ -3989,6 +5272,17 @@ def handle_connect(auth=None):
                         "cert_cn": cert_metadata.get('cn'),
                         "fingerprint": cert_fingerprint,
                     })
+                    transition_session(
+                        resolved,
+                        SessionState.IDLE,
+                        locked=True,
+                        phase=PipelinePhase.PREPARE,
+                        broadcast=False,
+                        extras={
+                            "auth_blocked": True,
+                            "auth_block_reason": "cert_changed",
+                        },
+                    )
                     # Emit cert_changed event for frontend to trigger UI update
                     try:
                         socketio.emit('cert_changed', {
@@ -3996,6 +5290,13 @@ def handle_connect(auth=None):
                             "fingerprint": cert_fingerprint,
                             "cert_metadata": cert_metadata,
                             "principal": principal
+                        }, room=resolved)
+                    except Exception:
+                        pass
+                    try:
+                        socketio.emit('auth_blocked', {
+                            "session_id": resolved,
+                            "reason": "cert_changed",
                         }, room=resolved)
                     except Exception:
                         pass
@@ -4074,6 +5375,43 @@ def handle_disconnect(arg=None) -> None:
     # cancellation_manager.remove(logical or req_sid)
     if logical:
         session_manager.pop_emitter(logical)
+
+
+@socketio.on('ack_cert_reauth')
+def handle_ack_cert_reauth(data=None) -> None:
+    payload = data or {}
+    session_id = resolve_session_id(payload, create_if_missing=False)
+    if not session_id:
+        logger.warning({
+            "level": "WARNING",
+            "type": "auth",
+            "message": "No session_id provided for cert reauth ack.",
+            "session_id": None,
+        })
+        return
+    transition_session(
+        session_id,
+        SessionState.IDLE,
+        locked=False,
+        phase=PipelinePhase.PREPARE,
+        broadcast=False,
+        extras={
+            "auth_blocked": False,
+            "auth_block_reason": None,
+        },
+    )
+    try:
+        socketio.emit('auth_unblocked', {
+            "session_id": session_id,
+        }, room=session_id)
+    except Exception:
+        pass
+    logger.info({
+        "level": "INFO",
+        "type": "auth",
+        "message": "Certificate reauth acknowledged; session unblocked.",
+        "session_id": session_id,
+    })
 
 @socketio.on('set_output_mode')
 def handle_set_output_mode(data) -> None:
@@ -4382,6 +5720,7 @@ def handle_ballot_lens(data=None) -> None:
     synchronizes session/thread state, and launches the parser pipeline.
     """
     cleanup_sessions()
+    dev_isolation_bypass = _is_dev_isolation_bypass_request()
     payload = data if isinstance(data, dict) else {}
     session_id = resolve_session_id(payload, create_if_missing=True)
     if not isinstance(session_id, str):
@@ -4402,7 +5741,7 @@ def handle_ballot_lens(data=None) -> None:
         }), room=session_id)
         return
 
-    principal, principal_source = get_request_principal()
+    principal, principal_source, cert_metadata = get_request_principal()
 
     # --- Ensure join_room is fully propagated before any log emission ---
     join_room(session_id)
@@ -4425,6 +5764,16 @@ def handle_ballot_lens(data=None) -> None:
     meta = session_manager.get_metadata(session_id) or {}
     session_manager.mark_active(session_id)
     session_manager.touch_session(session_id)
+    session_manager.update_metadata(session_id, dev_isolation_bypass=dev_isolation_bypass)
+
+    if meta.get("auth_blocked"):
+        emit('parser_output', normalize_log_obj({
+            "level": "INFO",
+            "type": "auth",
+            "message": "Session blocked due to certificate change. Re-authenticate to continue.",
+            "session_id": session_id,
+        }), room=session_id)
+        return
 
     # --- Prevent concurrent runs ---
     if safe_get(meta, 'locked') and safe_is_alive(session_id):
@@ -4551,12 +5900,31 @@ def handle_ballot_lens(data=None) -> None:
         })
         direct_urls = []
     if direct_urls:
+        guard_ok, guard_reason = _guarded_ingestion_allowed("direct_urls")
+        if not guard_ok:
+            logger.warning({
+                "level": "WARNING",
+                "type": "security",
+                "message": f"Direct URL ingestion blocked by guarded gate: {guard_reason}",
+                "session_id": session_id,
+            })
+            direct_urls = []
         logger.info({
             "level": "INFO",
             "type": "input",
             "message": f"Direct URL override engaged with {len(direct_urls)} link(s).",
             "session_id": session_id,
             "urls": direct_urls
+        })
+
+    warehouse_override_url = safe_strip(safe_get(payload, 'warehouse_override_url', ''))
+    if warehouse_override_url:
+        logger.info({
+            "level": "INFO",
+            "type": "status",
+            "message": "Warehouse override acknowledged for parse run.",
+            "session_id": session_id,
+            "warehouse_override_url": warehouse_override_url,
         })
 
     session_manager.set_manual_source(session_id, requested_source, origin=requested_origin)
@@ -4620,7 +5988,8 @@ def handle_ballot_lens(data=None) -> None:
         "output_bypass": output_bypass_flag,
         "status": "running",
         "manual_upload": manual_upload_rel,
-        "direct_url_count": len(direct_urls)
+        "direct_url_count": len(direct_urls),
+        "warehouse_override_url": warehouse_override_url or None,
     })
 
     # --- Prepare cancellation and prompt queue ---
@@ -4647,6 +6016,7 @@ def handle_ballot_lens(data=None) -> None:
                 urls=direct_urls if direct_urls else None,
                 principal=principal,
                 principal_source=principal_source,
+                dev_isolation_bypass=dev_isolation_bypass,
             )
             logger.info({
                 "level": "INFO",
@@ -4694,6 +6064,7 @@ def handle_ballot_lens(data=None) -> None:
                 "manual_upload_file": manual_upload_rel,
                 "direct_url_count": len(direct_urls),
                 "direct_urls": direct_urls,
+                "warehouse_override_url": warehouse_override_url or None,
             }
             if err:
                 extras["last_error"] = err

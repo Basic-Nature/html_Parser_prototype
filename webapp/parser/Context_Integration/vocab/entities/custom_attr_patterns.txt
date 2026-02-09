@@ -1,0 +1,4 @@
+# Regex patterns for custom HTML attributes
+^data-
+^aria-
+^role$

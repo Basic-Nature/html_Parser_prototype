@@ -1,0 +1,90 @@
+assembly district
+beat
+block
+borough
+box
+box number
+city
+community
+community district
+congressional district
+council district
+county
+district
+district #
+district id
+district name
+district no
+district num
+district number
+districts
+division
+division #
+division no
+e.d.
+e.d. #
+ed
+ed #
+election district
+electoral area
+electoral district
+electoral division
+electoral precinct
+electoral region
+electoral section
+electoral subdivision
+electoral unit
+electoral ward
+electoral zone
+judicial district
+loc
+locale
+location
+municipality
+neighborhood
+place
+poll
+poll #
+poll site
+polling #
+polling area
+polling district
+polling location
+polling place
+polling station
+precinct
+precinct #
+precinct id
+precinct name
+precinct no
+precinct num
+precinct number
+precincts
+region
+school district
+section
+sector
+sector #
+senate district
+site
+station
+subdistrict
+subdivision
+subdivision #
+supervisorial district
+town
+towns
+township
+unit
+village
+voting area
+voting center
+voting district
+voting location
+voting place
+voting precinct
+ward
+ward #
+ward number
+wards
+zone

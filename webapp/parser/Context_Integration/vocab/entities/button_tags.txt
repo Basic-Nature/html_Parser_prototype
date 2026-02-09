@@ -1,0 +1,21 @@
+button
+input
+select
+textarea
+Show Results
+Vote
+Submit
+Summary
+Next
+Continue
+Back
+Download
+Print
+Details
+Results
+Ballot
+Cast Vote
+Vote Now
+Vote Here
+Submit Vote
+Confirm Vote

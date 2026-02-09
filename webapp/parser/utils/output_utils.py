@@ -619,6 +619,7 @@ def finalize_election_output(
         "principal_source": context.get("principal_source"),
         "handler": context.get("handler"),
         "input_file": context.get("input_file"),
+        "source_url": context.get("source_url") or context.get("url"),
         "contest": contest_eff,
         "state": state_eff,
         "county": county_eff,

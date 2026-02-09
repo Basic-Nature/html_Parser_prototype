@@ -1,0 +1,272 @@
+advisory vote
+agriculture commissioner
+amendment
+appeals court
+appellate court
+assembly member
+assessor
+assessor-recorder
+at-large
+attorney general
+auditor
+award program
+board of commissioners
+board of education
+board of regents
+board of selectmen
+board of supervisors
+board of trustees
+bond
+charter
+charter amendment
+chief judge
+circuit clerk
+circuit court
+city attorney
+city council
+city judge
+city justice
+city treasurer
+civil court judge
+clerk
+clerk and recorder
+clerk of circuit court
+clerk of court
+clerk of superior court
+clerk-recorder
+collector
+collector of revenue
+commissioner
+commissioner of agriculture
+commissioner of public lands
+commissioner of revenue
+common pleas
+commonwealth's attorney
+community college board
+comptroller
+congress
+congressional district
+congressman
+congresswoman
+constable
+contest
+controller
+coroner
+coroner-medical examiner
+corporation commissioner
+council at-large
+councillor
+councilman
+councilmember
+councilmen
+councilor
+councilwoman
+councilwomen
+county assessor
+county attorney
+county auditor
+county clerk
+county commissioner
+county council
+county court judge
+county executive
+county sheriff
+county treasurer
+court of appeals
+court of common pleas
+criminal court judge
+d.a
+d.a.
+da
+district
+district attorney
+district court
+district judge
+drainage district
+election commissioner
+elections supervisor
+electors
+electors for president
+family court
+family court judge
+fire district
+fire protection district
+flood control district
+governor
+group
+hospital district
+house
+house of representatives
+improvement district
+initiative
+insurance commissioner
+judge
+justice
+justice court
+juvenile court
+juvenile court judge
+labor commissioner
+land commissioner
+levy
+library board
+lieutenant governor
+local option
+lt gov
+lt governor
+lt. gov
+lt. governor
+magistrate
+magistrate judge
+mayor
+mayor-president
+measure
+medical examiner
+member of assembly
+millage
+mine inspector
+municipal court
+municipal court judge
+municipal judge
+office
+ordinance
+orphan's court
+park board
+park district
+parks board
+place
+port commission
+port commissioner
+position
+position number
+post
+precinct
+president
+presidential
+presidential electors
+probate court
+probate judge
+proposition
+prosecuting attorney
+prosecutor
+prothonotary
+public administrator
+public advocate
+public defender
+public service commissioner
+public utility commissioner
+public utility district
+question
+race
+railroad commissioner
+recall
+reclamation district
+recorder
+recorder of deeds
+referendum
+register of deeds
+register of voters
+register of wills
+registrar of voters
+representative
+representative in congress
+sales tax
+school board
+school committee
+school director
+school district
+school trustee
+seat
+secretary of state
+select board
+selectman
+selectwoman
+sen.
+senate
+senator
+sheriff
+sheriff-coroner
+soil and water conservation
+soil and water conservation board
+soil and water conservation district board
+soil and water conservation district commissioner
+soil and water conservation district director
+soil and water conservation district supervisor
+splost
+state assembly
+state attorney
+state auditor
+state board
+state board of assessors
+state board of auditors
+state board of commissioners
+state board of directors
+state board of education
+state board of elections
+state board of equalization
+state board of registrars
+state board of supervisors
+state board of supervisors of elections
+state board of supervisors of elections and registrars
+state board of supervisors of elections and registrars of voter registration
+state board of supervisors of elections and registrars of voter registration and elections
+state board of supervisors of elections and registrars of voters
+state board of supervisors of elections and registration
+state board of supervisors of elections and voter registration
+state board of supervisors of elections and voter registration and elections
+state board of supervisors of registration
+state board of supervisors of voter registration
+state board of trustees
+state comptroller
+state controller
+state delegate
+state house
+state house of representatives
+state legislative district
+state legislature
+state mine inspector
+state rep
+state rep.
+state representative
+state sen.
+state senate
+state senator
+state superintendent
+state treasurer
+state's attorney
+states attorney
+superintendent of public instruction
+superior court
+superior court judge
+supreme court
+supreme court justice
+surrogate
+surrogate court
+surrogate judge
+surrogate's court
+surrogate's judge
+surrogates judge
+surtax
+surveyor
+tax assessor
+tax assessor-collector
+tax collector
+tax commissioner
+town council
+town justice
+town meeting member
+transit authority
+treasurer
+treasurer-tax collector
+u.s. house
+u.s. rep
+u.s. representative
+u.s. senate
+united states house
+united states senate
+us house
+us rep
+us senate
+vice president
+village justice
+ward
+water district

@@ -2379,6 +2379,12 @@ socket.on('parser_output', /** @param {ParserOutputEvent} data */ (data) => {
     addLog(data);
     handlePromptLog(data);
     SessionRestore.saveState(data); // P2.4: Save state for recovery
+    if (data?.type === 'security' && typeof data?.message === 'string') {
+      const msgLower = data.message.toLowerCase();
+      if (msgLower.includes('guarded')) {
+        showToast(data.message, 'warning');
+      }
+    }
     // Show pending overlay for processing messages (P1.4)
     if (data.type === 'status' && data.message?.includes('Processing')) {
       PendingOverlay.show(data.message, 300);
@@ -2420,6 +2426,11 @@ socket.on('session_state', /** @param {SessionStatePayload} data */ (data) => {
       updateProgressCard(data);
       updateOverviewStrip(data);
       updateSessionsList();
+      
+      // Update auth status banner based on session metadata
+      if (data?.metadata) {
+        updateAuthStatusBanner(data.metadata);
+      }
 
       const stateVal = String(data?.state || '').toUpperCase();
       const hintTarget = /** @type {HTMLElement|null} */ (
@@ -2454,6 +2465,38 @@ socket.on('session_list', /** @param {SessionListPayload} data */ (data) => {
   ErrorBoundary.safeExecute(() => {
     updateSessionsList(data.sessions);
   }, 'socket:session_list');
+});
+
+// Auth status events: auth_blocked / auth_unblocked
+socket.on('auth_blocked', /** @param {Object} data */ (data) => {
+  ErrorBoundary.safeExecute(() => {
+    const banner = document.getElementById('authStatusBanner');
+    const title = document.getElementById('authStatusTitle');
+    const msg = document.getElementById('authStatusMessage');
+    const btn = document.getElementById('authStatusAction');
+    if (banner && title && msg && btn) {
+      banner.classList.remove('hidden', 'is-untrusted');
+      banner.classList.add('is-blocked');
+      title.textContent = 'Certificate re-authentication required';
+      msg.textContent = 'Your session is locked due to certificate change. Please acknowledge re-authentication to continue.';
+      btn.textContent = 'I re-authenticated';
+      btn.onclick = () => {
+        socket.emit('ack_cert_reauth', { session_id: currentSessionId });
+      };
+    }
+    showToast('Session locked: please re-authenticate.', 'warning');
+  }, 'socket:auth_blocked');
+});
+
+socket.on('auth_unblocked', /** @param {Object} data */ (data) => {
+  ErrorBoundary.safeExecute(() => {
+    const banner = document.getElementById('authStatusBanner');
+    if (banner) {
+      banner.classList.add('hidden');
+      banner.classList.remove('is-blocked', 'is-untrusted');
+    }
+    showToast('Session unblocked. You may continue.', 'success');
+  }, 'socket:auth_unblocked');
 });
 
 // Run lifecycle events: started / progress / summary
@@ -3608,6 +3651,34 @@ function updateSessionsList(sessions = state.sessions) {
 }
 
 /**
+ * Update auth status banner visibility and styling based on session metadata.
+ * @param {Object} metadata - Session metadata containing auth_blocked, auth_tier, auth_trusted flags
+ */
+function updateAuthStatusBanner(metadata = {}) {
+  const banner = document.getElementById('authStatusBanner');
+  const title = document.getElementById('authStatusTitle');
+  const msg = document.getElementById('authStatusMessage');
+  if (!banner || !title || !msg) return;
+
+  // Priority: auth_blocked > untrusted_anon > hidden
+  if (metadata?.auth_blocked) {
+    banner.classList.remove('hidden');
+    banner.classList.add('is-blocked');
+    banner.classList.remove('is-untrusted');
+    title.textContent = 'Certificate re-authentication required';
+    msg.textContent = 'Your session is locked due to certificate change. Click the button below to acknowledge re-authentication.';
+  } else if (metadata?.auth_trusted === false && metadata?.auth_tier === 'anon') {
+    banner.classList.remove('hidden', 'is-blocked');
+    banner.classList.add('is-untrusted');
+    title.textContent = 'Untrusted session';
+    msg.textContent = 'This session lacks a trusted principal. Some features may be restricted.';
+  } else {
+    banner.classList.add('hidden');
+    banner.classList.remove('is-blocked', 'is-untrusted');
+  }
+}
+
+/**
  * @typedef {Object} ProgressSessionData
  * @property {string} [session_id]
  * @property {string} [state]
@@ -3846,15 +3917,43 @@ $('#outputBypass').addEventListener('change', () => {
   });
 });
 
+function resolveWarehouseGateUrl(fileSource) {
+  if (fileSource === 'direct') {
+    const urls = parseDirectUrlField();
+    return urls.length === 1 ? urls[0] : '';
+  }
+  const directUrlField = $('#directUrlField');
+  if (directUrlField instanceof HTMLInputElement && directUrlField.value) {
+    return directUrlField.value.trim();
+  }
+  if (typeof UrlListManager !== 'undefined' && UrlListManager && UrlListManager.getSelectedUrl) {
+    return UrlListManager.getSelectedUrl() || '';
+  }
+  return '';
+}
+
 // Run Parser Button
 $$('#btnRunParser, #btnRunParser2').forEach(btn => {
   btn.addEventListener('click', () => {
     const fileSourceEl = document.querySelector('input[name="fileSource"]:checked');
     const fileSource = (fileSourceEl instanceof HTMLInputElement) ? fileSourceEl.value : '';
+    
     const payload = {
       session_id: currentSessionId,
       file_source: fileSource,
     };
+    
+    const gateUrl = resolveWarehouseGateUrl(fileSource);
+    if (gateUrl && typeof UrlListManager !== 'undefined' && UrlListManager && UrlListManager.getWarehouseGateStatus) {
+      const gate = UrlListManager.getWarehouseGateStatus(gateUrl);
+      if (gate && gate.blocked) {
+        showToast('Verified warehouse match found. Preview or download, or click Parse anyway to proceed.', 'info');
+        return;
+      }
+      if (gate && gate.overridden) {
+        payload.warehouse_override_url = gate.url;
+      }
+    }
     
     // Add direct URLs if selected
     if (fileSource === 'direct') {
@@ -5956,7 +6055,9 @@ function parseDirectUrlField() {
     feedback.className = 'text-muted';
   }
   feedback.textContent = msg;
-  
+  if (typeof UrlListManager !== 'undefined' && UrlListManager && UrlListManager.syncWarehouseMatchFromUrls) {
+    UrlListManager.syncWarehouseMatchFromUrls(urls);
+  }
   return urls;
 }
 
@@ -7258,6 +7359,15 @@ const UrlListManager = (() => {
   let selectedState = '';
   let selectedCounty = '';
   let lastSearch = '';
+  let lastSelectedUrl = '';
+  let lastWarehouseLookupUrl = '';
+  let warehouseCoverage = { covered: [], all_states: [], all_counties: {} };
+  const warehouseMatchState = {
+    url: '',
+    matches: [],
+    allowParseUrl: '',
+    qaStatus: null,
+  };
 
   /**
    * Extract state/county hints from a URL using lightweight heuristics.
@@ -7381,9 +7491,21 @@ const UrlListManager = (() => {
     const items = filtered.slice(0, maxDisplay).map((metaItem, index) => {
       const url = metaItem.url;
       const short = url.length > 60 ? url.slice(0, 57) + '…' : url;
-      const metaLabel = [metaItem.state, metaItem.county].filter(Boolean).join(' • ');
+      
+      // Check warehouse coverage
+      let metaLabel = [metaItem.state, metaItem.county].filter(Boolean).join(' • ');
+      let coverageBadge = '';
+      if (metaItem.state && metaItem.county) {
+        const isCovered = warehouseCoverage.covered && warehouseCoverage.covered.some(
+          c => c.state === metaItem.state && c.county === metaItem.county
+        );
+        if (!isCovered) {
+          coverageBadge = '<span class="url-coverage-missing" title="Missing from warehouse">⚠️ Not in warehouse</span>';
+        }
+      }
+      
       const badge = metaLabel ? `<span class="url-meta">${escapeHtml(metaLabel)}</span>` : '';
-      return `<div class="url-sidebar-item" title="${escapeHtml(url)}" data-url="${encodeURIComponent(url)}" role="button" tabindex="0">[${index + 1}] ${escapeHtml(short)} ${badge}</div>`;
+      return `<div class="url-sidebar-item" title="${escapeHtml(url)}" data-url="${encodeURIComponent(url)}" role="button" tabindex="0">[${index + 1}] ${escapeHtml(short)} ${badge} ${coverageBadge}</div>`;
     }).join('');
 
     const more = filtered.length > maxDisplay
@@ -7396,6 +7518,7 @@ const UrlListManager = (() => {
     listBox.querySelectorAll('.url-sidebar-item').forEach(el => {
       el.addEventListener('click', () => {
         const url = decodeURIComponent(el.getAttribute('data-url'));
+        lastSelectedUrl = url || '';
         const directUrlTextarea = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('directUrlTextarea'));
         const directRadio = document.querySelector('input[name="fileSource"][value="direct"]');
         if (directUrlTextarea && directRadio instanceof HTMLInputElement && directRadio.checked) {
@@ -7412,6 +7535,8 @@ const UrlListManager = (() => {
             try { directUrlField.dispatchEvent(new Event('input', { bubbles: true })); } catch (/** @type {any} */ _e) { /* noop */ }
           }
         }
+        lookupReuseForUrl(url);
+        lookupWarehouseMatchForUrl(url);
       });
 
       // Keyboard accessibility
@@ -7423,6 +7548,297 @@ const UrlListManager = (() => {
         }
       });
     });
+  }
+
+  function buildOutputLink(folder, name) {
+    const safeFolder = encodeURIComponent(folder || '');
+    const safeName = encodeURIComponent(name || '');
+    return `/download_fs?root=output&path=${safeFolder}&name=${safeName}`;
+  }
+
+  function clearWarehouseMatchPanel() {
+    const panel = document.getElementById('warehouseMatchPanel');
+    const list = document.getElementById('warehouseMatchList');
+    const badge = document.getElementById('warehouseMatchHeaderBadge');
+    const note = document.getElementById('warehouseMatchNote');
+    if (list) list.innerHTML = '';
+    if (panel) panel.classList.add('hidden');
+    if (badge) badge.classList.add('hidden');
+    if (note) note.textContent = 'Use the warehouse snapshot when available to avoid duplicate parsing.';
+    warehouseMatchState.url = '';
+    warehouseMatchState.matches = [];
+    warehouseMatchState.allowParseUrl = '';
+    warehouseMatchState.qaStatus = null;
+  }
+
+  function formatWarehouseDate(value) {
+    if (!value) return 'Unknown date';
+    try {
+      const dt = new Date(value);
+      if (Number.isNaN(dt.getTime())) return String(value);
+      return dt.toISOString().slice(0, 10);
+    } catch (e) {
+      return String(value);
+    }
+  }
+
+  function renderWarehouseMatchPanel(matches, url, qaStatus) {
+    const panel = document.getElementById('warehouseMatchPanel');
+    const list = document.getElementById('warehouseMatchList');
+    const badge = document.getElementById('warehouseMatchHeaderBadge');
+    const note = document.getElementById('warehouseMatchNote');
+    if (!panel || !list) return;
+
+    list.innerHTML = '';
+    if (!Array.isArray(matches) || matches.length === 0) {
+      panel.classList.add('hidden');
+      if (badge) badge.classList.add('hidden');
+      return;
+    }
+
+    if (url !== warehouseMatchState.url) {
+      warehouseMatchState.allowParseUrl = '';
+    }
+    warehouseMatchState.url = url || '';
+    warehouseMatchState.matches = matches;
+    warehouseMatchState.qaStatus = qaStatus || null;
+
+    if (badge) badge.classList.remove('hidden');
+    panel.classList.remove('hidden');
+    panel.classList.toggle('is-overridden', warehouseMatchState.allowParseUrl === url);
+    const qaLabel = warehouseMatchState.qaStatus && warehouseMatchState.qaStatus.dl_status
+      ? String(warehouseMatchState.qaStatus.dl_status).toUpperCase()
+      : 'UNVERIFIED';
+    if (badge) {
+      badge.textContent = warehouseMatchState.allowParseUrl === url ? 'Override' : qaLabel;
+    }
+
+    matches.slice(0, 3).forEach((match) => {
+      const item = document.createElement('div');
+      item.className = 'match-item';
+
+      const titleRow = document.createElement('div');
+      titleRow.className = 'match-title-row';
+
+      const title = document.createElement('div');
+      title.className = 'match-title';
+      const contest = match.contest || 'Contest';
+      const state = match.state || 'State';
+      const county = match.county || '';
+      title.textContent = `${contest} • ${state}${county ? ' • ' + county : ''}`;
+
+      const meta = document.createElement('div');
+      meta.className = 'match-meta';
+      const rows = typeof match.row_count === 'number' ? match.row_count : parseInt(match.row_count || '0', 10) || 0;
+      const latest = formatWarehouseDate(match.latest_election_date);
+      const handler = match.handler ? ` • ${match.handler}` : '';
+      const qaText = qaLabel ? ` • ${qaLabel}` : '';
+      meta.textContent = `${rows.toLocaleString()} rows • ${latest}${handler}${qaText}`;
+
+      titleRow.appendChild(title);
+      item.appendChild(titleRow);
+      item.appendChild(meta);
+      list.appendChild(item);
+    });
+
+    if (note) {
+      if (warehouseMatchState.allowParseUrl === url) {
+        note.textContent = 'Warehouse match acknowledged. Parsing is allowed for this URL.';
+      } else if (qaLabel !== 'DL2') {
+        note.textContent = `Warehouse match is ${qaLabel}. Parsing is allowed for verification and corrections.`;
+      } else {
+        note.textContent = 'Use the verified warehouse snapshot when available to avoid duplicate parsing.';
+      }
+    }
+
+    if (url) {
+      showToast('Warehouse match detected for this URL.', 'info');
+    }
+  }
+
+  async function lookupWarehouseMatchForUrl(url) {
+    if (!url) {
+      clearWarehouseMatchPanel();
+      return;
+    }
+    if (url === lastWarehouseLookupUrl && warehouseMatchState.url === url) {
+      return;
+    }
+    lastWarehouseLookupUrl = url;
+    try {
+      const response = await fetch(`/api/warehouse/match?url=${encodeURIComponent(url)}`);
+      if (!response.ok) {
+        clearWarehouseMatchPanel();
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      renderWarehouseMatchPanel(data.matches || [], url, data.qa_status || null);
+    } catch (e) {
+      clearWarehouseMatchPanel();
+    }
+  }
+
+  function syncWarehouseMatchFromUrls(urls) {
+    const candidate = Array.isArray(urls) && urls.length === 1 ? urls[0] : '';
+    if (!candidate) {
+      clearWarehouseMatchPanel();
+      return;
+    }
+    lookupWarehouseMatchForUrl(candidate);
+  }
+
+  function allowParseForUrl(url) {
+    if (!url || warehouseMatchState.url !== url) return;
+    warehouseMatchState.allowParseUrl = url;
+    renderWarehouseMatchPanel(warehouseMatchState.matches, url, warehouseMatchState.qaStatus);
+  }
+
+  function getWarehouseGateStatus(url) {
+    if (!url) return { blocked: false, overridden: false, url: '', matches: [], qa_status: null };
+    const overridden = warehouseMatchState.allowParseUrl === url;
+    const qaStatus = warehouseMatchState.qaStatus;
+    const dlStatus = qaStatus && qaStatus.dl_status ? String(qaStatus.dl_status).toUpperCase() : '';
+    const isVerified = dlStatus === 'DL2';
+    const hasMatches = warehouseMatchState.url === url &&
+      Array.isArray(warehouseMatchState.matches) &&
+      warehouseMatchState.matches.length > 0;
+    const blocked = hasMatches && isVerified && !overridden;
+    return { blocked, overridden, url, matches: warehouseMatchState.matches || [], qa_status: qaStatus };
+  }
+
+  function clearReusePanel() {
+    const panel = document.getElementById('urlReusePanel');
+    const list = document.getElementById('urlReuseList');
+    const badge = document.getElementById('urlReuseHeaderBadge');
+    if (list) list.innerHTML = '';
+    if (panel) panel.classList.add('hidden');
+    if (badge) badge.classList.add('hidden');
+  }
+
+  function renderReuseMatches(matches, url) {
+    const panel = document.getElementById('urlReusePanel');
+    const list = document.getElementById('urlReuseList');
+    const openNewestBtn = document.getElementById('urlReuseOpenNewest');
+    const headerBadge = document.getElementById('urlReuseHeaderBadge');
+    if (!panel || !list) return;
+    list.innerHTML = '';
+    if (!Array.isArray(matches) || matches.length === 0) {
+      panel.classList.add('hidden');
+      if (headerBadge) headerBadge.classList.add('hidden');
+      if (openNewestBtn) {
+        openNewestBtn.setAttribute('data-href', '');
+        openNewestBtn.setAttribute('aria-disabled', 'true');
+        openNewestBtn.classList.add('disabled');
+      }
+      return;
+    }
+
+    if (headerBadge) headerBadge.classList.remove('hidden');
+
+    const sortedMatches = [...matches].sort((a, b) => {
+      const left = Date.parse(a.created_at || '') || 0;
+      const right = Date.parse(b.created_at || '') || 0;
+      return right - left;
+    });
+    const newest = sortedMatches[0];
+    if (openNewestBtn) {
+      const newestHref = (newest && newest.output_folder)
+        ? buildOutputLink(newest.output_folder, 'results.csv')
+        : '';
+      openNewestBtn.setAttribute('data-href', newestHref || '');
+      if (newestHref) {
+        openNewestBtn.removeAttribute('aria-disabled');
+        openNewestBtn.classList.remove('disabled');
+      } else {
+        openNewestBtn.setAttribute('aria-disabled', 'true');
+        openNewestBtn.classList.add('disabled');
+      }
+    }
+
+    sortedMatches.forEach((match, index) => {
+      const item = document.createElement('div');
+      item.className = `reuse-item${index === 0 ? ' reuse-item-newest' : ''}`;
+
+      const titleRow = document.createElement('div');
+      titleRow.className = 'reuse-title-row';
+
+      const title = document.createElement('div');
+      title.className = 'reuse-title';
+      const contest = match.contest || 'Contest';
+      const state = match.state || 'State';
+      const county = match.county || '';
+      title.textContent = `${contest} • ${state}${county ? ' • ' + county : ''}`;
+
+      const badge = document.createElement('span');
+      const isNewest = index === 0;
+      badge.className = `reuse-badge ${isNewest ? 'reuse-badge-newest' : 'reuse-badge-older'}`;
+      badge.textContent = isNewest ? 'Newest' : 'Older';
+
+      titleRow.appendChild(title);
+      titleRow.appendChild(badge);
+
+      const meta = document.createElement('div');
+      meta.className = 'reuse-meta';
+      const createdAt = match.created_at ? String(match.created_at) : 'Unknown timestamp';
+      meta.textContent = `Created: ${createdAt}`;
+
+      const links = document.createElement('div');
+      links.className = 'reuse-links';
+
+      if (match.output_folder) {
+        const csvLink = document.createElement('a');
+        csvLink.className = 'btn btn-sm';
+        csvLink.href = buildOutputLink(match.output_folder, 'results.csv');
+        csvLink.target = '_blank';
+        csvLink.rel = 'noopener';
+        csvLink.textContent = 'Open CSV';
+        links.appendChild(csvLink);
+
+        const metaLink = document.createElement('a');
+        metaLink.className = 'btn btn-sm';
+        metaLink.href = buildOutputLink(match.output_folder, 'results.metadata.json');
+        metaLink.target = '_blank';
+        metaLink.rel = 'noopener';
+        metaLink.textContent = 'Metadata';
+        links.appendChild(metaLink);
+
+        const xlsxLink = document.createElement('a');
+        xlsxLink.className = 'btn btn-sm';
+        xlsxLink.href = buildOutputLink(match.output_folder, 'results.xlsx');
+        xlsxLink.target = '_blank';
+        xlsxLink.rel = 'noopener';
+        xlsxLink.textContent = 'Excel';
+        links.appendChild(xlsxLink);
+      }
+
+      item.appendChild(titleRow);
+      item.appendChild(meta);
+      item.appendChild(links);
+      list.appendChild(item);
+    });
+
+    panel.classList.remove('hidden');
+    if (url) {
+      showToast('Existing results found for this URL.', 'info');
+    }
+  }
+
+  async function lookupReuseForUrl(url) {
+    if (!url) {
+      clearReusePanel();
+      return;
+    }
+    try {
+      const response = await fetch(`/api/outputs/lookup?url=${encodeURIComponent(url)}`);
+      if (!response.ok) {
+        clearReusePanel();
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      renderReuseMatches(data.matches || [], url);
+    } catch (e) {
+      clearReusePanel();
+    }
   }
 
   async function fetchUrls() {
@@ -7491,7 +7907,40 @@ const UrlListManager = (() => {
     }
   }
 
+  /**
+   * Load warehouse coverage summary to show which state/county pairs are covered.
+   * Updates warehouseCoverage object for use in renderUrlList.
+   */
+  function loadWarehouseCoverage() {
+    fetch('/api/warehouse/coverage')
+      .then(resp => {
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return resp.json();
+      })
+      .then(data => {
+        warehouseCoverage = {
+          covered: Array.isArray(data.covered) ? data.covered : [],
+          all_states: Array.isArray(data.all_states) ? data.all_states : [],
+          all_counties: typeof data.all_counties === 'object' ? data.all_counties : {}
+        };
+        // Re-render current list if URLs are already loaded
+        if (cachedMeta.length > 0) {
+          const searchBox = $('.url-search-box');
+          const currentSearch = (searchBox instanceof HTMLInputElement) ? searchBox.value : '';
+          renderUrlList(cachedMeta, currentSearch, selectedState, selectedCounty);
+        }
+        console.info('[UrlListManager] Warehouse coverage loaded:', warehouseCoverage.covered.length, 'state/county pairs');
+      })
+      .catch(err => {
+        console.warn('[UrlListManager] Failed to load warehouse coverage:', err);
+        // Graceful degradation: continue without coverage badges
+      });
+  }
+
   function init() {
+    // Load warehouse coverage data
+    loadWarehouseCoverage();
+    
     const searchBox = $('.url-search-box');
     const refreshBtn = $('#refreshUrlListBtn');
     const collapseBtn = $('#btnCollapseUrls');
@@ -7502,6 +7951,11 @@ const UrlListManager = (() => {
     const newUrlInput = /** @type {HTMLInputElement|null} */ (document.getElementById('newUrl'));
     const addUrlStatus = /** @type {HTMLElement|null} */ (document.getElementById('addUrlStatus'));
     const addUrlButton = addForm ? addForm.querySelector('.url-add-btn') : null;
+    const reuseDismissBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('urlReuseDismiss'));
+    const reuseOpenNewestBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('urlReuseOpenNewest'));
+    const warehousePreviewBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('warehouseMatchPreview'));
+    const warehouseDownloadBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('warehouseMatchDownload'));
+    const warehouseParseBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('warehouseMatchParseAnyway'));
 
     // Schema helper controls
     const schemaYear = /** @type {HTMLInputElement|null} */ (document.getElementById('schemaYear'));
@@ -7749,6 +8203,53 @@ const UrlListManager = (() => {
       });
     }
 
+    if (warehousePreviewBtn) {
+      warehousePreviewBtn.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        const match = (warehouseMatchState.matches || [])[0];
+        if (!match) {
+          showToast('No warehouse preview available.', 'warning');
+          return;
+        }
+        const params = new URLSearchParams();
+        params.set('mode', 'active');
+        params.set('limit', '120');
+        if (match.state) params.set('state', match.state);
+        if (match.county) params.set('county', match.county);
+        if (match.contest) params.set('contest', match.contest);
+        try {
+          const resp = await fetch(`/api/data_framework/preview?${params.toString()}`);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const data = await resp.json();
+          const rows = Array.isArray(data.rows) ? data.rows : [];
+          const title = match.contest ? `Warehouse preview: ${match.contest}` : 'Warehouse preview';
+          _TablePreview.showPreviewModal(title, rows);
+        } catch (e) {
+          showToast('Failed to load warehouse preview.', 'warning');
+        }
+      });
+    }
+
+    if (warehouseDownloadBtn) {
+      warehouseDownloadBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        if (!warehouseMatchState.url) {
+          showToast('No warehouse export available.', 'warning');
+          return;
+        }
+        window.location.href = `/api/warehouse/export?url=${encodeURIComponent(warehouseMatchState.url)}`;
+      });
+    }
+
+    if (warehouseParseBtn) {
+      warehouseParseBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        if (!warehouseMatchState.url) return;
+        allowParseForUrl(warehouseMatchState.url);
+        showToast('Parsing allowed for this URL.', 'info');
+      });
+    }
+
     // Expose a lightweight self-check for build/autofill so QA can call from console.
     const runSchemaHelperSelfTest = () => {
       const sampleUrl = 'https://example.com/wa/pierce-county/results?state=WA';
@@ -7809,6 +8310,9 @@ const UrlListManager = (() => {
           const payload = await response.json().catch(() => ({}));
           if (!response.ok || !payload.success) {
             const errMsg = payload.error || 'Unable to add URL. Ensure it is http/https and allowed.';
+            if (response.status === 403 || String(errMsg).toLowerCase().includes('guarded')) {
+              showToast('Guarded ingestion key required to add URLs.', 'warning');
+            }
             throw new Error(errMsg);
           }
           setAddUrlStatus('URL added to library.', 'success');
@@ -7853,6 +8357,25 @@ const UrlListManager = (() => {
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => {
         fetchUrls();
+        clearReusePanel();
+        clearWarehouseMatchPanel();
+      });
+    }
+
+    if (reuseDismissBtn) {
+      reuseDismissBtn.addEventListener('click', () => {
+        clearReusePanel();
+      });
+    }
+
+    if (reuseOpenNewestBtn) {
+      reuseOpenNewestBtn.addEventListener('click', () => {
+        const href = reuseOpenNewestBtn.getAttribute('data-href') || '';
+        if (!href || reuseOpenNewestBtn.classList.contains('disabled')) {
+          showToast('No output available yet for this URL.', 'warning');
+          return;
+        }
+        window.open(href, '_blank', 'noopener');
       });
     }
 
@@ -7907,7 +8430,11 @@ const UrlListManager = (() => {
     init,
     fetchUrls,
     refresh: fetchUrls,
-    getUrls: () => [...cachedUrls]
+    getUrls: () => [...cachedUrls],
+    lookupWarehouseMatchForUrl,
+    syncWarehouseMatchFromUrls,
+    getWarehouseGateStatus,
+    getSelectedUrl: () => lastSelectedUrl
   };
 })();
 
@@ -8642,6 +9169,32 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialize URL list
   UrlListManager.init();
+
+  // Surface flashed server messages as toasts
+  try {
+    const flashEl = document.getElementById('flashMessages');
+    const raw = flashEl ? flashEl.getAttribute('data-flash') : null;
+    if (raw) {
+      const entries = JSON.parse(raw);
+      if (Array.isArray(entries)) {
+        entries.forEach((entry) => {
+          const category = Array.isArray(entry) ? entry[0] : 'info';
+          const message = Array.isArray(entry) ? entry[1] : entry;
+          const typeMap = {
+            danger: 'error',
+            error: 'error',
+            warning: 'warning',
+            success: 'success',
+            info: 'info',
+          };
+          const toastType = typeMap[String(category || 'info')] || 'info';
+          if (message) showToast(String(message), toastType);
+        });
+      }
+    }
+  } catch (e) {
+    console.debug('[FlashToast] Failed to parse flash messages', e);
+  }
 
   // Initialize artifact folder panels (input/output/uploads)
   ArtifactPanels.init();

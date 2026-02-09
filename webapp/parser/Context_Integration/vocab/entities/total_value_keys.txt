@@ -1,0 +1,6 @@
+# Total/vote keys in JSON payloads
+total
+total votes
+total vote
+votes
+grand total

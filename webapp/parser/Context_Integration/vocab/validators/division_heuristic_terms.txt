@@ -1,0 +1,17 @@
+# Division heuristic term mappings
+independent city -> independent city
+consolidated city-county -> consolidated city-county
+consolidated city-parish -> consolidated city-parish
+census area -> census area
+city-county -> consolidated city-county
+city-parish -> consolidated city-parish
+borough -> borough
+parish -> parish
+county -> county
+municipality -> municipality
+district -> district
+town -> town
+village -> village
+island -> island
+region -> region
+city -> city

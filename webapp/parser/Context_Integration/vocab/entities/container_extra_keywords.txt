@@ -1,0 +1,11 @@
+# Container discovery keywords for DOM table heuristics
+vote
+result
+candidate
+precinct
+choice
+option
+ballot
+row
+table
+summary

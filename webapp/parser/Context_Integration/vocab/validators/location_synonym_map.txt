@@ -1,0 +1,21 @@
+# Location synonym mappings (normalized variants to canonical form)
+ward # -> ward
+ward number -> ward
+precinct # -> precinct
+precinct no -> precinct
+precinct num -> precinct
+district # -> district
+district no -> district
+district num -> district
+division # -> division
+division no -> division
+poll -> polling place
+poll # -> polling place
+polling # -> polling place
+loc -> location
+box -> precinct
+box number -> precinct
+ed # -> election district
+e.d. # -> election district
+sector # -> sector
+subdivision # -> subdivision

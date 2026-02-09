@@ -35,6 +35,7 @@ from ..utils.shared_logic import (
     safe_merge_defaults,
     safe_setdefault,
 )
+from .vocab.loader import get_vocab_loader
 from .Context_Library.constants import (
     BALLOT_TYPES,
     CANDIDATE_KEYWORDS,
@@ -70,6 +71,21 @@ DEFAULT_STRUCTURE = {
     "metadata": {},
 }
 _context_library_cache = None
+
+
+def get_vocab_constant(
+    subdir: str,
+    filename: str,
+    *,
+    mapping: bool = False,
+    session_id: str | None = None,
+):
+    """Load a vocab constant from Context_Integration/vocab with caching."""
+    loader = get_vocab_loader()
+    if mapping:
+        return loader.load_mapping(subdir, filename, session_id=session_id)
+    return loader.load_canonical(subdir, filename, session_id=session_id)
+
 
 def safe_path(path, allowed_roots=None):
     """

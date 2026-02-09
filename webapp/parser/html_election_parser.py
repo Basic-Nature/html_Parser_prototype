@@ -1514,7 +1514,27 @@ def orchestrate_url(
                     
                     ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id, trust_factors=trust_factors, privilege_tier=privilege_tier)
                     stream_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
-                    mark_url_processed(target_url, status="success", session_id=session_id, snapshot_mode=True)
+                    processed_meta = {}
+                    if isinstance(metadata, dict):
+                        for key in (
+                            "output_file",
+                            "metadata_path",
+                            "output_dir",
+                            "contest",
+                            "state",
+                            "county",
+                            "handler",
+                            "source_url",
+                        ):
+                            if key in metadata and metadata.get(key):
+                                processed_meta[key] = metadata.get(key)
+                    mark_url_processed(
+                        target_url,
+                        status="success",
+                        session_id=session_id,
+                        snapshot_mode=True,
+                        **processed_meta,
+                    )
                 except Exception as exc:
                     logger.error({
                         "level": "ERROR",
@@ -2054,7 +2074,21 @@ def orchestrate_url(
                             "session_id": session_id
                         }
                         logger.warning(payload)
-                mark_url_processed(target_url, status="success", session_id=session_id)
+                processed_meta = {}
+                if isinstance(metadata, dict):
+                    for key in (
+                        "output_file",
+                        "metadata_path",
+                        "output_dir",
+                        "contest",
+                        "state",
+                        "county",
+                        "handler",
+                        "source_url",
+                    ):
+                        if key in metadata and metadata.get(key):
+                            processed_meta[key] = metadata.get(key)
+                mark_url_processed(target_url, status="success", session_id=session_id, **processed_meta)
             else:
                 msg = f"Incomplete result structure for {target_url} — skipping CSV write. (Session: {session_id})"
                 payload = {

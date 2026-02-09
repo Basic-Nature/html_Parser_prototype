@@ -1,0 +1,10 @@
+# Canonical panel/section tags
+section
+fieldset
+panel
+div
+p-panel
+app-ballot-item-wrapper
+article
+main
+aside

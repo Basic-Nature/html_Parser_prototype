@@ -1,0 +1,9 @@
+# Field type labels with canonical mappings
+contest -> contest
+candidate -> candidate
+party -> party
+precinct -> precinct
+total -> total
+reported -> reported
+percent -> percent
+vote_methods -> vote_methods

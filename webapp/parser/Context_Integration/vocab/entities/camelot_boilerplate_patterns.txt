@@ -1,0 +1,6 @@
+^\s*(Last Updated|Updated|As of)\b.*$
+^\s*(Percent Reported|Reporting Status|Fully Reported)\b.*$
+^\s*(Precincts Reporting|Precincts Counted|Precincts Remaining)\b.*$
+^\s*(Download|Export|Print|Summary|Details|Results)\b.*$
+^\s*(Page|Table|Chart|Graph|Map|Visualization)\b.*$
+^\s*(Powered by)\b.*$

@@ -1,0 +1,7 @@
+general
+local
+municipal
+presidential preference
+primary
+runoff
+special

@@ -1,0 +1,21 @@
+# Extra ballot name canonicalization variants
+absentee -> Absentee
+absentee by mail -> Mail
+absentee-by-mail -> Mail
+absentee/mail -> Mail
+mail in -> Mail
+mail in votes -> Mail
+mail-in -> Mail
+mail-in votes -> Mail
+early -> Early Voting
+early vote -> Early Voting
+early voting -> Early Voting
+advance voting -> Advance Voting
+advance in-person -> Advance In Person
+advance in person -> Advance In Person
+early in-person -> Advance In Person
+early in person -> Advance In Person
+provisional ballot -> Provisional
+affidavit ballot -> Affidavit
+election day -> Election Day
+in person -> Advance In Person

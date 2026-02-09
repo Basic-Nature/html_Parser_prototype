@@ -1,0 +1,13 @@
+# Division suffixes for trimming/inference
+county
+parish
+borough
+district
+census area
+municipality
+independent city
+city
+town
+village
+island
+region

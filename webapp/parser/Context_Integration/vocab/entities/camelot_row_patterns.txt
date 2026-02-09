@@ -1,0 +1,16 @@
+^\s*Totals?\b.*$
+^\s*Total\s*$
+^\s*Summary\s*$
+^\s*Undervote\b.*$
+^\s*Overvote\b.*$
+^\s*Scattering\b.*$
+^\s*Write[\-\s]?In\b.*$
+^\s*Blank\b.*$
+^\s*Void\b.*$
+^\s*Spoiled\b.*$
+^\s*Unknown\b.*$
+^\s*Other\b.*$
+^\s*Nonpartisan\b.*$
+^\s*Unaffiliated\b.*$
+^\s*(Provisional|Affidavit|Mail|Absentee|Early Voting|Election Day)\b.*$
+\b(BOARD OF ELECTIONS|STATEMENT AND RETURN|CERTIFICATION|CITY OF NEW YORK)\b

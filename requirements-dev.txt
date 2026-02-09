@@ -9,3 +9,9 @@ pytest>=9.0.2
 # Development-only test helpers
 # Prometheus client used for local metrics testing (not required in production runtime)
 prometheus-client>=0.16.0
+# Google Sheets API (for local data migration)
+google-auth>=2.40.0
+google-auth-oauthlib>=1.2.1
+google-auth-httplib2>=0.2.0
+google-api-python-client>=2.168.0
+gspread>=7.0.1

@@ -1,0 +1,4 @@
+# Sentinel tokens for pseudo result exclusion
+__EXCLUDE_BLANK__
+__EXCLUDE_VOID__
+__EXCLUDE_SCATTERING__

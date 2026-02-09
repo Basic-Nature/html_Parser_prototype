@@ -1,0 +1,9 @@
+# Canonical ballot group display order
+Election Day
+Early Voting
+Absentee
+Mail
+Provisional
+Affidavit
+Other
+Void

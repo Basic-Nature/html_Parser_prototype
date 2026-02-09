@@ -1,0 +1,9 @@
+time-ago
+timestamp
+last-updated
+results-timestamp
+update-time
+posted
+modified
+date
+datetime

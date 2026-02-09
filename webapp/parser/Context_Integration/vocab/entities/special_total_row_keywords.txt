@@ -1,0 +1,6 @@
+# Specialized total row keywords
+total ballots
+total applicable ballots
+applicable ballots
+inapplicable ballots
+less - inapplicable federal/special presidential ballots

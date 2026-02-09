@@ -1,0 +1,9 @@
+btn
+button
+toggle
+switch
+p-button
+mat-button
+v-btn
+ant-btn
+el-button

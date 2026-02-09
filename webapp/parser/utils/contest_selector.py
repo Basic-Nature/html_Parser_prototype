@@ -13,6 +13,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ..config import (
+    CONTEST_AUTO_CONFIDENCE_THRESHOLD,
+    CONTEST_FEEDBACK_MIN_THRESHOLD,
+    CONTEST_FEEDBACK_THRESHOLD,
+    CONTEST_VERIFY_FLOOR_NO_MODEL,
+    CONTEST_VERIFY_THRESHOLD,
+)
 from ..Context_Integration.Context_Library.constants import (
     CONTEST_KEYWORDS,
     CONTEST_TITLE_KEYWORDS,
@@ -887,7 +894,7 @@ def ml_verify_contest(
     contest: Dict[str, Any],
     coordinator: "ContextCoordinator",
     context: dict,
-    threshold: float = 0.75
+    threshold: float = CONTEST_VERIFY_THRESHOLD
 ) -> bool:
     """
     ML/NER contest verification with graceful offline fallback.
@@ -1015,10 +1022,24 @@ def ml_verify_contest(
     # Allow slightly lower threshold when no semantic model is available
     dynamic_threshold = threshold
     if model is None:
-        dynamic_threshold = min(threshold, 0.65)
+        dynamic_threshold = min(threshold, CONTEST_VERIFY_FLOOR_NO_MODEL)
 
     if year_score == 1.0 and title_score == 1.0 and score >= 0.55:
         return True
+    
+    # Log rejection if score below threshold (constructive criticism)
+    if score < dynamic_threshold:
+        from .shared_logic import log_rejection_reason
+        log_rejection_reason(
+            decision_context="contest_selection",
+            confidence_score=score,
+            rejection_reason="verification score below threshold",
+            candidate_info={"title": title, "year": year, "type": ctype, "score_components": {"year": year_score, "type": type_score, "title": title_score, "ml": ml_score}},
+            threshold_name="CONTEST_VERIFY_THRESHOLD",
+            threshold_value=dynamic_threshold,
+            function_name="ml_verify_contest",
+        )
+    
     return score >= dynamic_threshold
 
 def feedback_loop_verify_contests(
@@ -1026,7 +1047,7 @@ def feedback_loop_verify_contests(
     coordinator: "ContextCoordinator",
     context: dict,
     max_loops: int = 2,
-    threshold: float = 0.8,
+    threshold: float = CONTEST_FEEDBACK_THRESHOLD,
     session_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
@@ -1043,7 +1064,7 @@ def feedback_loop_verify_contests(
             _log("info", "selector", f"Feedback loop {loop+1}: verified={len(verified)}", session_id=session_id)
             break
         # Lower threshold a bit each loop
-        threshold = max(0.6, threshold - 0.1)
+        threshold = max(CONTEST_FEEDBACK_MIN_THRESHOLD, threshold - 0.1)
 
     if verified:
         return verified
@@ -1131,7 +1152,7 @@ def select_contest_auto_first(
     allow_multiple: bool = False,
     session_id: str | None = None,
     force_interactive: bool = False,
-    auto_confidence_threshold: float = 0.93,
+    auto_confidence_threshold: float = CONTEST_AUTO_CONFIDENCE_THRESHOLD,
     page_size: int = 30,
     prefer_year_match: bool = True,
     return_mode: str = "objects"
@@ -1422,7 +1443,7 @@ def select_contest(
     return_mode: str = "objects",
     noninteractive_if_single: bool = True,
     auto_when_confident: bool = True,
-    auto_confidence_threshold: float = 0.93
+    auto_confidence_threshold: float = CONTEST_AUTO_CONFIDENCE_THRESHOLD
 ) -> Optional[List[Dict[str, Any]]]:
     """
     Adaptive contest selector with webapp prompt integration.

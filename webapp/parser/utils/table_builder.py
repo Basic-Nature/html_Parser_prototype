@@ -16,7 +16,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import orjson
 from rich.table import Table
 
-from ..config import CACHE_DIR
+from ..config import (
+    CACHE_DIR,
+    TABLE_BUILDER_AUTO_ACCEPT_THRESHOLD,
+    TABLE_BUILDER_LOW_CONFIDENCE_THRESHOLD,
+)
 from ..Context_Integration.Context_Library.constants import (
     BALLOT_TYPES_SORT_ORDER,
     LOCATION_KEYWORDS,
@@ -42,7 +46,9 @@ from .pivot import pivot_candidate_groups_from_rawjson
 from .pivot import pivot_to_wide as pivot_to_wide_format
 from .salvage import collapse_ballot_synonym_columns
 from .shared_logic import (
+    batch_log_rejections,
     build_camelot_row_filter_for_context,
+    log_rejection_reason,
     record_noise_suggestion,
     resolve_state_county_from_context,
     safe_append,
@@ -1195,10 +1201,10 @@ def prompt_user_to_confirm_table_structure(
             nlp_suggestions = safe_append(nlp_suggestions, (h, None, None))
 
     avg_score = sum(ml_scores) / len(ml_scores) if ml_scores else 0.0
-    auto_accept_threshold = 0.93  # Accept automatically if ML is very confident
+    auto_accept_threshold = TABLE_BUILDER_AUTO_ACCEPT_THRESHOLD  # Accept automatically if ML is very confident
 
     # If ML confidence is low and NLP suggests better header names, auto-apply those suggestions
-    if avg_score < 0.7 and any(ent and ent != h for h, ent, label in nlp_suggestions):
+    if avg_score < TABLE_BUILDER_LOW_CONFIDENCE_THRESHOLD and any(ent and ent != h for h, ent, label in nlp_suggestions):
         _emit("info", "builder", "[TABLE_BUILDER] ML confidence low; auto-applying NLP header suggestions", session_id, contest=contest)
         alt = safe_copy(new_headers)
         for idx, (h, ent, label) in enumerate(nlp_suggestions):
@@ -1252,6 +1258,18 @@ def prompt_user_to_confirm_table_structure(
             _emit("info", "builder", "[TABLE_BUILDER] Auto-accepting structure due to high ML confidence", session_id, confidence=round(avg_score, 3))
             new_headers = candidate_headers
             break
+        else:
+            # Log that this structure did not meet auto-accept threshold (constructive criticism)
+            log_rejection_reason(
+                decision_context="table_structure",
+                confidence_score=avg_score,
+                rejection_reason="below auto-accept threshold",
+                candidate_info={"contest": contest, "headers": candidate_headers[:5]},
+                threshold_name="TABLE_BUILDER_AUTO_ACCEPT_THRESHOLD",
+                threshold_value=auto_accept_threshold,
+                function_name="build_table",
+                session_id=session_id,
+            )
 
         # Interactive options (CLI)
         logger.info({
@@ -1279,6 +1297,17 @@ def prompt_user_to_confirm_table_structure(
             denied_count = denied_structures[sig]
             with open(denied_structures_path, "wb") as f:
                 f.write(orjson.dumps(denied_structures, option=orjson.OPT_INDENT_2))
+            # Log user rejection for QA review
+            log_rejection_reason(
+                decision_context="table_structure",
+                confidence_score=avg_score,
+                rejection_reason="user explicitly rejected",
+                candidate_info={"contest": contest, "headers": candidate_headers, "denial_count": denied_count},
+                threshold_name="TABLE_BUILDER_AUTO_ACCEPT_THRESHOLD",
+                threshold_value=auto_accept_threshold,
+                function_name="build_table",
+                session_id=session_id,
+            )
             _emit("info", "builder", "[TABLE_BUILDER] User declined structure", session_id, contest=contest, denied_count=denied_count)
             retry = input("Would you like to retry correction? [y/N]: ").strip().lower()
             if retry in ("y", "yes"):
@@ -1509,7 +1538,11 @@ def auto_suggest_corrections(headers, data, coordinator: CoordinatorProtocol | N
 
     return suggestions
 
-def dynamic_confidence_threshold(history, coordinator: CoordinatorProtocol | None = None, default=0.93):
+def dynamic_confidence_threshold(
+    history,
+    coordinator: CoordinatorProtocol | None = None,
+    default=TABLE_BUILDER_AUTO_ACCEPT_THRESHOLD,
+):
     """
     Adjust threshold for auto-accepting structures based on past accuracy and feedback log.
     If a ContextCoordinator is provided, use its feedback analytics for smarter adjustment.

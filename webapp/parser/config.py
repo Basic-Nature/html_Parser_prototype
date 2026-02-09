@@ -78,6 +78,10 @@ CACHE_DIR = CONTEXT_LIBRARY_DIR / "cache"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+# Static quick-copy directory (session-scoped assets)
+QUICK_COPY_DIR = BASE_DIR / "static" / "quick_copy"
+QUICK_COPY_DIR.mkdir(parents=True, exist_ok=True)
+
 # Run history (NDJSON lines: start/end events for parser runs)
 RUN_HISTORY_FILE = LOG_DIR / "run_history.ndjson"
 # Ensure file exists (optional – create empty if missing)
@@ -492,6 +496,14 @@ __all__ = [
     "OCR_MARKUP_HTML_TAG_RATIO","OCR_DEBUG_SAVE_IMAGES",
     "OCR_FAST_MODE_DPI_LIMIT","OCR_FAST_MODE_SAMPLE_LIMIT",
     "PDF_FAST_MODE","PDF_PROBE_MAX_PAGES",
+    "TABLE_BUILDER_AUTO_ACCEPT_THRESHOLD","TABLE_BUILDER_LOW_CONFIDENCE_THRESHOLD",
+    "HEADER_CONFIDENCE_THRESHOLD","HEADER_INSERT_CONFIDENCE_THRESHOLD",
+    "SEGMENT_ML_LABEL_THRESHOLD","SEGMENT_ML_LABEL_THRESHOLD_STRICT",
+    "ENTITY_LINKING_THRESHOLD",
+    "CONTEST_VERIFY_THRESHOLD","CONTEST_VERIFY_FLOOR_NO_MODEL",
+    "CONTEST_FEEDBACK_THRESHOLD","CONTEST_FEEDBACK_MIN_THRESHOLD",
+    "CONTEST_AUTO_CONFIDENCE_THRESHOLD",
+    "SLOW_NLP_AUDIT_THRESHOLD","SLOW_NLP_AUDIT_MIN_HITS",
     # OCR helpers
     "get_ocr_config_dict","log_ocr_config_summary",
     # ML quality metrics
@@ -611,6 +623,58 @@ OCR_FAST_MODE_SAMPLE_LIMIT = int(os.environ.get("OCR_FAST_MODE_SAMPLE_LIMIT", "6
 # PDF-specific fast mode (enables aggressive optimization for PDF parsing)
 PDF_FAST_MODE = os.environ.get("PDF_FAST_MODE", "false").lower() in ("1", "true", "yes")
 PDF_PROBE_MAX_PAGES = int(os.environ.get("PDF_PROBE_MAX_PAGES", "5"))
+
+# --- Confidence Thresholds (Table Structure + Header Mapping) ---
+# These values tune ML/NLP confidence gates for table/header validation.
+TABLE_BUILDER_AUTO_ACCEPT_THRESHOLD = float(
+    os.environ.get("TABLE_BUILDER_AUTO_ACCEPT_THRESHOLD", "0.94")
+)
+TABLE_BUILDER_LOW_CONFIDENCE_THRESHOLD = float(
+    os.environ.get("TABLE_BUILDER_LOW_CONFIDENCE_THRESHOLD", "0.75")
+)
+HEADER_CONFIDENCE_THRESHOLD = float(
+    os.environ.get("HEADER_CONFIDENCE_THRESHOLD", "0.88")
+)
+HEADER_INSERT_CONFIDENCE_THRESHOLD = float(
+    os.environ.get("HEADER_INSERT_CONFIDENCE_THRESHOLD", "0.88")
+)
+
+# --- NLP/ML Conjunction Thresholds ---
+# Tune for unbiased recognition on names/places and higher-precision labeling.
+SEGMENT_ML_LABEL_THRESHOLD = float(
+    os.environ.get("SEGMENT_ML_LABEL_THRESHOLD", "0.80")
+)
+SEGMENT_ML_LABEL_THRESHOLD_STRICT = float(
+    os.environ.get("SEGMENT_ML_LABEL_THRESHOLD_STRICT", "0.88")
+)
+ENTITY_LINKING_THRESHOLD = float(
+    os.environ.get("ENTITY_LINKING_THRESHOLD", "0.85")
+)
+
+# --- Contest Selection Thresholds ---
+CONTEST_VERIFY_THRESHOLD = float(
+    os.environ.get("CONTEST_VERIFY_THRESHOLD", "0.78")
+)
+CONTEST_VERIFY_FLOOR_NO_MODEL = float(
+    os.environ.get("CONTEST_VERIFY_FLOOR_NO_MODEL", "0.70")
+)
+CONTEST_FEEDBACK_THRESHOLD = float(
+    os.environ.get("CONTEST_FEEDBACK_THRESHOLD", "0.82")
+)
+CONTEST_FEEDBACK_MIN_THRESHOLD = float(
+    os.environ.get("CONTEST_FEEDBACK_MIN_THRESHOLD", "0.65")
+)
+CONTEST_AUTO_CONFIDENCE_THRESHOLD = float(
+    os.environ.get("CONTEST_AUTO_CONFIDENCE_THRESHOLD", "0.94")
+)
+
+# --- Slow NLP Audit Thresholds (web pipeline) ---
+SLOW_NLP_AUDIT_THRESHOLD = float(
+    os.environ.get("SLOW_NLP_AUDIT_THRESHOLD", "0.60")
+)
+SLOW_NLP_AUDIT_MIN_HITS = int(
+    os.environ.get("SLOW_NLP_AUDIT_MIN_HITS", "1")
+)
 
 # --- OCR telemetry helpers (kept lightweight, no external deps) ---
 def get_ocr_config_dict(config_module=None) -> dict:

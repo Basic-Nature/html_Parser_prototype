@@ -1,0 +1,11 @@
+br
+hr
+wbr
+col
+colgroup
+thead
+tbody
+tfoot
+tr
+th
+td

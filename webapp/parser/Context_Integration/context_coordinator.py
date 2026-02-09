@@ -17,6 +17,7 @@ import re
 import subprocess
 import threading
 from collections import Counter, defaultdict
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -72,16 +73,24 @@ from ..utils.spacy_utils import extract_dates, extract_entities, extract_locatio
 from .Context_Library.constants import (
     BALLOT_TYPES,
     BUTTON_TAGS,
+    CONTEST_KEYWORDS,
     ELECTION_TYPES,
+    KEYWORD_PRIORITY_RESOLVER,
     KNOWN_COUNTY_TO_PRECINCTS_MAP,
     KNOWN_STATE_TO_COUNTY_MAP,
     LOCATION_KEYWORDS,
     PANEL_TAGS,
     PARTY_KEYWORDS,
+    PERCENT_KEYWORDS,
+    RESULTS_KEYWORDS,
+    STATUS_KEYWORDS,
     STATE_ABBR,
     STATE_MODULE_MAP,
     STATE_TAGS,
     TABLE_TAGS,
+    TOTAL_KEYWORDS,
+    VIEW_BY_PHRASES,
+    resolve_keyword_priority,
 )
 from .context_organizer import ContextOrganizer
 from .Integrity_check import (
@@ -282,17 +291,17 @@ def dynamic_state_county_detection(context=None, html=None, debug=False, coordin
         known_states, all_counties, all_precincts = cache[cache_key]
     else:
         known_states = set(state_to_county.keys())
-        state_to_county_values = state_to_county.values() if isinstance(state_to_county, dict) else state_to_county
+        state_to_county_values = state_to_county.values() if isinstance(state_to_county, Mapping) else state_to_county
         all_counties = {normalize_county_name(c) for counties in state_to_county_values for c in counties}
-        county_to_precinct_values = county_to_precinct.values() if isinstance(county_to_precinct, dict) else county_to_precinct
+        county_to_precinct_values = county_to_precinct.values() if isinstance(county_to_precinct, Mapping) else county_to_precinct
         all_precincts = {normalize_county_name(d) for precincts in county_to_precinct_values for d in precincts}
         cache[cache_key] = (known_states, all_counties, all_precincts)
 
     known_states = set(state_to_county.keys())
-    state_to_county_values = state_to_county.values() if isinstance(state_to_county, dict) else state_to_county
+    state_to_county_values = state_to_county.values() if isinstance(state_to_county, Mapping) else state_to_county
     all_counties = {normalize_county_name(c) for counties in state_to_county_values for c in counties}
 
-    county_to_precinct_values = county_to_precinct.values() if isinstance(county_to_precinct, dict) else county_to_precinct
+    county_to_precinct_values = county_to_precinct.values() if isinstance(county_to_precinct, Mapping) else county_to_precinct
     all_precincts = {normalize_county_name(d) for precincts in county_to_precinct_values for d in precincts}
 
     entities_cache = None
@@ -1036,6 +1045,135 @@ class ContextCoordinator(object):
             logger.error(f"[append_to_context_library] Failed: {e}", exc_info=True)
             return False
 
+    def _collect_priority_tokens(self, organized: dict | None, raw_context: dict | None) -> set[str]:
+        tokens: set[str] = set()
+
+        def _add_text(text: object) -> None:
+            if not isinstance(text, str):
+                return
+            cleaned = safe_lower(safe_strip(text))
+            if not cleaned:
+                return
+            tokens.add(cleaned)
+            for part in re.split(r"[\|,;/\n\r\t]+", cleaned):
+                part = safe_strip(part)
+                if part:
+                    tokens.add(part)
+                    for word in part.split():
+                        if word:
+                            tokens.add(word)
+
+        def _from_group(group: object) -> None:
+            if isinstance(group, dict):
+                for key, items in safe_items(group):
+                    _add_text(key)
+                    if isinstance(items, list):
+                        for item in items:
+                            if isinstance(item, dict):
+                                for field in ("label", "title", "text", "heading", "button_text", "value"):
+                                    _add_text(item.get(field))
+                            else:
+                                _add_text(item)
+            elif isinstance(group, list):
+                for item in group:
+                    if isinstance(item, dict):
+                        for field in ("label", "title", "text", "heading", "button_text", "value"):
+                            _add_text(item.get(field))
+                    else:
+                        _add_text(item)
+
+        organized = organized if isinstance(organized, dict) else {}
+        raw_context = raw_context if isinstance(raw_context, dict) else {}
+
+        for key in (
+            "panels",
+            "buttons",
+            "tables",
+            "candidate_panels",
+            "location_panels",
+            "headings",
+            "ballot_types",
+            "results_timestamps",
+            "party_labels",
+            "vote_methods",
+        ):
+            _from_group(organized.get(key))
+
+        for key in ("contest", "contests", "race", "office", "title"):
+            value = raw_context.get(key)
+            if isinstance(value, list):
+                for item in value:
+                    _add_text(item)
+            else:
+                _add_text(value)
+
+        return tokens
+
+    def _build_priority_context(self, organized: dict | None, raw_context: dict | None) -> Dict[str, Any]:
+        organized = organized if isinstance(organized, dict) else {}
+        raw_context = raw_context if isinstance(raw_context, dict) else {}
+        metadata = organized.get("metadata") if isinstance(organized.get("metadata"), dict) else {}
+        state = raw_context.get("state") or metadata.get("state")
+        county = raw_context.get("county") or metadata.get("county")
+
+        tokens = self._collect_priority_tokens(organized, raw_context)
+        location_terms = {t for t in tokens if t in LOCATION_KEYWORDS}
+        status_terms = {t for t in tokens if t in STATUS_KEYWORDS}
+        result_terms = {t for t in tokens if t in RESULTS_KEYWORDS}
+        ui_terms = {t for t in tokens if t in VIEW_BY_PHRASES}
+        ballot_terms = {t for t in tokens if t in BALLOT_TYPES}
+        contest_terms = {t for t in tokens if t in CONTEST_KEYWORDS}
+
+        return {
+            "state": state,
+            "county": county,
+            "office": raw_context.get("office") or raw_context.get("race") or metadata.get("race"),
+            "contest": raw_context.get("contest") or raw_context.get("contest_title"),
+            "candidate": raw_context.get("candidate") or raw_context.get("candidates"),
+            "party": raw_context.get("party") or raw_context.get("parties"),
+            "tokens": sorted(tokens),
+            "location_terms": sorted(location_terms),
+            "status_terms": sorted(status_terms),
+            "result_terms": sorted(result_terms),
+            "ui_terms": sorted(ui_terms),
+            "ballot_terms": sorted(ballot_terms),
+            "contest_terms": sorted(contest_terms),
+        }
+
+    def _apply_keyword_priority_resolution(
+        self,
+        organized: dict | None,
+        raw_context: dict | None,
+        *,
+        threshold: float = 0.6,
+    ) -> dict:
+        organized = organized if isinstance(organized, dict) else {}
+        metadata = organized.setdefault("metadata", {})
+        priority_context = self._build_priority_context(organized, raw_context)
+        tokens = set(priority_context.get("tokens", []))
+
+        resolver_keys = set(KEYWORD_PRIORITY_RESOLVER.keys())
+        candidate_tokens = sorted(t for t in tokens if t in resolver_keys)
+
+        resolution: Dict[str, Any] = {}
+        for token in candidate_tokens:
+            ranked = resolve_keyword_priority(token, context=priority_context)
+            if not ranked:
+                continue
+            top_bucket, top_score = ranked[0]
+            resolution[token] = {
+                "ranked": [{"bucket": b, "score": round(s, 4)} for b, s in ranked],
+                "selected": top_bucket if top_score >= threshold else None,
+                "confidence": round(top_score, 4),
+            }
+
+        if resolution:
+            metadata["keyword_priority"] = {
+                "threshold": threshold,
+                "resolved": resolution,
+            }
+        return organized
+
     def _build_enrichment_plan(self, raw_context, overrides=None) -> dict:
         """Derive a scoped enrichment plan so downstream work can run in targeted routes."""
         ctx = raw_context if isinstance(raw_context, dict) else {}
@@ -1073,6 +1211,107 @@ class ContextCoordinator(object):
                 continue
         if not source_hint:
             source_hint = normalized_hint or "html"
+
+        override_mode = None
+        override_purpose = None
+        if isinstance(overrides, dict):
+            override_mode = overrides.get("mode")
+            override_purpose = overrides.get("purpose")
+
+        mode = ctx.get("enrichment_mode") or override_mode or "hybrid"
+        if isinstance(mode, str):
+            mode = mode.strip().lower()
+        if mode not in {"librarian", "organizer", "hybrid"}:
+            mode = "hybrid"
+
+        purpose = ctx.get("enrichment_purpose") or override_purpose or "auto"
+        if isinstance(purpose, str):
+            purpose = purpose.strip()
+        else:
+            purpose = "auto"
+
+        purpose_profiles: dict[str, dict[str, Any]] = {
+            "dom_scan": {
+                "mode": "organizer",
+                "route_weights": {
+                    "dom": 1.4,
+                    "sections": 1.4,
+                    "panels": 1.3,
+                    "buttons": 1.1,
+                    "headings": 1.1,
+                    "tables": 0.6,
+                },
+                "reason": "Purpose profile: emphasize DOM scanning and layout grouping.",
+            },
+            "pdf_table": {
+                "mode": "organizer",
+                "route_weights": {
+                    "tables": 1.5,
+                    "candidate_panels": 1.2,
+                    "location_panels": 1.2,
+                    "party_labels": 1.1,
+                    "results_timestamps": 1.1,
+                    "ballot_types": 1.0,
+                    "vote_methods": 1.0,
+                    "dom": 0.2,
+                },
+                "reason": "Purpose profile: prioritize PDF table reconstruction and metadata parsing.",
+            },
+            "api_structured": {
+                "mode": "organizer",
+                "route_weights": {
+                    "contests": 1.4,
+                    "candidate_panels": 1.2,
+                    "location_panels": 1.2,
+                    "ballot_types": 1.1,
+                    "vote_methods": 1.1,
+                    "tables": 0.7,
+                    "dom": 0.1,
+                },
+                "reason": "Purpose profile: prioritize structured API payload enrichment.",
+            },
+            "json_structured": {
+                "mode": "organizer",
+                "route_weights": {
+                    "contests": 1.4,
+                    "candidate_panels": 1.2,
+                    "location_panels": 1.2,
+                    "ballot_types": 1.1,
+                    "vote_methods": 1.1,
+                    "tables": 0.8,
+                    "dom": 0.1,
+                },
+                "reason": "Purpose profile: prioritize structured JSON payload enrichment.",
+            },
+            "ocr_cleanup": {
+                "mode": "organizer",
+                "route_weights": {
+                    "dom": 1.3,
+                    "sections": 1.3,
+                    "tables": 1.1,
+                    "ml": 1.2,
+                    "candidate_panels": 1.1,
+                    "location_panels": 1.1,
+                },
+                "reason": "Purpose profile: emphasize OCR cleanup with layout grouping + ML.",
+            },
+            "db_repair": {
+                "mode": "librarian",
+                "route_weights": {
+                    "disambiguation": 1.6,
+                    "contests": 1.4,
+                    "integrity": 1.2,
+                    "ml": 0.6,
+                },
+                "reason": "Purpose profile: prioritize disambiguation and integrity repair.",
+            },
+        }
+
+        purpose_key = purpose.lower().strip() if isinstance(purpose, str) else ""
+        purpose_profile = purpose_profiles.get(purpose_key)
+        desired_mode = purpose_profile.get("mode") if purpose_profile else None
+        if desired_mode:
+            mode = desired_mode
 
         format_profiles: dict[str, dict] = {
             "html": {
@@ -1171,13 +1410,22 @@ class ContextCoordinator(object):
         }
 
         routes: set[str] = set()
+        route_weights: dict[str, float] = {}
         reasoning: list[str] = []
         metadata_tags: set[str] = {f"source:{source_hint}"}
         dynamic_paths: list[dict[str, Any]] = []
 
+        def _set_route_weight(route: str, weight: float) -> None:
+            route_weights[route] = max(route_weights.get(route, 0.0), float(weight))
+
+        def _add_routes(route_names: set[str] | list[str], weight: float = 1.0) -> None:
+            for route in route_names:
+                routes.add(route)
+                _set_route_weight(route, weight)
+
         profile = format_profiles.get(source_hint) or format_profiles.get("html")
         if profile:
-            routes.update(profile["routes"])
+            _add_routes(profile["routes"], weight=1.0)
             reasoning.append(profile["reason"])
             metadata_tags.update(profile["tags"])
             dynamic_paths.append({
@@ -1187,20 +1435,114 @@ class ContextCoordinator(object):
                 "trigger": "format_profile",
             })
 
-        if ctx.get("raw_html") or ctx.get("dom_parts"):
-            routes.update({"dom", "sections", "panels", "buttons", "headings"})
-            reasoning.append("HTML context present; enabling panel/button grouping.")
-            metadata_tags.add("route:dom_panels")
+        mode_profiles: dict[str, dict[str, Any]] = {
+            "librarian": {
+                "routes": {"contests", "disambiguation"},
+                "route_weights": {
+                    "disambiguation": 1.5,
+                    "contests": 1.3,
+                    "tables": 0.3,
+                },
+                "allow_dom": False,
+                "allow_ml": False,
+                "allow_integrity": False,
+                "reason": "Librarian mode: prioritize contextual disambiguation and contest routing.",
+            },
+            "organizer": {
+                "routes": {"disambiguation"},
+                "route_weights": {
+                    "disambiguation": 1.2,
+                    "dom": 1.1,
+                    "sections": 1.1,
+                    "panels": 1.0,
+                    "buttons": 0.9,
+                    "headings": 0.9,
+                    "tables": 1.1,
+                    "ml": 1.2,
+                    "integrity": 1.1,
+                },
+                "allow_dom": True,
+                "allow_ml": True,
+                "allow_integrity": True,
+                "reason": "Organizer mode: prioritize full DOM/ML enrichment and storage.",
+            },
+            "hybrid": {
+                "routes": {"disambiguation"},
+                "route_weights": {
+                    "disambiguation": 1.3,
+                    "tables": 1.0,
+                    "ml": 1.0,
+                    "integrity": 1.0,
+                },
+                "allow_dom": True,
+                "allow_ml": True,
+                "allow_integrity": True,
+                "reason": "Hybrid mode: combine librarian disambiguation with organizer enrichment.",
+            },
+        }
+
+        mode_profile = mode_profiles.get(mode, mode_profiles["hybrid"])
+        if mode == "librarian":
+            routes = set(mode_profile["routes"])
+            route_weights = {}
+            _add_routes(mode_profile["routes"], weight=1.0)
+        else:
+            _add_routes(mode_profile["routes"], weight=1.0)
+
+        for route, weight in mode_profile.get("route_weights", {}).items():
+            if route in routes:
+                _set_route_weight(route, weight)
+
+        if not mode_profile.get("allow_ml", True):
+            routes.discard("ml")
+            route_weights["ml"] = 0.0
+        if not mode_profile.get("allow_integrity", True):
+            routes.discard("integrity")
+            route_weights["integrity"] = 0.0
+
+        metadata_tags.add(f"mode:{mode}")
+        if purpose:
+            metadata_tags.add(f"purpose:{purpose}")
+        reasoning.append(mode_profile["reason"])
+        dynamic_paths.append({
+            "format": "mode_profile",
+            "routes": sorted(mode_profile["routes"]),
+            "reason": mode_profile["reason"],
+            "trigger": f"mode:{mode}",
+        })
+
+        if purpose_profile:
+            if desired_mode:
+                metadata_tags.add(f"purpose_mode:{desired_mode}")
+            for route, weight in purpose_profile.get("route_weights", {}).items():
+                _add_routes({route}, weight=weight)
+            reasoning.append(purpose_profile["reason"])
             dynamic_paths.append({
-                "format": "html_dom_context",
-                "routes": ["dom", "sections", "panels", "buttons", "headings"],
-                "reason": "raw_html/dom_parts provided",
-                "trigger": "raw_html",
+                "format": "purpose_profile",
+                "routes": sorted(purpose_profile.get("route_weights", {}).keys()),
+                "reason": purpose_profile["reason"],
+                "trigger": f"purpose:{purpose_key}",
             })
 
+        if ctx.get("raw_html") or ctx.get("dom_parts"):
+            dom_allowed = bool(mode_profile.get("allow_dom")) or ctx.get("force_dom_enrichment") is True
+            if dom_allowed:
+                _add_routes({"dom", "sections", "panels", "buttons", "headings"}, weight=1.0)
+                reasoning.append("HTML context present; enabling panel/button grouping.")
+                metadata_tags.add("route:dom_panels")
+                dynamic_paths.append({
+                    "format": "html_dom_context",
+                    "routes": ["dom", "sections", "panels", "buttons", "headings"],
+                    "reason": "raw_html/dom_parts provided",
+                    "trigger": "raw_html",
+                })
+            else:
+                reasoning.append("DOM context present but mode disallows DOM enrichment.")
+                metadata_tags.add("route:dom_skipped")
+
         if ctx.get("vote_methods") or ctx.get("ballot_types"):
-            routes.update({"ballot_types", "vote_methods"})
             reasoning.append("Detected ballot/vote method clues in raw context.")
+            _add_routes({"ballot_types", "vote_methods"}, weight=1.0)
             dynamic_paths.append({
                 "format": "ballot_meta",
                 "routes": ["ballot_types", "vote_methods"],
@@ -1209,7 +1551,7 @@ class ContextCoordinator(object):
             })
 
         if ctx.get("candidate_panels") or ctx.get("location_panels"):
-            routes.update({"candidate_panels", "location_panels"})
+            _add_routes({"candidate_panels", "location_panels"}, weight=1.0)
             reasoning.append("Existing candidate/location panels provided; preserving enrichment path.")
             dynamic_paths.append({
                 "format": "panel_inheritance",
@@ -1219,7 +1561,7 @@ class ContextCoordinator(object):
             })
 
         if ctx.get("tables") or ctx.get("line_records"):
-            routes.add("tables")
+            _add_routes({"tables"}, weight=1.0)
             reasoning.append("Structured tables present; running table grouping route.")
             dynamic_paths.append({
                 "format": "table_payload",
@@ -1229,14 +1571,20 @@ class ContextCoordinator(object):
             })
 
         if ctx.get("contests"):
-            routes.update({"contests", "ml", "integrity"})
+            _add_routes({"contests", "ml", "integrity"}, weight=1.0)
             reasoning.append("Contest payload found; keeping ML + integrity checks enabled.")
 
         if not routes:
-            routes.update({"dom", "sections", "contests"})
+            _add_routes({"dom", "sections", "contests"}, weight=1.0)
+
+        if "disambiguation" not in routes:
+            _add_routes({"disambiguation"}, weight=1.0)
+            reasoning.append("Keyword disambiguation enabled via librarian resolver.")
+            metadata_tags.add("route:disambiguation")
 
         if not self.enable_ml and "ml" in routes:
             routes.discard("ml")
+            route_weights["ml"] = 0.0
             reasoning.append("Coordinator ML disabled; dropped 'ml' route.")
 
         forced_routes = set()
@@ -1253,7 +1601,7 @@ class ContextCoordinator(object):
             else:
                 forced_routes = {overrides}
         if forced_routes:
-            routes.update(forced_routes)
+            _add_routes(forced_routes, weight=1.0)
             metadata_tags.update({f"override_force:{route}" for route in forced_routes})
             reasoning.append(f"Forced routes applied: {sorted(forced_routes)}")
             dynamic_paths.append({
@@ -1264,6 +1612,8 @@ class ContextCoordinator(object):
             })
         if dropped_routes:
             routes.difference_update(dropped_routes)
+            for route in dropped_routes:
+                route_weights[route] = 0.0
             metadata_tags.update({f"override_drop:{route}" for route in dropped_routes})
             reasoning.append(f"Dropped routes per override: {sorted(dropped_routes)}")
 
@@ -1280,11 +1630,25 @@ class ContextCoordinator(object):
             "vote_methods",
         }
         if routes & dependent_routes:
-            routes.add("sections")
+            _add_routes({"sections"}, weight=1.0)
+
+        dom_routes = {"dom", "sections", "panels", "buttons", "headings"}
+        if not mode_profile.get("allow_dom", True):
+            for route in dom_routes:
+                routes.discard(route)
+                route_weights[route] = 0.0
+
+        routes = {route for route in routes if route_weights.get(route, 0.0) > 0.0}
+        if "disambiguation" in route_weights and "disambiguation" not in routes:
+            route_weights["disambiguation"] = 1.0
+            routes.add("disambiguation")
 
         plan = {
             "source": source_hint,
+            "mode": mode,
+            "purpose": purpose,
             "routes": sorted(routes),
+            "route_weights": {key: round(value, 3) for key, value in sorted(route_weights.items()) if value > 0.0},
             "reasoning": reasoning,
             "metadata_tags": sorted(metadata_tags),
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -1303,6 +1667,7 @@ class ContextCoordinator(object):
             "plan": plan,
             "contest_count": len(contests) if isinstance(contests, list) else 0,
             "routes_executed": plan.get("routes", []),
+            "route_weights": plan.get("route_weights", {}),
             "anomaly_count": len(organized.get("anomalies", [])) if isinstance(organized.get("anomalies", []), list) else 0,
             "integrity_issue_count": len(organized.get("integrity_issues", [])) if isinstance(organized.get("integrity_issues", []), list) else 0,
             "state": metadata.get("state") if isinstance(metadata, dict) else None,
@@ -1642,6 +2007,17 @@ class ContextCoordinator(object):
             self.organized = result["organized"] if result["organized"] is not None else {}
         else:
             self.organized = result if isinstance(result, dict) else {}
+        if enrichment_plan and "disambiguation" in (enrichment_plan.get("routes") or []):
+            threshold = 0.6
+            if isinstance(raw_context, dict):
+                threshold = raw_context.get("keyword_priority_threshold", threshold)
+            self.organized = self._apply_keyword_priority_resolution(
+                self.organized,
+                raw_context,
+                threshold=float(threshold) if isinstance(threshold, (int, float)) else 0.6,
+            )
+            self.organized = self.organizer.apply_keyword_priority_hints(self.organized)
+            self.append_to_context_library(self.organized, path=self.organizer.context_library_path)
         self._enrich_contests_with_nlp()
         summary = result.get("summary") if isinstance(result, dict) else None
         self._log_enrichment_snapshot(enrichment_plan, self.organized, summary=summary)
@@ -2005,6 +2381,22 @@ class ContextCoordinator(object):
             self.organizer.plot_contest_distribution(contests)
         except Exception as e:
             logger.error(f"[plot_contest_distribution] Failed: {e}", exc_info=True)
+
+    def get_vocab_constant(
+        self,
+        subdir: str,
+        filename: str,
+        *,
+        mapping: bool = False,
+        session_id: str | None = None,
+    ):
+        """Load a vocab constant from Context_Integration/vocab with caching."""
+        from .vocab.loader import get_vocab_loader
+
+        loader = get_vocab_loader()
+        if mapping:
+            return loader.load_mapping(subdir, filename, session_id=session_id)
+        return loader.load_canonical(subdir, filename, session_id=session_id)
 
     def get_known_state_to_county_map(self) -> List[str]:
         """

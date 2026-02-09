@@ -1,0 +1,18 @@
+# Ballot display overrides
+absentee by mail -> Absentee by Mail
+absentee -> Absentee
+advance in person -> Advance In Person
+advance in-person -> Advance In Person
+advance voting -> Advance Voting
+early in person -> Advance In Person
+early in-person -> Advance In Person
+early voting -> Early Voting
+early vote -> Early Voting
+election day -> Election Day
+mail -> Mail
+mail in votes -> Mail
+mail-in votes -> Mail
+provisional -> Provisional
+total -> Total Votes
+total votes -> Total Votes
+mail in -> Mail

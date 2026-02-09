@@ -227,8 +227,8 @@ print(results.best_params)
 ### Performance Benchmarks
 
 ```bash
-# Run benchmarks
-python scripts/benchmark_ml_models.py
+# Run benchmarks (planned script, not yet in repo)
+# python scripts/benchmark_ml_models.py
 
 # Output:
 # Table Detection: 245 ms per document

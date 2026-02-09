@@ -1,0 +1,4 @@
+# Canonical fallback selectors for container discovery
+section
+ul
+ol

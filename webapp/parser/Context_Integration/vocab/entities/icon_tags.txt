@@ -1,0 +1,5 @@
+i
+svg
+path
+g
+span

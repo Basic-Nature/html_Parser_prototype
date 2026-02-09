@@ -1,0 +1,15 @@
+county
+independent city
+municipality
+borough
+parish
+district
+village
+city
+town
+island
+region
+census area
+consolidated city-county
+consolidated city-parish
+other

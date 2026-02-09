@@ -1,0 +1,7 @@
+results
+outcome
+tally
+count
+vote count
+vote total
+vote tally

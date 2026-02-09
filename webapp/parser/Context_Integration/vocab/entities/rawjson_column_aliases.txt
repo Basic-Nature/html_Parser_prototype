@@ -1,0 +1,4 @@
+# JSON extraction/salvage column aliases
+rawjson
+raw json
+json

@@ -18,14 +18,14 @@ ImportError: undefined symbol: _PyDict_Contains_KnownHash
 ### Root Cause
 
 - **Container was using**: Python 3.13 (`.Dockerfile` line 2)
-- **But orjson compiled for**: Python 3.12 only
+- **But orjson compiled for**: Python 3.12.10 only
 - **Result**: C API mismatch → gunicorn workers crash during import
 
 ### Solution Applied ✅
 
 | Component | Before | After | Status |
 | ----------- | -------- | ------- | -------- |
-| `.Dockerfile` line 2 | `FROM python:3.13-slim-bookworm` | `FROM python:3.12-slim-bookworm` | ✅ FIXED |
+| `.Dockerfile` line 2 | `FROM python:3.13-slim-bookworm` | `FROM python:3.12.10-slim-bookworm` | ✅ FIXED |
 | `requirements.txt` | No warning | Added warning comments | ✅ ADDED |
 | Documentation | None | 2 guides created | ✅ CREATED |
 
@@ -36,9 +36,9 @@ ImportError: undefined symbol: _PyDict_Contains_KnownHash
 ### 1. ✅ `.Dockerfile` (Line 2-3)
 
 ```dockerfile
-# ⚠️ IMPORTANT: Keep Python 3.12 (NOT 3.13) for orjson binary compatibility
-# orjson 3.9.5 has ABI issues with Python 3.13; 3.12 has stable wheels
-FROM python:3.12-slim-bookworm
+# ⚠️ IMPORTANT: Keep Python 3.12.10 (NOT 3.13) for orjson binary compatibility
+# orjson 3.9.5 has ABI issues with Python 3.13; 3.12.10 has stable wheels
+FROM python:3.12.10-slim-bookworm
 ```
 
 ### 2. ✅ `requirements.txt` (Lines 37-40)

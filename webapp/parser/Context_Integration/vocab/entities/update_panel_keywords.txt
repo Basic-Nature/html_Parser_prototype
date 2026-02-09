@@ -1,0 +1,29 @@
+# Update panel keywords (temporal/status indicators)
+last updated
+auto-refresh
+updated in real time
+posted
+as of
+timestamp
+date
+time
+reporting status
+election districts reporting
+fully reported
+incoming ballots
+download reports
+export
+media export
+powered by
+results last updated
+percent reporting
+no results yet
+ballots counted
+ballots remaining
+ballots cast
+precincts reporting
+precincts counted
+precincts remaining
+vote method
+followed results
+search

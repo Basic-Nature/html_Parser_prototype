@@ -2,7 +2,7 @@
 
 **Date**: February 2, 2026  
 **Issue**: orjson import fails on Python 3.13 with `ImportError: undefined symbol: _PyDict_Contains_KnownHash`  
-**Status**: ✅ **FIXED** — Ready to redeploy
+**Status**: ✅ **FIXED** — Using Python 3.12.10
 
 ---
 
@@ -11,14 +11,14 @@
 ### 1. ✅ `.Dockerfile` - Python Version Downgrade
 
 **File**: [.Dockerfile](.Dockerfile) Line 2  
-**Change**: `FROM python:3.13-slim-bookworm` → `FROM python:3.12-slim-bookworm`  
-**Reason**: orjson 3.9.5 binary is incompatible with Python 3.13 ABI
+**Change**: `FROM python:3.13-slim-bookworm` → `FROM python:3.12.10-slim-bookworm`  
+**Reason**: orjson 3.9.5 binary is incompatible with Python 3.13 ABI; 3.12.10 is the tuned version
 
 ### 2. ✅ `requirements.txt` - Added Warning Documentation
 
 **File**: [requirements.txt](requirements.txt) Lines 37-40  
-**Change**: Added comments explaining Python 3.12 requirement and orjson coupling  
-**Reason**: Prevent future deployments with Python 3.13
+**Change**: Added comments explaining Python 3.12.10 requirement and orjson coupling  
+**Reason**: Prevent future deployments with Python 3.13; enforce 3.12.10 for consistency
 
 ### 3. ✅ `AZURE_DEPLOYMENT_CHECKLIST.md` - Created
 
@@ -109,7 +109,7 @@ Watch for:
 
 | File | Change | Impact |
 | ------ | -------- | -------- |
-| [.Dockerfile](.Dockerfile) | Line 2: Python 3.13 → 3.12 | **CRITICAL** - Fixes immediate deployment failure |
+| [.Dockerfile](.Dockerfile) | Line 2: Python 3.13 → 3.12.10 | **CRITICAL** - Fixes immediate deployment failure |
 | [requirements.txt](requirements.txt) | Lines 37-40: Added comments | **INFO** - Prevents future misconfigurations |
 | [AZURE_DEPLOYMENT_CHECKLIST.md](AZURE_DEPLOYMENT_CHECKLIST.md) | NEW FILE | **REFERENCE** - Deployment runbook & troubleshooting |
 

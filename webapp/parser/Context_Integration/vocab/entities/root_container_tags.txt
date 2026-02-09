@@ -1,0 +1,4 @@
+# Root container tags (document/application roots)
+body
+html
+app-root

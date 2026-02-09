@@ -426,6 +426,27 @@ class WarehouseElectionResult(Base):
     def __repr__(self):
         return f"<WarehouseElectionResult(id={self.id}, contest={self.contest}, candidate={self.candidate})>"
 
+class DataFrameworkPreviewCache(Base):
+    """
+    Temporary preview cache for Data Framework UI sampling.
+    """
+    __tablename__ = "data_framework_preview_cache"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(String(128), index=True)
+    mode = Column(String(24), default="idle", index=True)
+    state = Column(String)
+    county = Column(String)
+    contest = Column(String)
+    year = Column(Integer)
+    source = Column(String(64), default="warehouse")
+    payload = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    last_accessed = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    expires_at = Column(DateTime, index=True)
+
+    def __repr__(self):
+        return f"<DataFrameworkPreviewCache(id={self.id}, mode={self.mode}, state={self.state}, county={self.county})>"
+
 class EmbeddingCache(Base):
     """
     Stores ML embeddings for text segments.

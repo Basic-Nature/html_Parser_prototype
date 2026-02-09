@@ -1375,6 +1375,39 @@ class ContextOrganizer(object):
             "vote_methods": self.organized.get("vote_methods", {}) if isinstance(self.organized, dict) else {},
             "metadata": self.organized.get("metadata", {}) if isinstance(self.organized, dict) else {},
         }  
+
+    def apply_keyword_priority_hints(self, organized: dict | None, log: list | None = None) -> dict:
+        organized = organized if isinstance(organized, dict) else {}
+        metadata = organized.get("metadata") if isinstance(organized.get("metadata"), dict) else {}
+        priority = metadata.get("keyword_priority") if isinstance(metadata.get("keyword_priority"), dict) else {}
+        resolved = priority.get("resolved") if isinstance(priority.get("resolved"), dict) else {}
+
+        if not resolved:
+            return organized
+
+        buckets: dict[str, set[str]] = {}
+        for token, info in resolved.items():
+            if not isinstance(info, dict):
+                continue
+            selected = info.get("selected")
+            if not selected:
+                continue
+            buckets.setdefault(str(selected), set()).add(str(token))
+
+        if not buckets:
+            return organized
+
+        summary = {bucket: len(tokens) for bucket, tokens in buckets.items()}
+        organized["keyword_priority_buckets"] = {
+            bucket: sorted(tokens) for bucket, tokens in buckets.items()
+        }
+        metadata["keyword_priority_summary"] = summary
+        organized["metadata"] = metadata
+
+        if isinstance(log, list):
+            log.append(f"[PRIORITY] Applied keyword priority hints: {summary}")
+
+        return organized
         
     def organize_context(
         self,
@@ -1659,6 +1692,7 @@ class ContextOrganizer(object):
             metadata = organized["metadata"]
             metadata["enrichment_plan"] = plan_payload
             metadata["route_summary"] = route_decisions
+            organized = self.apply_keyword_priority_hints(organized, log=log)
             sync_type_and_election_types(organized, fallback_types=best_election_types, fallback_type=best_type)
             sync_type_and_election_types(metadata, fallback_types=best_election_types, fallback_type=best_type)
             valid_years = [

@@ -1,0 +1,22 @@
+early -> Early Voting
+absentee mail -> Mail
+mail-in -> Mail
+military -> Military
+absentee/military -> Absentee Military
+absentee - military -> Absentee Military
+absentee-military -> Absentee Military
+absentee military -> Absentee Military
+military absentee -> Absentee Military
+public counter -> Election Day
+counter -> Election Day
+emergency -> Emergency
+emergency (manual) -> Emergency
+manual emergency -> Emergency
+manually counted emergency -> Emergency
+advance voting -> Early Voting
+advance in-person -> Early Voting
+advance in person -> Early Voting
+early in-person -> Early Voting
+early in person -> Early Voting
+election day scanner -> Election Day
+election day manual -> Election Day

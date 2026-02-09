@@ -42,6 +42,11 @@ desktop.ini
 secrets.*
 *.secret
 
+# Google API credentials (NEVER commit these)
+google_service_account.json
+*_service_account.json
+credentials.json
+
 # -------------------------
 # Build / packaging
 # -------------------------
@@ -68,6 +73,8 @@ nohup.out
 tools/tmp/
 tools/debug_headless_output/
 tools/prompt_smoke.html
+!tools/tmp/.gitkeep
+!tools/debug_headless_output/.gitkeep
 
 # -------------------------
 # Application runtime folders
@@ -116,6 +123,9 @@ tools/webhint-report.json
 tools/screenshots/
 tools/cluster_dom_mapping.json
 tools/reports/
+!tools/screenshots/.gitkeep
+!tools/reports/.gitkeep
+!tools/reports/annotated/.gitkeep
 
 # -------------------------
 # Browser drivers & automation

@@ -1,0 +1,35 @@
+total
+summary
+results
+report
+votes
+vote totals
+precincts reporting
+percent reporting
+fully reported
+unofficial results
+official results
+election results
+page
+table
+chart
+map
+download
+print
+export
+last updated
+as of
+posted
+timestamp
+date
+time
+no results yet
+ballots counted
+ballots remaining
+ballots cast
+provisional
+affidavit
+mail
+absentee
+other
+void

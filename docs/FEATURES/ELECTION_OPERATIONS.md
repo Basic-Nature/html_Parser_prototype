@@ -161,11 +161,12 @@ Recommendations for Next Shift:
 
 1. **Aggregate Results**
 
-   ```bash
-   python scripts/aggregate_results.py --election-date 2024-11-05
-   ```
+  ```bash
+  # Planned script (not yet in repo)
+  # python scripts/aggregate_results.py --election-date 2024-11-05
+  ```
 
-2. **Final Validation**
+1. **Final Validation**
 
    ```bash
    python health/final_validation.py \
@@ -173,7 +174,7 @@ Recommendations for Next Shift:
      --report final_validation_report.html
    ```
 
-3. **Publish Results**
+1. **Publish Results**
 
    ```bash
    # After validation approval

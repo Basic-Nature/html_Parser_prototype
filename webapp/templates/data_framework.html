@@ -10,6 +10,9 @@
           data-upload-url="{{ url_for('upload_to_input') }}"
           data-scaffold-json-url="{{ url_for('api_data_framework_scaffold') }}"
           data-scaffold-csv-url="{{ url_for('api_data_framework_scaffold_csv') }}"
+          data-curated-url="{{ url_for('api_data_framework_curated') }}"
+          data-priority-url="{{ url_for('api_data_framework_warehouse_status') }}"
+          data-preview-url="{{ url_for('api_data_framework_preview') }}"
           {% if csrf_token %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
     <!-- Bootstrap -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
@@ -46,69 +49,256 @@
           {% endif %}
         {% endwith %}
 
-        <div class="upload-section">
-          <form id="uploadForm" enctype="multipart/form-data" method="POST" action="{{ url_for('upload_to_input') }}">
-                <label for="csvFile"><b>Upload CSV to Database:</b></label><br>
-            {% if csrf_token %}
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            {% endif %}
-            <input type="file" id="csvFile" name="csv_file" accept=".csv" required>
-                <button type="submit">Upload</button>
-            </form>
-            <div id="uploadStatus" class="status status-info" aria-live="polite"></div>
-        </div>
-
-        <div class="db-table-section">
-            <div class="table-toolbar" role="region" aria-label="Table controls">
-                <div class="left-controls">
-                    <input id="globalSearch" type="search" placeholder="Search all columns..." aria-label="Search all data">
+        <div class="framework-layout" aria-label="Data Framework layout">
+          <aside class="framework-column framework-column-left" aria-label="Curated datasets">
+            <article class="framework-panel curated-panel">
+              <header class="framework-panel-header">
+                <div>
+                  <h2>Curated Dataset Gallery</h2>
+                  <p class="framework-panel-subtitle">Explore view-only datasets vetted for the Data Framework.</p>
                 </div>
-                <div class="right-controls">
-                    <button id="refreshBtn" class="btn action" data-bs-toggle="tooltip" title="Reload data from the API">🔄 Refresh</button>
-                    <button id="exportCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Export filtered results to CSV">⬇ Export CSV</button>
-                    <button id="scaffoldJsonBtn" class="btn action" data-bs-toggle="tooltip" title="Download guarded JSON scaffold">🧱 Scaffold JSON</button>
-                    <button id="scaffoldCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Download scaffold CSV">📄 Scaffold CSV</button>
-                    <button id="resetFiltersBtn" class="btn action" data-bs-toggle="tooltip" title="Clear search and sorting">↺ Reset</button>
-                    <div class="column-chooser">
-                        <button id="columnChooserBtn" class="btn action" aria-haspopup="true" aria-expanded="false" data-bs-toggle="tooltip" title="Show/hide columns">▦ Columns</button>
-                        <div id="columnChooserMenu" class="column-chooser-menu" role="menu" aria-label="Toggle visible columns"></div>
+                <div class="framework-panel-badges">
+                  <span class="badge badge-ghost">View only</span>
+                  <span class="badge badge-ghost">Curated</span>
+                </div>
+              </header>
+              <div class="framework-panel-body">
+                <div class="curated-controls">
+                  <input id="curatedSearch" type="search" placeholder="Search datasets, states, counties..." aria-label="Search curated datasets">
+                  <select id="curatedStateFilter" aria-label="Filter by state">
+                    <option value="">All states</option>
+                  </select>
+                  <select id="curatedCountyFilter" aria-label="Filter by county" disabled>
+                    <option value="">All counties</option>
+                  </select>
+                  <button type="button" class="btn action" id="curatedRefreshBtn">Refresh</button>
+                </div>
+                <div class="curated-grid">
+                  <div class="curated-list" id="curatedDatasetList" role="list"></div>
+                  <div class="curated-detail" id="curatedDatasetDetail" aria-live="polite">
+                    <div class="curated-detail-title">Select a dataset to preview details.</div>
+                    <div class="curated-detail-body">
+                      <div class="curated-metrics">
+                        <div class="metric-card"><span class="metric-label">Rows</span><span class="metric-value" id="curatedRows">—</span></div>
+                        <div class="metric-card"><span class="metric-label">Columns</span><span class="metric-value" id="curatedColumns">—</span></div>
+                        <div class="metric-card"><span class="metric-label">Updated</span><span class="metric-value" id="curatedUpdated">—</span></div>
+                      </div>
+                      <div class="curated-meta" id="curatedMeta">Pick a dataset to see its summary and source links.</div>
+                      <div class="curated-links" id="curatedLinks"></div>
                     </div>
-                    <div class="dropdown">
-                      <button class="btn action dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        More
-                      </button>
-                      <ul class="dropdown-menu dropdown-menu-end">
-                        <li><button class="dropdown-item" type="button" id="copyVisibleCsv">Copy visible as CSV</button></li>
-                        <li><a class="dropdown-item" href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer">Open docs</a></li>
-                      </ul>
+                  </div>
+                </div>
+                <div class="curated-status" id="curatedStatus" aria-live="polite"></div>
+              </div>
+            </article>
+          </aside>
+
+          <section class="framework-column framework-column-middle" aria-label="Visualization and warehouse">
+            <article class="framework-panel visualization-panel" id="vizPanel" aria-label="Visualization studio">
+              <header class="framework-panel-header">
+                <div>
+                  <h2>Visualization Studio</h2>
+                  <p class="framework-panel-subtitle">Graphs and highlight tables for the selected dataset.</p>
+                </div>
+                <div class="framework-panel-actions">
+                  <div class="framework-panel-badges">
+                    <span class="badge badge-ghost">Interactive</span>
+                    <span class="badge badge-ghost">Focused</span>
+                  </div>
+                  <button id="dropoffDrawerToggle" type="button" class="btn action drawer-toggle" aria-expanded="false" aria-controls="dropoffDrawer">Drop-off</button>
+                </div>
+              </header>
+              <div class="framework-panel-body">
+                <div class="viz-filters" aria-label="Visualization filters">
+                  <label for="vizYearSelect" class="viz-label">Year</label>
+                  <select id="vizYearSelect" aria-label="Visualization year"></select>
+                  <label for="vizContestSelect" class="viz-label">Contest</label>
+                  <select id="vizContestSelect" aria-label="Visualization contest"></select>
+                  <label for="vizTopRaceSelect" class="viz-label">Top races</label>
+                  <select id="vizTopRaceSelect" aria-label="Top races"></select>
+                  <label for="vizTopRaceCountSelect" class="viz-label">Top count</label>
+                  <select id="vizTopRaceCountSelect" aria-label="Top races count">
+                    <option value="3">Top 3</option>
+                    <option value="5" selected>Top 5</option>
+                    <option value="8">Top 8</option>
+                    <option value="10">Top 10</option>
+                  </select>
+                  <label for="vizPartySelect" class="viz-label">Party</label>
+                  <select id="vizPartySelect" aria-label="Visualization party">
+                    <option value="">All parties</option>
+                    <option value="Dem">Dem</option>
+                    <option value="Rep">Rep</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div class="viz-auto-hint" id="vizAutoHint" aria-live="polite">Auto-rotate paused</div>
+                <div class="viz-preview-status" id="vizPreviewStatus" aria-live="polite"></div>
+                <div class="viz-grid">
+                  <div class="viz-panel" id="warehouseVizChart" aria-live="polite">
+                    <div class="viz-placeholder">Select a dataset to render charts.</div>
+                  </div>
+                  <div class="viz-panel" id="warehouseVizTable" aria-live="polite">
+                    <div class="viz-placeholder">Top rows will appear here for the chosen dataset.</div>
+                  </div>
+                </div>
+                <div class="viz-drawer-overlay" id="dropoffDrawerOverlay" aria-hidden="true"></div>
+                <aside class="viz-drawer" id="dropoffDrawer" aria-label="Drop-off focus">
+                  <article class="framework-panel focus-panel viz-drawer-panel" id="dropoffPanel">
+                    <header class="framework-panel-header">
+                      <div>
+                        <h2>Drop-off Focus Mode</h2>
+                        <p class="framework-panel-subtitle">Explore county-level drop-off patterns by party and percent.</p>
+                      </div>
+                      <div class="framework-panel-badges">
+                        <span class="badge badge-ghost">Warehouse</span>
+                        <span class="badge badge-ghost">Default</span>
+                      </div>
+                    </header>
+                    <div class="framework-panel-body">
+                      <div class="focus-controls" id="dropoffControls">
+                        <label class="focus-label">Mode</label>
+                        <div class="dropoff-mode-toggle" role="group" aria-label="Focus mode">
+                          <button type="button" class="btn action is-active" id="dropoffModeDropoff">Drop-off</button>
+                          <button type="button" class="btn action" id="dropoffModeTotals">Elector totals</button>
+                        </div>
+                        <label for="dropoffStateInput" class="focus-label">State</label>
+                        <input id="dropoffStateInput" type="text" value="WI" maxlength="2" aria-label="State code">
+                        <label for="dropoffContestInput" class="focus-label">Contest</label>
+                        <input id="dropoffContestInput" type="text" value="Senate" aria-label="Contest name">
+                        <label for="dropoffYearSelect" class="focus-label">Year</label>
+                        <select id="dropoffYearSelect" aria-label="Select year"></select>
+                        <label for="dropoffCountySelect" class="focus-label">County</label>
+                        <select id="dropoffCountySelect" aria-label="Select county"></select>
+                        <label for="dropoffPartySelect" class="focus-label">Party</label>
+                        <select id="dropoffPartySelect" aria-label="Select party">
+                          <option value="">All parties</option>
+                          <option value="Dem">Dem</option>
+                          <option value="Rep">Rep</option>
+                          <option value="Other">Other</option>
+                        </select>
+                        <div class="dropoff-toggle" role="group" aria-label="Drop-off metric">
+                          <button type="button" class="btn action is-active" id="dropoffMetricPercent">Percent</button>
+                          <button type="button" class="btn action" id="dropoffMetricRaw">Raw votes</button>
+                        </div>
+                      </div>
+                      <div class="dropoff-chart" id="dropoffChart" aria-live="polite"></div>
+                      <div class="dropoff-summary" id="dropoffSummary">Select a county to see drop-off totals.</div>
                     </div>
-                    <label for="pageSizeSelect" class="sr-only">Rows per page</label>
-                    <select id="pageSizeSelect" aria-label="Rows per page" data-bs-toggle="tooltip" title="Rows per page">
-                        <option value="10">10 rows</option>
-                        <option value="25" selected>25 rows</option>
-                        <option value="50">50 rows</option>
-                        <option value="100">100 rows</option>
-                    </select>
-                </div>
-            </div>
+                  </article>
+                </aside>
+              </div>
+            </article>
 
-            <table id="data-table" class="neon-grid" aria-live="polite">
-                <thead>
-                    <tr id="table-header"></tr>
-                </thead>
-                <tbody id="table-body"></tbody>
-            </table>
-
-            <div class="table-footer">
-                <div class="pagination" role="navigation" aria-label="Pagination">
-                    <button id="firstPageBtn" class="btn pager" aria-label="First page">⏮</button>
-                    <button id="prevPageBtn" class="btn pager" aria-label="Previous page">◀</button>
-                    <span id="pageInfo" class="page-info"></span>
-                    <button id="nextPageBtn" class="btn pager" aria-label="Next page">▶</button>
-                    <button id="lastPageBtn" class="btn pager" aria-label="Last page">⏭</button>
+            <article class="framework-panel warehouse-panel" aria-label="Warehouse data">
+              <header class="framework-panel-header">
+                <div>
+                  <h2>Warehouse View</h2>
+                  <p class="framework-panel-subtitle">Live snapshot of PostgreSQL data with filters and exports.</p>
                 </div>
-                <div id="tableStatus" class="status status-info" aria-live="polite"></div>
-            </div>
+                <div class="framework-panel-badges">
+                  <span class="badge badge-ghost">Live</span>
+                  <span class="badge badge-ghost">Exportable</span>
+                </div>
+              </header>
+              <div class="framework-panel-body">
+                <div class="db-table-section db-table-compact" id="warehouseTableSection">
+                    <div class="table-toolbar" role="region" aria-label="Table controls">
+                        <div class="left-controls">
+                            <input id="globalSearch" type="search" placeholder="Search all columns..." aria-label="Search all data">
+                        </div>
+                        <div class="right-controls">
+                            <button id="refreshBtn" class="btn action" data-bs-toggle="tooltip" title="Reload data from the API">🔄 Refresh</button>
+                            <button id="exportCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Export filtered results to CSV">⬇ Export CSV</button>
+                            <button id="scaffoldJsonBtn" class="btn action" data-bs-toggle="tooltip" title="Download guarded JSON scaffold">🧱 Scaffold JSON</button>
+                            <button id="scaffoldCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Download scaffold CSV">📄 Scaffold CSV</button>
+                            <button id="compactToggleBtn" class="btn action compact-toggle" type="button" aria-pressed="false" data-bs-toggle="tooltip" title="Toggle compact table rows">Dense</button>
+                            <button id="resetFiltersBtn" class="btn action" data-bs-toggle="tooltip" title="Clear search and sorting">↺ Reset</button>
+                            <div class="column-chooser">
+                                <button id="columnChooserBtn" class="btn action" aria-haspopup="true" aria-expanded="false" data-bs-toggle="tooltip" title="Show/hide columns">▦ Columns</button>
+                                <div id="columnChooserMenu" class="column-chooser-menu" role="menu" aria-label="Toggle visible columns"></div>
+                            </div>
+                            <div class="dropdown">
+                              <button class="btn action dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                More
+                              </button>
+                              <ul class="dropdown-menu dropdown-menu-end">
+                                <li><button class="dropdown-item" type="button" id="copyVisibleCsv">Copy visible as CSV</button></li>
+                                <li><a class="dropdown-item" href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer">Open docs</a></li>
+                              </ul>
+                            </div>
+                            <label for="pageSizeSelect" class="sr-only">Rows per page</label>
+                            <select id="pageSizeSelect" aria-label="Rows per page" data-bs-toggle="tooltip" title="Rows per page">
+                                <option value="10">10 rows</option>
+                                <option value="25" selected>25 rows</option>
+                                <option value="50">50 rows</option>
+                                <option value="100">100 rows</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="warehouse-status-strip" id="warehousePriorityStatus" aria-live="polite"></div>
+
+                    <table id="data-table" class="neon-grid" aria-live="polite">
+                        <thead>
+                            <tr id="table-header"></tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+
+                    <div class="table-footer">
+                        <div class="pagination" role="navigation" aria-label="Pagination">
+                            <button id="firstPageBtn" class="btn pager" aria-label="First page">⏮</button>
+                            <button id="prevPageBtn" class="btn pager" aria-label="Previous page">◀</button>
+                            <span id="pageInfo" class="page-info"></span>
+                            <button id="nextPageBtn" class="btn pager" aria-label="Next page">▶</button>
+                            <button id="lastPageBtn" class="btn pager" aria-label="Last page">⏭</button>
+                        </div>
+                        <div id="tableStatus" class="status status-info" aria-live="polite"></div>
+                    </div>
+                </div>
+
+                <details class="warehouse-upload" id="warehouseUpload">
+                  <summary class="warehouse-upload-summary">
+                    <span class="warehouse-upload-title">Warehouse Upload Pipeline</span>
+                    <span class="warehouse-upload-subtitle">Move vetted datasets into PostgreSQL with quality checkpoints.</span>
+                  </summary>
+                  <div class="warehouse-upload-body">
+                    <article class="framework-panel upload-panel" aria-label="Upload pipeline">
+                      <header class="framework-panel-header">
+                        <div>
+                          <h2>Warehouse Upload Pipeline</h2>
+                          <p class="framework-panel-subtitle">Move vetted datasets into PostgreSQL with quality checkpoints.</p>
+                        </div>
+                        <div class="framework-panel-badges">
+                          <span class="badge badge-ghost">PostgreSQL</span>
+                          <span class="badge badge-ghost">Quality gates</span>
+                        </div>
+                      </header>
+                      <div class="framework-panel-body">
+                        <div class="pipeline-steps" id="uploadPipelineSteps">
+                          <button type="button" class="pipeline-step is-active" data-step="ingest">1 Ingest</button>
+                          <button type="button" class="pipeline-step" data-step="validate">2 Validate</button>
+                          <button type="button" class="pipeline-step" data-step="qa">3 Quality</button>
+                          <button type="button" class="pipeline-step" data-step="publish">4 Publish</button>
+                        </div>
+                        <div class="pipeline-detail" id="uploadPipelineDetail">Select a step to see what happens next.</div>
+                        <div class="upload-section">
+                          <form id="uploadForm" enctype="multipart/form-data" method="POST" action="{{ url_for('upload_to_input') }}">
+                                <label for="csvFile"><b>Upload CSV to Database:</b></label><br>
+                            {% if csrf_token %}
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            {% endif %}
+                            <input type="file" id="csvFile" name="csv_file" accept=".csv" required>
+                                <button type="submit">Upload</button>
+                            </form>
+                            <div id="uploadStatus" class="status status-info" aria-live="polite"></div>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                </details>
+              </div>
+            </article>
+          </section>
         </div>
     </div>
 

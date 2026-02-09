@@ -1,0 +1,135 @@
+blank-undervote -> Blank/Undervote
+void-overvote -> Void/Overvote
+scattering -> Scattering
+none -> Other
+non-party -> Other
+other -> Other
+unknown -> Other
+no party preference -> Other
+no party affiliation -> Other
+unaffiliated, no party affiliation -> Other
+country -> Other
+nonpartisan -> Nonpartisan
+write-in -> Write-in
+democratic/conservative -> Democratic-Conservative Party
+democratic-farmer-labor -> Minnesota Democratic-Farmer-Labor Party
+american independent conservative -> American Independent Party
+american constitution -> American Constitution Party
+u.s. constitution party -> U.S. Constitution Party
+constitution -> Constitution Party
+constitution party -> Constitution Party
+american people's freedom party -> American People's Freedom Party
+freedom labor party -> Freedom Labor Party
+freedom party -> Freedom Party
+forward party -> Forward Party
+nevada forward party -> Forward Party
+green-rainbow -> Green-Rainbow Party
+green mountain peace and justice party -> Green Mountain Peace and Justice Party
+liberty union party -> Liberty Union Party
+american solidarity party -> American Solidarity Party
+approval voting party -> Approval Voting Party
+independent party of oregon -> Independent Party of Oregon
+independent party of florida -> Independent Party of Florida
+independent party of delaware -> Independent Party of Delaware
+independent party of louisiana -> Independent Party of Louisiana
+independent party -> Independent Party
+independence party -> Independence Party
+industrial government party -> Industrial Government Party
+justice party -> Justice Party
+labor party -> Labor Party
+libertarian party -> Libertarian Party
+libertarian -> Libertarian Party
+liberal party -> Liberal Party
+less federal taxes -> Less Federal Taxes Party
+mountain party -> Mountain Party
+natural law party -> Natural Law Party
+new alliance -> New Alliance Party
+new progressive party -> New Progressive Party
+oregon progressive party -> Oregon Progressive Party
+progressive party -> Progressive Party
+vermont progressive party -> Vermont Progressive Party
+pacific green -> Pacific Green Party
+pacific green party -> Pacific Green Party
+peace and freedom party -> Peace and Freedom Party
+peace freedom party -> Peace and Freedom Party
+peace and freedom -> Peace and Freedom Party
+people over politics -> People Over Politics Party
+personal choice party -> Personal Choice Party
+people's party -> People's Party
+popular democratic party -> Popular Democratic Party
+puerto rican independence party -> Puerto Rican Independence Party
+party for socialism and liberation -> Party for Socialism and Liberation
+socialism and liberation -> Party for Socialism and Liberation
+socialist party u.s.a. -> Socialist Party USA
+socialist party -> Socialist Party USA
+socialist equality party -> Socialist Equality Party
+socialist labor party -> Socialist Labor Party
+socialist workers party -> Socialist Workers Party
+serve america movement -> Serve America Movement
+tea party -> Tea Party
+taxpayers -> Taxpayers Party
+taxpayers without representation -> Taxpayers Party
+u.s. taxpayers party -> U.S. Taxpayers Party
+united citizens party -> United Citizens Party
+united citizen -> United Citizens Party
+united utah party -> United Utah Party
+unity party -> Unity Party of America
+we the people party -> We The People Party
+women's equality party -> Women's Equality Party
+working class party -> Working Class Party
+working families party -> Working Families Party
+d.c. statehood green party -> DC Statehood Green Party
+ace party -> ACE Party
+alaskan independence party -> Alaskan Independence Party
+alliance party -> Alliance Party
+aloha 'aina party -> Aloha Aina Party
+america party -> America Party
+better party -> Better Party
+american independent -> American Independent Party
+american independent party -> American Independent Party
+american shopping party -> American Shopping Party
+americans elect -> Americans Elect
+citizens' party -> Citizens' Party
+commandments party -> Commandments Party
+commonwealth party of the u.s. -> Commonwealth Party of the United States
+communist party -> Communist Party USA
+concerned citizens party of connecticut -> Concerned Citizens Party
+conservative party -> Conservative Party
+conservative party of new york -> Conservative Party of New York
+constitutional -> Constitution Party
+colorado center party -> Colorado Center Party
+democratic-nonpartisan league -> North Dakota Democratic-Nonpartisan League Party
+desert green -> Desert Greens Party
+ecology party of florida -> Ecology Party of Florida
+federalist -> Federalist Party
+george wallace party -> George Wallace Party
+green party -> Green Party
+green -> Green Party
+human rights party -> Human Rights Party
+independent american party -> Independent American Party
+independent conservative democratic -> Independent Conservative Democratic Party
+independent green -> Independent Green Party
+independent -> Independent
+jewish/christian national -> Jewish/Christian National Party
+larouche party -> LaRouche Party
+legal marijuana now -> Legal Marijuana Now Party
+la raza unida -> La Raza Unida Party
+national democratic party -> National Democratic Party
+new jersey conservative party -> New Jersey Conservative Party
+no labels -> No Labels
+one earth party -> One Earth Party
+prohibition party -> Prohibition Party
+raza unida party -> La Raza Unida Party
+reform party -> Reform Party
+resource party -> Resource Party
+right to life -> Right to Life Party
+south carolina workers party -> South Carolina Workers Party
+theo-democratic -> Theo-Democratic Party
+u.s. labor party -> U.S. Labor Party
+u.s. people's party -> U.S. People's Party
+united kansas -> United Kansas Party
+united party -> United Party
+veterans party -> Veterans Party of America
+democratic -> Democratic Party
+democrat -> Democratic Party
+republican -> Republican Party

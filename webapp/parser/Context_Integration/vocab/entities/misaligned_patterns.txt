@@ -1,0 +1,30 @@
+^\s*Totals\s*[-:]
+^\s*Total\s*$
+^\s*Summary\s*$
+^\s*Page\s*\d+\s*$
+^\s*No Results Yet\s*$
+^\s*Last Updated.*$
+^\s*Percent Reported.*$
+^\s*Reporting Status.*$
+^\s*Download.*$
+^\s*Export.*$
+^\s*Print.*$
+^\s*Details.*$
+^\s*Summary.*$
+^\s*Results.*$
+^\s*Ballot.*$
+^\s*Cast Vote.*$
+^\s*Vote Now.*$
+^\s*Vote Here.*$
+^\s*Submit Vote.*$
+^\s*Confirm Vote.*$
+^\s*Next.*$
+^\s*Continue.*$
+^\s*Back.*$
+^\s*Download Reports.*$
+^\s*Media Export.*$
+^\s*Powered by.*$
+^\s*Incoming Ballots.*$
+^\s*Followed Results.*$
+^\s*View.*$
+^BOARD OF ELECTIONS Statement and Return Report.*$

@@ -1,0 +1,12 @@
+script
+style
+svg
+path
+defs
+g
+canvas
+noscript
+meta
+link
+base
+title

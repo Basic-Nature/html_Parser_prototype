@@ -1,0 +1,123 @@
+# Keyword priority resolver mapping (ambiguous term disambiguation)
+# Format: token -> BUCKET1,BUCKET2,... | optional conditions
+
+county -> LOCATION,JURISDICTION | when=state_context_required; tie_break=county_state_lookup
+parish -> LOCATION,JURISDICTION | when=state_context_required
+borough -> LOCATION,JURISDICTION | when=state_context_required
+city -> LOCATION,JURISDICTION | when=state_context_required
+town -> LOCATION,JURISDICTION
+village -> LOCATION,JURISDICTION
+region -> LOCATION,JURISDICTION
+state -> LOCATION,JURISDICTION
+jurisdiction -> JURISDICTION,LOCATION
+precinct -> LOCATION,STATUS_REPORTING
+ward -> LOCATION
+municipality -> LOCATION,JURISDICTION
+township -> LOCATION,JURISDICTION
+county totals -> LOCATION,RESULTS
+precinct totals -> LOCATION,RESULTS
+precincts -> LOCATION,STATUS_REPORTING
+precinct reporting -> STATUS_REPORTING,LOCATION
+precinct count -> STATUS_REPORTING
+precinct total -> STATUS_REPORTING
+precincts total -> STATUS_REPORTING
+
+district -> LOCATION,DIVISION_TYPE,ELECTION_TYPE | when=office_or_level_context
+congressional -> DIVISION_TYPE,ELECTION_TYPE
+judicial -> DIVISION_TYPE,ELECTION_TYPE
+statewide -> ELECTION_TYPE,JURISDICTION
+local -> ELECTION_TYPE,JURISDICTION
+
+results -> RESULTS,UI
+result -> RESULTS,UI
+summary -> RESULTS,UI
+detail -> UI,RESULTS
+details -> UI,RESULTS
+reporting -> STATUS_REPORTING,UI
+reported -> STATUS_REPORTING,PERCENT
+report -> STATUS_REPORTING,UI
+reporting status -> STATUS_REPORTING
+last updated -> STATUS_REPORTING,UI
+updated -> STATUS_REPORTING,UI
+as of -> STATUS_REPORTING,UI
+timestamp -> STATUS_REPORTING,UI
+percent -> PERCENT,STATUS_REPORTING
+percent reported -> STATUS_REPORTING,PERCENT
+percent reporting -> STATUS_REPORTING,PERCENT
+percent counted -> STATUS_REPORTING,PERCENT
+percent complete -> STATUS_REPORTING,PERCENT
+percent in -> STATUS_REPORTING,PERCENT
+percent reporting status -> STATUS_REPORTING,PERCENT
+precincts reporting -> STATUS_REPORTING,PERCENT
+precincts counted -> STATUS_REPORTING
+precincts remaining -> STATUS_REPORTING
+fully reported -> STATUS_REPORTING
+ballots counted -> STATUS_REPORTING
+ballots remaining -> STATUS_REPORTING
+ballots cast -> STATUS_REPORTING
+incoming ballots -> STATUS_REPORTING
+
+vote -> RESULTS,UI
+votes -> RESULTS,UI
+vote total -> TOTAL,RESULTS
+vote count -> TOTAL,RESULTS
+vote % -> PERCENT,RESULTS
+vote pct -> PERCENT,RESULTS
+vote share -> PERCENT,RESULTS
+vote method -> BALLOT_METHOD,RESULTS
+vote methods -> BALLOT_METHOD,RESULTS
+
+total -> TOTAL,RESULTS
+all -> TOTAL,STATUS_REPORTING
+total votes -> TOTAL,RESULTS
+total vote -> TOTAL,RESULTS
+total ballots -> TOTAL,STATUS_REPORTING
+
+ballot -> BALLOT_METHOD,CONTEST
+ballot types -> BALLOT_METHOD,CONTEST
+ballot type -> BALLOT_METHOD,CONTEST
+absentee -> BALLOT_METHOD
+absentee ballot -> BALLOT_METHOD
+mail -> BALLOT_METHOD
+mail ballot -> BALLOT_METHOD
+provisional -> BALLOT_METHOD
+provisional ballot -> BALLOT_METHOD
+affidavit -> BALLOT_METHOD
+affidavit ballot -> BALLOT_METHOD
+early voting -> BALLOT_METHOD
+early vote -> BALLOT_METHOD
+election day -> BALLOT_METHOD
+in person -> BALLOT_METHOD
+in-person -> BALLOT_METHOD
+advance voting -> BALLOT_METHOD
+
+office -> CONTEST,UI
+contest -> CONTEST,UI
+race -> CONTEST,UI
+seat -> CONTEST,UI
+position -> CONTEST,UI
+candidate -> CANDIDATE,CONTEST
+party -> PARTY,CONTEST
+nonpartisan -> PARTY,CONTEST
+unaffiliated -> PARTY,CONTEST
+write-in -> STATUS,PARTY
+write in -> STATUS,PARTY
+writein -> STATUS,PARTY
+
+measure -> BALLOT_MEASURE,CONTEST
+proposition -> BALLOT_MEASURE,CONTEST
+referendum -> BALLOT_MEASURE,CONTEST
+initiative -> BALLOT_MEASURE,CONTEST
+amendment -> BALLOT_MEASURE,CONTEST
+proposal -> BALLOT_MEASURE,CONTEST
+question -> BALLOT_MEASURE,CONTEST
+issue -> BALLOT_MEASURE,CONTEST
+
+download -> UI,RESULTS
+export -> UI,RESULTS
+print -> UI,RESULTS
+view -> UI,RESULTS
+show -> UI,RESULTS
+hide -> UI,RESULTS
+expand -> UI,RESULTS
+collapse -> UI,RESULTS

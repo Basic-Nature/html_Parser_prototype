@@ -1,0 +1,11 @@
+CST -> Treated as Other unless explicitly mapped
+D/C -> Hybrid label
+DFL -> State-specific (MN)
+LRU -> Also see RUP
+LBR -> Also see LAB
+NOP -> Commonly used in CA & WA
+PAF -> Also see PFP
+PFP -> Also see PAF
+RUP -> Also see LRU
+LAB -> Also see LBR
+W -> Write-in marker

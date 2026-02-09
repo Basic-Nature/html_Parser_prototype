@@ -1,0 +1,12 @@
+# Canonical segment text mappings (display text -> canonical label)
+election results -> results_table
+results by precinct -> location_panel
+summary -> summary
+total votes -> total_votes
+precincts reporting -> reporting_status
+candidate -> candidate_panel
+ballot types -> ballot_types
+download -> download_link
+ballots counted -> ballot_status
+reporting status -> reporting_status
+vote method breakdown -> vote_method

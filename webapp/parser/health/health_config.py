@@ -15,10 +15,10 @@ DOWNLOAD_TTL_SECONDS = 15 * 60  # 15 minutes
 DOWNLOAD_CACHE_QUOTA = 50 * 1024 * 1024  # 50MB
 SESSION_STORAGE_QUOTA = 5 * 1024 * 1024  # 5MB
 
-# Neural network settings
-CONFIDENCE_THRESHOLD = 0.7  # Minimum confidence for high-priority flags
-HEALTH_SCORE_THRESHOLD_HIGH = 0.7  # Score >= this is high priority
-HEALTH_SCORE_THRESHOLD_MEDIUM = 0.5  # Score >= this is medium priority
+# Neural network settings (legacy, see RISK_GATES_CONFIG for modern thresholds)
+LEGACY_CONFIDENCE_THRESHOLD = 0.7  # Minimum confidence for high-priority flags (deprecated)
+LEGACY_HEALTH_SCORE_THRESHOLD_HIGH = 0.7  # Score >= this is high priority (deprecated)
+LEGACY_HEALTH_SCORE_THRESHOLD_MEDIUM = 0.5  # Score >= this is medium priority (deprecated)
 
 # Context library settings
 CONTEXT_LIBRARY_MAX_INTEGRITY_ENTRIES = 100  # Keep last N integrity checks
@@ -94,6 +94,42 @@ FEATURE_EMBEDDING_DIM = 64  # Text embeddings
 MAX_FLAG_COUNT = 10
 MAX_ENTITY_COUNT = 10
 MAX_RISK_FACTOR_COUNT = 5
+
+# === Multi-Dimensional Risk Assessment (Three-Gate Model) ===
+#
+# Replaces single-score thresholds with tri-partitioned risk vector:
+#   Dimension 1: Confidence Gate (extraction_confidence)
+#   Dimension 2: Verification Gate (ground_truth_match_ratio)
+#   Dimension 3: Anomaly Gate (suspicious_score)
+#
+# Composite Suspicion = w₁(1 - confidence) + w₂(1 - verification) + w₃(anomaly)
+# where w₁ + w₂ + w₃ = 1.0
+#
+# Risk Tier Classification (⅓-proportioned boundaries):
+#   BLOCK:  suspicion >= 0.72  (upper third, 72–100%) → refuse/escalate
+#   WARN:   0.45 ≤ suspicion < 0.72  (middle third, 45–72%) → confirm/verify
+#   LOG:    suspicion < 0.45  (lower third, 0–45%) → automatic/audit-only
+
+RISK_GATES_CONFIG = {
+    # Gate weights (must sum to 1.0)
+    "weight_confidence": 0.33,  # Parser certainty
+    "weight_verification": 0.33,  # Ground truth alignment (DL1 vs DL2)
+    "weight_anomaly": 0.34,  # Statistical suspension
+    
+    # Tier boundaries (⅓-partitioned; each tier ~27% width)
+    "tier_boundary_warn_log": 0.45,  # suspicion < this → LOG
+    "tier_boundary_block_warn": 0.72,  # suspicion >= this → BLOCK
+    
+    # Sub-component thresholds for gate computation
+    "verification_match_threshold": 0.8,  # 80% match = full verification
+    "anomaly_pattern_weight": 0.4,  # Weight of suspicious patterns (40%)
+    "anomaly_outlier_weight": 0.6,  # Weight of statistical outliers (60%)
+}
+
+# Legacy single-score thresholds (deprecated, kept for backwards compatibility)
+CONFIDENCE_THRESHOLD_DEPRECATED = 0.7
+HEALTH_SCORE_THRESHOLD_HIGH_DEPRECATED = 0.7
+HEALTH_SCORE_THRESHOLD_MEDIUM_DEPRECATED = 0.5
 
 # === Deduplication Settings ===
 

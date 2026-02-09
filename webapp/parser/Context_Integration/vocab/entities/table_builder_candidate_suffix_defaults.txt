@@ -1,0 +1,10 @@
+Party
+Total Vote
+Total Votes
+Vote Total
+% Vote
+Percent Vote
+Cumulative Vote
+Cumulative %
+Cumulative Percent
+Vote Share

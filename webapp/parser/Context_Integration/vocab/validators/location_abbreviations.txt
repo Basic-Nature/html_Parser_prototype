@@ -1,0 +1,42 @@
+ed -> election district
+e.d. -> election district
+wd -> ward
+dist -> district
+pct -> precinct
+prec -> precinct
+cty -> county
+cnty -> county
+muni -> municipality
+mun -> municipality
+munic -> municipality
+boro -> borough
+vill -> village
+vlg -> village
+div -> division
+subdist -> subdistrict
+subd -> subdivision
+subdiv -> subdivision
+pollpl -> polling place
+poll pl -> polling place
+pl -> place
+sec -> section
+reg -> region
+zn -> zone
+comm -> community
+neigh -> neighborhood
+blk -> block
+stn -> station
+ad -> assembly district
+sd -> senate district
+cd -> congressional district
+jd -> judicial district
+sup dist -> supervisorial district
+council dist -> council district
+pct no -> precinct number
+pct num -> precinct number
+dist no -> district number
+dist num -> district number
+poll loc -> poll location
+pct id -> precinct id
+dist id -> district id
+poll site -> polling station

@@ -1,0 +1,11 @@
+# Selector attribute mappings
+# Format: group.attr -> value
+button.type_ -> button
+button.role -> button
+button.aria-pressed -> false
+link.type_ -> link
+link.role -> link
+checkbox.type_ -> checkbox
+checkbox.role -> checkbox
+radio.type_ -> radio
+radio.role -> radio

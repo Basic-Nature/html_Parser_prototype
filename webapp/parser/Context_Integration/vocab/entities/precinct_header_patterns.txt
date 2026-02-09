@@ -1,0 +1,4 @@
+# Canonical precinct header regex patterns
+(?i)\b(precincts reporting|precincts counted|precincts remaining|precincts total|precincts)\b
+(?i)\b(precinct reporting|precinct count|precinct remaining|precinct total|precinct)\b
+(?i)\b(precincts reporting status|precincts reporting details |precincts reporting information)\b

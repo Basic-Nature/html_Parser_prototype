@@ -239,8 +239,8 @@ grep "ERROR" /var/log/parser/application.log | \
 Run automated checks:
 
 ```bash
-# Validate all parsed data
-python scripts/verify_all_parsers.py
+# Validate all parsed data (planned script, not yet in repo)
+# python scripts/verify_all_parsers.py
 
 # Check data consistency
 python health/integrity_check.py --format summary
@@ -348,8 +348,8 @@ find ./uploads -type f -mtime +7 -delete
 # Rotate logs
 logrotate -f /etc/logrotate.d/parser
 
-# Update threat intelligence feeds
-python scripts/update_threat_feeds.py
+# Update threat intelligence feeds (planned script, not yet in repo)
+# python scripts/update_threat_feeds.py
 
 # Verify all tests still pass
 python -m pytest webapp/tests/ -q

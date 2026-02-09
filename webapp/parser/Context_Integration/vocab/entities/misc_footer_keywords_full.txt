@@ -1,0 +1,7 @@
+blank
+overvote
+scattering
+spoiled
+undervote
+void
+write-in

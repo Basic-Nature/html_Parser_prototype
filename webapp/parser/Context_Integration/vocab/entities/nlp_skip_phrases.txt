@@ -1,0 +1,188 @@
+Last Updated
+Updated
+As of
+Posted
+Timestamp
+Date:
+Time:
+Fully Reported
+Percent Reported
+Reporting Status
+Precincts Reporting
+Precincts Counted
+Precincts Remaining
+Precincts Total
+Precinct Reporting
+Precinct Count
+Precinct Remaining
+Precinct Total
+Precincts Reporting Status
+Precincts Reporting Details
+Precincts Reporting Information
+Reporting
+Total
+Sum
+Votes
+Overall
+All
+Percent Reporting
+No Results Yet
+Ballots Counted
+Ballots Remaining
+Ballots Cast
+Vote Method
+Vote Methods
+Search
+Download
+Export
+Print
+Summary
+Details
+Results
+Ballot
+Cast Vote
+Vote Now
+Vote Here
+Submit Vote
+Confirm Vote
+Next
+Continue
+Back
+Download Reports
+Media Export
+Powered by
+Incoming Ballots
+Followed Results
+View
+Show
+Hide
+Expand
+Collapse
+Section
+Panel
+Header
+Footer
+Navigation
+Menu
+Breadcrumb
+Path
+Route
+Link
+Reference
+Citation
+Annotation
+Note
+Comment
+Feedback
+Suggestion
+Recommendation
+Tip
+Hint
+Help
+Support
+FAQ
+Guide
+Tutorial
+Documentation
+Manual
+Instruction
+Example
+Sample
+Template
+Snippet
+Code
+Script
+Macro
+Function
+Method
+Procedure
+Routine
+Operation
+Process
+Workflow
+Pipeline
+Job
+Task
+Activity
+Event
+Trigger
+Schedule
+Calendar
+Timeline
+History
+Log
+Record
+Entry
+Transaction
+Audit
+Report
+Undervote
+Overvote
+Scattering
+Write-In
+Write In
+Writein
+Blank
+Void
+Spoiled
+Unknown
+Other
+Nonpartisan
+Unaffiliated
+Unreported
+Uncounted
+Not Reported
+Not Counted
+Blank Ballot
+Spoiled Ballot
+Provisional Ballot
+Affidavit Ballot
+Mail Ballot
+Absentee Ballot
+Early Voting
+Election Day
+Provisional
+Affidavit
+Mail
+Absentee
+Page
+Table
+Chart
+Graph
+Map
+Visualization
+Share
+Email
+SMS
+Text
+Notification
+Alert
+Change
+Revision
+Correction
+Fix
+Patch
+Release
+Version
+Build
+Deployment
+Environment
+Platform
+Device
+Browser
+OS
+System
+Hardware
+Software
+Application
+Program
+Tool
+Utility
+Service
+Resource
+Asset
+Inventory
+Catalog
+Directory
+Index
+List

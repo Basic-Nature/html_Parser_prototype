@@ -1,0 +1,3 @@
+# County-level Camelot noise overrides
+# Format: state|county|category|pattern
+new_york|new york|title|\bCITY OF NEW YORK\b

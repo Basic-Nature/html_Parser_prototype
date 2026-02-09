@@ -1,0 +1,6 @@
+# Party normalization overrides
+other -> Other
+unknown -> Other
+no party -> Other
+nonpartisan -> Nonpartisan
+np -> Nonpartisan

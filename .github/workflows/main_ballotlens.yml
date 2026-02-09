@@ -54,10 +54,10 @@ jobs:
       - name: Show memory usage before build
         run: free -h
 
-      - name: Set up Python 3.13.8
+      - name: Set up Python 3.12.10
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13.8'
+          python-version: '3.12.10'
 
       - name: Install system dependencies (runner)
         run: |
@@ -215,6 +215,7 @@ jobs:
               SOCKETIO_ALLOWED_ORIGINS="https://www.electionpulse.org,https://electionpulse.org" \
               DATA_API_URL="/api/ballotlens-database" \
               CSP_MODE="STRICT" \
+              GUARDED_INGESTION_KEY="${{ secrets.GUARDED_INGESTION_KEY }}" \
               HEADLESS_DEFAULT="True" \
               ENABLE_FINGERPRINT_SESSION_RECOVERY="0" \
               DISABLE_HTML_FALLBACK="1" \

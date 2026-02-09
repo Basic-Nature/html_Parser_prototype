@@ -1,0 +1,3 @@
+# Canonical noisy label regex patterns
+(?i)\b(show results|vote|submit|summary|next|continue|back|download|print|details|results|ballot|cast vote)\b
+(?i)\b(vote now|vote here|submit vote|confirm vote)\b

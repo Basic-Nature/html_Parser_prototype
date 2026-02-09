@@ -1,0 +1,22 @@
+rockland|haverstraw
+rockland|clarkstown
+rockland|ramapo
+rockland|orangetown
+rockland|stony point
+kings|brooklyn
+kings|coney island
+kings|brownsville
+queens|astoria
+queens|flushing
+queens|jamaica
+queens|long island city
+queens|forest hills
+los angeles|central la
+los angeles|south la
+los angeles|east la
+cook|chicago
+cook|evanston
+cook|oak park
+maricopa|phoenix
+maricopa|mesa
+maricopa|chandler

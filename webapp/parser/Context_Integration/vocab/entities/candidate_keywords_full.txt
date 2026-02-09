@@ -1,0 +1,23 @@
+affiliation
+appointee
+candidate
+candidates
+challenger
+choice
+contestant
+designation
+incumbent
+individual
+member
+name
+nominee
+office
+option
+party
+person
+representative
+slate
+ticket
+write in
+write-in
+writein

@@ -131,6 +131,15 @@
           </details>
 
           <div class="content-shell">
+            <div class="auth-status-banner hidden" id="authStatusBanner" role="status" aria-live="polite">
+              <div class="auth-status-copy">
+                <div class="auth-status-title" id="authStatusTitle">Session status</div>
+                <div class="auth-status-message" id="authStatusMessage">—</div>
+              </div>
+              <div class="auth-status-actions">
+                <button type="button" class="btn btn-sm btn-primary" id="authStatusAction" aria-label="Acknowledge re-authentication">I re-authenticated</button>
+              </div>
+            </div>
             <div id="pipelineHintHost" class="pipeline-hint-row">
               <div class="pipeline-hint" data-level="info" role="status" aria-live="polite" aria-atomic="true" tabindex="-1">Review inputs and choose your data source. Press Run when ready.</div>
             </div>
@@ -260,6 +269,24 @@
                                   <small class="text-muted">Populated from the URL library so you can jump straight to a state/county slice.</small>
                                 </div>
                                 <div class="url-lines" id="urlLinesBox"></div>
+                                <div class="url-reuse-panel hidden" id="urlReusePanel" role="status" aria-live="polite">
+                                  <div class="reuse-header">Existing results found <span class="reuse-header-badge hidden" id="urlReuseHeaderBadge">Newest</span></div>
+                                  <div class="reuse-body" id="urlReuseList"></div>
+                                  <div class="reuse-actions">
+                                    <button type="button" class="btn btn-sm btn-primary" id="urlReuseOpenNewest">Use existing results</button>
+                                    <button type="button" class="btn btn-sm" id="urlReuseDismiss">Dismiss</button>
+                                  </div>
+                                </div>
+                                <div class="warehouse-match-panel hidden" id="warehouseMatchPanel" role="status" aria-live="polite">
+                                  <div class="match-header">Warehouse match available <span class="match-header-badge hidden" id="warehouseMatchHeaderBadge">Ready</span></div>
+                                  <div class="match-body" id="warehouseMatchList"></div>
+                                  <div class="match-actions">
+                                    <button type="button" class="btn btn-sm btn-primary" id="warehouseMatchPreview">Preview warehouse</button>
+                                    <button type="button" class="btn btn-sm" id="warehouseMatchDownload">Download CSV</button>
+                                    <button type="button" class="btn btn-sm btn-secondary" id="warehouseMatchParseAnyway">Parse anyway</button>
+                                  </div>
+                                  <div class="match-note" id="warehouseMatchNote">Use the warehouse snapshot when available to avoid duplicate parsing.</div>
+                                </div>
                                 <form id="addUrlForm" class="flex-wrap-row mb-1em mt-1em">
                                   <input type="url" id="newUrl" class="url-add-input" placeholder="Paste new election results URL here" required aria-label="New URL">
                                   <button type="submit" class="btn btn-success url-add-btn">Add URL</button>
@@ -582,6 +609,11 @@
 
           <!-- TOAST NOTIFICATIONS -->
           <div class="toast-container" id="toastContainer"></div>
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+              <div id="flashMessages" class="hidden" data-flash='{{ messages | tojson | safe }}'></div>
+            {% endif %}
+          {% endwith %}
         </div>
         <!-- End modern-layout -->
     <!-- SheetJS for CSV/XLSX preview -->

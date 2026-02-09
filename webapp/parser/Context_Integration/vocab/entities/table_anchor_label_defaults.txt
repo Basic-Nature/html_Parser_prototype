@@ -1,0 +1,18 @@
+# Default table anchor labels
+County
+County Totals
+Precinct
+Precinct Totals
+Precincts
+Municipality
+Ward
+District
+City
+Town
+Township
+Borough
+Parish
+Division
+Division Name
+Location
+Polling Location

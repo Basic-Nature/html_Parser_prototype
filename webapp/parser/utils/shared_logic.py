@@ -3984,6 +3984,108 @@ def generate_docs_artifacts(
     return audit_ok and pipeline_ok and todos_ok
 
 
+# ==================================================================================
+# CONSTRUCTIVE-CRITICISM LOGGING (Low-Confidence Decision Tracking)
+# ==================================================================================
+
+def log_rejection_reason(
+    decision_context: str,
+    confidence_score: float,
+    rejection_reason: str,
+    candidate_info: dict | None = None,
+    threshold_name: str | None = None,
+    threshold_value: float | None = None,
+    function_name: str | None = None,
+    session_id: str | None = None,
+) -> bool:
+    """Log constructive-criticism details for low-confidence rejections.
+    
+    Records why a candidate/segment/contest was rejected due to low confidence,
+    enabling QA review and retraining signals. Supports multiple decision types:
+    - table_structure (table auto-accept)
+    - header_mapping (CSV header validation)
+    - segment_labeling (NLP auto-labeling)
+    - entity_linking (name/party/place recognition)
+    - contest_selection (contest verification/feedback)
+    
+    Args:
+        decision_context: Type of decision (e.g., "table_structure", "segment_labeling")
+        confidence_score: Computed confidence [0, 1]
+        rejection_reason: Human-readable explanation (e.g., "below threshold", "ambiguous entity")
+        candidate_info: Dict with candidate details (name, contest, location, etc.)
+        threshold_name: Name of threshold config (e.g., "TABLE_BUILDER_AUTO_ACCEPT_THRESHOLD")
+        threshold_value: Actual threshold value used
+        function_name: Function that made the decision
+        session_id: Audit trail linkage
+    
+    Returns:
+        True if logged successfully, False otherwise.
+    """
+    try:
+        import time
+        from ..utils.logger_singleton import logger
+        
+        # Get caller info if not provided
+        if function_name is None:
+            frame = inspect.currentframe()
+            if frame and frame.f_back:
+                function_name = frame.f_back.f_code.co_name
+        
+        # Get session ID from Flask context if available
+        if session_id is None:
+            try:
+                from flask import session as flask_session
+                session_id = flask_session.get("session_id", "unknown")
+            except Exception:
+                session_id = "unknown"
+        
+        # Build rejection record
+        rejection_record = {
+            "timestamp": time.time(),
+            "iso_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "decision_context": decision_context,
+            "confidence_score": round(confidence_score, 4),
+            "rejection_reason": rejection_reason,
+            "threshold_name": threshold_name,
+            "threshold_value": round(threshold_value, 4) if threshold_value is not None else None,
+            "function_name": function_name,
+            "session_id": session_id,
+            "candidate_info": candidate_info or {},
+        }
+        
+        # Log via JSONL to enable downstream analysis
+        logger.info({
+            "level": "REJECTION_LOGGED",
+            "type": "constructive_criticism",
+            "data": rejection_record,
+        })
+        
+        return True
+    except Exception as e:
+        # Don't fail the pipeline due to rejection logging errors
+        try:
+            logger.warning(f"Failed to log rejection reason: {e}")
+        except Exception:
+            pass
+        return False
+
+
+def batch_log_rejections(rejections: list[dict]) -> int:
+    """Batch log multiple rejection records.
+    
+    Args:
+        rejections: List of dicts with keys matching log_rejection_reason parameters
+    
+    Returns:
+        Count of successfully logged rejections
+    """
+    success_count = 0
+    for rejection in rejections:
+        if log_rejection_reason(**rejection):
+            success_count += 1
+    return success_count
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) < 2:

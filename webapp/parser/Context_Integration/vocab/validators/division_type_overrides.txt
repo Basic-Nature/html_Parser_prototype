@@ -1,0 +1,105 @@
+alaska|aleutians east -> borough
+alaska|aleutians west -> census area
+alaska|anchorage -> municipality
+alaska|bethel -> census area
+alaska|bristol bay -> borough
+alaska|denali -> borough
+alaska|dillingham -> census area
+alaska|fairbanks north star -> borough
+alaska|haines -> borough
+alaska|hoonah-angoon -> census area
+alaska|juneau -> borough
+alaska|kenai peninsula -> borough
+alaska|ketchikan gateway -> borough
+alaska|kodiak island -> borough
+alaska|lake and peninsula -> borough
+alaska|matanuska-susitna -> borough
+alaska|nome -> census area
+alaska|north slope -> borough
+alaska|northwest arctic -> borough
+alaska|petersburg -> borough
+alaska|prince of wales-hyder -> census area
+alaska|sitka -> borough
+alaska|skagway -> borough
+alaska|southeast fairbanks -> census area
+alaska|wrangell -> borough
+alaska|yakutat -> borough
+alaska|kusilvak -> census area
+alaska|chugach -> census area
+alaska|copper river -> census area
+alaska|yukon-koyukuk -> census area
+virginia|alexandria -> independent city
+virginia|bristol -> independent city
+virginia|buena vista -> independent city
+virginia|charlottesville -> independent city
+virginia|chesapeake -> independent city
+virginia|colonial heights -> independent city
+virginia|covington -> independent city
+virginia|danville -> independent city
+virginia|emporia -> independent city
+virginia|fairfax city -> independent city
+virginia|falls church -> independent city
+virginia|franklin city -> independent city
+virginia|fredericksburg -> independent city
+virginia|galax -> independent city
+virginia|hampton -> independent city
+virginia|harrisonburg -> independent city
+virginia|hopewell -> independent city
+virginia|lexington -> independent city
+virginia|lynchburg -> independent city
+virginia|manassas -> independent city
+virginia|manassas park -> independent city
+virginia|martinsville -> independent city
+virginia|newport news -> independent city
+virginia|norfolk -> independent city
+virginia|norton -> independent city
+virginia|petersburg -> independent city
+virginia|poquoson -> independent city
+virginia|portsmouth -> independent city
+virginia|radford -> independent city
+virginia|richmond city -> independent city
+virginia|roanoke city -> independent city
+virginia|salem -> independent city
+virginia|staunton -> independent city
+virginia|suffolk -> independent city
+virginia|virginia beach -> independent city
+virginia|waynesboro -> independent city
+virginia|williamsburg -> independent city
+virginia|winchester -> independent city
+missouri|st. louis city -> independent city
+maryland|baltimore city -> independent city
+nevada|carson city -> independent city
+colorado|denver -> consolidated city-county
+colorado|broomfield -> consolidated city-county
+california|san francisco -> consolidated city-county
+pennsylvania|philadelphia -> consolidated city-county
+hawaii|honolulu -> consolidated city-county
+georgia|clarke -> consolidated city-county
+georgia|richmond -> consolidated city-county
+georgia|muscogee -> consolidated city-county
+georgia|chattahoochee -> consolidated city-county
+georgia|bibb -> consolidated city-county
+florida|duval -> consolidated city-county
+indiana|marion -> consolidated city-county
+kentucky|fayette -> consolidated city-county
+kentucky|jefferson -> consolidated city-county
+montana|silver bow -> consolidated city-county
+montana|deer lodge -> consolidated city-county
+tennessee|davidson -> consolidated city-county
+tennessee|moore -> consolidated city-county
+tennessee|trousdale -> consolidated city-county
+kansas|wyandotte -> consolidated city-county
+massachusetts|nantucket -> consolidated city-county
+district_of_columbia|district of columbia -> district
+louisiana|orleans -> consolidated city-parish
+louisiana|east baton rouge -> consolidated city-parish
+louisiana|lafayette -> consolidated city-parish
+louisiana|terrebonne -> consolidated city-parish
+american_samoa|eastern -> district
+american_samoa|western -> district
+american_samoa|manu'a -> district
+american_samoa|swains island -> island
+northern_mariana_islands|northern islands -> municipality
+northern_mariana_islands|rota -> municipality
+northern_mariana_islands|saipan -> municipality
+northern_mariana_islands|tinian -> municipality

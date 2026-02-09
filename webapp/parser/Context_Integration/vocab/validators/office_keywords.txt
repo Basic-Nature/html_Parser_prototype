@@ -1,0 +1,19 @@
+president -> Presidential
+governor -> Statewide
+senator -> Federal Legislature
+representative -> Federal Legislature
+assembly -> State Legislature
+mayor -> Local
+council -> Local
+trustee -> Local
+judge -> Judicial
+justice -> Judicial
+school -> School Board
+board -> School Board
+district -> District
+clerk -> Local
+treasurer -> Local
+commissioner -> Local
+constable -> Local
+coroner -> Local
+attorney general -> Statewide

@@ -7,6 +7,8 @@ from typing import Dict, Optional, Tuple
 
 import logging
 
+from ..config import HEADER_CONFIDENCE_THRESHOLD, HEADER_INSERT_CONFIDENCE_THRESHOLD
+
 logger = logging.getLogger(__name__)
 
 
@@ -86,15 +88,18 @@ def get_header_confidence(header: str, target_column: str, weights: Optional[Dic
     return 0.0
 
 
-def validate_row_headers(headers: list[str], critical_columns: list[str],
-                        confidence_threshold: float = 0.85) -> Tuple[bool, Dict[str, float], list[str]]:
+def validate_row_headers(
+    headers: list[str],
+    critical_columns: list[str],
+    confidence_threshold: float = HEADER_CONFIDENCE_THRESHOLD,
+) -> Tuple[bool, Dict[str, float], list[str]]:
     """
     Validate a set of CSV headers against critical columns.
     
     Args:
         headers: List of CSV header strings
         critical_columns: List of required column names (e.g., ['candidate', 'party', 'votes'])
-        confidence_threshold: Minimum confidence score required (default 0.85)
+        confidence_threshold: Minimum confidence score required (default from config)
     
     Returns:
         Tuple of (all_critical_found: bool, confidence_scores: dict, flagged_headers: list)
@@ -123,8 +128,11 @@ def validate_row_headers(headers: list[str], critical_columns: list[str],
     return all_critical_found, confidence_scores, flagged
 
 
-def should_insert_row(mapped_row: dict, confidence_scores: dict,
-                     confidence_threshold: float = 0.85) -> bool:
+def should_insert_row(
+    mapped_row: dict,
+    confidence_scores: dict,
+    confidence_threshold: float = HEADER_INSERT_CONFIDENCE_THRESHOLD,
+) -> bool:
     """
     Determine if a row should be inserted based on header confidence.
     

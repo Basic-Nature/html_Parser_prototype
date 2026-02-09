@@ -1,0 +1,9 @@
+# State-level Camelot noise overrides
+# Format: state|category|pattern
+new_york|title|\bBOARD OF ELECTIONS IN THE CITY OF NEW YORK\b
+new_york|title|\bSTATEMENT AND RETURN REPORT\b
+new_york|boilerplate|^\s*Unofficial Results\s*$
+new_york|boilerplate|^\s*Official Results\s*$
+florida|title|^\s*Unofficial Results\s*$
+florida|title|^\s*Official Results\s*$
+florida|boilerplate|^\s*Precincts Reporting\s*:\s*\d+\s*/\s*\d+\s*$

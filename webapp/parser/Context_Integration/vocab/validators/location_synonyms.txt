@@ -1,0 +1,20 @@
+box -> precinct
+box number -> precinct
+district # -> district
+district no -> district
+district num -> district
+division # -> division
+division no -> division
+e.d. # -> election district
+ed # -> election district
+loc -> location
+poll -> polling place
+poll # -> polling place
+polling # -> polling place
+precinct # -> precinct
+precinct no -> precinct
+precinct num -> precinct
+sector # -> sector
+subdivision # -> subdivision
+ward # -> ward
+ward number -> ward

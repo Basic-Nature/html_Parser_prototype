@@ -1,0 +1,19 @@
+Percent Reported
+Reporting Status
+all
+applicable ballots
+ballots total
+federal ballots
+federal/special presidential ballots
+inapplicable ballots
+less - inapplicable federal/special presidential ballots
+less inapplicable ballots
+less inapplicable federal ballots
+overall
+special presidential ballots
+sum
+total
+total applicable ballots
+total ballots
+total vote ballots
+votes

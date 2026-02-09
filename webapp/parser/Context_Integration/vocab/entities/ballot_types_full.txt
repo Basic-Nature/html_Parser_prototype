@@ -1,0 +1,23 @@
+Election Day
+Early Voting
+Absentee
+Mail
+Provisional
+Affidavit
+Other
+Void
+Military
+Absentee/Military
+Absentee - Military
+Absentee Military
+Emergency
+Emergency (Manual)
+Manually Counted Emergency
+Public Counter
+Counter
+Advance Voting
+Advance In-Person
+In Person
+Early In-Person
+Election Day Scanner
+Election Day Manual

@@ -1,0 +1,7 @@
+# Candidate/person name keys in JSON payloads
+candidate
+candidate name
+name
+choice
+person
+nominee

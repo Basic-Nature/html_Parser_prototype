@@ -60,6 +60,7 @@ from .date_utils import is_date_like
 from .detect import extract_table_data, is_location_header, normalize_header, normalize_text
 from .dom_extractor import extract_rows_and_headers_from_dom, guess_headers_from_row
 from .logger_singleton import logger
+from ..config import ENTITY_LINKING_THRESHOLD
 from .pattern_extractor import extract_with_patterns, load_dom_patterns
 from .shared_logic import (
     safe_append,
@@ -539,7 +540,14 @@ def extract_candidates_and_parties(headers: List[str], coordinator: "ContextCoor
             safe_append(candidate_party_map[party][candidate], ballot_types)
     return candidate_party_map
 
-def entity_linking(header, known_entities, threshold=0.8, return_score=False, allow_substring=True, allow_token_match=True) -> str:
+def entity_linking(
+    header,
+    known_entities,
+    threshold=ENTITY_LINKING_THRESHOLD,
+    return_score=False,
+    allow_substring=True,
+    allow_token_match=True,
+) -> str:
     """
     Link header to known candidates/parties/entities for normalization.
     Uses robust normalization, fuzzy, substring, and token-based matching.
