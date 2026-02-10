@@ -67,7 +67,15 @@ def is_already_downloaded(url, filename=None, check_hash=False):
                     return True
     return False
 
-def download_file(page_url, href, headers=None, context_info=None, check_hash=False, filename_override: str | None = None):
+def download_file(
+    page_url,
+    href,
+    headers=None,
+    context_info=None,
+    check_hash=False,
+    filename_override: str | None = None,
+    allowlist_bypass: bool = False,
+):
     """
     Download the linked file and save it into the input directory.
     """
@@ -81,7 +89,7 @@ def download_file(page_url, href, headers=None, context_info=None, check_hash=Fa
         return save_path
 
     try:
-        allowed, reason = safe_validate_external_url(file_url)
+        allowed, reason = safe_validate_external_url(file_url, allowlist_bypass=allowlist_bypass)
         if not allowed:
             raise ValueError(f"Blocked download URL: {reason}")
 
@@ -99,7 +107,7 @@ def download_file(page_url, href, headers=None, context_info=None, check_hash=Fa
             hop_host = urlparse(hop_url).netloc.lower()
             if hop_host and hop_host != origin_host:
                 raise ValueError("Redirected to a different domain")
-            hop_allowed, hop_reason = safe_validate_external_url(hop_url)
+            hop_allowed, hop_reason = safe_validate_external_url(hop_url, allowlist_bypass=allowlist_bypass)
             if not hop_allowed:
                 raise ValueError(f"Redirect blocked: {hop_reason}")
 
@@ -150,7 +158,15 @@ def download_file(page_url, href, headers=None, context_info=None, check_hash=Fa
         update_download_manifest(entry)
         return None
 
-def download_multiple_files(page_url, href_list, confirmed: bool = True, context_info=None, check_hash=False, filename_override: str | None = None):
+def download_multiple_files(
+    page_url,
+    href_list,
+    confirmed: bool = True,
+    context_info=None,
+    check_hash=False,
+    filename_override: str | None = None,
+    allowlist_bypass: bool = False,
+):
     """
     Download multiple files (given as a list of hrefs) to the input directory.
     Returns a list of file paths for successfully downloaded files.
@@ -161,12 +177,27 @@ def download_multiple_files(page_url, href_list, confirmed: bool = True, context
     ensure_input_directory()
     downloaded_files = []
     for href in href_list:
-        file_path = download_file(page_url, href, context_info=context_info, check_hash=check_hash, filename_override=filename_override)
+        file_path = download_file(
+            page_url,
+            href,
+            context_info=context_info,
+            check_hash=check_hash,
+            filename_override=filename_override,
+            allowlist_bypass=allowlist_bypass,
+        )
         if file_path:
             downloaded_files.append(file_path)
     return downloaded_files
 
-def download_confirmed_file(file_url: str, page_url: str, confirmed: bool = True, context_info=None, check_hash=False, filename_override: str | None = None):
+def download_confirmed_file(
+    file_url: str,
+    page_url: str,
+    confirmed: bool = True,
+    context_info=None,
+    check_hash=False,
+    filename_override: str | None = None,
+    allowlist_bypass: bool = False,
+):
     """
     Download the file if confirmed by the user.
     If not confirmed, return None so the pipeline can skip to HTML handler.
@@ -174,7 +205,14 @@ def download_confirmed_file(file_url: str, page_url: str, confirmed: bool = True
     if not confirmed:
         logger.info("[DOWNLOAD] Download skipped by user.")
         return None
-    return download_file(page_url, file_url, context_info=context_info, check_hash=check_hash, filename_override=filename_override)
+    return download_file(
+        page_url,
+        file_url,
+        context_info=context_info,
+        check_hash=check_hash,
+        filename_override=filename_override,
+        allowlist_bypass=allowlist_bypass,
+    )
 
 def summarize_downloads():
     """Print a summary of all downloads from the manifest."""

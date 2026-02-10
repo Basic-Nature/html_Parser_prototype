@@ -992,6 +992,7 @@ def prompt_and_handle_download(
                     headers=hdrs,
                     check_hash=True,
                     filename_override=selected_filename or None,
+                    allowlist_bypass=bool(handler_kwargs.get("allowlist_bypass")),
                 )
             except TypeError:
                 # 3) Last resort: raw requests

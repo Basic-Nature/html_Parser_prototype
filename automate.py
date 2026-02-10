@@ -231,6 +231,34 @@ def run_ballot_lens_check():
         return False
 
 
+def run_pipeline_check() -> bool:
+    """Run the pipeline regression checker script."""
+    logger.info("[AUTOMATE] Running pipeline regression check (scripts/pipeline_regression_check.py)...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "scripts/pipeline_regression_check.py"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        logger.debug(f"[AUTOMATE] Pipeline check stdout: {result.stdout}")
+        logger.debug(f"[AUTOMATE] Pipeline check stderr: {result.stderr}")
+        if result.returncode == 0:
+            logger.info("[AUTOMATE] Pipeline regression check passed.")
+            return True
+        logger.error(f"[AUTOMATE] Pipeline regression check failed with code {result.returncode}")
+        print(result.stdout)
+        print(result.stderr)
+        return False
+    except subprocess.TimeoutExpired:
+        logger.error("[AUTOMATE] Pipeline regression check timed out.")
+        return False
+    except Exception as e:
+        logger.error(f"[AUTOMATE] Pipeline regression check failed: {e}")
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run all automated scripts for Smart Elections Parser.")
     parser.add_argument("--skip-web", action="store_true", help="Skip web asset checks")
@@ -239,6 +267,7 @@ def main():
     parser.add_argument("--skip-webapp-check", action="store_true", help="Skip webapp startup validation")
     parser.add_argument("--self-check", action="store_true", help="Run headless self-check (tools/ci_headless_check.py) after other checks")
     parser.add_argument("--ballot-lens-check", action="store_true", help="Run Ballot Lens Playwright visibility check (tools/pw_check_ballot_lens.py)")
+    parser.add_argument("--pipeline-check", action="store_true", help="Run pipeline regression checker (scripts/pipeline_regression_check.py)")
 
     args = parser.parse_args()
 
@@ -286,6 +315,12 @@ def main():
     else:
         results['ballot_lens_check'] = None
 
+    # Optional pipeline regression check
+    if args.pipeline_check:
+        results["pipeline_check"] = run_pipeline_check()
+    else:
+        results["pipeline_check"] = None
+
     # Validate webapp unless skipped
     if not args.skip_webapp_check:
         results["webapp_validation"] = validate_webapp_startup()
@@ -312,6 +347,9 @@ def main():
     # Treat Ballot Lens check as critical only when requested
     if args.ballot_lens_check and results.get('ballot_lens_check') is False:
         critical_failures.append('ballot_lens_check')
+    # Treat pipeline check as critical only when requested
+    if args.pipeline_check and results.get('pipeline_check') is False:
+        critical_failures.append('pipeline_check')
     if critical_failures:
         print(f"[AUTOMATE] Critical failures in: {', '.join(critical_failures)}")
         logger.error(f"[AUTOMATE] Critical failures in: {', '.join(critical_failures)}")

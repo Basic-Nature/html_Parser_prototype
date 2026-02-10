@@ -17,6 +17,7 @@ import shutil
 import socket
 import textwrap
 import time
+import traceback
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -546,6 +547,7 @@ def safe_validate_external_url(
     enforce_allowlist: Optional[bool] = None,
     block_private_ips: Optional[bool] = None,
     allow_localhost: bool = False,
+    allowlist_bypass: bool = False,
     logger=logger,
 ) -> tuple[bool, str]:
     """
@@ -596,6 +598,11 @@ def safe_validate_external_url(
 
     allowlist_hosts = [h.strip().lower() for h in (allowlist_hosts or []) if h.strip()]
     allowlist_suffixes = [s.strip().lower() for s in (allowlist_suffixes or []) if s.strip()]
+
+    if allowlist_bypass:
+        enforce_allowlist = False
+        allowlist_hosts = []
+        allowlist_suffixes = []
 
     if allowlist_hosts and host in allowlist_hosts:
         pass
@@ -1422,6 +1429,11 @@ def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, 
     On exception or malformed return, returns an error metadata dict instead of raising
     unless `raise_on_error` is True.
     """
+    handler_name = None
+    handler_module = None
+    handler_qualname = None
+    call_args: list[Any] = []
+    call_kwargs: dict[str, Any] = {}
     try:
         if handler is None:
             if logger:
@@ -1440,6 +1452,10 @@ def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, 
 
         sig = inspect.signature(parse_method)
         param_names = list(sig.parameters.keys())
+        supports_var_kwargs = any(
+            param.kind == inspect.Parameter.VAR_KEYWORD
+            for param in sig.parameters.values()
+        )
 
         # Build positional and keyword arguments safely
         call_args = list(args)
@@ -1461,26 +1477,62 @@ def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, 
             if name in call_kwargs:
                 call_kwargs.pop(name)
 
+        if not supports_var_kwargs:
+            call_kwargs = {k: v for k, v in call_kwargs.items() if k in param_names}
+
         if logger:
             try:
                 logger.debug(f"[safe_parse] Calling handler.parse with args: {[type(a) for a in call_args]}, kwargs: {list(call_kwargs.keys())}")
             except Exception:
                 pass
 
+        handler_name = getattr(handler, "__name__", None) or getattr(handler, "__class__", None)
+        if handler_name is not None and not isinstance(handler_name, str):
+            handler_name = handler_name.__name__
+        handler_module = getattr(parse_method, "__module__", None) or getattr(handler, "__module__", None)
+        handler_qualname = getattr(parse_method, "__qualname__", None) or getattr(handler, "__qualname__", None)
+
         raw_result = parse_method(*call_args, **call_kwargs)
         return validate_handler_result(raw_result)
 
     except Exception as exc:
         # Structured error metadata
+        traceback_text = ""
+        try:
+            traceback_text = traceback.format_exc()
+        except Exception:
+            traceback_text = ""
+        if traceback_text and len(traceback_text) > 4000:
+            traceback_text = f"{traceback_text[:4000]}\n...truncated..."
+
         meta = {
             "error": "exception",
             "exception": str(exc),
+            "exception_type": type(exc).__name__,
+            "handler": handler_name,
+            "handler_module": handler_module,
+            "handler_qualname": handler_qualname,
+            "arg_types": [type(arg).__name__ for arg in call_args],
+            "kwarg_keys": list(call_kwargs.keys()),
+            "traceback": traceback_text,
         }
         if session_id:
             meta["session_id"] = session_id
         if logger:
             try:
-                logger.error({"level": "ERROR", "type": "handler", "message": f"[safe_parse] Exception: {exc}", "session_id": session_id})
+                logger.error({
+                    "level": "ERROR",
+                    "type": "handler",
+                    "message": f"[safe_parse] Exception: {exc}",
+                    "session_id": session_id,
+                    "handler": handler_name,
+                    "handler_module": handler_module,
+                    "handler_qualname": handler_qualname,
+                    "arg_types": meta["arg_types"],
+                    "kwarg_keys": meta["kwarg_keys"],
+                    "exception_type": meta["exception_type"],
+                    "traceback": meta["traceback"],
+                })
             except Exception:
                 pass
         if raise_on_error:

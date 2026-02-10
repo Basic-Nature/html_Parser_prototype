@@ -161,6 +161,8 @@ def process_urls_for_web(
             "session_id": session_id,
             "principal": principal,
         })
+        kwargs.setdefault("allowlist_bypass", True)
+        kwargs.setdefault("trust_bypass", True)
         if emit_func:
             emit_func({
                 "level": "INFO",

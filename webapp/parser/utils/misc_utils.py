@@ -89,7 +89,7 @@ def is_safe_path(basedir: str, path: str) -> bool:
         return os.path.commonpath([basedir]) == os.path.commonpath([basedir, path])
 
 
-def extract_url_and_label(line: str) -> tuple[str | None, str | None]:
+def extract_url_and_label(line: str, *, allowlist_bypass: bool = False) -> tuple[str | None, str | None]:
     """
     Extract the first http(s) URL from a line and return (url, label).
 
@@ -121,6 +121,7 @@ def extract_url_and_label(line: str) -> tuple[str | None, str | None]:
         allowlist_hosts=URL_ALLOWLIST_HOSTS,
         enforce_allowlist=URL_ENFORCE_ALLOWLIST,
         block_private_ips=URL_BLOCK_PRIVATE_IPS,
+        allowlist_bypass=allowlist_bypass,
     )
     if not allowed:
         logger.warning({

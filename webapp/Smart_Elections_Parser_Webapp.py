@@ -41,6 +41,9 @@ SOCKETIO_CLIENT_CONFIG = {
     "pingTimeout": int(_SOCKETIO_ENGINE_OPTIONS["ping_timeout"] * 1000),
 }
 
+SOCKETIO_MESSAGE_QUEUE = os.environ.get("SOCKETIO_MESSAGE_QUEUE")
+SOCKETIO_MESSAGE_CHANNEL = os.environ.get("SOCKETIO_MESSAGE_CHANNEL", "socketio")
+
 import csv
 import io
 import gzip
@@ -299,11 +302,17 @@ if Limiter is not None:
     except Exception:
         limiter = None
 
+socketio_kwargs = {}
+if SOCKETIO_MESSAGE_QUEUE:
+    socketio_kwargs["message_queue"] = SOCKETIO_MESSAGE_QUEUE
+    socketio_kwargs["channel"] = SOCKETIO_MESSAGE_CHANNEL
+
 socketio = SocketIO(
     app,
     async_mode=_SOCKETIO_ASYNC_MODE,
     cors_allowed_origins=SOCKETIO_ALLOWED_ORIGINS,
     **_SOCKETIO_ENGINE_OPTIONS,
+    **socketio_kwargs,
 )
 
 
@@ -5872,6 +5881,7 @@ def handle_ballot_lens(data=None) -> None:
                 allowlist_hosts=URL_ALLOWLIST_HOSTS,
                 enforce_allowlist=URL_ENFORCE_ALLOWLIST,
                 block_private_ips=URL_BLOCK_PRIVATE_IPS,
+                allowlist_bypass=dev_isolation_bypass,
             )
             if not allowed:
                 logger.warning({

@@ -36,6 +36,7 @@ from .config import (
 from .navigator import NavigationInstructionRunner, NavigationRecipeStore
 from .navigator.dom_snapshot import snapshot_mode_pipeline
 from .state_router import get_handler, preload_handler_map
+from .Context_Integration.librarian import get_safe_log_path
 from .utils.browser_utils import (
     SCROLL_METRIC_KEYS,
     TABLE_DISCOVERY_SELECTOR,
@@ -102,6 +103,41 @@ def _close_browser_quietly(browser, session_id=None) -> None:
             pass
 
 
+def _sanitize_error_metadata(metadata: dict) -> dict:
+    allowed_keys = {
+        "error",
+        "exception",
+        "exception_type",
+        "handler",
+        "handler_module",
+        "handler_qualname",
+        "arg_types",
+        "kwarg_keys",
+        "traceback",
+        "session_id",
+    }
+    safe_meta: dict[str, Any] = {}
+    for key in allowed_keys:
+        if key in metadata:
+            value = metadata.get(key)
+            if isinstance(value, str) and len(value) > 4000:
+                value = f"{value[:4000]}\n...truncated..."
+            safe_meta[key] = value
+    return safe_meta
+
+
+def _log_session_exception_metadata(session_id: str | None, payload: dict) -> None:
+    if not session_id:
+        return
+    try:
+        filename = f"{session_id}.ndjson" if session_id.startswith("sess_") else f"sess_{session_id}.ndjson"
+        log_path = get_safe_log_path(filename)
+        with open(log_path, "ab") as handle:
+            handle.write(orjson.dumps(payload) + b"\n")
+    except Exception:
+        pass
+
+
 def _count_dom_table_rows(page) -> int:
     if page is None:
         return 0
@@ -133,7 +169,7 @@ def _count_dom_table_rows(page) -> int:
         return 0
 
 
-def load_urls() -> List[str]:
+def load_urls(*, allowlist_bypass: bool = False) -> List[str]:
     if not URL_LIST_FILE.exists():
         msg = "No urls.txt found. Please input a URL to append:"
         payload = {
@@ -144,7 +180,7 @@ def load_urls() -> List[str]:
         logger.error(payload)
         user_input = safe_strip(prompt.prompt_input("URL: "))
         if user_input:
-            u, lbl = extract_url_and_label(user_input)
+            u, lbl = extract_url_and_label(user_input, allowlist_bypass=allowlist_bypass)
             write_val = u or user_input
             URL_LIST_FILE.write_text(write_val + "\n")
             msg = f"Appended URL to urls.txt: {write_val}"
@@ -162,7 +198,7 @@ def load_urls() -> List[str]:
             line_stripped = safe_strip(raw_line)
             if not line_stripped or line_stripped.startswith("#"):
                 continue
-            u, lbl = extract_url_and_label(line_stripped)
+            u, lbl = extract_url_and_label(line_stripped, allowlist_bypass=allowlist_bypass)
             if u:
                 lines.append(u)
             else:
@@ -179,7 +215,7 @@ def load_urls() -> List[str]:
         logger.error(payload)
         user_input = safe_strip(prompt.prompt_input("URL: "))
         if user_input:
-            u, lbl = extract_url_and_label(user_input)
+            u, lbl = extract_url_and_label(user_input, allowlist_bypass=allowlist_bypass)
             write_val = u or user_input
             with URL_LIST_FILE.open('a', encoding='utf-8') as f_append:
                 f_append.write(write_val + "\n")
@@ -1221,6 +1257,7 @@ def orchestrate_url(
         pass
 
     browser = page = None
+    playwright_instance = None
     result = None
     nav_meta: Dict[str, Any] = {}
     agent_used = None
@@ -1237,334 +1274,349 @@ def orchestrate_url(
         except Exception:
             privilege_tier = None
     
-    # --- URL Trust Scoring (Step 1: Intelligent Verification) ---
-    trust_context = {
-        "state": state,
-        "county": county,
-        "source_url": target_url,
-    }
-    trust_score, trust_factors = compute_trust_score(
-        target_url, 
-        trust_context, 
-        session_id,
-        principal=principal,
-        principal_source=principal_source
-    )
-
+    trust_bypass = bool(kwargs.get("trust_bypass"))
+    trust_score = 0
+    trust_factors: Dict[str, Any] = {}
     force_snapshot_mode = False
 
-    # Check for prior quarantine review decisions (approval/rejection)
-    quarantine_status = None
-    quarantine_approved = False
-    quarantine_rejected = False
-    hard_blockers = bool(trust_factors.get("phishing_indicators")) or bool(trust_factors.get("domain_mimicry"))
-    try:
-        from .health.quarantine_queue import get_quarantine_queue, ReviewStatus
-        queue = get_quarantine_queue()
-        quarantine_status = queue.get_latest_review_status_for_url(target_url)
-        if quarantine_status == ReviewStatus.APPROVED.value:
-            quarantine_approved = True
-        elif quarantine_status == ReviewStatus.REJECTED.value:
-            quarantine_rejected = True
-    except Exception:
+    if trust_bypass:
+        trust_score = 100
+        trust_factors = {"bypass": True}
+        logger.info({
+            "level": "INFO",
+            "type": "trust_scorer",
+            "message": "Trust checks bypassed for dev run; proceeding with direct navigation.",
+            "session_id": session_id,
+            "url": target_url,
+        })
+    else:
+        # --- URL Trust Scoring (Step 1: Intelligent Verification) ---
+        trust_context = {
+            "state": state,
+            "county": county,
+            "source_url": target_url,
+        }
+        trust_score, trust_factors = compute_trust_score(
+            target_url,
+            trust_context,
+            session_id,
+            principal=principal,
+            principal_source=principal_source,
+        )
+
+        # Check for prior quarantine review decisions (approval/rejection)
         quarantine_status = None
-    
-    # Check if URL should be rejected outright (tier-aware)
-    if should_reject(trust_score, target_url, privilege_tier=privilege_tier):
-        if quarantine_rejected:
-            logger.error({
-                "level": "ERROR",
-                "type": "trust_scorer",
-                "message": f"URL rejected (prior review rejected; score {trust_score}/100).",
-                "session_id": session_id,
-                "url": target_url,
-                "trust_score": trust_score,
-                "trust_factors": trust_factors,
-                "privilege_tier": privilege_tier.value if privilege_tier else None
-            })
-            mark_url_processed(target_url, status="rejected", session_id=session_id, trust_score=trust_score)
-            return
-        if quarantine_approved and not hard_blockers:
-            logger.warning({
-                "level": "WARNING",
-                "type": "trust_scorer",
-                "message": f"URL approved by quarantine review despite low trust score ({trust_score}/100).",
-                "session_id": session_id,
-                "url": target_url,
-                "trust_score": trust_score,
-                "trust_factors": trust_factors,
-                "review_status": quarantine_status,
-                "privilege_tier": privilege_tier.value if privilege_tier else None
-            })
-            force_snapshot_mode = True
-        else:
-            logger.error({
-                "level": "ERROR",
-                "type": "trust_scorer",
-                "message": f"URL rejected due to low trust score ({trust_score}/100).",
-                "session_id": session_id,
-                "url": target_url,
-                "trust_score": trust_score,
-                "trust_factors": trust_factors,
-                "privilege_tier": privilege_tier.value if privilege_tier else None
-            })
-            mark_url_processed(target_url, status="rejected", session_id=session_id, trust_score=trust_score)
-            return
-    
-    # Check if URL should be quarantined for manual review (tier-aware)
-    if should_quarantine(trust_score, target_url, privilege_tier=privilege_tier):
-        if quarantine_rejected:
-            logger.error({
-                "level": "ERROR",
-                "type": "trust_scorer",
-                "message": f"URL rejected (prior review rejected; score {trust_score}/100).",
-                "session_id": session_id,
-                "url": target_url,
-                "trust_score": trust_score,
-                "trust_factors": trust_factors,
-                "review_status": quarantine_status,
-                "privilege_tier": privilege_tier.value if privilege_tier else None
-            })
-            mark_url_processed(target_url, status="rejected", session_id=session_id, trust_score=trust_score)
-            return
-        if quarantine_approved and not hard_blockers:
+        quarantine_approved = False
+        quarantine_rejected = False
+        hard_blockers = bool(trust_factors.get("phishing_indicators")) or bool(trust_factors.get("domain_mimicry"))
+        try:
+            from .health.quarantine_queue import get_quarantine_queue, ReviewStatus
+            queue = get_quarantine_queue()
+            quarantine_status = queue.get_latest_review_status_for_url(target_url)
+            if quarantine_status == ReviewStatus.APPROVED.value:
+                quarantine_approved = True
+            elif quarantine_status == ReviewStatus.REJECTED.value:
+                quarantine_rejected = True
+        except Exception:
+            quarantine_status = None
+
+        # Check if URL should be rejected outright (tier-aware)
+        if should_reject(trust_score, target_url, privilege_tier=privilege_tier):
+            if quarantine_rejected:
+                logger.error({
+                    "level": "ERROR",
+                    "type": "trust_scorer",
+                    "message": f"URL rejected (prior review rejected; score {trust_score}/100).",
+                    "session_id": session_id,
+                    "url": target_url,
+                    "trust_score": trust_score,
+                    "trust_factors": trust_factors,
+                    "privilege_tier": privilege_tier.value if privilege_tier else None
+                })
+                mark_url_processed(target_url, status="rejected", session_id=session_id, trust_score=trust_score)
+                return
+            if quarantine_approved and not hard_blockers:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "trust_scorer",
+                    "message": f"URL approved by quarantine review despite low trust score ({trust_score}/100).",
+                    "session_id": session_id,
+                    "url": target_url,
+                    "trust_score": trust_score,
+                    "trust_factors": trust_factors,
+                    "review_status": quarantine_status,
+                    "privilege_tier": privilege_tier.value if privilege_tier else None
+                })
+                force_snapshot_mode = True
+            else:
+                logger.error({
+                    "level": "ERROR",
+                    "type": "trust_scorer",
+                    "message": f"URL rejected due to low trust score ({trust_score}/100).",
+                    "session_id": session_id,
+                    "url": target_url,
+                    "trust_score": trust_score,
+                    "trust_factors": trust_factors,
+                    "privilege_tier": privilege_tier.value if privilege_tier else None
+                })
+                mark_url_processed(target_url, status="rejected", session_id=session_id, trust_score=trust_score)
+                return
+
+        # Check if URL should be quarantined for manual review (tier-aware)
+        if should_quarantine(trust_score, target_url, privilege_tier=privilege_tier):
+            if quarantine_rejected:
+                logger.error({
+                    "level": "ERROR",
+                    "type": "trust_scorer",
+                    "message": f"URL rejected (prior review rejected; score {trust_score}/100).",
+                    "session_id": session_id,
+                    "url": target_url,
+                    "trust_score": trust_score,
+                    "trust_factors": trust_factors,
+                    "review_status": quarantine_status,
+                    "privilege_tier": privilege_tier.value if privilege_tier else None
+                })
+                mark_url_processed(target_url, status="rejected", session_id=session_id, trust_score=trust_score)
+                return
+            if quarantine_approved and not hard_blockers:
+                logger.info({
+                    "level": "INFO",
+                    "type": "trust_scorer",
+                    "message": f"URL approved by quarantine review (score {trust_score}/100); proceeding in snapshot mode.",
+                    "session_id": session_id,
+                    "url": target_url,
+                    "trust_score": trust_score,
+                    "trust_factors": trust_factors,
+                    "review_status": quarantine_status,
+                    "privilege_tier": privilege_tier.value if privilege_tier else None
+                })
+                force_snapshot_mode = True
+            else:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "trust_scorer",
+                    "message": f"URL quarantined for manual review (trust score: {trust_score}/100).",
+                    "session_id": session_id,
+                    "url": target_url,
+                    "trust_score": trust_score,
+                    "trust_factors": trust_factors,
+                    "privilege_tier": privilege_tier.value if privilege_tier else None
+                })
+
+                # --- Enqueue for transparent review with audit trail ---
+                try:
+                    from .health.quarantine_queue import (
+                        get_quarantine_queue,
+                        QuarantineReason,
+                        DataCollectionNotice,
+                    )
+
+                    queue = get_quarantine_queue()
+                    if not queue.has_pending_url(target_url):
+                        data_notices = [
+                            DataCollectionNotice(
+                                data_type="trust_score",
+                                description=f"Computed trust score: {trust_score}/100. Indicates URL reliability confidence.",
+                                usage="Security filtering to prevent extraction from untrusted/malicious sources",
+                                retention_days=30,
+                            ),
+                            DataCollectionNotice(
+                                data_type="trust_factors",
+                                description=f"Breakdown of trust assessment: {orjson.dumps(trust_factors).decode('utf-8') if trust_factors else 'none'}",
+                                usage="Forensic analysis; helps identify why URL was flagged",
+                                retention_days=30,
+                            ),
+                        ]
+
+                        queue.enqueue(
+                            url=target_url,
+                            reason=QuarantineReason.LOW_TRUST_SCORE,
+                            session_id=session_id,
+                            principal=principal,
+                            trust_score=trust_score,
+                            trust_factors=trust_factors,
+                            data_notices=data_notices,
+                        )
+
+                        logger.info({
+                            "level": "INFO",
+                            "type": "quarantine",
+                            "message": "[Quarantine] URL enqueued for transparent review",
+                            "session_id": session_id,
+                            "url": target_url,
+                            "reason": "LOW_TRUST_SCORE",
+                        })
+                    else:
+                        logger.info({
+                            "level": "INFO",
+                            "type": "quarantine",
+                            "message": "[Quarantine] URL already pending review",
+                            "session_id": session_id,
+                            "url": target_url,
+                        })
+                except Exception as e:
+                    logger.error({
+                        "level": "ERROR",
+                        "type": "quarantine",
+                        "message": f"[Quarantine] Failed to enqueue: {e}",
+                        "session_id": session_id,
+                        "url": target_url,
+                    })
+
+                mark_url_processed(target_url, status="quarantined", session_id=session_id, trust_score=trust_score)
+                return
+
+        # Log trust decision for allowed URLs
+        use_snapshot = force_snapshot_mode or should_use_snapshot_mode(trust_score, target_url)
+        if use_snapshot:
             logger.info({
                 "level": "INFO",
                 "type": "trust_scorer",
-                "message": f"URL approved by quarantine review (score {trust_score}/100); proceeding in snapshot mode.",
+                "message": f"Using DOM snapshot mode for medium-trust URL (score: {trust_score}/100).",
                 "session_id": session_id,
                 "url": target_url,
                 "trust_score": trust_score,
-                "trust_factors": trust_factors,
-                "review_status": quarantine_status,
                 "privilege_tier": privilege_tier.value if privilege_tier else None
             })
-            force_snapshot_mode = True
-        else:
-            logger.warning({
-                "level": "WARNING",
-                "type": "trust_scorer",
-                "message": f"URL quarantined for manual review (trust score: {trust_score}/100).",
-                "session_id": session_id,
+            # Execute DOM snapshot mode pipeline (Step 2)
+            # This captures static HTML without JS execution for safety
+            snapshot_context = {
+                "state": state,
+                "county": county,
                 "url": target_url,
                 "trust_score": trust_score,
                 "trust_factors": trust_factors,
-                "privilege_tier": privilege_tier.value if privilege_tier else None
-            })
-            
-            # --- Enqueue for transparent review with audit trail ---
+                "principal": principal,
+                "principal_source": principal_source,
+                "privilege_tier": privilege_tier.value if privilege_tier else None,
+            }
+
+            # Use Playwright to navigate but capture snapshot instead of full interaction
+            snapshot_browser = snapshot_page = None
             try:
-                from .health.quarantine_queue import (
-                    get_quarantine_queue,
-                    QuarantineReason,
-                    DataCollectionNotice,
-                )
-                
-                queue = get_quarantine_queue()
-                if not queue.has_pending_url(target_url):
-                    data_notices = [
-                        DataCollectionNotice(
-                            data_type="trust_score",
-                            description=f"Computed trust score: {trust_score}/100. Indicates URL reliability confidence.",
-                            usage="Security filtering to prevent extraction from untrusted/malicious sources",
-                            retention_days=30,
-                        ),
-                        DataCollectionNotice(
-                            data_type="trust_factors",
-                            description=f"Breakdown of trust assessment: {orjson.dumps(trust_factors).decode('utf-8') if trust_factors else 'none'}",
-                            usage="Forensic analysis; helps identify why URL was flagged",
-                            retention_days=30,
-                        ),
-                    ]
-                    
-                    queue.enqueue(
-                        url=target_url,
-                        reason=QuarantineReason.LOW_TRUST_SCORE,
+                with sync_playwright() as p:
+                    snapshot_browser, _, snapshot_page, _, _ = sync_browser_pipeline(
+                        p,
+                        target_url,
+                        cache_exit_callback=mark_url_processed,
                         session_id=session_id,
-                        principal=principal,
-                        trust_score=trust_score,
-                        trust_factors=trust_factors,
-                        data_notices=data_notices,
+                        nav_timeout_ms=NAV_TIMEOUT_PLAYWRIGHT_MS,
+                        cancel_flag=cancel_flag,
                     )
-                    
-                    logger.info({
-                        "level": "INFO",
-                        "type": "quarantine",
-                        "message": "[Quarantine] URL enqueued for transparent review",
-                        "session_id": session_id,
-                        "url": target_url,
-                        "reason": "LOW_TRUST_SCORE",
-                    })
-                else:
-                    logger.info({
-                        "level": "INFO",
-                        "type": "quarantine",
-                        "message": "[Quarantine] URL already pending review",
-                        "session_id": session_id,
-                        "url": target_url,
-                    })
-            except Exception as e:
+
+                    if cancel_flag is not None and safe_is_set(cancel_flag):
+                        logger.info({
+                            "level": "INFO",
+                            "type": "cancel",
+                            "message": f"Processing cancelled for {target_url}",
+                            "session_id": session_id,
+                        })
+                        _close_browser_quietly(snapshot_browser, session_id)
+                        return
+
+                    if not snapshot_page:
+                        logger.error({
+                            "level": "ERROR",
+                            "type": "dom_snapshot",
+                            "message": f"[DOMSnapshot] Could not open page for {target_url}",
+                            "session_id": session_id,
+                        })
+                        _close_browser_quietly(snapshot_browser, session_id)
+                        mark_url_processed(target_url, status="error", session_id=session_id)
+                        return
+
+                    # Execute snapshot mode pipeline
+                    headers, data, contest, metadata = snapshot_mode_pipeline(
+                        snapshot_page,
+                        snapshot_context,
+                        session_id
+                    )
+
+                    # Finalize output (same as normal pipeline)
+                    from .Context_Integration.context_coordinator import ContextCoordinator
+                    from .utils.output_utils import finalize_election_output
+
+                    coordinator = ContextCoordinator()
+                    export_context = dict(snapshot_context)
+                    export_context.update(metadata)
+
+                    try:
+                        export_result = finalize_election_output(
+                            headers=headers,
+                            data=data,
+                            coordinator=coordinator,
+                            contest=contest,
+                            state=state,
+                            county=county,
+                            context=export_context,
+                            enable_user_feedback=False,
+                            session_id=session_id,
+                        )
+
+                        metadata["output_file"] = export_result.get("csv_path")
+                        metadata["metadata_path"] = export_result.get("metadata_path")
+
+                        logger.info({
+                            "level": "INFO",
+                            "type": "dom_snapshot",
+                            "message": f"[DOMSnapshot] Output written to: {export_result.get('csv_path')}",
+                            "session_id": session_id,
+                            "output_file": export_result.get("csv_path")
+                        })
+
+                        ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id, trust_factors=trust_factors, privilege_tier=privilege_tier)
+                        stream_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
+                        processed_meta = {}
+                        if isinstance(metadata, dict):
+                            for key in (
+                                "output_file",
+                                "metadata_path",
+                                "output_dir",
+                                "contest",
+                                "state",
+                                "county",
+                                "handler",
+                                "source_url",
+                            ):
+                                if key in metadata and metadata.get(key):
+                                    processed_meta[key] = metadata.get(key)
+                        mark_url_processed(
+                            target_url,
+                            status="success",
+                            session_id=session_id,
+                            snapshot_mode=True,
+                            **processed_meta,
+                        )
+                    except Exception as exc:
+                        logger.error({
+                            "level": "ERROR",
+                            "type": "dom_snapshot",
+                            "message": f"[DOMSnapshot] Output finalization failed: {exc}",
+                            "session_id": session_id
+                        })
+                        mark_url_processed(target_url, status="error", session_id=session_id)
+            except Exception as exc:
                 logger.error({
                     "level": "ERROR",
-                    "type": "quarantine",
-                    "message": f"[Quarantine] Failed to enqueue: {e}",
-                    "session_id": session_id,
-                    "url": target_url,
+                    "type": "dom_snapshot",
+                    "message": f"[DOMSnapshot] Snapshot mode pipeline failed: {exc}",
+                    "session_id": session_id
                 })
-            
-            mark_url_processed(target_url, status="quarantined", session_id=session_id, trust_score=trust_score)
+                mark_url_processed(target_url, status="error", session_id=session_id)
+            finally:
+                _close_browser_quietly(snapshot_browser, session_id)
+
+            # Early return after snapshot mode completes
             return
-    # Log trust decision for allowed URLs
-    use_snapshot = force_snapshot_mode or should_use_snapshot_mode(trust_score, target_url)
-    if use_snapshot:
-        logger.info({
-            "level": "INFO",
-            "type": "trust_scorer",
-            "message": f"Using DOM snapshot mode for medium-trust URL (score: {trust_score}/100).",
-            "session_id": session_id,
-            "url": target_url,
-            "trust_score": trust_score,
-            "privilege_tier": privilege_tier.value if privilege_tier else None
-        })
-        # Execute DOM snapshot mode pipeline (Step 2)
-        # This captures static HTML without JS execution for safety
-        snapshot_context = {
-            "state": state,
-            "county": county,
-            "url": target_url,
-            "trust_score": trust_score,
-            "trust_factors": trust_factors,
-            "principal": principal,
-            "principal_source": principal_source,
-            "privilege_tier": privilege_tier.value if privilege_tier else None,
-        }
-        
-        # Use Playwright to navigate but capture snapshot instead of full interaction
-        snapshot_browser = snapshot_page = None
-        try:
-            with sync_playwright() as p:
-                snapshot_browser, _, snapshot_page, _, _ = sync_browser_pipeline(
-                    p,
-                    target_url,
-                    cache_exit_callback=mark_url_processed,
-                    session_id=session_id,
-                    nav_timeout_ms=NAV_TIMEOUT_PLAYWRIGHT_MS,
-                    cancel_flag=cancel_flag,
-                )
-                
-                if cancel_flag is not None and safe_is_set(cancel_flag):
-                    logger.info({
-                        "level": "INFO",
-                        "type": "cancel",
-                        "message": f"Processing cancelled for {target_url}",
-                        "session_id": session_id,
-                    })
-                    _close_browser_quietly(snapshot_browser, session_id)
-                    return
-                
-                if not snapshot_page:
-                    logger.error({
-                        "level": "ERROR",
-                        "type": "dom_snapshot",
-                        "message": f"[DOMSnapshot] Could not open page for {target_url}",
-                        "session_id": session_id,
-                    })
-                    _close_browser_quietly(snapshot_browser, session_id)
-                    mark_url_processed(target_url, status="error", session_id=session_id)
-                    return
-                
-                # Execute snapshot mode pipeline
-                headers, data, contest, metadata = snapshot_mode_pipeline(
-                    snapshot_page,
-                    snapshot_context,
-                    session_id
-                )
-                
-                # Finalize output (same as normal pipeline)
-                from .Context_Integration.context_coordinator import ContextCoordinator
-                from .utils.output_utils import finalize_election_output
-                
-                coordinator = ContextCoordinator()
-                export_context = dict(snapshot_context)
-                export_context.update(metadata)
-                
-                try:
-                    export_result = finalize_election_output(
-                        headers=headers,
-                        data=data,
-                        coordinator=coordinator,
-                        contest=contest,
-                        state=state,
-                        county=county,
-                        context=export_context,
-                        enable_user_feedback=False,
-                        session_id=session_id,
-                    )
-                    
-                    metadata["output_file"] = export_result.get("csv_path")
-                    metadata["metadata_path"] = export_result.get("metadata_path")
-                    
-                    logger.info({
-                        "level": "INFO",
-                        "type": "dom_snapshot",
-                        "message": f"[DOMSnapshot] Output written to: {export_result.get('csv_path')}",
-                        "session_id": session_id,
-                        "output_file": export_result.get("csv_path")
-                    })
-                    
-                    ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id, trust_factors=trust_factors, privilege_tier=privilege_tier)
-                    stream_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
-                    processed_meta = {}
-                    if isinstance(metadata, dict):
-                        for key in (
-                            "output_file",
-                            "metadata_path",
-                            "output_dir",
-                            "contest",
-                            "state",
-                            "county",
-                            "handler",
-                            "source_url",
-                        ):
-                            if key in metadata and metadata.get(key):
-                                processed_meta[key] = metadata.get(key)
-                    mark_url_processed(
-                        target_url,
-                        status="success",
-                        session_id=session_id,
-                        snapshot_mode=True,
-                        **processed_meta,
-                    )
-                except Exception as exc:
-                    logger.error({
-                        "level": "ERROR",
-                        "type": "dom_snapshot",
-                        "message": f"[DOMSnapshot] Output finalization failed: {exc}",
-                        "session_id": session_id
-                    })
-                    mark_url_processed(target_url, status="error", session_id=session_id)
-        except Exception as exc:
-            logger.error({
-                "level": "ERROR",
-                "type": "dom_snapshot",
-                "message": f"[DOMSnapshot] Snapshot mode pipeline failed: {exc}",
-                "session_id": session_id
+        else:
+            logger.info({
+                "level": "INFO",
+                "type": "trust_scorer",
+                "message": f"High-trust URL (score: {trust_score}/100) - proceeding with direct navigation.",
+                "session_id": session_id,
+                "url": target_url,
+                "trust_score": trust_score
             })
-            mark_url_processed(target_url, status="error", session_id=session_id)
-        finally:
-            _close_browser_quietly(snapshot_browser, session_id)
-        
-        # Early return after snapshot mode completes
-        return
-    else:
-        logger.info({
-            "level": "INFO",
-            "type": "trust_scorer",
-            "message": f"High-trust URL (score: {trust_score}/100) - proceeding with direct navigation.",
-            "session_id": session_id,
-            "url": target_url,
-            "trust_score": trust_score
-        })
     
     strategies = [
         {"agent": "playwright", "timeout_ms": NAV_TIMEOUT_PLAYWRIGHT_MS},
@@ -1583,15 +1635,15 @@ def orchestrate_url(
 
             if agent == "playwright":
                 try:
-                    with sync_playwright() as p:
-                        browser, _, page, _, nav_meta = sync_browser_pipeline(
-                            p,
-                            target_url,
-                            cache_exit_callback=mark_url_processed,
-                            session_id=session_id,
-                            nav_timeout_ms=strat.get("timeout_ms") or NAV_TIMEOUT_PLAYWRIGHT_MS,
-                            cancel_flag=cancel_flag,
-                        )
+                    playwright_instance = sync_playwright().start()
+                    browser, _, page, _, nav_meta = sync_browser_pipeline(
+                        playwright_instance,
+                        target_url,
+                        cache_exit_callback=mark_url_processed,
+                        session_id=session_id,
+                        nav_timeout_ms=strat.get("timeout_ms") or NAV_TIMEOUT_PLAYWRIGHT_MS,
+                        cancel_flag=cancel_flag,
+                    )
                     if cancel_flag is not None and safe_is_set(cancel_flag):
                         payload = {
                             "level": "INFO",
@@ -1610,6 +1662,12 @@ def orchestrate_url(
                             "session_id": session_id,
                         })
                         _close_browser_quietly(browser, session_id)
+                        if playwright_instance is not None:
+                            try:
+                                playwright_instance.stop()
+                            except Exception:
+                                pass
+                            playwright_instance = None
                         continue
                     if nav_meta.get("cloudflare_detected") and ENABLE_SELENIUM_FALLBACK:
                         logger.warning({
@@ -1624,6 +1682,12 @@ def orchestrate_url(
                             pass
                         _close_browser_quietly(browser, session_id)
                         browser = page = None
+                        if playwright_instance is not None:
+                            try:
+                                playwright_instance.stop()
+                            except Exception:
+                                pass
+                            playwright_instance = None
                         continue
                     agent_used = "playwright"
                     try:
@@ -1644,6 +1708,12 @@ def orchestrate_url(
                         pass
                     _close_browser_quietly(browser, session_id)
                     browser = page = None
+                    if playwright_instance is not None:
+                        try:
+                            playwright_instance.stop()
+                        except Exception:
+                            pass
+                        playwright_instance = None
                     continue
 
             if agent == "selenium":
@@ -1945,6 +2015,9 @@ def orchestrate_url(
                     _h, _d, _c, _m = result
                     row_count = len(_d) if isinstance(_d, (list, tuple)) else 0
                     col_count = len(_h) if isinstance(_h, (list, tuple)) else (len(_d[0]) if row_count and isinstance(_d[0], (list, tuple)) else 0)
+                    error_metadata = None
+                    if isinstance(_m, dict) and _m.get("error"):
+                        error_metadata = _sanitize_error_metadata(_m)
                     emit_telemetry_event("parse_result", {
                         "url": target_url,
                         "session_id": session_id,
@@ -1952,7 +2025,19 @@ def orchestrate_url(
                         "row_count": row_count,
                         "column_count": col_count,
                         "metadata_keys": list(_m.keys()) if isinstance(_m, dict) else None,
+                        "error_metadata": error_metadata,
                     })
+                    if error_metadata:
+                        _log_session_exception_metadata(session_id, {
+                            "level": "ERROR",
+                            "type": "handler_exception",
+                            "message": "Handler exception metadata captured.",
+                            "session_id": session_id,
+                            "url": target_url,
+                            "handler": getattr(handler, '__class__', None).__name__ if handler else None,
+                            "error_metadata": error_metadata,
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                        })
             except Exception:
                 pass
 
@@ -2129,6 +2214,11 @@ def orchestrate_url(
         mark_url_processed(target_url, status="error", session_id=session_id)
     finally:
         _close_browser_quietly(browser, session_id)
+        if playwright_instance is not None:
+            try:
+                playwright_instance.stop()
+            except Exception:
+                pass
 def _orchestrate_url_worker(args):
     """
     args tuple:
@@ -2251,7 +2341,7 @@ def main(
 
         # --- 3. Load URLs ---
         if urls is None:
-            urls = load_urls()
+            urls = load_urls(allowlist_bypass=bool(kwargs.get("allowlist_bypass")))
             if not url_source_label:
                 url_source_label = "urls.txt"
         else:
