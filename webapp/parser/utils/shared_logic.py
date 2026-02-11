@@ -46,10 +46,13 @@ import orjson
 from flask import request, session
 
 # Optional Sentencetransformers dependency (graceful fallback when missing)
-try:
-    from sentence_transformers import SentenceTransformer  # type: ignore
-except ImportError:  # pragma: no cover - dependency optional in some environments
+if os.getenv("DISABLE_SENTENCE_TRANSFORMERS", "").lower() in {"1", "true", "yes"}:
     SentenceTransformer = None  # type: ignore
+else:
+    try:
+        from sentence_transformers import SentenceTransformer  # type: ignore
+    except ImportError:  # pragma: no cover - dependency optional in some environments
+        SentenceTransformer = None  # type: ignore
 from sqlalchemy.engine import ScalarResult
 from sqlalchemy.orm import Query, Session
 
@@ -1424,6 +1427,11 @@ def validate_handler_result(result: Any) -> tuple[list[str], list[dict], Any, di
 def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, coordinator: Optional["ContextCoordinator"] = None, logger=logger, raise_on_error: bool = False, session_id: str | None = None, **kwargs: Any) -> tuple[list[str], list[dict], Any, dict]:
     """
     Safely call handler.parse (or handler itself if callable), injecting coordinator if supported.
+    
+    INTELLIGENT POSITIONAL ARG MAPPING: Maps positional args by parameter name, not order.
+    The router typically calls with (page, coordinator, context), but handlers may have 
+    varying signatures like (page, html_context) or (page, html_context, coordinator).
+    This function remaps positional args to match the handler's actual parameter names.
 
     Always returns a canonical 4-tuple: (headers, rows, contest, metadata).
     On exception or malformed return, returns an error metadata dict instead of raising
@@ -1457,32 +1465,69 @@ def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, 
             for param in sig.parameters.values()
         )
 
-        # Build positional and keyword arguments safely
-        call_args = list(args)
+        # INTELLIGENT POSITIONAL ARG REMAPPING:
+        # The router typically calls with positional args in this order: (page, coordinator, context)
+        # But handlers may have different signatures. Map positional args to the correct parameters by name
+        # using light heuristics (dicts usually represent html_context/context).
         call_kwargs = dict(kwargs)
+        call_args = []
 
         # Support raise_on_error passed via kwargs as well
         if 'raise_on_error' in call_kwargs:
             call_kwargs.pop('raise_on_error', None)
 
-        # Only add coordinator if the parse signature accepts it and not already provided
-        if 'coordinator' in param_names:
-            coord_idx = param_names.index('coordinator')
-            if len(call_args) <= coord_idx:
-                call_args.insert(coord_idx, coordinator)
-            call_kwargs.pop('coordinator', None)
+        # Positional arg 0 -> page if available
+        if len(args) >= 1 and 'page' in param_names and 'page' not in call_kwargs:
+            call_kwargs['page'] = args[0]
 
-        # Remove any kwargs that are already filled by positional args
-        for i, name in enumerate(param_names[:len(call_args)]):
-            if name in call_kwargs:
-                call_kwargs.pop(name)
+        # Positional arg 1: prefer coordinator when not a dict, otherwise html_context
+        if len(args) >= 2:
+            arg1 = args[1]
+            if 'coordinator' in param_names and 'coordinator' not in call_kwargs and not isinstance(arg1, dict):
+                call_kwargs['coordinator'] = arg1
+            elif 'html_context' in param_names and 'html_context' not in call_kwargs and isinstance(arg1, dict):
+                call_kwargs['html_context'] = arg1
+
+        # Positional arg 2: prefer context if dict; otherwise fill html_context if missing
+        if len(args) >= 3:
+            arg2 = args[2]
+            if 'context' in param_names and 'context' not in call_kwargs and isinstance(arg2, dict):
+                call_kwargs['context'] = arg2
+            elif 'html_context' in param_names and 'html_context' not in call_kwargs and isinstance(arg2, dict):
+                call_kwargs['html_context'] = arg2
+            elif 'coordinator' in param_names and 'coordinator' not in call_kwargs:
+                call_kwargs['coordinator'] = arg2
+
+        # Positional arg 3: session_id fallback if provided and missing
+        if len(args) >= 4 and 'session_id' in param_names and 'session_id' not in call_kwargs:
+            if isinstance(args[3], str):
+                call_kwargs['session_id'] = args[3]
+
+        # Add coordinator if in signature and not already provided
+        if 'coordinator' in param_names and 'coordinator' not in call_kwargs:
+            if coordinator is not None:
+                call_kwargs['coordinator'] = coordinator
+
+        # Add session_id if in signature and not already provided
+        if 'session_id' in param_names and 'session_id' not in call_kwargs:
+            if session_id is not None:
+                call_kwargs['session_id'] = session_id
+
+        # Allow context from kwargs when present
+        if 'context' in param_names and 'context' not in call_kwargs and 'context' in kwargs:
+            call_kwargs['context'] = kwargs.get('context')
+
+        # Build positional args only for positional-only parameters
+        for param in sig.parameters.values():
+            if param.kind == inspect.Parameter.POSITIONAL_ONLY and param.name in call_kwargs:
+                call_args.append(call_kwargs.pop(param.name))
 
         if not supports_var_kwargs:
             call_kwargs = {k: v for k, v in call_kwargs.items() if k in param_names}
 
         if logger:
             try:
-                logger.debug(f"[safe_parse] Calling handler.parse with args: {[type(a) for a in call_args]}, kwargs: {list(call_kwargs.keys())}")
+                logger.debug(f"[safe_parse] Calling handler.parse with args: {[type(a).__name__ for a in call_args]}, kwargs: {list(call_kwargs.keys())}")
             except Exception:
                 pass
 

@@ -43,7 +43,7 @@ def apply_navigation_steps(page, config):
         except Exception as e:
             logger.warning(f"[NAV] Step failed: {step} — {e}")
 
-def parse(page, html_context=None):
+def parse(page=None, html_context=None, coordinator=None, context=None, session_id=None, **kwargs):
     html_context = html_context if isinstance(html_context, dict) else {}
     config = safe_get(html_context, "config", {})
     logger.info("[PA Handler] Contest routing active — using shared contest context with state-level extraction.")

@@ -701,6 +701,7 @@ DEV_ISOLATION_BYPASS_ENABLED = os.environ.get("DEV_ISOLATION_BYPASS_ENABLED", "f
 DEV_ISOLATION_BYPASS_IPS_RAW = os.environ.get("DEV_ISOLATION_BYPASS_IPS", "").strip()
 
 LOG_DEDUPE_WINDOW = float(os.environ.get("LOG_DEDUPE_WINDOW_SEC", "2.0"))
+SECURITY_LOG_DEDUPE_WINDOW = float(os.environ.get("SECURITY_LOG_DEDUPE_WINDOW_SEC", "12.0"))
 MAX_CACHE_PER_SESSION = 120
 
 SESSION_TIMEOUT = 3600
@@ -1434,6 +1435,9 @@ def normalize_log_obj(raw) -> dict:
         "database": "database",
         "db": "database",
         "delete": "delete",
+        "auth": "auth",
+        "isolation": "isolation",
+        "security": "security",
         "other": "other",
         "fatal": "exception"
     }
@@ -1580,8 +1584,9 @@ def socketio_emit_func(line):
         # --- Deduplication (server-side, for noisy categories) ---
         msg = str(obj.get("message", ""))
         t_now = time.time()
-        if sid and obj.get("type") in {"input", "status", "raw"} and len(msg) < 600:
-            key = f"{obj.get('type')}|{msg}"
+        msg_type = obj.get("type")
+        if sid and msg_type in {"input", "status", "raw"} and len(msg) < 600:
+            key = f"{msg_type}|{msg}"
             should_emit = session_manager.should_emit_message(
                 sid,
                 key,
@@ -1591,6 +1596,19 @@ def socketio_emit_func(line):
             )
             if not should_emit:
                 return  # skip duplicate
+        if sid and msg_type in {"auth", "isolation", "security"}:
+            principal = obj.get("principal") or ""
+            reason = obj.get("block_reason") or obj.get("reason") or obj.get("auth_block_reason") or ""
+            key = f"{msg_type}|{msg}|{principal}|{reason}"
+            should_emit = session_manager.should_emit_message(
+                sid,
+                key,
+                now=t_now,
+                window=SECURITY_LOG_DEDUPE_WINDOW,
+                max_entries=MAX_CACHE_PER_SESSION,
+            )
+            if not should_emit:
+                return
 
         # --- Suppress repeated global URL list enumeration inside per-URL runs ---
         if sid and obj.get("type") == "input" and "Loaded" in msg and "raw URLs" in msg:
@@ -4481,6 +4499,16 @@ def ballot_lens():
             session['manual_source_pref'] = qp_source
         if request.method == "POST" and "data_file" in request.files:
             file = request.files.get("data_file")
+            guard_ok, guard_reason = _guarded_ingestion_allowed("ballot_lens_upload")
+            if not guard_ok:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "security",
+                    "message": f"Upload blocked by guarded ingestion gate: {guard_reason}",
+                    "session_id": None,
+                })
+                flash("Upload blocked: guarded ingestion key required.", "danger")
+                return redirect(request.referrer or url_for("ballot_lens"))
             ok, saved_name, err_path = _save_uploaded_file(file, str(UPLOADS_DIR), session_id=None)
             if ok and saved_name:
                 session['FORCE_PARSE_INPUT_FILE'] = saved_name
@@ -5163,6 +5191,15 @@ def handle_connect(auth=None):
         cleanup_sessions()
         session['log_format'] = "json"
         principal, principal_source, cert_metadata = get_request_principal()
+        if cert_metadata and isinstance(cert_metadata, dict) and cert_metadata.get("error"):
+            logger.warning({
+                "level": "WARNING",
+                "type": "auth",
+                "message": "Client certificate metadata parse failed.",
+                "session_id": None,
+                "principal": principal,
+                "error": cert_metadata.get("error"),
+            })
         if not principal and not ALLOW_ANON_NO_PRINCIPAL:
             emit('parser_output', {
                 "level": "ERROR",
@@ -5177,12 +5214,15 @@ def handle_connect(auth=None):
         cert_expired = False
         cert_changed = False
         if cert_metadata and isinstance(cert_metadata, dict):
-            # Extract fingerprint from metadata or headers (SHA256)
+            # Extract fingerprint from cert principal or headers (SHA256)
             try:
-                cert_header = request.headers.get('X-ARR-ClientCert', '')
-                if cert_header:
-                    import hashlib
-                    cert_fingerprint = hashlib.sha256(cert_header.encode('utf-8')).hexdigest()[:16]
+                if isinstance(principal, str) and principal.startswith("cert:"):
+                    cert_fingerprint = principal.split(":", 1)[1]
+                else:
+                    cert_header = request.headers.get('X-ARR-ClientCert', '')
+                    if cert_header:
+                        import hashlib
+                        cert_fingerprint = hashlib.sha256(cert_header.encode('utf-8')).hexdigest()[:16]
                     cert_expired = cert_metadata.get('is_expired', False)
                     if cert_expired:
                         logger.warning({

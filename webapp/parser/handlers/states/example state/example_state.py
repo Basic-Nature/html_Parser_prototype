@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 context_cache = {}
 
-def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, session_id=None, logger=logger, **kwargs) -> tuple:
+def parse(page: Page = None, coordinator: "ContextCoordinator" = None, html_context: dict = None, context=None, session_id=None, logger=logger, **kwargs) -> tuple:
     """
     Example state handler, fully integrated with context coordinator and shared utilities.
     - If the state has county-specific handlers, delegates to them.

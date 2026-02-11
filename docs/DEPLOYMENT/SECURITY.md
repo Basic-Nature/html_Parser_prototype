@@ -69,6 +69,13 @@ QA_FALLBACK_PRINCIPAL=system:development  # Only if explicitly enabled
 # Guarded ingestion key for uploads + URL ingestion
 # Required on Azure (set as GitHub secret -> Azure app setting)
 GUARDED_INGESTION_KEY=change_me
+
+# Log deduplication windows (seconds)
+# Standard logs (input/status/raw): 2 seconds (default)
+LOG_DEDUPE_WINDOW_SEC=2.0
+# Security logs (auth/isolation/security): 12 seconds (recommended for Azure)
+# Prevents spam from repeated cert failures or isolation breaches
+SECURITY_LOG_DEDUPE_WINDOW_SEC=12.0
 ```
 
 ### Security Defaults
@@ -169,7 +176,7 @@ python Smart_Elections_Parser_Webapp.py
 
 Guarded ingestion behavior:
 
-- On Azure (DEPLOY_ENV=azure), uploads and URL ingestion require `GUARDED_INGESTION_KEY`.
+- On Azure (DEPLOY_ENV=azure), uploads (including Ballot Lens UI uploads) and URL ingestion/overrides require `GUARDED_INGESTION_KEY`.
 - On localhost, guarded ingestion is bypassed for developer convenience.
 
 ⚠️ **Warning**: Development-only settings must NEVER be used in production.

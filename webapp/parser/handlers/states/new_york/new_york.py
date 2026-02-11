@@ -12,7 +12,7 @@ from ....utils.shared_logic import (
 )
 
 
-def parse(page: Page, html_context: Optional[dict] = None) -> Tuple[Any, Any, Any, dict]:
+def parse(page: Page = None, html_context: Optional[dict] = None, coordinator: Any = None, context: Optional[dict] = None, session_id: Optional[str] = None, **kwargs) -> Tuple[Any, Any, Any, dict]:
     """
     State-level handler for New York.
     Delegates to the correct county parser if available.
@@ -37,7 +37,11 @@ def parse(page: Page, html_context: Optional[dict] = None) -> Tuple[Any, Any, An
             county_module,
             page,
             html_context=html_context,
-            logger=logger
+            coordinator=coordinator,
+            context=context,
+            session_id=session_id,
+            logger=logger,
+            **kwargs
         )
     except ModuleNotFoundError:
         logger.warning(f"[NY Handler] No specific parser implemented for county: '{county}'. Please add it under {module_path}.py")
