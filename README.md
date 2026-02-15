@@ -77,7 +77,7 @@ docs/
 
 ---
 
-## �🚀 What's New (2025)
+## �🚀 What's New (2026)
 
 ### Major Additions
 
@@ -86,9 +86,14 @@ docs/
   - Navigator consumes `navigation_keyword_bias.jsonl` plus new precinct/county recipes to open election tabs before scrolling.
   - HTML fallback prefers in-DOM table extraction before prompting for downloads when both are present.
 
+- **HTML-First Parsing + Context Bridge**
+  - HTML handling is the primary path for DOM-based election sites.
+  - `context_organizer.py` maps DOM skeletons into context entries used by the router and handlers.
+  - The bridge into format handlers is gated by available context and confirmed election signals.
+
 - **Dynamic Table Extraction & Structure Learning**
   - Centralized in `table_core.py` and `dynamic_table_extractor.py`
-  - Multi-strategy extraction: HTML tables, repeated DOM, pattern-based, ML/LLM, and plugin-based
+  - Multi-strategy extraction: HTML tables, repeated DOM, pattern-based, ML/NLP, and plugin-based
   - Table structure learning, harmonization, and feedback are now fully centralized
   - ML/NER-powered entity annotation and structure verification
   - Dynamic scoring and patching: extraction methods are scored and can "fill in the blanks" using information from other strategies
@@ -96,7 +101,7 @@ docs/
   - Every navigation run logs per-step telemetry to `log/navigation_learning_log.jsonl` via `ContextCoordinator.record_navigation_feedback()`.
   - `webapp/parser/health/navigation_feedback_ingest.py` converts the log into `navigation_feedback_selection_log.jsonl`, so the manual correction bot can auto-review successes/failures, feed ML retraining, or fast-track new recipes without extra tooling.
 - **Azure Health Control Center**
-  - `/azure_health` now surfaces a “Election Pulse” operations console: launch manual correction, log/cache cleanup, misalignment scans, retraining, or the entire health router directly from the web UI.
+  - `/health_dashboard` surfaces an internal operations console: launch health tasks (manual correction, log/cache cleanup, dataset promotion), review logs, and audit system safeguards—accessible when `ENABLE_HEALTH_TASKS=true`.
   - Each job streams stdout to the browser so you can supervise Azure deployments even when shell access is limited.
 
 - **Context-Aware Orchestration**
@@ -109,6 +114,7 @@ docs/
   - Real-time log streaming via SocketIO
   - Data management dashboard for uploads, downloads, and URL hint management
   - Azure Health console for launching health scripts with live log streaming
+  - Folder uploads are guarded by ingestion keys to prevent untrusted intake
 
 - **Handler Architecture**
   - Modular state/county/format handlers in `handlers/`
@@ -124,6 +130,7 @@ docs/
 - **Security & Compliance**
   - Path traversal and injection protections on all file/database operations
   - .env-driven configuration for all sensitive settings
+  - Internal NLP/ML models replace external AI APIs for verification workflows
   - No credentials or session tokens are stored; web UI can be secured for public deployment
 
 ---
@@ -140,7 +147,7 @@ docs/
 
 ## 🔧 Features
 
-- **Multi-Strategy Table Extraction:** HTML tables, repeated DOM, pattern-based, ML/LLM, plugin, and fallback NLP extraction.
+- **Multi-Strategy Table Extraction:** HTML tables, repeated DOM, pattern-based, ML/NLP, plugin, and fallback NLP extraction.
 - **Dynamic Scoring & Patching:** Extraction strategies are scored (ML/NER + heuristics); missing info is patched from other strategies when possible.
 - **Persistent Context Library:** Learns from user corrections and feedback for smarter future extraction.
 - **Contest & Handler Routing:** Dynamic state/county/format handler routing with fuzzy matching and context enrichment.
@@ -310,7 +317,7 @@ html_Parser_prototype/
 │   │   ├── utils/
 │   │   │   ├── table_core.py               # Centralized table extraction/learning
 │   │   │   ├── dynamic_table_extractor.py  # Candidate table generator/scorer
-│   │   │   ├── ml_table_detector.py        # ML/LLM table detection
+│   │   │   ├── ml_table_detector.py        # ML/NLP table detection
 │   │   │   ├── shared_logger.py            # Logging utilities
 │   │   │   ├── user_prompt.py              # CLI/web prompt utilities
 │   │   │   └── ...                         # (browser, captcha, etc.)
@@ -352,6 +359,8 @@ Options:
 - `--skip-health`: Skip health bots and integrity checks
 - `--skip-tests`: Skip automated tests
 - `--skip-webapp-check`: Skip webapp import validation
+
+**Note:** When running on localhost (default), warnings are automatically suppressed for cleaner output. This includes deprecation warnings, future warnings, and pending deprecation warnings. The system detects localhost by checking if `POSTGRES_HOST` is set to `localhost` or `127.0.0.1`, or if `FLASK_ENV` is set to `development`.
 
 This central script ensures the project stays healthy and up-to-date.
 
