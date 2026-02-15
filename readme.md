@@ -77,7 +77,7 @@ docs/
 
 ---
 
-## �🚀 What's New (2025)
+## �🚀 What's New (2026)
 
 ### Major Additions
 
