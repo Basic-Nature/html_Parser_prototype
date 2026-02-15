@@ -9,6 +9,12 @@
 // QA Panel State & Configuration
 // ============================================
 
+const notifyToast = (message, level) => {
+  if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
+    window.showToast(message, level);
+  }
+};
+
 const QAPanel = (() => {
   /**
    * @typedef {Object} QAStatus
@@ -98,9 +104,7 @@ const QAPanel = (() => {
     } catch (error) {
       console.error('[QA] Classification failed:', error);
       // Show user-friendly error message
-      if (typeof showToast === 'function') {
-        showToast(`QA Classification unavailable: ${error.message}`, 'warning');
-      }
+      notifyToast(`QA Classification unavailable: ${error.message}`, 'warning');
       throw error;
     }
   }
@@ -366,7 +370,7 @@ const QAPanel = (() => {
     );
 
     if (!reason || !reason.trim()) {
-      showToast('Promotion cancelled', 'info');
+      notifyToast('Promotion cancelled', 'info');
       return;
     }
 
@@ -379,7 +383,7 @@ const QAPanel = (() => {
     try {
       const updatedStatus = await promoteToQL2(dataset_id, reason.trim());
       
-      showToast('✓ Promoted to DL2', 'success');
+      notifyToast('✓ Promoted to DL2', 'success');
       
       // Update display
       const panel = document.getElementById(`qa-${dataset_id}`);
@@ -390,7 +394,7 @@ const QAPanel = (() => {
         }
       }
     } catch (error) {
-      showToast(`Promotion failed: ${error.message}`, 'warning');
+      notifyToast(`Promotion failed: ${error.message}`, 'warning');
       if (buttonElement instanceof HTMLButtonElement) {
         buttonElement.disabled = false;
         buttonElement.textContent = originalText;
@@ -466,6 +470,8 @@ const QAPanel = (() => {
     },
   };
 })();
+
+/** @type {any} */ (window).QAPanel = QAPanel;
 
 // ============================================
 // Integration with Ballot Lens Results

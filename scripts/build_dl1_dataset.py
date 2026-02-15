@@ -17,10 +17,9 @@ Options:
     --export-manifest    : Export JSON manifest of DL1-ready records
 """
 
-import os
 import json
+import os
 from pathlib import Path
-from typing import List, Dict, Any
 
 import psycopg2
 from dotenv import load_dotenv
@@ -68,7 +67,7 @@ def analyze_dl1_readiness():
     prod_records = cur.fetchall()
     
     print(f"\n✅ PROD Loaded Records: {len(prod_records)}")
-    print(f"   These are validated, production-ready ground truth records")
+    print("   These are validated, production-ready ground truth records")
     
     # Breakdown by year
     print("\n📋 PROD Loaded by Year:")

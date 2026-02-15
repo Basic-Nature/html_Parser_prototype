@@ -21,9 +21,14 @@ from uuid import uuid4
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-from ..config import VERIFIED_DATA_DB_HOST, VERIFIED_DATA_DB_NAME, VERIFIED_DATA_DB_PASSWORD, VERIFIED_DATA_DB_PORT, VERIFIED_DATA_DB_USER
+from ..config import (
+    VERIFIED_DATA_DB_HOST,
+    VERIFIED_DATA_DB_NAME,
+    VERIFIED_DATA_DB_PASSWORD,
+    VERIFIED_DATA_DB_PORT,
+    VERIFIED_DATA_DB_USER,
+)
 from ..utils.logger_singleton import logger
-
 
 # ===== ENUMS =====
 
@@ -335,13 +340,13 @@ def detect_quality_issues(metadata: DatasetMetadata) -> List[QAIssue]:
     # Check 4: Missing required fields
     required_fields = ['candidate_name', 'vote_count']  # Extensible
     for idx, row in enumerate(metadata.data_rows):
-        for field in required_fields:
-            if field not in row or row[field] is None or str(row[field]).strip() == '':
+        for required_field in required_fields:
+            if required_field not in row or row[required_field] is None or str(row[required_field]).strip() == '':
                 issues.append(QAIssue(
                     issue_type=QAIssueType.MISSING_FIELD.value,
                     severity=IssureSeverity.ERROR.value,
-                    description=f"Missing required field '{field}' at row {idx}",
-                    affected_field=field,
+                    description=f"Missing required field '{required_field}' at row {idx}",
+                    affected_field=required_field,
                     affected_rows=[idx],
                     confidence_score=0.9
                 ))

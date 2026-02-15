@@ -17,15 +17,15 @@ Requirements:
     - Google Service Account shared with the target sheet
 """
 
-import os
 import json
-from pathlib import Path
-from typing import Dict, List, Any, Optional
+import os
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List
 
 import gspread
-from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
+from google.oauth2.service_account import Credentials
 
 # Load environment
 load_dotenv()
@@ -86,7 +86,7 @@ def categorize_column_type(values: List[Any]) -> str:
                            (isinstance(v, str) and v.replace('.', '', 1).replace('-', '', 1).isdigit()))
         if numeric_count > len(sample) * 0.7:
             return "numeric"
-    except:
+    except (AttributeError, TypeError, ValueError):
         pass
     
     # Reference detection (sheet name references, IDs)

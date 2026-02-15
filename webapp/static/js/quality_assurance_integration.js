@@ -13,6 +13,13 @@
  * @property {Function} clearCache - Clear classification cache
  * @property {Function} classifiedCount - Get count of classified results
  * @property {Map<string, Object>} metadata - Parser metadata cache
+ * @property {Function} [hookParserOutputEvent] - Optional hook for parser output events
+ */
+
+/**
+ * @typedef {Object} QAPanelAPI
+ * @property {Function} classifyAndInject
+ * @property {Function} clearCache
  */
 
 /**
@@ -40,11 +47,13 @@ var __QAIntegration;
     return;
   }
 
-  if (typeof QAPanel === 'undefined') {
+  if (!/** @type {any} */ (window).QAPanel) {
     console.warn('[QA Integration] QAPanel module not loaded, deferring initialization');
     setTimeout(initQASocketIntegration, 1000);
     return;
   }
+
+  const qaPanel = /** @type {QAPanelAPI} */ (/** @type {any} */ (window).QAPanel);
 
   console.log('[QA Integration] Initializing QA workflow integration');
 
@@ -75,12 +84,10 @@ var __QAIntegration;
     
     // Extract visible text from card
     const nameEl = cardElement.querySelector('.card-name');
-    const typeEl = cardElement.querySelector('.card-type-badge');
     const confidenceEl = cardElement.querySelector('.stat-value.confidence, .stat-value[class*="conf"]');
     const rowsEl = cardElement.querySelector('.stat-value');
 
     const contestName = nameEl ? nameEl.textContent.trim() : `Result #${index + 1}`;
-    const format = typeEl ? typeEl.textContent.toLowerCase() : 'csv';
     
     // Try to extract confidence percentage
     let confidence = 0;
@@ -166,7 +173,7 @@ var __QAIntegration;
       setTimeout(async () => {
         try {
           console.log(`[QA Integration] Classifying result ${resultId}...`);
-          await QAPanel.classifyAndInject(card, metadata);
+          await qaPanel.classifyAndInject(card, metadata);
           classifiedResults.add(resultId);
           classifiedCount++;
           console.log(`[QA Integration] Successfully classified ${resultId} (${classifiedCount}/${resultCards.length})`);
@@ -175,8 +182,8 @@ var __QAIntegration;
           console.warn(`[QA Integration] Classification failed for ${resultId}:`, error.message);
           
           // Show user-friendly message if too many errors
-          if (errorCount <= 2 && typeof showToast === 'function') {
-            showToast(`QA classification unavailable: ${error.message}`, 'info');
+          if (errorCount <= 2 && typeof window.showToast === 'function') {
+            window.showToast(`QA classification unavailable: ${error.message}`, 'info');
           }
         }
       }, i * 150); // 150ms delay between requests
@@ -193,7 +200,7 @@ var __QAIntegration;
    */
   function clearClassificationCache() {
     classifiedResults.clear();
-    QAPanel.clearCache();
+    qaPanel.clearCache();
     console.log('[QA Integration] Classification cache cleared');
   }
 
@@ -291,8 +298,8 @@ var __QAIntegration;
       );
 
       if (!reason || !reason.trim()) {
-        if (typeof showToast === 'function') {
-          showToast('Promotion cancelled', 'info');
+        if (typeof window.showToast === 'function') {
+          window.showToast('Promotion cancelled', 'info');
         }
         return;
       }
@@ -319,16 +326,15 @@ var __QAIntegration;
             throw new Error(errorData.error || `HTTP ${response.status}`);
           }
 
-          const updatedStatus = await response.json();
-          
-          if (typeof showToast === 'function') {
-            showToast('✓ Promoted to DL2', 'success');
+          const _updatedStatus = await response.json();
+          if (typeof window.showToast === 'function') {
+            window.showToast('✓ Promoted to DL2', 'success');
           }
 
           // Refresh the QA panel to show updated status
-          const qaPanel = document.getElementById(`qa-${datasetId}`);
-          if (qaPanel && qaPanel.parentElement) {
-            const parentCard = qaPanel.closest('.result-card');
+          const qaPanelEl = document.getElementById(`qa-${datasetId}`);
+          if (qaPanelEl && qaPanelEl.parentElement) {
+            const parentCard = qaPanelEl.closest('.result-card');
             if (parentCard instanceof HTMLElement) {
               // Re-classify to refresh panel
               const resultId = parentCard.getAttribute('data-result-id');
@@ -337,7 +343,7 @@ var __QAIntegration;
                 const index = Array.from(parentCard.parentElement?.children || []).indexOf(parentCard);
                 const metadata = extractMetadataFromCard(parentCard, index);
                 
-                await QAPanel.classifyAndInject(parentCard, metadata);
+                await qaPanel.classifyAndInject(parentCard, metadata);
               }
             }
           }
@@ -346,8 +352,8 @@ var __QAIntegration;
           target.textContent = '✓ Verified';
         } catch (error) {
           console.error('[QA Integration] Promotion failed:', error);
-          if (typeof showToast === 'function') {
-            showToast(`Promotion failed: ${error.message}`, 'warning');
+          if (typeof window.showToast === 'function') {
+            window.showToast(`Promotion failed: ${error.message}`, 'warning');
           }
           target.disabled = false;
           target.textContent = originalText;
@@ -441,6 +447,7 @@ var __QAIntegration;
     clearCache: clearClassificationCache,
     classifiedCount: () => classifiedResults.size,
     metadata: parserMetadataCache,
+    hookParserOutputEvent,
   };
 
   console.log('[QA Integration] Initialized successfully');

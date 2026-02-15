@@ -14,8 +14,8 @@ Comprehensive pipeline audit for `webapp/parser/`.
 
 ## Overview
 
-- **Total Modules Audited:** 72
-- **Total Connections:** 88
+- **Total Modules Audited:** 75
+- **Total Connections:** 94
 - **Clusters:** Entry, Pipeline, Routing, State Handlers, Format Handlers,
 Shared Handlers, Services, Utils, Context Integration, Health
 - **Audit Scope:** All `webapp/parser/` files with full context, imports,
@@ -38,6 +38,7 @@ graph TD
     example_county["example_county"]
     example_state["example_state"]
     rockland["rockland"]
+    westchester["westchester"]
   end
   subgraph Format_Handlers["Format Handlers"]
     pdf_handler["pdf_handler"]
@@ -45,6 +46,9 @@ graph TD
     html_handler["html_handler"]
     json_handler["json_handler"]
     xlsx_handler["xlsx_handler"]
+  end
+  subgraph Shared_Handlers["Shared Handlers"]
+    state_handler_base["state_handler_base"]
   end
   subgraph Services["Services"]
     election_data_services["election_data_services"]
@@ -99,11 +103,11 @@ graph TD
   verification_endpoints -->|5| local_dl_sync
   html_election_parser -->|4| quarantine_queue
   web_pipeline -->|4| session_branching
+  librarian -->|4| Integrity_check
   pdf_handler -->|4| config
   session_manager -->|4| session_branching
   table_builder -->|4| pivot
   table_builder -->|4| context_coordinator
-  html_election_parser -->|3| Integrity_check
 ```
 
 **✨ Legend:** Colors indicate module categories with metallic accents. Click
@@ -140,10 +144,10 @@ changes.
 
 ### Cluster Flow Summary
 
-- Utils → Utils: 124 edges (intra-cluster flow to monitor.)
+- Utils → Utils: 125 edges (intra-cluster flow to monitor.)
 - Health → Context Integration: 39 edges (cross-cluster flow to monitor.)
 - Utils → Context Integration: 38 edges (cross-cluster flow to monitor.)
-- Context Integration → Context Integration: 14 edges (intra-cluster flow to
+- Context Integration → Context Integration: 19 edges (intra-cluster flow to
 monitor.)
 - Format Handlers → Other: 11 edges (cross-cluster flow to monitor.)
 - Other → Other: 7 edges (intra-cluster flow to monitor.)
@@ -164,27 +168,37 @@ Click to expand each module for full audit details.
 
 #### 🔧 Key Functions & Classes (Context_Integration_Context_Library_constants)
 
-- `build_state_to_division_type_map` (function, line 691)
-- `get_party_code_info` (function, line 1358)
-- `_sanitize_party_token` (function, line 2573)
-- `normalize_party_code` (function, line 2592)
-- `canonical_ballot_group` (function, line 2619)
-- `split_and_normalize_ballot_groups` (function, line 2646)
-- `normalize_result_group_label` (function, line 2665)
-- `normalize_party_label` (function, line 2683)
-- `is_pseudo_result_party` (function, line 2713)
-- `_iter_strings` (function, line 2884)
-- `_compile_union` (function, line 2895)
-- `_norm_state_key` (function, line 2938)
-- `_norm_county_key` (function, line 2949)
-- `_collect_layered_patterns` (function, line 2958)
-- `get_camelot_title_regex` (function, line 2969)
-- `get_camelot_row_regex` (function, line 2979)
-- `build_camelot_row_filter` (function, line 2992)
+- `_log_vocab_fallback` (function, line 11)
+- `_load_state_to_county_map_from_vocab` (function, line 21)
+- `_load_county_to_precincts_map_from_vocab` (function, line 48)
+- `_LazyMapping` (class, line 74)
+- `load_vocab_list` (function, line 107)
+- `load_vocab_mapping` (function, line 122)
+- `_load_division_type_defaults_from_vocab` (function, line 137)
+- `_load_division_type_overrides_from_vocab` (function, line 142)
+- `_load_canonical_state_abbr_from_vocab` (function, line 156)
+- `_load_party_code_map_from_vocab` (function, line 171)
+- `_load_party_code_descriptions_from_vocab` (function, line 177)
+- `_load_party_aliases_from_vocab` (function, line 183)
+- `_load_party_normalization_overrides_from_vocab` (function, line 189)
+- `_load_office_keywords_from_vocab` (function, line 195)
+- `_load_html_taxonomy_from_vocab` (function, line 201)
+- `_load_html_taxonomy_category` (function, line 222)
+- `_load_html_tags_from_vocab` (function, line 236)
+- `_load_button_tags_from_vocab` (function, line 247)
+- `_load_heading_tags_from_vocab` (function, line 258)
+- `_load_table_tags_from_vocab` (function, line 269)
+- `_load_state_tags_from_vocab` (function, line 280)
+- `_load_panel_tags_from_vocab` (function, line 291)
+- `_load_container_extra_keywords_from_vocab` (function, line 302)
+- `_load_container_fallback_selectors_from_vocab` (function, line 308)
+- `_load_root_container_tags_from_vocab` (function, line 314)
 
 #### 📦 Key Imports (Context_Integration_Context_Library_constants)
 
+- `os`
 - `re`
+- `collections.abc`
 - `functools`
 - `typing`
 - `typing`
@@ -195,41 +209,34 @@ Click to expand each module for full audit details.
 - `typing`
 - `typing`
 - `typing`
-
-#### ⚠️ Task markers (Context_Integration_Context_Library_constants)
-
-- L2005 **NOTE**: ._$",                     # Note
-- L2194 **WARNING**: ",
-- L2285 **WARNING**: ", "info_box", "navigation", "pagination", "tab",
-"modal", "tooltip", "ignore", "unknown"
-- L2318 **NOTE**: ", "comment",
-- L2394 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
-- L2410 **NOTE**: ", "Comment", "Feedback", "Suggestion",
+- `utils.logger_singleton`
+- `vocab.loader`
 
 ### Context\_Integration/Integrity\_check.py {#webapp-parser-context-integration-integrity-check-py}
 
 #### 🔧 Key Functions & Classes (Context_Integration_Integrity_check)
 
-- `_trim_monitor_log` (function, line 47)
-- `log_integrity_monitor` (function, line 70)
-- `_ensure_alerts_table` (function, line 80)
-- `find_date_anomalies` (function, line 87)
-- `detect_anomalies_with_ml` (function, line 95)
-- `election_integrity_checks` (function, line 182)
-- `advanced_cross_field_validation` (function, line 203)
-- `summarize_context_entities` (function, line 212)
-- `analyze_contests` (function, line 221)
-- `auto_tune_contamination` (function, line 267)
-- `print_issues_table` (function, line 288)
-- `print_entity_summary` (function, line 308)
-- `print_ml_anomalies` (function, line 316)
-- `print_date_anomalies` (function, line 346)
-- `print_auto_tune_result` (function, line 364)
-- `print_analyze_contests` (function, line 370)
-- `monitor_db_for_alerts` (function, line 382)
-- `log_integrity_issues` (function, line 428)
-- `detect_statistical_outliers` (function, line 444)
-- `print_integrity_summary` (function, line 480)
+- `_trim_monitor_log` (function, line 53)
+- `_cap_log_value` (function, line 76)
+- `log_integrity_monitor` (function, line 98)
+- `_ensure_alerts_table` (function, line 109)
+- `find_date_anomalies` (function, line 116)
+- `detect_anomalies_with_ml` (function, line 124)
+- `election_integrity_checks` (function, line 211)
+- `advanced_cross_field_validation` (function, line 232)
+- `summarize_context_entities` (function, line 241)
+- `analyze_contests` (function, line 250)
+- `auto_tune_contamination` (function, line 296)
+- `print_issues_table` (function, line 317)
+- `print_entity_summary` (function, line 337)
+- `print_ml_anomalies` (function, line 345)
+- `print_date_anomalies` (function, line 375)
+- `print_auto_tune_result` (function, line 393)
+- `print_analyze_contests` (function, line 399)
+- `monitor_db_for_alerts` (function, line 411)
+- `log_integrity_issues` (function, line 457)
+- `detect_statistical_outliers` (function, line 474)
+- `print_integrity_summary` (function, line 510)
 
 #### 📦 Key Imports (Context_Integration_Integrity_check)
 
@@ -264,15 +271,16 @@ Click to expand each module for full audit details.
 
 #### 🔧 Key Functions & Classes (Context_Integration_context_coordinator)
 
-- `get_semantic_score` (function, line 97)
-- `merge_and_rank_candidates` (function, line 166)
-- `dynamic_state_county_detection` (function, line 256)
-- `ContextCoordinator` (class, line 857)
+- `get_semantic_score` (function, line 106)
+- `merge_and_rank_candidates` (function, line 175)
+- `dynamic_state_county_detection` (function, line 265)
+- `ContextCoordinator` (class, line 866)
 
 #### 📦 Key Imports (Context_Integration_context_coordinator)
 
 - `__future__`
 - `difflib`
+- `hashlib`
 - `numbers`
 - `os`
 - `re`
@@ -280,6 +288,7 @@ Click to expand each module for full audit details.
 - `threading`
 - `collections`
 - `collections`
+- `collections.abc`
 - `datetime`
 - `datetime`
 - `typing`
@@ -288,41 +297,39 @@ Click to expand each module for full audit details.
 - `typing`
 - `typing`
 - `typing`
-- `numpy`
-- `orjson`
-- `rapidfuzz`
+- `urllib.parse`
 
 #### ⚠️ Task markers (Context_Integration_context_coordinator)
 
-- L896 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
-- L984 **WARNING**: ({
-- L985 **WARNING**: ",
-- L1383 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
+- L911 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
+- L999 **WARNING**: ({
+- L1000 **WARNING**: ",
+- L1754 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
 {issues\['integrity_issues'\]}")
-- L1622 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
+- L2017 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
 contest: {contest}")
-- L1799 **WARNING**: (f"\[get_feedback_pattern_kb\] Skipping corrupt line:
+- L2322 **WARNING**: (f"\[get_feedback_pattern_kb\] Skipping corrupt line:
 {e}")
-- L1911 **WARNING**: ("\[group_dom_nodes_by_label\] No organized DOM parts.
+- L2434 **WARNING**: ("\[group_dom_nodes_by_label\] No organized DOM parts.
 (Further warnings suppressed)")
-- L1913 **WARNING**: (f"\[group_dom_nodes_by_label\] No organized DOM parts.
+- L2436 **WARNING**: (f"\[group_dom_nodes_by_label\] No organized DOM parts.
 (Occurred {ContextCoordinator._dom_parts_warning_count} times)")
-- L1918 **WARNING**: ("\[group_dom_nodes_by_label\] No DOM nodes found.")
-- L1936 **WARNING**: ("\[submit_user_feedback\] ContextOrganizer has no
+- L2441 **WARNING**: ("\[group_dom_nodes_by_label\] No DOM nodes found.")
+- L2459 **WARNING**: ("\[submit_user_feedback\] ContextOrganizer has no
 submit_user_feedback method.")
-- L1964 **WARNING**: (f"\[correct_and_update_contest\] Contest {contest_id}
+- L2487 **WARNING**: (f"\[correct_and_update_contest\] Contest {contest_id}
 missing type/election_types after sync.")
-- L1988 **WARNING**: ("\[print_contest_summary\] No organized contests to
+- L2511 **WARNING**: ("\[print_contest_summary\] No organized contests to
 summarize.")
-- L2001 **WARNING**: ("\[plot_contest_distribution\] No organized contests to
+- L2524 **WARNING**: ("\[plot_contest_distribution\] No organized contests to
 plot.")
-- L2052 **WARNING**: ("No organized DOM parts.")
-- L2055 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
-- L2066 **WARNING**: ("\[get_contest_groups\] No contest groups found.")
-- L2075 **WARNING**: ("\[get_panel_groups\] No panel groups found.")
-- L2084 **WARNING**: ("\[get_button_groups\] No button groups found.")
-- L2093 **WARNING**: ("\[get_table_groups\] No table groups found.")
-- L2102 **WARNING**: ("\[get_relationships\] No organized context.")
+- L2591 **WARNING**: ("No organized DOM parts.")
+- L2594 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
+- L2605 **WARNING**: ("\[get_contest_groups\] No contest groups found.")
+- L2614 **WARNING**: ("\[get_panel_groups\] No panel groups found.")
+- L2623 **WARNING**: ("\[get_button_groups\] No button groups found.")
+- L2632 **WARNING**: ("\[get_table_groups\] No table groups found.")
+- L2641 **WARNING**: ("\[get_relationships\] No organized context.")
 
 ### Context\_Integration/context\_organizer.py {#webapp-parser-context-integration-context-organizer-py}
 
@@ -363,63 +370,64 @@ plot.")
 
 #### ⚠️ Task markers (Context_Integration_context_organizer)
 
-- L282 **WARNING**: (
-- L407 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or
+- L288 **WARNING**: (
+- L413 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or
 missing title: {str(title)\[:100\]}...")
-- L495 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered_out)} contests
+- L501 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered_out)} contests
 due to missing required fields.")
-- L497 **WARNING**: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
-- L500 **WARNING**: ("\[CONTEST\] No contests with required fields for
+- L503 **WARNING**: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
+- L506 **WARNING**: ("\[CONTEST\] No contests with required fields for
 downstream output.")
-- L816 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests
+- L822 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests
 list of length {len(contests)}")
-- L1602 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
-- L1608 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
+- L1665 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
+- L1671 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
 contest detected.\n \[dim\]Context:\[/dim\] {contest}")
-- L1610 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L1673 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
 missing location info.\n \[dim\]Context:\[/dim\] {contest}")
-- L1612 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+- L1675 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
 missing year.\n \[dim\]Context:\[/dim\] {contest}")
-- L2082 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
+- L2146 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
 with feedback: {e}")
-- L2159 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
+- L2223 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
 contest: {contest}")
 
 ### Context\_Integration/librarian.py {#webapp-parser-context-integration-librarian-py}
 
 #### 🔧 Key Functions & Classes (Context_Integration_librarian)
 
-- `safe_path` (function, line 74)
-- `get_safe_log_path` (function, line 103)
-- `atomic_write_json` (function, line 125)
-- `extend_panel_tags` (function, line 188)
-- `extend_heading_tags` (function, line 192)
-- `extend_html_tags` (function, line 196)
-- `extend_custom_attr_patterns` (function, line 200)
-- `extend_location_keywords` (function, line 208)
-- `extend_candidate_keywords` (function, line 212)
-- `extend_ballot_types` (function, line 216)
-- `safe_join` (function, line 220)
-- `clean_for_json` (function, line 236)
-- `robust_orjson_loads` (function, line 252)
-- `load_context_library` (function, line 260)
-- `update_context_library` (function, line 352)
-- `backup_context_library` (function, line 368)
-- `save_context_library` (function, line 426)
-- `merge_and_save_context_library` (function, line 480)
-- `update_context_library_field` (function, line 489)
-- `update_domain_selector_cache` (function, line 501)
-- `get_domain_selectors` (function, line 522)
-- `log_selector_attempt` (function, line 527)
-- `_get_log_path` (function, line 551)
-- `_deduplicate_jsonl_log` (function, line 567)
-- `log_unknown_tag` (function, line 602)
+- `_cap_log_value` (function, line 82)
+- `get_vocab_constant` (function, line 105)
+- `safe_path` (function, line 119)
+- `get_safe_log_path` (function, line 148)
+- `atomic_write_json` (function, line 170)
+- `extend_panel_tags` (function, line 233)
+- `extend_heading_tags` (function, line 237)
+- `extend_html_tags` (function, line 241)
+- `_normalize_custom_attr_pattern` (function, line 245)
+- `_dedupe_custom_attr_pattern_strings` (function, line 261)
+- `extend_custom_attr_patterns` (function, line 277)
+- `extend_location_keywords` (function, line 287)
+- `extend_candidate_keywords` (function, line 291)
+- `extend_ballot_types` (function, line 295)
+- `safe_join` (function, line 299)
+- `clean_for_json` (function, line 315)
+- `robust_orjson_loads` (function, line 331)
+- `load_context_library` (function, line 339)
+- `update_context_library` (function, line 439)
+- `backup_context_library` (function, line 455)
+- `save_context_library` (function, line 525)
+- `merge_and_save_context_library` (function, line 579)
+- `_dedupe_string_list` (function, line 588)
+- `dedupe_context_library_fields` (function, line 605)
+- `update_context_library_field` (function, line 640)
 
 #### 📦 Key Imports (Context_Integration_librarian)
 
 - `__future__`
 - `argparse`
 - `os`
+- `random`
 - `re`
 - `shutil`
 - `subprocess`
@@ -435,8 +443,7 @@ contest: {contest}")
 - `typing`
 - `typing`
 - `typing`
-- `numpy`
-- `orjson`
+- `typing`
 
 #### 💬 Top-of-file Comments (Context_Integration_librarian)
 
@@ -452,7 +459,7 @@ contest: {contest}")
 
 # It also includes utilities for logging unknown HTML tags and attributes,
 
-# extending context library structures, and handling ML/LLM feedback.
+# extending context library structures, and handling ML feedback.
 
 #
 
@@ -464,10 +471,10 @@ contest: {contest}")
 
 #### ⚠️ Task markers (Context_Integration_librarian)
 
-- L763 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
-- L773 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
+- L915 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
+- L925 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
 manual_correction...")
-- L776 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
+- L928 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
 rescanning...")
 
 ### Context\_Integration/library/entity\_confidence\_map.py {#webapp-parser-context-integration-library-entity-confidence-map-py}
@@ -476,15 +483,15 @@ rescanning...")
 
 #### 🔧 Key Functions & Classes (Context_Integration_library_entity_confidence_map)
 
-- `DecisionCode` (class, line 23)
-- `SignalType` (class, line 30)
-- `AnomalyType` (class, line 44)
-- `OverrideTrigger` (class, line 56)
-- `SignalCoefficient` (class, line 67)
-- `AnomalyCoefficient` (class, line 77)
-- `ConfidenceCautionResult` (class, line 87)
-- `EntityConfidenceMap` (class, line 289)
-- `get_confidence_map` (function, line 468)
+- `DecisionCode` (class, line 21)
+- `SignalType` (class, line 28)
+- `AnomalyType` (class, line 42)
+- `OverrideTrigger` (class, line 54)
+- `SignalCoefficient` (class, line 65)
+- `AnomalyCoefficient` (class, line 75)
+- `ConfidenceCautionResult` (class, line 85)
+- `EntityConfidenceMap` (class, line 287)
+- `get_confidence_map` (function, line 466)
 
 #### 📦 Key Imports (Context_Integration_library_entity_confidence_map)
 
@@ -494,9 +501,6 @@ rescanning...")
 - `typing`
 - `typing`
 - `typing`
-- `typing`
-- `typing`
-- `orjson`
 
 ### Context\_Integration/location\_inference.py {#webapp-parser-context-integration-location-inference-py}
 
@@ -522,18 +526,17 @@ framework.
 
 #### 🔧 Key Functions & Classes (Context_Integration_vocab_loader)
 
-- `VocabLoaderError` (class, line 33)
-- `VocabSecurityError` (class, line 38)
-- `VocabFileNotFound` (class, line 43)
-- `VocabIntegrityError` (class, line 48)
-- `RateLimitError` (class, line 53)
-- `VocabLoader` (class, line 68)
-- `get_vocab_loader` (function, line 356)
+- `VocabLoaderError` (class, line 31)
+- `VocabSecurityError` (class, line 36)
+- `VocabFileNotFound` (class, line 41)
+- `VocabIntegrityError` (class, line 46)
+- `RateLimitError` (class, line 51)
+- `VocabLoader` (class, line 66)
+- `get_vocab_loader` (function, line 358)
 
 #### 📦 Key Imports (Context_Integration_vocab_loader)
 
 - `hashlib`
-- `os`
 - `time`
 - `pathlib`
 - `typing`
@@ -569,7 +572,6 @@ framework.
 - `typing`
 - `typing`
 - `typing`
-- `typing`
 - `webapp.parser.utils.logger_singleton`
 
 ### config.py {#webapp-parser-config-py}
@@ -578,13 +580,13 @@ framework.
 
 #### 🔧 Key Functions & Classes (config)
 
-- `get_subprocess_env` (function, line 336)
-- `get_supported_formats` (function, line 345)
-- `get_sqlalchemy_engine` (function, line 381)
-- `get_ocr_config_dict` (function, line 616)
-- `log_ocr_config_summary` (function, line 668)
-- `build_extraction_quality_metrics` (function, line 686)
-- `log_extraction_quality` (function, line 881)
+- `get_subprocess_env` (function, line 335)
+- `get_supported_formats` (function, line 344)
+- `get_sqlalchemy_engine` (function, line 380)
+- `get_ocr_config_dict` (function, line 669)
+- `log_ocr_config_summary` (function, line 721)
+- `build_extraction_quality_metrics` (function, line 739)
+- `log_extraction_quality` (function, line 934)
 
 #### 📦 Key Imports (config)
 
@@ -600,9 +602,9 @@ framework.
 
 #### ⚠️ Task markers (config)
 
-- L911 **WARNING**: ({
-- L912 **WARNING**: ",
-- L930 **NOTE**: Both DL1 and DL2 are now stored in
+- L964 **WARNING**: ({
+- L965 **WARNING**: ",
+- L983 **NOTE**: Both DL1 and DL2 are now stored in
 CONTEXT_LIBRARY_DIR/verification
 
 ### config/\_ocr\_helpers.py {#webapp-parser-config-ocr-helpers-py}
@@ -661,24 +663,21 @@ pattern).
 
 #### 🔧 Key Functions & Classes (election_fixtures)
 
-- `_get_fixture_dir` (function, line 39)
-- `load_election_results_index` (function, line 44)
-- `load_election_results_shards` (function, line 79)
-- `get_results_by_state` (function, line 113)
-- `get_results_by_contest` (function, line 168)
-- `find_candidate_by_name` (function, line 209)
-- `get_cache_metrics` (function, line 285)
-- `clear_cache` (function, line 291)
-- `reset_metrics` (function, line 301)
+- `_get_fixture_dir` (function, line 37)
+- `load_election_results_index` (function, line 42)
+- `load_election_results_shards` (function, line 77)
+- `get_results_by_state` (function, line 111)
+- `get_results_by_contest` (function, line 166)
+- `find_candidate_by_name` (function, line 207)
+- `get_cache_metrics` (function, line 283)
+- `clear_cache` (function, line 289)
+- `reset_metrics` (function, line 299)
 
 #### 📦 Key Imports (election_fixtures)
 
 - `json`
-- `os`
 - `threading`
-- `functools`
 - `pathlib`
-- `typing`
 - `typing`
 - `typing`
 - `typing`
@@ -1063,44 +1062,234 @@ budget.",
 - `utils.output_utils`
 - `utils.pivot`
 
+### handlers/registry.py {#webapp-parser-handlers-registry-py}
+
+#### 🔧 Key Functions & Classes (handlers_registry)
+
+- `register_state_handler` (function, line 16)
+- `register_county_handler` (function, line 23)
+- `apply_vendor_overrides` (function, line 32)
+- `_module_exists` (function, line 43)
+- `get_state_handler_module_path` (function, line 50)
+- `get_county_handler_module_path` (function, line 67)
+
+#### 📦 Key Imports (handlers_registry)
+
+- `__future__`
+- `importlib.util`
+- `typing`
+- `typing`
+- `webapp.parser.Context_Integration.Context_Library.constants`
+- `webapp.parser.handlers.vendor_state_map`
+- `webapp.parser.utils.shared_logic`
+- `webapp.parser.utils.shared_logic`
+
+### handlers/shared/\_\_init\_\_.py {#webapp-parser-handlers-shared-init-py}
+
+> Shared handler helpers.
+
+### handlers/shared/parity\_hooks.py {#webapp-parser-handlers-shared-parity-hooks-py}
+
+#### 🔧 Key Functions & Classes (handlers_shared_parity_hooks)
+
+- `safe_parity_note` (function, line 10)
+- `attach_router_parity_note` (function, line 21)
+- `extract_router_parity_note` (function, line 30)
+- `attach_parity_note_to_metadata` (function, line 36)
+
+#### 📦 Key Imports (handlers_shared_parity_hooks)
+
+- `__future__`
+- `typing`
+- `typing`
+
+#### ⚠️ Task markers (handlers_shared_parity_hooks)
+
+- L10 **NOTE**: str | None) -&gt; str | None:
+- L11 **NOTE**: , str):
+- L13 **NOTE**: .strip()
+- L21 **NOTE**: str | None) -&gt; None:
+- L24 **NOTE**: )
+- L36 **NOTE**: str | None) -&gt; Dict\[str, Any\]:
+- L37 **NOTE**: )
+
+### handlers/shared/state\_handler\_base.py {#webapp-parser-handlers-shared-state-handler-base-py}
+
+> State Handler Base Class
+
+#### 🔧 Key Functions & Classes (handlers_shared_state_handler_base)
+
+- `StateHandlerBase` (class, line 35)
+- `SimpleTableHandler` (class, line 450)
+
+#### 📦 Key Imports (handlers_shared_state_handler_base)
+
+- `__future__`
+- `abc`
+- `abc`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+- `webapp.parser.Context_Integration.librarian`
+- `webapp.parser.handlers.shared.parity_hooks`
+- `webapp.parser.handlers.shared.parity_hooks`
+- `webapp.parser.utils.contest_selector`
+- `webapp.parser.utils.html_scanner`
+- `webapp.parser.utils.logger_singleton`
+- `webapp.parser.utils.retry_utils`
+- `webapp.parser.utils.table_core`
+
+#### ⚠️ Task markers (handlers_shared_state_handler_base)
+
+- L157 **WARNING**: (f"\[{self.STATE_NAME}\] No contest selected")
+- L178 **NOTE**:             # Attach parity note
+- L252 **WARNING**: (f"\[{self.STATE_NAME}\] No contests detected in HTML")
+
+### handlers/shared/state\_scaffold.py {#webapp-parser-handlers-shared-state-scaffold-py}
+
+#### 🔧 Key Functions & Classes (handlers_shared_state_scaffold)
+
+- `parse` (function, line 12)
+
+#### 📦 Key Imports (handlers_shared_state_scaffold)
+
+- `__future__`
+- `typing`
+- `typing`
+- `typing`
+- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.parity_hooks`
+- `webapp.parser.handlers.shared.parity_hooks`
+
+### handlers/shared/vendor\_dispatch.py {#webapp-parser-handlers-shared-vendor-dispatch-py}
+
+> Vendor dispatch handler.
+
+#### 🔧 Key Functions & Classes (handlers_shared_vendor_dispatch)
+
+- `_display_state_name` (function, line 27)
+- `_get_canonical_state` (function, line 31)
+- `_get_handler` (function, line 44)
+- `parse` (function, line 71)
+
+#### 📦 Key Imports (handlers_shared_vendor_dispatch)
+
+- `__future__`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+- `webapp.parser.Context_Integration.librarian`
+- `webapp.parser.Context_Integration.librarian`
+- `webapp.parser.handlers.shared.state_scaffold`
+- `webapp.parser.handlers.shared.vendors.clarity_base_handler`
+- `webapp.parser.handlers.shared.vendors.dominion_base_handler`
+- `webapp.parser.handlers.shared.vendors.voteworks_base_handler`
+- `webapp.parser.handlers.vendor_state_map`
+- `webapp.parser.utils.logger_singleton`
+
+### handlers/shared/vendors/\_\_init\_\_.py {#webapp-parser-handlers-shared-vendors-init-py}
+
+#### 📦 Key Imports (handlers_shared_vendors___init__)
+
+- `webapp.parser.handlers.shared.vendors.clarity_base_handler`
+- `webapp.parser.handlers.shared.vendors.dominion_base_handler`
+- `webapp.parser.handlers.shared.vendors.voteworks_base_handler`
+
+### handlers/shared/vendors/clarity\_base\_handler.py {#webapp-parser-handlers-shared-vendors-clarity-base-handler-py}
+
+> Clarity Elections base handler.
+
+#### 🔧 Key Functions & Classes (handlers_shared_vendors_clarity_base_handler)
+
+- `ClarityBaseHandler` (class, line 15)
+
+#### 📦 Key Imports (handlers_shared_vendors_clarity_base_handler)
+
+- `__future__`
+- `re`
+- `typing`
+- `typing`
+- `webapp.parser.handlers.shared.state_handler_base`
+- `webapp.parser.utils.logger_singleton`
+
+### handlers/shared/vendors/dominion\_base\_handler.py {#webapp-parser-handlers-shared-vendors-dominion-base-handler-py}
+
+> Dominion base handler.
+
+#### 🔧 Key Functions & Classes (handlers_shared_vendors_dominion_base_handler)
+
+- `DominionBaseHandler` (class, line 15)
+
+#### 📦 Key Imports (handlers_shared_vendors_dominion_base_handler)
+
+- `__future__`
+- `re`
+- `typing`
+- `typing`
+- `webapp.parser.handlers.shared.state_handler_base`
+- `webapp.parser.utils.logger_singleton`
+
+### handlers/shared/vendors/voteworks\_base\_handler.py {#webapp-parser-handlers-shared-vendors-voteworks-base-handler-py}
+
+> VoteWorks base handler.
+
+#### 🔧 Key Functions & Classes (handlers_shared_vendors_voteworks_base_handler)
+
+- `VoteWorksBaseHandler` (class, line 15)
+
+#### 📦 Key Imports (handlers_shared_vendors_voteworks_base_handler)
+
+- `__future__`
+- `re`
+- `typing`
+- `typing`
+- `webapp.parser.handlers.shared.state_handler_base`
+- `webapp.parser.utils.logger_singleton`
+
 ### handlers/states/alabama/alabama.py {#webapp-parser-handlers-states-alabama-alabama-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_alabama_alabama)
 
-- `parse` (function, line 8)
+- `AlabamaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_alabama_alabama)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/alaska/alaska.py {#webapp-parser-handlers-states-alaska-alaska-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_alaska_alaska)
 
-- `parse` (function, line 8)
+- `AlaskaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_alaska_alaska)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/american\_samoa/american\_samoa.py {#webapp-parser-handlers-states-american-samoa-american-samoa-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_american_samoa_american_samoa)
 
-- `parse` (function, line 8)
+- `AmericanSamoaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_american_samoa_american_samoa)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/arizona/\_\_init\_\_.py {#webapp-parser-handlers-states-arizona-init-py}
 
@@ -1155,79 +1344,98 @@ election data.")
 
 #### 🔧 Key Functions & Classes (handlers_states_arkansas_arkansas)
 
-- `parse` (function, line 8)
+- `ArkansasHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_arkansas_arkansas)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
+
+### handlers/states/california.py {#webapp-parser-handlers-states-california-py}
+
+> California State Handler
+
+#### 🔧 Key Functions & Classes (handlers_states_california)
+
+- `CaliforniaHandler` (class, line 19)
+- `parse` (function, line 44)
+
+#### 📦 Key Imports (handlers_states_california)
+
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/california/california.py {#webapp-parser-handlers-states-california-california-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_california_california)
 
-- `parse` (function, line 8)
+- `CaliforniaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_california_california)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/colorado/colorado.py {#webapp-parser-handlers-states-colorado-colorado-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_colorado_colorado)
 
-- `parse` (function, line 8)
+- `ColoradoHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_colorado_colorado)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/connecticut/connecticut.py {#webapp-parser-handlers-states-connecticut-connecticut-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_connecticut_connecticut)
 
-- `parse` (function, line 8)
+- `ConnecticutHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_connecticut_connecticut)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/delaware/delaware.py {#webapp-parser-handlers-states-delaware-delaware-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_delaware_delaware)
 
-- `parse` (function, line 8)
+- `DelawareHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_delaware_delaware)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/district\_of\_columbia/district\_of\_columbia.py {#webapp-parser-handlers-states-district-of-columbia-district-of-columbia-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_district_of_columbia_district_of_columbia)
 
-- `parse` (function, line 8)
+- `DistrictofColumbiaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_district_of_columbia_district_of_columbia)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/example state/example\_county/example\_county.py {#webapp-parser-handlers-states-example-state-example-county-example-county-py}
 
@@ -1286,313 +1494,337 @@ selectors. Trying table-based extraction...\[/yellow\]")
 
 #### 🔧 Key Functions & Classes (handlers_states_florida_florida)
 
-- `parse` (function, line 8)
+- `FloridaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_florida_florida)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/georgia/georgia.py {#webapp-parser-handlers-states-georgia-georgia-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_georgia_georgia)
 
-- `parse` (function, line 8)
+- `GeorgiaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_georgia_georgia)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/guam/guam.py {#webapp-parser-handlers-states-guam-guam-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_guam_guam)
 
-- `parse` (function, line 8)
+- `GuamHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_guam_guam)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/hawaii/hawaii.py {#webapp-parser-handlers-states-hawaii-hawaii-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_hawaii_hawaii)
 
-- `parse` (function, line 8)
+- `HawaiiHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_hawaii_hawaii)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/idaho/idaho.py {#webapp-parser-handlers-states-idaho-idaho-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_idaho_idaho)
 
-- `parse` (function, line 8)
+- `IdahoHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_idaho_idaho)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/illinois/illinois.py {#webapp-parser-handlers-states-illinois-illinois-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_illinois_illinois)
 
-- `parse` (function, line 8)
+- `IllinoisHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_illinois_illinois)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/indiana/indiana.py {#webapp-parser-handlers-states-indiana-indiana-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_indiana_indiana)
 
-- `parse` (function, line 8)
+- `IndianaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_indiana_indiana)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/iowa/iowa.py {#webapp-parser-handlers-states-iowa-iowa-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_iowa_iowa)
 
-- `parse` (function, line 8)
+- `IowaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_iowa_iowa)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/kansas/kansas.py {#webapp-parser-handlers-states-kansas-kansas-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_kansas_kansas)
 
-- `parse` (function, line 8)
+- `KansasHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_kansas_kansas)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/kentucky/kentucky.py {#webapp-parser-handlers-states-kentucky-kentucky-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_kentucky_kentucky)
 
-- `parse` (function, line 8)
+- `KentuckyHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_kentucky_kentucky)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/louisiana/louisiana.py {#webapp-parser-handlers-states-louisiana-louisiana-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_louisiana_louisiana)
 
-- `parse` (function, line 8)
+- `LouisianaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_louisiana_louisiana)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/maine/maine.py {#webapp-parser-handlers-states-maine-maine-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_maine_maine)
 
-- `parse` (function, line 8)
+- `MaineHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_maine_maine)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/maryland/maryland.py {#webapp-parser-handlers-states-maryland-maryland-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_maryland_maryland)
 
-- `parse` (function, line 8)
+- `MarylandHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_maryland_maryland)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/massachusetts/massachusetts.py {#webapp-parser-handlers-states-massachusetts-massachusetts-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_massachusetts_massachusetts)
 
-- `parse` (function, line 8)
+- `MassachusettsHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_massachusetts_massachusetts)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/michigan/michigan.py {#webapp-parser-handlers-states-michigan-michigan-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_michigan_michigan)
 
-- `parse` (function, line 8)
+- `MichiganHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_michigan_michigan)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/minnesota/minnesota.py {#webapp-parser-handlers-states-minnesota-minnesota-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_minnesota_minnesota)
 
-- `parse` (function, line 8)
+- `MinnesotaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_minnesota_minnesota)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/mississippi/mississippi.py {#webapp-parser-handlers-states-mississippi-mississippi-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_mississippi_mississippi)
 
-- `parse` (function, line 8)
+- `MississippiHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_mississippi_mississippi)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/missouri/missouri.py {#webapp-parser-handlers-states-missouri-missouri-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_missouri_missouri)
 
-- `parse` (function, line 8)
+- `MissouriHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_missouri_missouri)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/montana/montana.py {#webapp-parser-handlers-states-montana-montana-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_montana_montana)
 
-- `parse` (function, line 8)
+- `MontanaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_montana_montana)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/nebraska/nebraska.py {#webapp-parser-handlers-states-nebraska-nebraska-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_nebraska_nebraska)
 
-- `parse` (function, line 8)
+- `NebraskaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_nebraska_nebraska)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/nevada/nevada.py {#webapp-parser-handlers-states-nevada-nevada-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_nevada_nevada)
 
-- `parse` (function, line 8)
+- `NevadaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_nevada_nevada)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/new\_hampshire/new\_hampshire.py {#webapp-parser-handlers-states-new-hampshire-new-hampshire-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_new_hampshire_new_hampshire)
 
-- `parse` (function, line 8)
+- `NewHampshireHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_new_hampshire_new_hampshire)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/new\_jersey/new\_jersey.py {#webapp-parser-handlers-states-new-jersey-new-jersey-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_new_jersey_new_jersey)
 
-- `parse` (function, line 8)
+- `NewJerseyHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_new_jersey_new_jersey)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/new\_mexico/new\_mexico.py {#webapp-parser-handlers-states-new-mexico-new-mexico-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_new_mexico_new_mexico)
 
-- `parse` (function, line 8)
+- `NewMexicoHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_new_mexico_new_mexico)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/new\_york/county/rockland.py {#webapp-parser-handlers-states-new-york-county-rockland-py}
 
@@ -1630,6 +1862,37 @@ enabled={safe_is_enabled(element, logger)})\[/yellow\]")
 is not clickable (visible={safe_is_visible(element, logger)},
 enabled={safe_is_enabled(element, logger)})\[/yellow\]")
 
+### handlers/states/new\_york/county/westchester.py {#webapp-parser-handlers-states-new-york-county-westchester-py}
+
+> Westchester County Handler (New York)
+
+#### 🔧 Key Functions & Classes (handlers_states_new_york_county_westchester)
+
+- `parse` (function, line 43)
+
+#### 📦 Key Imports (handlers_states_new_york_county_westchester)
+
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+- `playwright.sync_api`
+- `webapp.parser.Context_Integration.librarian`
+- `webapp.parser.utils.browser_utils`
+- `webapp.parser.utils.contest_selector`
+- `webapp.parser.utils.html_scanner`
+- `webapp.parser.utils.logger_singleton`
+- `webapp.parser.utils.shared_logic`
+- `webapp.parser.utils.table_core`
+
+#### ⚠️ Task markers (handlers_states_new_york_county_westchester)
+
+- L61 **TODO**: Customize this handler for Westchester County's specific UI.
+- L122 **WARNING**: ("\[Westchester County\] No contest selected")
+- L132 **TODO**: Add button toggles, navigation sequences, etc. specific to
+Westchester County
+
 ### handlers/states/new\_york/new\_york.py {#webapp-parser-handlers-states-new-york-new-york-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_new_york_new_york)
@@ -1652,86 +1915,92 @@ enabled={safe_is_enabled(element, logger)})\[/yellow\]")
 #### ⚠️ Task markers (handlers_states_new_york_new_york)
 
 - L27 **WARNING**: ("\[NY Handler\] No county specified in html_context.")
-- L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
+- L47 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
 county: '{county}'. Please add it under {module_path}.py")
 
 ### handlers/states/north\_carolina/north\_carolina.py {#webapp-parser-handlers-states-north-carolina-north-carolina-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_north_carolina_north_carolina)
 
-- `parse` (function, line 8)
+- `NorthCarolinaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_north_carolina_north_carolina)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/north\_dakota/north\_dakota.py {#webapp-parser-handlers-states-north-dakota-north-dakota-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_north_dakota_north_dakota)
 
-- `parse` (function, line 8)
+- `NorthDakotaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_north_dakota_north_dakota)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/northern\_mariana\_islands/northern\_mariana\_islands.py {#webapp-parser-handlers-states-northern-mariana-islands-northern-mariana-islands-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_northern_mariana_islands_northern_mariana_islands)
 
-- `parse` (function, line 8)
+- `NorthernMarianaIslandsHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_northern_mariana_islands_northern_mariana_islands)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/ohio/ohio.py {#webapp-parser-handlers-states-ohio-ohio-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_ohio_ohio)
 
-- `parse` (function, line 8)
+- `OhioHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_ohio_ohio)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/oklahoma/oklahoma.py {#webapp-parser-handlers-states-oklahoma-oklahoma-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_oklahoma_oklahoma)
 
-- `parse` (function, line 8)
+- `OklahomaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_oklahoma_oklahoma)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/oregon/oregon.py {#webapp-parser-handlers-states-oregon-oregon-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_oregon_oregon)
 
-- `parse` (function, line 8)
+- `OregonHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_oregon_oregon)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/pennsylvania/\_\_init\_\_.py {#webapp-parser-handlers-states-pennsylvania-init-py}
 
@@ -1782,183 +2051,230 @@ select one:\[/yellow\]")
 
 #### 🔧 Key Functions & Classes (handlers_states_puerto_rico_puerto_rico)
 
-- `parse` (function, line 8)
+- `PuertoRicoHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_puerto_rico_puerto_rico)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/rhode\_island/rhode\_island.py {#webapp-parser-handlers-states-rhode-island-rhode-island-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_rhode_island_rhode_island)
 
-- `parse` (function, line 8)
+- `RhodeIslandHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_rhode_island_rhode_island)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/south\_carolina/south\_carolina.py {#webapp-parser-handlers-states-south-carolina-south-carolina-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_south_carolina_south_carolina)
 
-- `parse` (function, line 8)
+- `SouthCarolinaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_south_carolina_south_carolina)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/south\_dakota/south\_dakota.py {#webapp-parser-handlers-states-south-dakota-south-dakota-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_south_dakota_south_dakota)
 
-- `parse` (function, line 8)
+- `SouthDakotaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_south_dakota_south_dakota)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/tennessee/tennessee.py {#webapp-parser-handlers-states-tennessee-tennessee-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_tennessee_tennessee)
 
-- `parse` (function, line 8)
+- `TennesseeHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_tennessee_tennessee)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
+
+### handlers/states/texas.py {#webapp-parser-handlers-states-texas-py}
+
+> Texas State Handler
+
+#### 🔧 Key Functions & Classes (handlers_states_texas)
+
+- `TexasHandler` (class, line 19)
+- `parse` (function, line 44)
+
+#### 📦 Key Imports (handlers_states_texas)
+
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/texas/texas.py {#webapp-parser-handlers-states-texas-texas-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_texas_texas)
 
-- `parse` (function, line 8)
+- `TexasHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_texas_texas)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/us\_virgin\_islands/us\_virgin\_islands.py {#webapp-parser-handlers-states-us-virgin-islands-us-virgin-islands-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_us_virgin_islands_us_virgin_islands)
 
-- `parse` (function, line 8)
+- `USVirginIslandsHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_us_virgin_islands_us_virgin_islands)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/utah/utah.py {#webapp-parser-handlers-states-utah-utah-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_utah_utah)
 
-- `parse` (function, line 8)
+- `UtahHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_utah_utah)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/vermont/vermont.py {#webapp-parser-handlers-states-vermont-vermont-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_vermont_vermont)
 
-- `parse` (function, line 8)
+- `VermontHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_vermont_vermont)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/virginia/virginia.py {#webapp-parser-handlers-states-virginia-virginia-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_virginia_virginia)
 
-- `parse` (function, line 8)
+- `VirginiaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_virginia_virginia)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/washington/washington.py {#webapp-parser-handlers-states-washington-washington-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_washington_washington)
 
-- `parse` (function, line 8)
+- `WashingtonHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_washington_washington)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/west\_virginia/west\_virginia.py {#webapp-parser-handlers-states-west-virginia-west-virginia-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_west_virginia_west_virginia)
 
-- `parse` (function, line 8)
+- `WestVirginiaHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_west_virginia_west_virginia)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/wisconsin/wisconsin.py {#webapp-parser-handlers-states-wisconsin-wisconsin-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_wisconsin_wisconsin)
 
-- `parse` (function, line 8)
+- `WisconsinHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_wisconsin_wisconsin)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
 
 ### handlers/states/wyoming/wyoming.py {#webapp-parser-handlers-states-wyoming-wyoming-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_wyoming_wyoming)
 
-- `parse` (function, line 8)
+- `WyomingHandler` (class, line 8)
+- `parse` (function, line 17)
 
 #### 📦 Key Imports (handlers_states_wyoming_wyoming)
 
 - `__future__`
 - `typing`
 - `typing`
-- `webapp.parser.handlers.formats.html_dynamic_fallback`
+- `webapp.parser.handlers.shared.state_handler_base`
+
+### handlers/vendor\_state\_map.py {#webapp-parser-handlers-vendor-state-map-py}
+
+> State to vendor mapping for vendor-dispatch handlers.
+
+#### 🔧 Key Functions & Classes (handlers_vendor_state_map)
+
+- `get_vendor_for_state` (function, line 51)
+
+#### 📦 Key Imports (handlers_vendor_state_map)
+
+- `__future__`
+- `typing`
+- `typing`
+- `webapp.parser.utils.shared_logic`
+
+#### ⚠️ Task markers (handlers_vendor_state_map)
+
+- L38 **TODO**: enhancedvoting.com domain; confirm vendor",
+- L45 **TODO**: enhancedvoting.com domain; confirm vendor",
 
 ### health/context\_migration.py {#webapp-parser-health-context-migration-py}
 
@@ -2004,19 +2320,19 @@ select one:\[/yellow\]")
 
 #### 🔧 Key Functions & Classes (health_dataset_promotion)
 
-- `discover_dataset_dirs` (function, line 68)
-- `resolve_dataset_path` (function, line 80)
-- `_load_metadata` (function, line 95)
-- `_load_rows` (function, line 102)
-- `_has_value` (function, line 111)
-- `_match_field` (function, line 119)
-- `_coerce_text` (function, line 138)
-- `_coerce_votes` (function, line 145)
-- `_resolve_election_date` (function, line 169)
-- `build_warehouse_records` (function, line 194)
-- `promote_dataset` (function, line 243)
-- `_build_arg_parser` (function, line 351)
-- `main` (function, line 375)
+- `discover_dataset_dirs` (function, line 67)
+- `resolve_dataset_path` (function, line 79)
+- `_load_metadata` (function, line 94)
+- `_load_rows` (function, line 101)
+- `_has_value` (function, line 110)
+- `_match_field` (function, line 118)
+- `_coerce_text` (function, line 137)
+- `_coerce_votes` (function, line 144)
+- `_resolve_election_date` (function, line 168)
+- `build_warehouse_records` (function, line 193)
+- `promote_dataset` (function, line 242)
+- `_build_arg_parser` (function, line 350)
+- `main` (function, line 374)
 
 #### 📦 Key Imports (health_dataset_promotion)
 
@@ -2032,17 +2348,17 @@ select one:\[/yellow\]")
 - `orjson`
 - `webapp.parser.config`
 - `webapp.parser.Context_Integration.librarian`
+- `webapp.parser.health.promotion_helpers`
+- `webapp.parser.health.promotion_helpers`
 - `webapp.parser.utils.db_utils`
 - `webapp.parser.utils.db_utils`
 - `webapp.parser.utils.db_utils`
 - `webapp.parser.utils.logger_singleton`
 - `webapp.parser.utils.models`
-- `webapp.parser.health.promotion_helpers`
-- `webapp.parser.health.promotion_helpers`
 
 #### ⚠️ Task markers (health_dataset_promotion)
 
-- L295 **WARNING**: (f"\[PROMOTE\] Skipping blocked URL: {source_url}")
+- L294 **WARNING**: (f"\[PROMOTE\] Skipping blocked URL: {source_url}")
 
 ### health/health\_config.py {#webapp-parser-health-health-config-py}
 
@@ -2055,16 +2371,21 @@ select one:\[/yellow\]")
 - `config`
 - `config`
 
+#### ⚠️ Task markers (health_health_config)
+
+- L110 **WARN**: 0.45 ≤ suspicion &lt; 0.72 (middle third, 45–72%) →
+confirm/verify
+
 ### health/health\_router.py {#webapp-parser-health-health-router-py}
 
 #### 🔧 Key Functions & Classes (health_health_router)
 
-- `LocalLearningEngine` (class, line 74)
-- `get_learning_engine` (function, line 131)
-- `register_orchestration_plugin` (function, line 140)
-- `run_orchestration_plugins` (function, line 143)
-- `preclean_json_logs` (function, line 152)
-- `BotPipeline` (class, line 207)
+- `LocalLearningEngine` (class, line 70)
+- `get_learning_engine` (function, line 127)
+- `register_orchestration_plugin` (function, line 136)
+- `run_orchestration_plugins` (function, line 139)
+- `preclean_json_logs` (function, line 148)
+- `BotPipeline` (class, line 238)
 
 #### 📦 Key Imports (health_health_router)
 
@@ -2091,22 +2412,22 @@ select one:\[/yellow\]")
 
 #### ⚠️ Task markers (health_health_router)
 
-- L99 **WARNING**: (f"\[LocalLearning\] Failed to record training signal:
+- L95 **WARNING**: (f"\[LocalLearning\] Failed to record training signal:
 {e}")
-- L337 **WARNING**: (f"\[health_router\] manual_correction failed (attempt
+- L357 **WARNING**: (f"\[health_router\] manual_correction failed (attempt
 {attempt}): {result.stderr}")
-- L421 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+- L441 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
 manual_correction...")
-- L423 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+- L443 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
 rescanning...")
-- L425 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+- L445 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
 may remain.")
-- L460 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
-- L477 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
+- L480 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
+- L497 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
 loop will be handled by scan_misaligned_ner.")
-- L479 **WARNING**: ("\[PIPELINE\] scan_misaligned_ner failed or file missing.
+- L499 **WARNING**: ("\[PIPELINE\] scan_misaligned_ner failed or file missing.
 Proceeding with caution.")
-- L511 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
+- L525 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
 
 ### health/integrity\_check\_runner.py {#webapp-parser-health-integrity-check-runner-py}
 
@@ -2226,31 +2547,31 @@ these from your training data:")
 
 #### 🔧 Key Functions & Classes (health_manual_correction_bot)
 
-- `safe_path` (function, line 76)
-- `load_cache` (function, line 105)
-- `close_cache` (function, line 120)
-- `write_audit_log` (function, line 124)
-- `process_logs_with_cache` (function, line 139)
-- `process_and_sync` (function, line 151)
-- `discover_field_types_from_logs` (function, line 195)
-- `atomic_write_json` (function, line 228)
-- `llm_suggest_action` (function, line 297)
-- `ml_score_entry` (function, line 349)
-- `ml_suggest_field` (function, line 372)
-- `load_jsonl` (function, line 391)
-- `check_and_fix_json_files` (function, line 407)
-- `find_log_files` (function, line 569)
-- `load_jsonl_incremental` (function, line 636)
-- `save_jsonl` (function, line 654)
-- `deduplicate_entries` (function, line 667)
-- `entry_key` (function, line 681)
-- `aggregate_successful_field_entries` (function, line 692)
-- `feedback_loop` (function, line 733)
-- `trim_log_file` (function, line 821)
-- `update_context_with_new_entries` (function, line 828)
-- `validate_context_schema` (function, line 845)
-- `extract_year` (function, line 870)
-- `extract_state` (function, line 884)
+- `safe_path` (function, line 70)
+- `load_cache` (function, line 99)
+- `close_cache` (function, line 114)
+- `write_audit_log` (function, line 118)
+- `process_logs_with_cache` (function, line 133)
+- `process_and_sync` (function, line 145)
+- `discover_field_types_from_logs` (function, line 189)
+- `atomic_write_json` (function, line 222)
+- `ml_score_entry` (function, line 295)
+- `ml_suggest_field` (function, line 318)
+- `load_jsonl` (function, line 337)
+- `check_and_fix_json_files` (function, line 353)
+- `find_log_files` (function, line 515)
+- `load_jsonl_incremental` (function, line 582)
+- `save_jsonl` (function, line 600)
+- `deduplicate_entries` (function, line 613)
+- `entry_key` (function, line 627)
+- `aggregate_successful_field_entries` (function, line 638)
+- `feedback_loop` (function, line 679)
+- `trim_log_file` (function, line 747)
+- `update_context_with_new_entries` (function, line 754)
+- `validate_context_schema` (function, line 771)
+- `extract_year` (function, line 796)
+- `extract_state` (function, line 810)
+- `extract_county` (function, line 829)
 
 #### 📦 Key Imports (health_manual_correction_bot)
 
@@ -2268,8 +2589,8 @@ these from your training data:")
 - `datetime`
 - `datetime`
 - `pathlib`
-- `openai`
 - `orjson`
+- `config`
 - `config`
 - `config`
 - `config`
@@ -2277,32 +2598,32 @@ these from your training data:")
 
 #### ⚠️ Task markers (health_manual_correction_bot)
 
-- L361 **WARNING**: (f"Coordinator ML scoring failed: {e}")
-- L382 **WARNING**: (f"Coordinator field suggestion failed: {e}")
-- L395 **WARNING**: (f"Log file not found: {path}")
-- L404 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
-- L434 **WARNING**: (f"\[SECURITY\] Skipping invalid directory: {directory} -
+- L307 **WARNING**: (f"Coordinator ML scoring failed: {e}")
+- L328 **WARNING**: (f"Coordinator field suggestion failed: {e}")
+- L341 **WARNING**: (f"Log file not found: {path}")
+- L350 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
+- L380 **WARNING**: (f"\[SECURITY\] Skipping invalid directory: {directory} -
 {e}")
-- L448 **WARNING**: (f"\[SECURITY\] Skipping file outside allowed directories:
+- L394 **WARNING**: (f"\[SECURITY\] Skipping file outside allowed directories:
 {file} - {e}")
-- L454 **WARNING**: (f"\[SKIP\] File not found: {file}")
-- L458 **WARNING**: (f"\[SKIP\] File too large: {file}")
-- L483 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
+- L400 **WARNING**: (f"\[SKIP\] File not found: {file}")
+- L404 **WARNING**: (f"\[SKIP\] File too large: {file}")
+- L429 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
 ({e})")
-- L497 **WARNING**: (f"\[CORRUPT\] {len(corrupt_items)} lines saved to
+- L443 **WARNING**: (f"\[CORRUPT\] {len(corrupt_items)} lines saved to
 {corrupt_path}")
-- L502 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
+- L448 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
 file: {file}")
-- L516 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
-- L530 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt_path}")
-- L536 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
+- L462 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L476 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt_path}")
+- L482 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
 JSON in {file}")
-- L541 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
-- L555 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {dest_path}")
-- L559 **WARNING**: (f"\[DELETED\] {file}")
-- L562 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
-- L597 **WARNING**: (f"\[SECURITY\] Skipping invalid directory: {d} - {e}")
-- L615 **WARNING**: (f"\[SECURITY\] Skipping file outside allowed directories:
+- L487 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+- L501 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {dest_path}")
+- L505 **WARNING**: (f"\[DELETED\] {file}")
+- L508 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
+- L543 **WARNING**: (f"\[SECURITY\] Skipping invalid directory: {d} - {e}")
+- L561 **WARNING**: (f"\[SECURITY\] Skipping file outside allowed directories:
 {f} - {e}")
 
 ### health/navigation\_feedback\_ingest.py {#webapp-parser-health-navigation-feedback-ingest-py}
@@ -2345,19 +2666,18 @@ JSON in {file}")
 
 #### 🔧 Key Functions & Classes (health_quarantine_queue)
 
-- `QuarantineReason` (class, line 37)
-- `ReviewStatus` (class, line 77)
-- `DataCollectionNotice` (class, line 89)
-- `QuarantineEntry` (class, line 101)
-- `QuarantineQueue` (class, line 181)
-- `get_quarantine_queue` (function, line 444)
+- `QuarantineReason` (class, line 35)
+- `ReviewStatus` (class, line 75)
+- `DataCollectionNotice` (class, line 87)
+- `QuarantineEntry` (class, line 99)
+- `QuarantineQueue` (class, line 179)
+- `get_quarantine_queue` (function, line 442)
 
 #### 📦 Key Imports (health_quarantine_queue)
 
 - `__future__`
 - `hashlib`
 - `json`
-- `os`
 - `threading`
 - `time`
 - `dataclasses`
@@ -2376,8 +2696,8 @@ JSON in {file}")
 
 #### ⚠️ Task markers (health_quarantine_queue)
 
-- L295 **WARNING**: ({
-- L296 **WARNING**: ",
+- L293 **WARNING**: ({
+- L294 **WARNING**: ",
 
 ### health/retrain\_table\_structure\_models.py {#webapp-parser-health-retrain-table-structure-models-py}
 
@@ -2464,6 +2784,140 @@ min_delta={min_delta:.2f}, epochs={epochs}")
 - L810 **WARNING**: (f"MISALIGNED: {text} {annots\['entities'\]}")
 - L840 **WARNING**: ("\[DB\] Base.metadata.tables is empty. No models
 registered? Did you import all model classes?")
+
+### health/risk\_gates.py {#webapp-parser-health-risk-gates-py}
+
+> risk*gates.py
+
+#### 🔧 Key Functions & Classes (health_risk_gates)
+
+- `RiskGateScores` (class, line 38)
+- `RiskGateConfig` (class, line 49)
+- `RiskGateEvaluator` (class, line 67)
+- `evaluate_risk` (function, line 390)
+
+#### 📦 Key Imports (health_risk_gates)
+
+- `dataclasses`
+- `typing`
+- `typing`
+- `typing`
+
+#### ⚠️ Task markers (health_risk_gates)
+
+- L11 **WARN**: /log tiers (⅓-proportioned boundaries).
+- L24 **WARN**: 0.45 ≤ suspicion &lt; 0.72  (middle third → confirm/verify)
+- L44 **WARN**: ", or "log"
+- L274 **WARN**: 0.45 ≤ suspicion &lt; 0.72  (middle ⅓, 45–72%)
+- L278 **WARN**: tier (~27% width) is middle third
+- L287 **WARN**: " | "log"
+- L306 **WARN**: tier
+- L315 **WARN**: ", confidence)
+- L319 **WARN**: threshold
+
+### health/risk\_gates\_calculus.py {#webapp-parser-health-risk-gates-calculus-py}
+
+> risk*gates*calculus.py
+
+#### 🔧 Key Functions & Classes (health_risk_gates_calculus)
+
+- `DerivativeGates` (class, line 43)
+- `SubTierClassification` (class, line 60)
+- `CalculusRiskEvaluator` (class, line 71)
+- `evaluate_risk_with_calculus` (function, line 363)
+- `visualize_sub_tier_classification` (function, line 435)
+
+#### 📦 Key Imports (health_risk_gates_calculus)
+
+- `math`
+- `dataclasses`
+- `typing`
+- `typing`
+- `typing`
+- `webapp.parser.health.risk_gates`
+- `webapp.parser.health.risk_gates`
+- `webapp.parser.health.risk_gates`
+
+#### ⚠️ Task markers (health_risk_gates_calculus)
+
+- L15 **WARN**: boundary (approaching 0.45)
+- L16 **WARN**: →BLOCK boundary (approaching 0.72)
+- L63 **WARN**: ", or "block"
+- L78 **WARN**: /BLOCK
+- L156 **WARN**: boundary (0.45)
+- L246 **WARN**: /BLOCK) from base classifier
+- L270 **WARN**: ":
+- L271 **WARN**: tier has two boundaries; pick nearest
+- L402 **WARN**: WARN→BLOCK
+- L410 **WARN**: TIER (0.45 – 0.72)
+
+### health/risk\_gates\_integration\_examples.py {#webapp-parser-health-risk-gates-integration-examples-py}
+
+> risk*gates*integration*examples.py
+
+#### 🔧 Key Functions & Classes (health_risk_gates_integration_examples)
+
+- `evaluate_parser_extraction` (function, line 22)
+- `evaluate_data_framework_upload` (function, line 90)
+- `evaluate_ballot_lens_display` (function, line 156)
+- `evaluate_guarded_action` (function, line 228)
+- `summarize_risk_distribution` (function, line 299)
+
+#### 📦 Key Imports (health_risk_gates_integration_examples)
+
+- `typing`
+- `typing`
+- `typing`
+- `webapp.parser.health.risk_gates`
+
+#### ⚠️ Task markers (health_risk_gates_integration_examples)
+
+- L8 **WARN**: /log extraction
+- L45 **WARN**: (0.45 ≤ tier &lt; 0.72): Import with explicit confirmation
+prompt
+- L65 **WARN**: " else action
+- L130 **NOTE**: = "Data quality acceptable; direct upload approved."
+- L131 **WARN**: ":
+- L134 **NOTE**: = "Medium-risk data; requires user confirmation before
+upload."
+- L138 **NOTE**: = "High-risk data; escalated to admin review. Do not expose
+to Data Framework."
+- L149 **NOTE**:         "audit_note": note
+- L173 **WARN**: tier: Yellow badge, normal display with "⚠️ verify" tooltip
+- L191 **WARN**: ": "#ffc107",   # Yellow
+- L197 **WARN**: ": "visible",
+- L213 **WARN**: "
+- L219 **WARN**: "),
+- L282 **WARN**: " if profile\["suspicion"\] &gt;= 0.45 else "log")
+- L308 **WARN**: /BLOCK items)
+- L322 **WARN**: ": 0, "block": 0}
+- L337 **WARN**: ": 0, "block": 0}
+- L347 **WARN**: ": round(100_tier_counts\["warn"\] / total, 1) if total &gt;
+0 else 0,
+- L355 **WARN**: '\]} items awaiting user confirmation (WARN tier)"
+- L406 **WARN**: tier (0=near LOG, 1=near BLOCK)
+
+### health/risk\_gates\_spec.py {#webapp-parser-health-risk-gates-spec-py}
+
+> TECHNICAL SPECIFICATION: Three-Dimensional Risk Assessment Model
+
+#### ⚠️ Task markers (health_risk_gates_spec)
+
+- L24 **WARN**: (0.45 – 0.72): User confirmation required
+- L72 **WARN**:   • TOTAL SUSPICION ≈ 0.60 → TIER: WARN
+- L86 **WARN**: ) is narrower: user confirmation gates
+- L94 **WARN**: tier
+- L130 **WARN**: (center of warn, tier_conf ≈ 0.76)
+- L137 **WARN**: (near BLOCK boundary, tier_conf ≈ 0.99)
+- L173 **WARN**: tier → IMPORT_CONFIRM
+- L194 **WARN**: If tier == WARN:
+- L220 **WARN**:   tier == WARN:
+- L239 **WARN**: If tier &gt;= WARN:
+- L280 **WARN**: tier narrower
+- L287 **WARN**: tier broader (0.55–0.85), BLOCK narrower (0.85–1.0)
+- L289 **WARN**: tier is broader and more forgiving.
+- L327 **WARN**: , BLOCK)
+- L394 **WARN**: "
 
 ### health/scan\_misaligned\_ner.py {#webapp-parser-health-scan-misaligned-ner-py}
 
@@ -2569,20 +3023,26 @@ may remain.")
 
 #### 🔧 Key Functions & Classes (html_election_parser)
 
-- `_close_browser_quietly` (function, line 83)
-- `_count_dom_table_rows` (function, line 105)
-- `load_urls` (function, line 136)
-- `mark_url_processed` (function, line 196)
-- `prompt_url_selection` (function, line 257)
-- `process_format_override` (function, line 425)
-- `ai_analyze_results` (function, line 621)
-- `stream_results` (function, line 721)
-- `_read_text_file_with_fallback` (function, line 768)
-- `_extract_text_blocks` (function, line 784)
-- `generate_generic_html_result` (function, line 972)
-- `orchestrate_url` (function, line 1198)
-- `_orchestrate_url_worker` (function, line 2098)
-- `main` (function, line 2115)
+- `_close_browser_quietly` (function, line 92)
+- `_captcha_detection_key` (function, line 114)
+- `_register_cloudflare_detection` (function, line 118)
+- `_prompt_for_captcha_assist` (function, line 134)
+- `_sanitize_error_metadata` (function, line 192)
+- `_log_session_exception_metadata` (function, line 215)
+- `_count_dom_table_rows` (function, line 227)
+- `load_urls` (function, line 258)
+- `mark_url_processed` (function, line 318)
+- `prompt_url_selection` (function, line 379)
+- `process_format_override` (function, line 547)
+- `ai_analyze_results` (function, line 743)
+- `stream_results` (function, line 843)
+- `_read_text_file_with_fallback` (function, line 890)
+- `_extract_text_blocks` (function, line 906)
+- `generate_generic_html_result` (function, line 1094)
+- `orchestrate_url` (function, line 1320)
+- `_orchestrate_url_worker` (function, line 2381)
+- `main` (function, line 2398)
+- `_capture_selenium_ner_training` (function, line 2632)
 
 #### 📦 Key Imports (html_election_parser)
 
@@ -2590,6 +3050,7 @@ may remain.")
 - `os`
 - `re`
 - `threading`
+- `time`
 - `collections`
 - `collections`
 - `datetime`
@@ -2605,30 +3066,29 @@ may remain.")
 - `config`
 - `config`
 - `config`
-- `config`
 
 #### ⚠️ Task markers (html_election_parser)
 
-- L76 **WARNING**: ("Deleting .processed_urls cache for fresh start...")
-- L94 **WARNING**: ({
-- L95 **WARNING**: ",
-- L520 **WARNING**: ({
-- L521 **WARNING**: ",
-- L535 **WARNING**: ({
-- L536 **WARNING**: ",
-- L598 **WARNING**: ({
-- L599 **WARNING**: ",
-- L698 **WARNING**: (payload_2)
-- L1026 **WARNING**: ({
-- L1027 **WARNING**: ",
-- L1073 **WARNING**: ({
-- L1074 **WARNING**: ",
-- L1127 **WARNING**: ({
-- L1128 **WARNING**: ",
-- L1288 **WARNING**: ({
-- L1289 **WARNING**: ",
-- L1344 **WARNING**: ({
-- L1345 **WARNING**: ",
+- L84 **WARNING**: ("Deleting .processed_urls cache for fresh start...")
+- L103 **WARNING**: ({
+- L104 **WARNING**: ",
+- L176 **WARNING**: ({
+- L177 **WARNING**: ",
+- L642 **WARNING**: ({
+- L643 **WARNING**: ",
+- L657 **WARNING**: ({
+- L658 **WARNING**: ",
+- L720 **WARNING**: ({
+- L721 **WARNING**: ",
+- L820 **WARNING**: (payload_2)
+- L1148 **WARNING**: ({
+- L1149 **WARNING**: ",
+- L1195 **WARNING**: ({
+- L1196 **WARNING**: ",
+- L1249 **WARNING**: ({
+- L1250 **WARNING**: ",
+- L1425 **WARNING**: ({
+- L1426 **WARNING**: ",
 
 ### navigator/\_\_init\_\_.py {#webapp-parser-navigator-init-py}
 
@@ -2691,7 +3151,7 @@ may remain.")
 
 #### 🔧 Key Functions & Classes (navigator_navigation_recipes)
 
-- `NavigationRecipeStore` (class, line 12)
+- `NavigationRecipeStore` (class, line 16)
 
 #### 📦 Key Imports (navigator_navigation_recipes)
 
@@ -2703,7 +3163,9 @@ may remain.")
 - `typing`
 - `typing`
 - `typing`
+- `urllib.parse`
 - `orjson`
+- `config`
 
 ### navigator/navigation\_runner.py {#webapp-parser-navigator-navigation-runner-py}
 
@@ -2781,20 +3243,20 @@ may remain.")
 
 #### 🔧 Key Functions & Classes (quality_assurance_data_classifier)
 
-- `DLStatus` (class, line 30)
-- `QAIssueType` (class, line 38)
-- `IssureSeverity` (class, line 50)
-- `ActionType` (class, line 58)
-- `QAIssue` (class, line 72)
-- `ClassificationResult` (class, line 86)
-- `DatasetMetadata` (class, line 97)
-- `get_db_connection` (function, line 115)
-- `classify_as_dl1` (function, line 137)
-- `detect_quality_issues` (function, line 253)
-- `promote_to_dl2` (function, line 367)
-- `get_pending_dl2_reviews` (function, line 457)
-- `get_dl2_inventory` (function, line 490)
-- `get_dataset_lineage` (function, line 537)
+- `DLStatus` (class, line 35)
+- `QAIssueType` (class, line 43)
+- `IssureSeverity` (class, line 55)
+- `ActionType` (class, line 63)
+- `QAIssue` (class, line 77)
+- `ClassificationResult` (class, line 91)
+- `DatasetMetadata` (class, line 102)
+- `get_db_connection` (function, line 120)
+- `classify_as_dl1` (function, line 142)
+- `detect_quality_issues` (function, line 258)
+- `promote_to_dl2` (function, line 372)
+- `get_pending_dl2_reviews` (function, line 462)
+- `get_dl2_inventory` (function, line 495)
+- `get_dataset_lineage` (function, line 542)
 
 #### 📦 Key Imports (quality_assurance_data_classifier)
 
@@ -2821,10 +3283,10 @@ may remain.")
 
 #### ⚠️ Task markers (quality_assurance_data_classifier)
 
-- L53 **WARNING**: = "WARNING"
-- L285 **WARNING**: .value,
-- L328 **WARNING**: .value,
-- L356 **WARNING**: .value,
+- L58 **WARNING**: = "WARNING"
+- L290 **WARNING**: .value,
+- L333 **WARNING**: .value,
+- L361 **WARNING**: .value,
 
 ### quality\_assurance/qa\_endpoints.py {#webapp-parser-quality-assurance-qa-endpoints-py}
 
@@ -2832,27 +3294,24 @@ may remain.")
 
 #### 🔧 Key Functions & Classes (quality_assurance_qa_endpoints)
 
-- `_require_qa_enabled` (function, line 39)
-- `_get_reviewer_principal` (function, line 50)
-- `_require_reviewer` (function, line 56)
-- `parse_and_classify` (function, line 90)
-- `get_pending_reviews` (function, line 185)
-- `verify_and_promote` (function, line 227)
-- `get_inventory` (function, line 291)
-- `get_lineage` (function, line 345)
-- `export_dl2_data` (function, line 394)
-- `get_stats` (function, line 462)
+- `_require_qa_enabled` (function, line 37)
+- `_get_reviewer_principal` (function, line 48)
+- `_require_reviewer` (function, line 54)
+- `parse_and_classify` (function, line 88)
+- `get_pending_reviews` (function, line 181)
+- `verify_and_promote` (function, line 223)
+- `get_inventory` (function, line 287)
+- `get_lineage` (function, line 341)
+- `export_dl2_data` (function, line 390)
+- `get_stats` (function, line 458)
 
 #### 📦 Key Imports (quality_assurance_qa_endpoints)
 
 - `__future__`
 - `csv`
 - `io`
-- `json`
-- `datetime`
-- `datetime`
-- `io`
 - `functools`
+- `io`
 - `flask`
 - `flask`
 - `flask`
@@ -2865,10 +3324,13 @@ may remain.")
 - `data_classifier`
 - `data_classifier`
 - `data_classifier`
+- `data_classifier`
+- `data_classifier`
+- `data_classifier`
 
 #### ⚠️ Task markers (quality_assurance_qa_endpoints)
 
-- L485 **TODO**: Query for rejected count
+- L481 **TODO**: Query for rejected count
 
 ### quarantine\_endpoints.py {#webapp-parser-quarantine-endpoints-py}
 
@@ -2974,17 +3436,18 @@ may remain.")
 
 #### 🔧 Key Functions & Classes (state_router)
 
-- `list_available_states` (function, line 45)
-- `list_available_counties` (function, line 57)
-- `import_handler` (function, line 76)
-- `prompt_for_handler_fallback` (function, line 120)
-- `preload_handler_map` (function, line 192)
-- `reload_handler_map` (function, line 219)
-- `scan_url_for_state_county` (function, line 226)
-- `fuzzy_match_handler` (function, line 263)
-- `list_available_handlers` (function, line 277)
-- `get_handler` (function, line 322)
-- `cli` (function, line 482)
+- `_guard_context_for_db` (function, line 67)
+- `list_available_states` (function, line 84)
+- `list_available_counties` (function, line 96)
+- `import_handler` (function, line 115)
+- `prompt_for_handler_fallback` (function, line 159)
+- `preload_handler_map` (function, line 231)
+- `reload_handler_map` (function, line 258)
+- `scan_url_for_state_county` (function, line 265)
+- `fuzzy_match_handler` (function, line 302)
+- `list_available_handlers` (function, line 316)
+- `get_handler` (function, line 361)
+- `cli` (function, line 535)
 
 #### 📦 Key Imports (state_router)
 
@@ -3002,12 +3465,12 @@ may remain.")
 - `config`
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
+- `handlers.registry`
+- `handlers.registry`
+- `handlers.registry`
+- `handlers.shared.parity_hooks`
+- `handlers.shared.parity_hooks`
 - `utils.logger_singleton`
-- `utils.logger_singleton`
-- `utils.logger_singleton`
-- `utils.shared_logic`
-- `utils.shared_logic`
-- `utils.shared_logic`
 
 #### 💬 Top-of-file Comments (state_router)
 
@@ -3031,28 +3494,28 @@ may remain.")
 
 #### ⚠️ Task markers (state_router)
 
-- L49 **WARNING**: ("\[Router\] handlers/states directory not found.")
-- L66 **WARNING**: (f"\[Router\] counties directory not found for state:
+- L88 **WARNING**: ("\[Router\] handlers/states directory not found.")
+- L105 **WARNING**: (f"\[Router\] counties directory not found for state:
 {state_key}")
-- L137 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] No handler states
+- L176 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] No handler states
 available for manual selection.")
-- L154 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
-- L157 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
-- L160 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] State '{state}'
+- L193 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
+- L196 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
+- L199 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] State '{state}'
 not found. Please try again.")
-- L179 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
-- L182 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] County '{county}'
+- L218 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
+- L221 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] County '{county}'
 not found for state '{state}'. Please try again.")
-- L189 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Too many failed
+- L228 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Too many failed
 attempts. Exiting fallback.")
-- L205 **WARNING**: (f"\[Router\] Requested state '{state_name}' not found on
+- L244 **WARNING**: (f"\[Router\] Requested state '{state_name}' not found on
 disk. Skipping restrict filter.")
-- L512 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for
+- L565 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for
 fuzzy matching.")
-- L523 **WARNING**: (f"Failed to load context from file: {e}")
-- L533 **WARNING**: ("No suitable handler found.")
-- L540 **WARNING**: ("No handler selected. Exiting.")
-- L547 **WARNING**: ("Still could not import a suitable handler.")
+- L576 **WARNING**: (f"Failed to load context from file: {e}")
+- L586 **WARNING**: ("No suitable handler found.")
+- L593 **WARNING**: ("No handler selected. Exiting.")
+- L600 **WARNING**: ("Still could not import a suitable handler.")
 
 ### tests/test\_extract\_url.py {#webapp-parser-tests-test-extract-url-py}
 
@@ -3243,6 +3706,8 @@ intervention not implemented. (Session: {session_id})")
 - `bring_to_front` (function, line 80)
 - `is_cloudflare_captcha_present` (function, line 120)
 - `wait_for_user_to_solve_captcha` (function, line 131)
+- `_capture_captcha_dom_state` (function, line 179)
+- `_log_captcha_transition` (function, line 212)
 
 #### 📦 Key Imports (utils_captcha_tools)
 
@@ -3264,7 +3729,7 @@ intervention not implemented. (Session: {session_id})")
 #### ⚠️ Task markers (utils_captcha_tools)
 
 - L118 **WARNING**: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
-- L154 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
+- L175 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
 
 ### utils/cert\_utils.py {#webapp-parser-utils-cert-utils-py}
 
@@ -3381,31 +3846,31 @@ intervention not implemented. (Session: {session_id})")
 
 #### 🔧 Key Functions & Classes (utils_contest_selector)
 
-- `_env_truthy` (function, line 59)
-- `ContestRecord` (class, line 74)
-- `_bundle_key` (function, line 88)
-- `_collect_bundle_members` (function, line 101)
-- `_should_bundle` (function, line 181)
-- `_inject_bundle_records` (function, line 217)
-- `_merge_contest_metadata` (function, line 272)
-- `_extract_first_int` (function, line 371)
-- `_contest_sort_key` (function, line 383)
-- `_extract_display_details` (function, line 410)
-- `_extract_year_tokens` (function, line 448)
-- `_strip_years` (function, line 451)
-- `_base_canonical_key` (function, line 454)
-- `_expand_contests_from_context` (function, line 464)
-- `_merge_expanded_contests` (function, line 521)
-- `_cluster_titles_by_base` (function, line 540)
-- `_pick_rep_title` (function, line 557)
-- `_score_title` (function, line 569)
-- `_chunk_log_options` (function, line 580)
-- `_render_paginated_contest_menu` (function, line 594)
-- `_log` (function, line 631)
-- `_norm_key` (function, line 656)
-- `_tokens` (function, line 662)
-- `_jaccard` (function, line 665)
-- `_cluster_titles` (function, line 670)
+- `_env_truthy` (function, line 66)
+- `ContestRecord` (class, line 81)
+- `_bundle_key` (function, line 95)
+- `_collect_bundle_members` (function, line 108)
+- `_should_bundle` (function, line 188)
+- `_inject_bundle_records` (function, line 224)
+- `_merge_contest_metadata` (function, line 279)
+- `_extract_first_int` (function, line 378)
+- `_contest_sort_key` (function, line 390)
+- `_extract_display_details` (function, line 417)
+- `_extract_year_tokens` (function, line 455)
+- `_strip_years` (function, line 458)
+- `_base_canonical_key` (function, line 461)
+- `_expand_contests_from_context` (function, line 471)
+- `_merge_expanded_contests` (function, line 528)
+- `_cluster_titles_by_base` (function, line 547)
+- `_pick_rep_title` (function, line 564)
+- `_score_title` (function, line 576)
+- `_chunk_log_options` (function, line 587)
+- `_render_paginated_contest_menu` (function, line 601)
+- `_log` (function, line 638)
+- `_norm_key` (function, line 663)
+- `_tokens` (function, line 669)
+- `_jaccard` (function, line 672)
+- `_cluster_titles` (function, line 677)
 
 #### 📦 Key Imports (utils_contest_selector)
 
@@ -3425,22 +3890,22 @@ intervention not implemented. (Session: {session_id})")
 - `typing`
 - `typing`
 - `numpy`
-- `Context_Integration.Context_Library.constants`
-- `Context_Integration.Context_Library.constants`
-- `Context_Integration.Context_Library.constants`
-- `Context_Integration.Context_Library.constants`
+- `config`
+- `config`
+- `config`
+- `config`
 
 #### ⚠️ Task markers (utils_contest_selector)
 
-- L645 **WARNING**: ":
-- L646 **WARNING**: (entry)
-- L1039 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
+- L652 **WARNING**: ":
+- L653 **WARNING**: (entry)
+- L1060 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
 contests", session_id=session_id,
-- L1709 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
+- L1730 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
 "Empty search term", "session_id": session_id})
-- L1714 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
+- L1735 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
 matches for '{term}'", "session_id": session_id})
-- L1786 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
+- L1807 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
 match; try again.", "session_id": session_id})
 
 ### utils/coordinator\_protocol.py {#webapp-parser-utils-coordinator-protocol-py}
@@ -3649,10 +4114,10 @@ match; try again.", "session_id": session_id})
 - `update_download_manifest` (function, line 45)
 - `is_already_downloaded` (function, line 50)
 - `download_file` (function, line 70)
-- `download_multiple_files` (function, line 153)
-- `download_confirmed_file` (function, line 169)
-- `summarize_downloads` (function, line 179)
-- `get_downloaded_files_by_status` (function, line 190)
+- `download_multiple_files` (function, line 161)
+- `download_confirmed_file` (function, line 192)
+- `summarize_downloads` (function, line 217)
+- `get_downloaded_files_by_status` (function, line 228)
 
 #### 📦 Key Imports (utils_download_utils)
 
@@ -3678,31 +4143,31 @@ match; try again.", "session_id": session_id})
 
 #### 🔧 Key Functions & Classes (utils_dynamic_table_extractor)
 
-- `_emit` (function, line 85)
-- `dynamic_table_extractor` (function, line 108)
-- `find_tabular_candidates` (function, line 192)
-- `analyze_candidate_nlp` (function, line 277)
-- `score_candidate` (function, line 303)
-- `remove_low_signal_columns` (function, line 391)
-- `infer_column_types` (function, line 406)
-- `advanced_party_candidate_detection` (function, line 472)
-- `extract_candidates_and_parties` (function, line 491)
-- `entity_linking` (function, line 542)
-- `find_tables_with_headings` (function, line 589)
-- `discover_container_selectors` (function, line 706)
-- `log_new_dom_pattern` (function, line 753)
-- `review_dom_patterns` (function, line 768)
-- `auto_approve_dom_pattern` (function, line 814)
-- `find_tables_with_panel_headings` (function, line 832)
-- `find_tables_with_section_headings` (function, line 902)
-- `is_candidate_major_row` (function, line 978)
-- `is_candidate_major_col` (function, line 1022)
-- `is_precinct_major` (function, line 1052)
-- `is_flat_candidate_table` (function, line 1070)
-- `is_single_row_summary` (function, line 1096)
-- `is_candidate_footer` (function, line 1102)
-- `detect_wide_vs_long` (function, line 1121)
-- `classify_ambiguous_tables` (function, line 1132)
+- `_emit` (function, line 86)
+- `dynamic_table_extractor` (function, line 109)
+- `find_tabular_candidates` (function, line 193)
+- `analyze_candidate_nlp` (function, line 278)
+- `score_candidate` (function, line 304)
+- `remove_low_signal_columns` (function, line 392)
+- `infer_column_types` (function, line 407)
+- `advanced_party_candidate_detection` (function, line 473)
+- `extract_candidates_and_parties` (function, line 492)
+- `entity_linking` (function, line 543)
+- `find_tables_with_headings` (function, line 597)
+- `discover_container_selectors` (function, line 714)
+- `log_new_dom_pattern` (function, line 761)
+- `review_dom_patterns` (function, line 776)
+- `auto_approve_dom_pattern` (function, line 822)
+- `find_tables_with_panel_headings` (function, line 840)
+- `find_tables_with_section_headings` (function, line 910)
+- `is_candidate_major_row` (function, line 986)
+- `is_candidate_major_col` (function, line 1030)
+- `is_precinct_major` (function, line 1060)
+- `is_flat_candidate_table` (function, line 1078)
+- `is_single_row_summary` (function, line 1104)
+- `is_candidate_footer` (function, line 1110)
+- `detect_wide_vs_long` (function, line 1129)
+- `classify_ambiguous_tables` (function, line 1140)
 
 #### 📦 Key Imports (utils_dynamic_table_extractor)
 
@@ -3720,7 +4185,7 @@ match; try again.", "session_id": session_id})
 - `numpy`
 - `orjson`
 - `selectolax.parser`
-- `Context_Integration.Context_Library.constants`
+- `config`
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
@@ -3729,24 +4194,24 @@ match; try again.", "session_id": session_id})
 
 #### ⚠️ Task markers (utils_dynamic_table_extractor)
 
-- L124 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
+- L125 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
 provided table_html.", session_id)
-- L129 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in
+- L130 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in
 table_html.", session_id)
-- L171 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step
+- L172 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step
 failed", session_id, error=str(e))
-- L187 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table
+- L188 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table
 candidates found.", session_id)
-- L217 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning
+- L218 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning
 &lt;table&gt; elements", session_id, error=str(e))
-- L229 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed",
+- L230 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed",
 session_id, error=str(e))
-- L272 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed",
+- L273 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed",
 session_id, error=str(e))
-- L776 **WARNING**: ", "extractor", "No learned DOM patterns found.")
-- L800 **WARNING**: ", "extractor", "Entry deleted.")
-- L805 **WARNING**: ", "extractor", "Unknown action.")
-- L807 **WARNING**: ", "extractor", "Invalid entry number.")
+- L784 **WARNING**: ", "extractor", "No learned DOM patterns found.")
+- L808 **WARNING**: ", "extractor", "Entry deleted.")
+- L813 **WARNING**: ", "extractor", "Unknown action.")
+- L815 **WARNING**: ", "extractor", "Invalid entry number.")
 
 ### utils/embedding\_cache.py {#webapp-parser-utils-embedding-cache-py}
 
@@ -3889,26 +4354,29 @@ session_id, error=str(e))
 
 #### 🔧 Key Functions & Classes (utils_format_router)
 
-- `_normalize_text` (function, line 58)
-- `_infer_format_from_text` (function, line 62)
-- `_infer_format_from_attr_value` (function, line 73)
-- `_extract_candidate_urls` (function, line 84)
-- `_clean_filename` (function, line 111)
-- `_guess_filename_from_url` (function, line 117)
-- `_extract_filename_from_disposition` (function, line 136)
-- `_extract_google_sheet_metadata` (function, line 146)
-- `_probe_remote_format` (function, line 191)
-- `_browser_headers` (function, line 242)
-- `_build_download_url` (function, line 263)
-- `_cookies_header_from_page` (function, line 270)
-- `extract_contest_from_filename` (function, line 284)
-- `summarize_downloads` (function, line 323)
-- `_infer_format_from_url` (function, line 333)
-- `_expose_download_interfaces` (function, line 341)
-- `detect_format_from_links` (function, line 390)
-- `route_format_handler` (function, line 441)
-- `extract_download_links_from_html` (function, line 468)
-- `prompt_and_handle_download` (function, line 488)
+- `_guard_text` (function, line 63)
+- `_guard_download_links` (function, line 72)
+- `_guard_google_sheet_meta` (function, line 85)
+- `_normalize_text` (function, line 91)
+- `_infer_format_from_text` (function, line 95)
+- `_infer_format_from_attr_value` (function, line 106)
+- `_extract_candidate_urls` (function, line 117)
+- `_clean_filename` (function, line 144)
+- `_guess_filename_from_url` (function, line 150)
+- `_extract_filename_from_disposition` (function, line 169)
+- `_extract_google_sheet_metadata` (function, line 179)
+- `_probe_remote_format` (function, line 224)
+- `_browser_headers` (function, line 275)
+- `_build_download_url` (function, line 296)
+- `_cookies_header_from_page` (function, line 303)
+- `extract_contest_from_filename` (function, line 317)
+- `summarize_downloads` (function, line 356)
+- `_infer_format_from_url` (function, line 366)
+- `_expose_download_interfaces` (function, line 374)
+- `detect_format_from_links` (function, line 423)
+- `route_format_handler` (function, line 474)
+- `extract_download_links_from_html` (function, line 501)
+- `prompt_and_handle_download` (function, line 521)
 
 #### 📦 Key Imports (utils_format_router)
 
@@ -3935,20 +4403,20 @@ session_id, error=str(e))
 
 #### ⚠️ Task markers (utils_format_router)
 
-- L426 **WARNING**: ({
-- L427 **WARNING**: ",
-- L429 **WARN**: \] No supported file formats found on the page.",
-- L454 **WARNING**: ({
-- L455 **WARNING**: ",
-- L457 **WARN**: \] Unsupported format requested: {format_str}",
-- L461 **WARNING**: ({
-- L462 **WARNING**: ",
-- L756 **WARNING**: ({
-- L757 **WARNING**: ",
-- L979 **WARNING**: ({
-- L980 **WARNING**: ",
-- L1085 **WARNING**: ({
-- L1086 **WARNING**: ",
+- L459 **WARNING**: ({
+- L460 **WARNING**: ",
+- L462 **WARN**: \] No supported file formats found on the page.",
+- L487 **WARNING**: ({
+- L488 **WARNING**: ",
+- L490 **WARN**: \] Unsupported format requested: {format_str}",
+- L494 **WARNING**: ({
+- L495 **WARNING**: ",
+- L789 **WARNING**: ({
+- L790 **WARNING**: ",
+- L1012 **WARNING**: ({
+- L1013 **WARNING**: ",
+- L1119 **WARNING**: ({
+- L1120 **WARNING**: ",
 
 ### utils/header\_confidence.py {#webapp-parser-utils-header-confidence-py}
 
@@ -3956,16 +4424,18 @@ session_id, error=str(e))
 
 #### 🔧 Key Functions & Classes (utils_header_confidence)
 
-- `get_header_confidence` (function, line 34)
-- `validate_row_headers` (function, line 89)
-- `should_insert_row` (function, line 126)
+- `get_header_confidence` (function, line 35)
+- `validate_row_headers` (function, line 88)
+- `should_insert_row` (function, line 128)
 
 #### 📦 Key Imports (utils_header_confidence)
 
-- `typing`
-- `typing`
-- `typing`
 - `logging`
+- `typing`
+- `typing`
+- `typing`
+- `config`
+- `config`
 
 ### utils/header\_utils.py {#webapp-parser-utils-header-utils-py}
 
@@ -3997,31 +4467,31 @@ session_id, error=str(e))
 
 #### 🔧 Key Functions & Classes (utils_html_scanner)
 
-- `robust_orjson_loads` (function, line 126)
-- `_get_label_cache_path` (function, line 146)
-- `_load_label_cache` (function, line 199)
-- `_save_label_cache` (function, line 219)
-- `cache_segment_label` (function, line 230)
-- `get_cached_segment_label` (function, line 239)
-- `safe_cache_path` (function, line 267)
-- `safe_log_path` (function, line 328)
-- `is_trivial_segment` (function, line 393)
-- `segment_identity_hash` (function, line 470)
-- `embedding_cache_hash` (function, line 496)
-- `get_segment_embedding` (function, line 515)
-- `batch_get_segment_embeddings` (function, line 617)
-- `deduplicate_pattern_kb` (function, line 689)
-- `prune_embedding_cache` (function, line 699)
-- `submit_segment_correction` (function, line 711)
-- `auto_label_segment` (function, line 720)
-- `_extract_clean_text` (function, line 928)
-- `_label_in` (function, line 943)
-- `_extract_segments_by_label` (function, line 951)
-- `extract_year_and_type` (function, line 1053)
-- `is_update_panel` (function, line 1130)
-- `split_possible_contests` (function, line 1147)
-- `extract_tagged_segments_with_attrs` (function, line 1171)
-- `get_page_hash` (function, line 1730)
+- `robust_orjson_loads` (function, line 129)
+- `_get_label_cache_path` (function, line 149)
+- `_load_label_cache` (function, line 202)
+- `_save_label_cache` (function, line 222)
+- `cache_segment_label` (function, line 233)
+- `get_cached_segment_label` (function, line 242)
+- `safe_cache_path` (function, line 270)
+- `safe_log_path` (function, line 331)
+- `is_trivial_segment` (function, line 396)
+- `segment_identity_hash` (function, line 473)
+- `embedding_cache_hash` (function, line 499)
+- `get_segment_embedding` (function, line 518)
+- `batch_get_segment_embeddings` (function, line 620)
+- `deduplicate_pattern_kb` (function, line 692)
+- `prune_embedding_cache` (function, line 702)
+- `submit_segment_correction` (function, line 714)
+- `auto_label_segment` (function, line 723)
+- `_extract_clean_text` (function, line 953)
+- `_label_in` (function, line 968)
+- `_extract_segments_by_label` (function, line 976)
+- `extract_year_and_type` (function, line 1078)
+- `is_update_panel` (function, line 1155)
+- `split_possible_contests` (function, line 1172)
+- `extract_tagged_segments_with_attrs` (function, line 1196)
+- `get_page_hash` (function, line 1755)
 
 #### 📦 Key Imports (utils_html_scanner)
 
@@ -4048,28 +4518,28 @@ session_id, error=str(e))
 
 #### ⚠️ Task markers (utils_html_scanner)
 
-- L163 **WARNING**: ",
-- L167 **WARNING**: (payload)
-- L189 **WARNING**: ",
-- L193 **WARNING**: (payload)
-- L288 **WARNING**: ",
-- L292 **WARNING**: (payload)
-- L315 **WARNING**: ",
-- L319 **WARNING**: (payload)
-- L353 **WARNING**: ",
-- L357 **WARNING**: (payload)
-- L380 **WARNING**: ",
-- L384 **WARNING**: (payload)
-- L579 **WARNING**: ",
-- L583 **WARNING**: (payload)
-- L784 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L166 **WARNING**: ",
+- L170 **WARNING**: (payload)
+- L192 **WARNING**: ",
+- L196 **WARNING**: (payload)
+- L291 **WARNING**: ",
+- L295 **WARNING**: (payload)
+- L318 **WARNING**: ",
+- L322 **WARNING**: (payload)
+- L356 **WARNING**: ",
+- L360 **WARNING**: (payload)
+- L383 **WARNING**: ",
+- L387 **WARNING**: (payload)
+- L582 **WARNING**: ",
+- L586 **WARNING**: (payload)
+- L798 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
 {safe_get(segment, 'segment_hash', None)}")
-- L807 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+- L832 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
 {safe_get(segment, 'segment_hash', None)}")
-- L1034 **WARNING**: ",
-- L1038 **WARNING**: (payload)
-- L1045 **WARNING**: ",
-- L1049 **WARNING**: (payload)
+- L1059 **WARNING**: ",
+- L1063 **WARNING**: (payload)
+- L1070 **WARNING**: ",
+- L1074 **WARNING**: (payload)
 
 ### utils/json\_export\_loader.py {#webapp-parser-utils-json-export-loader-py}
 
@@ -4219,24 +4689,23 @@ session_id, error=str(e))
 
 #### ⚠️ Task markers (utils_misc_utils)
 
-- L126 **WARNING**: ({
-- L127 **WARNING**: ",
+- L127 **WARNING**: ({
+- L128 **WARNING**: ",
 
 ### utils/ml\_table\_detector.py {#webapp-parser-utils-ml-table-detector-py}
 
 #### 🔧 Key Functions & Classes (utils_ml_table_detector)
 
-- `_llm_detect_tables` (function, line 53)
-- `detect_tables_ml` (function, line 119)
-- `_ml_detect_tables` (function, line 192)
-- `_vision_detect_tables` (function, line 211)
-- `_extract_table_from_selectolax` (function, line 222)
-- `_looks_like_table_selectolax` (function, line 265)
-- `_extract_table_from_selectolax` (function, line 290)
-- `_looks_like_table_selectolax` (function, line 331)
-- `_extract_table_like_structure_selectolax` (function, line 361)
-- `_regex_table_detection` (function, line 404)
-- `_normalize_header` (function, line 443)
+- `detect_tables_ml` (function, line 47)
+- `_ml_detect_tables` (function, line 115)
+- `_vision_detect_tables` (function, line 134)
+- `_extract_table_from_selectolax` (function, line 145)
+- `_looks_like_table_selectolax` (function, line 188)
+- `_extract_table_from_selectolax` (function, line 213)
+- `_looks_like_table_selectolax` (function, line 254)
+- `_extract_table_like_structure_selectolax` (function, line 284)
+- `_regex_table_detection` (function, line 327)
+- `_normalize_header` (function, line 366)
 
 #### 📦 Key Imports (utils_ml_table_detector)
 
@@ -4248,13 +4717,7 @@ session_id, error=str(e))
 - `typing`
 - `typing`
 - `typing`
-- `orjson`
 - `selectolax.parser`
-- `config`
-- `config`
-- `config`
-- `config`
-- `config`
 - `config`
 - `browser_utils`
 - `browser_utils`
@@ -4407,7 +4870,7 @@ Running without embeddings. Error: {e}")
 - L139 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified.
 Using 'unknown_contests'.\[/yellow\]")
 - L610 **WARNING**: (f"\[OUTPUT_UTILS\] Enrichment build failed: {e}")
-- L688 **WARNING**: (f"\[OUTPUT_UTILS\] XLSX export failed: {e}")
+- L689 **WARNING**: (f"\[OUTPUT_UTILS\] XLSX export failed: {e}")
 
 ### utils/pattern\_extractor.py {#webapp-parser-utils-pattern-extractor-py}
 
@@ -4589,6 +5052,38 @@ candidate column extraction.")
 - `typing`
 - `orjson`
 
+### utils/retry\_utils.py {#webapp-parser-utils-retry-utils-py}
+
+> Retry Utilities with Snapshot Mode
+
+#### 🔧 Key Functions & Classes (utils_retry_utils)
+
+- `retry_with_snapshot` (function, line 30)
+- `_get_html_context` (function, line 115)
+- `_save_failure_snapshot` (function, line 139)
+- `_log_extraction_failure` (function, line 208)
+- `_get_traceback_str` (function, line 246)
+- `example_handler_with_retry` (function, line 260)
+
+#### 📦 Key Imports (utils_retry_utils)
+
+- `functools`
+- `time`
+- `datetime`
+- `pathlib`
+- `typing`
+- `typing`
+- `typing`
+- `logger_singleton`
+
+#### ⚠️ Task markers (utils_retry_utils)
+
+- L84 **WARNING**: (f"\[yellow\]\[retry\] Attempt {attempt}/{max_attempts}
+failed: {e}\[/yellow\]")
+- L173 **WARNING**: (f"\[snapshot\] Could not save HTML: {e}")
+- L184 **WARNING**: (f"\[snapshot\] Could not save context: {e}")
+- L243 **WARNING**: (f"\[retry\] Could not log failure: {e}")
+
 ### utils/root\_admin\_session.py {#webapp-parser-utils-root-admin-session-py}
 
 > Root Admin Session Management for Smart Elections Parser
@@ -4631,28 +5126,23 @@ candidate column extraction.")
 
 #### 🔧 Key Functions & Classes (utils_safe_decide)
 
-- `_emit_decision_log` (function, line 30)
-- `safe_decide_jurisdiction` (function, line 79)
-- `safe_decide_office` (function, line 127)
-- `safe_decide_party` (function, line 162)
-- `safe_decide_source` (function, line 196)
-- `should_proceed` (function, line 230)
-- `should_caution` (function, line 235)
-- `should_stop` (function, line 240)
+- `_emit_decision_log` (function, line 27)
+- `safe_decide_jurisdiction` (function, line 76)
+- `safe_decide_office` (function, line 124)
+- `safe_decide_party` (function, line 159)
+- `safe_decide_source` (function, line 193)
+- `should_proceed` (function, line 227)
+- `should_caution` (function, line 232)
+- `should_stop` (function, line 237)
 
 #### 📦 Key Imports (utils_safe_decide)
 
 - `__future__`
-- `time`
 - `datetime`
 - `datetime`
 - `typing`
 - `typing`
 - `typing`
-- `typing`
-- `typing`
-- `webapp.parser.Context_Integration.library.entity_confidence_map`
-- `webapp.parser.Context_Integration.library.entity_confidence_map`
 - `webapp.parser.Context_Integration.library.entity_confidence_map`
 - `webapp.parser.Context_Integration.library.entity_confidence_map`
 - `webapp.parser.Context_Integration.library.entity_confidence_map`
@@ -4662,8 +5152,8 @@ candidate column extraction.")
 
 #### ⚠️ Task markers (utils_safe_decide)
 
-- L69 **WARNING**: ({
-- L70 **WARNING**: ",
+- L66 **WARNING**: ({
+- L67 **WARNING**: ",
 
 ### utils/salvage.py {#webapp-parser-utils-salvage-py}
 
@@ -4697,8 +5187,10 @@ candidate column extraction.")
 - `_MissingDriver` (class, line 20)
 - `launch_browser` (function, line 38)
 - `relaunch_browser_fullscreen_if_needed` (function, line 55)
-- `relaunch_browser_stealth` (function, line 95)
-- `close_driver` (function, line 112)
+- `relaunch_browser_stealth` (function, line 102)
+- `close_driver` (function, line 119)
+- `_capture_post_captcha_dom_metadata` (function, line 129)
+- `_log_captcha_resolution_data` (function, line 163)
 
 #### 📦 Key Imports (utils_seleniumbase_launcher)
 
@@ -4770,31 +5262,31 @@ candidate column extraction.")
 
 #### 🔧 Key Functions & Classes (utils_shared_logic)
 
-- `DecisionTuple` (class, line 76)
-- `ExtractPlugin` (class, line 107)
-- `Saveable` (class, line 110)
-- `GCModule` (class, line 113)
-- `ShutilModule` (class, line 116)
-- `TimeModule` (class, line 120)
-- `HasItem` (class, line 124)
-- `HasAllMethod` (class, line 129)
-- `PredictionResult` (class, line 136)
-- `EventLike` (class, line 158)
-- `Predictable` (class, line 167)
-- `safe_filename` (function, line 193)
-- `is_path_safe` (function, line 279)
-- `safe_resolve_path` (function, line 312)
-- `safe_join_path` (function, line 343)
-- `validate_directory_path` (function, line 371)
-- `safe_slug` (function, line 387)
-- `safe_query` (function, line 403)
-- `safe_key` (function, line 414)
-- `_filter_valid_kwargs` (function, line 425)
-- `safe_filter_by` (function, line 443)
-- `safe_first` (function, line 457)
-- `get_or_create` (function, line 470)
-- `safe_translate` (function, line 493)
-- `safe_scheme` (function, line 505)
+- `DecisionTuple` (class, line 80)
+- `ExtractPlugin` (class, line 111)
+- `Saveable` (class, line 114)
+- `GCModule` (class, line 117)
+- `ShutilModule` (class, line 120)
+- `TimeModule` (class, line 124)
+- `HasItem` (class, line 128)
+- `HasAllMethod` (class, line 133)
+- `PredictionResult` (class, line 140)
+- `EventLike` (class, line 162)
+- `Predictable` (class, line 171)
+- `safe_filename` (function, line 197)
+- `is_path_safe` (function, line 283)
+- `safe_resolve_path` (function, line 316)
+- `safe_join_path` (function, line 347)
+- `validate_directory_path` (function, line 375)
+- `safe_slug` (function, line 391)
+- `safe_query` (function, line 407)
+- `safe_key` (function, line 418)
+- `_filter_valid_kwargs` (function, line 429)
+- `safe_filter_by` (function, line 447)
+- `safe_first` (function, line 461)
+- `get_or_create` (function, line 474)
+- `safe_translate` (function, line 497)
+- `safe_scheme` (function, line 509)
 
 #### 📦 Key Imports (utils_shared_logic)
 
@@ -4811,8 +5303,8 @@ candidate column extraction.")
 - `socket`
 - `textwrap`
 - `time`
+- `traceback`
 - `pathlib`
-- `typing`
 - `typing`
 - `typing`
 - `typing`
@@ -4821,34 +5313,34 @@ candidate column extraction.")
 
 #### ⚠️ Task markers (utils_shared_logic)
 
-- L411 **WARNING**: (f"\[safe_query\] session.query({model}) failed: {e}")
-- L434 **WARNING**: (f"\[safe_filter_by\] No mapper found for model {model}")
-- L440 **WARNING**: (f"\[safe_filter_by\] Could not inspect model {model}:
+- L415 **WARNING**: (f"\[safe_query\] session.query({model}) failed: {e}")
+- L438 **WARNING**: (f"\[safe_filter_by\] No mapper found for model {model}")
+- L444 **WARNING**: (f"\[safe_filter_by\] Could not inspect model {model}:
 {e}")
-- L454 **WARNING**: (f"\[safe_filter_by\] filter_by failed: {e}")
-- L467 **WARNING**: (f"\[safe_first\] query.first() failed: {e}")
-- L619 **WARNING**: ({
-- L620 **WARNING**: ",
-- L646 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
+- L458 **WARNING**: (f"\[safe_filter_by\] filter_by failed: {e}")
+- L471 **WARNING**: (f"\[safe_first\] query.first() failed: {e}")
+- L629 **WARNING**: ({
+- L630 **WARNING**: ",
+- L656 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
 'extract' method.")
-- L780 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
-- L994 **WARNING**: (f"\[safe_append\] Target is not a list: {type(lst)};
+- L790 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
+- L1004 **WARNING**: (f"\[safe_append\] Target is not a list: {type(lst)};
 coercing to list.")
-- L1016 **WARNING**: (f"\[safe_update\] Target is not a dict: {type(dct)}")
-- L1020 **WARNING**: (f"\[safe_update\] Updates is not a dict:
+- L1026 **WARNING**: (f"\[safe_update\] Target is not a dict: {type(dct)}")
+- L1030 **WARNING**: (f"\[safe_update\] Updates is not a dict:
 {type(updates)}")
-- L1040 **WARNING**: (f"\[safe_extend\] Target is not a list: {type(lst)};
+- L1050 **WARNING**: (f"\[safe_extend\] Target is not a list: {type(lst)};
 coercing to list.")
-- L1380 **WARNING**: (f"\[DOM_PARTS\] '{label}' is not a list for URL: {url}
+- L1390 **WARNING**: (f"\[DOM_PARTS\] '{label}' is not a list for URL: {url}
 (type: {type(lst).\_\_name\_\_})")
-- L1702 **WARNING**: (f"State '{state_norm}' not found in county map")
-- L2568 **WARNING**: (f"\[inventory\] architecture.md not found at {md_file}")
-- L2574 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+- L1799 **WARNING**: (f"State '{state_norm}' not found in county map")
+- L2665 **WARNING**: (f"\[inventory\] architecture.md not found at {md_file}")
+- L2671 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
 aborting replace.")
-- L2589 **WARNING**: ("\[inventory\] generate_project_map completed with
+- L2686 **WARNING**: ("\[inventory\] generate_project_map completed with
 warnings; check markers and path.")
-- L2635 **WARN**: ) and return their metadata."""
-- L2637 **WARN**: ", "WARNING", "NOTE", "HA" + "CK", "X"_3, "BUG")
+- L2732 **WARN**: ) and return their metadata."""
+- L2734 **WARN**: ", "WARNING", "NOTE", "HA" + "CK", "X"_3, "BUG")
 
 ### utils/spacy\_utils.py {#webapp-parser-utils-spacy-utils-py}
 
@@ -4960,31 +5452,31 @@ failed: {e}")
 
 #### 🔧 Key Functions & Classes (utils_table_builder)
 
-- `_normalize_header_cached` (function, line 71)
-- `_norm_header` (function, line 76)
-- `_percent_norms` (function, line 86)
-- `_percent_reported_norm` (function, line 100)
-- `_looks_like_location_header` (function, line 170)
-- `_location_priority_score` (function, line 178)
-- `_candidate_header_info` (function, line 189)
-- `_extract_candidate_blocks` (function, line 208)
-- `_coerce_int_for_total` (function, line 219)
-- `_ensure_division_totals` (function, line 242)
-- `_apply_canonical_order` (function, line 319)
-- `_emit` (function, line 401)
-- `_salvage_promote_best_row_as_header` (function, line 420)
-- `_salvage_promote_first_row_as_header` (function, line 475)
-- `_sanitize_headers_and_rows` (function, line 504)
-- `_stringify_for_pivot` (function, line 595)
-- `_stringify_entity_info` (function, line 618)
-- `_drop_title_noise_rows` (function, line 643)
-- `build_dynamic_table` (function, line 746)
-- `build_table_noninteractive` (function, line 1037)
-- `_get_table_builder_cache_dir` (function, line 1071)
-- `_save_table_builder_cache` (function, line 1079)
-- `_list_table_builder_cache` (function, line 1103)
-- `_load_table_builder_cache` (function, line 1116)
-- `prompt_user_to_confirm_table_structure` (function, line 1138)
+- `_normalize_header_cached` (function, line 76)
+- `_norm_header` (function, line 81)
+- `_percent_norms` (function, line 91)
+- `_percent_reported_norm` (function, line 105)
+- `_looks_like_location_header` (function, line 175)
+- `_location_priority_score` (function, line 183)
+- `_candidate_header_info` (function, line 194)
+- `_extract_candidate_blocks` (function, line 213)
+- `_coerce_int_for_total` (function, line 224)
+- `_ensure_division_totals` (function, line 247)
+- `_apply_canonical_order` (function, line 324)
+- `_emit` (function, line 406)
+- `_salvage_promote_best_row_as_header` (function, line 425)
+- `_salvage_promote_first_row_as_header` (function, line 480)
+- `_sanitize_headers_and_rows` (function, line 509)
+- `_stringify_for_pivot` (function, line 600)
+- `_stringify_entity_info` (function, line 623)
+- `_drop_title_noise_rows` (function, line 648)
+- `build_dynamic_table` (function, line 751)
+- `build_table_noninteractive` (function, line 1042)
+- `_get_table_builder_cache_dir` (function, line 1076)
+- `_save_table_builder_cache` (function, line 1084)
+- `_list_table_builder_cache` (function, line 1108)
+- `_load_table_builder_cache` (function, line 1121)
+- `prompt_user_to_confirm_table_structure` (function, line 1143)
 
 #### 📦 Key Imports (utils_table_builder)
 
@@ -5004,42 +5496,42 @@ failed: {e}")
 - `orjson`
 - `rich.table`
 - `config`
-- `Context_Integration.Context_Library.constants`
-- `Context_Integration.Context_Library.constants`
+- `config`
+- `config`
 - `Context_Integration.Context_Library.constants`
 - `Context_Integration.Context_Library.constants`
 
 #### ⚠️ Task markers (utils_table_builder)
 
-- L816 **WARNING**: ", "builder", "\[TABLE_BUILDER\] dynamic_table_extractor
+- L821 **WARNING**: ", "builder", "\[TABLE_BUILDER\] dynamic_table_extractor
 failed for panel table", session_id, error=str(e))
-- L828 **WARNING**: ", "builder", "\[TABLE_BUILDER\] dynamic_table_extractor
+- L833 **WARNING**: ", "builder", "\[TABLE_BUILDER\] dynamic_table_extractor
 failed (no panels path)", session_id, error=str(e))
-- L836 **WARNING**: ", "builder", "\[TABLE_BUILDER\] all_panel_tables was not
+- L841 **WARNING**: ", "builder", "\[TABLE_BUILDER\] all_panel_tables was not
 a list; coercing to empty list", session_id,
 got_type=str(type(all_panel_tables)))
-- L845 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Dropping invalid table
+- L850 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Dropping invalid table
 entry", session_id, entry_type=str(type(item)))
-- L862 **WARNING**: ", "builder", "\[TABLE_BUILDER\] sanitize failed",
+- L867 **WARNING**: ", "builder", "\[TABLE_BUILDER\] sanitize failed",
 session_id, error=str(e))
-- L867 **WARNING**: ", "builder", "\[TABLE_BUILDER\] harmonize failed",
+- L872 **WARNING**: ", "builder", "\[TABLE_BUILDER\] harmonize failed",
 session_id, error=str(e))
-- L873 **WARNING**: ", "builder", "\[TABLE_BUILDER\]
+- L878 **WARNING**: ", "builder", "\[TABLE_BUILDER\]
 collapse_ballot_synonym_columns failed", session_id, error=str(e))
-- L925 **WARNING**: ",
-- L950 **WARNING**: ", "builder", "\[TABLE_BUILDER\] entity annotate failed",
+- L930 **WARNING**: ",
+- L955 **WARNING**: ", "builder", "\[TABLE_BUILDER\] entity annotate failed",
 session_id, error=str(e))
-- L955 **WARNING**: ", "builder", "\[TABLE_BUILDER\] stringify entity_info
+- L960 **WARNING**: ", "builder", "\[TABLE_BUILDER\] stringify entity_info
 failed", session_id, error=str(e))
-- L975 **WARNING**: ", "builder", "\[TABLE_BUILDER\] pivot_to_wide failed",
+- L980 **WARNING**: ", "builder", "\[TABLE_BUILDER\] pivot_to_wide failed",
 session_id, error=str(e))
-- L995 **WARNING**: ", "builder", "\[TABLE_BUILDER\] ensure division totals
+- L1000 **WARNING**: ", "builder", "\[TABLE_BUILDER\] ensure division totals
 failed", session_id, error=str(e))
-- L1298 **WARNING**: ", "builder", f"\[TABLE_BUILDER\] Column marked
+- L1326 **WARNING**: ", "builder", f"\[TABLE_BUILDER\] Column marked
 incorrect: {col_name}", session_id, contest=contest)
-- L1371 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Failed to persist table
+- L1399 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Failed to persist table
 structure logs", session_id, error=str(e))
-- L1386 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Failed to persist
+- L1414 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Failed to persist
 coordinator DB log", session_id, error=str(e))
 
 ### utils/table\_core.py {#webapp-parser-utils-table-core-py}
@@ -5130,6 +5622,19 @@ execution failed: {e}")
 - `time`
 - `typing`
 - `typing`
+
+### utils/url\_ingestion.py {#webapp-parser-utils-url-ingestion-py}
+
+#### 🔧 Key Functions & Classes (utils_url_ingestion)
+
+- `url_already_listed` (function, line 9)
+
+#### 📦 Key Imports (utils_url_ingestion)
+
+- `__future__`
+- `os`
+- `webapp.parser.utils.misc_utils`
+- `webapp.parser.utils.shared_logic`
 
 ### utils/url\_trust\_scorer.py {#webapp-parser-utils-url-trust-scorer-py}
 
@@ -5370,11 +5875,11 @@ user.\[/yellow\]")
 
 #### 🔧 Key Functions & Classes (web_pipeline)
 
-- `CancellationManager` (class, line 22)
-- `heartbeat` (function, line 97)
-- `save_pipeline_report` (function, line 111)
-- `process_urls_for_web` (function, line 122)
-- `cancel_processing` (function, line 713)
+- `CancellationManager` (class, line 21)
+- `heartbeat` (function, line 96)
+- `save_pipeline_report` (function, line 110)
+- `process_urls_for_web` (function, line 121)
+- `cancel_processing` (function, line 748)
 
 #### 📦 Key Imports (web_pipeline)
 
@@ -5383,6 +5888,8 @@ user.\[/yellow\]")
 - `time`
 - `traceback`
 - `orjson`
+- `config`
+- `config`
 - `config`
 - `config`
 - `config`
@@ -5396,23 +5903,23 @@ user.\[/yellow\]")
 
 #### ⚠️ Task markers (web_pipeline)
 
-- L53 **WARNING**: ({
-- L54 **WARNING**: ",
-- L70 **WARNING**: ({
-- L71 **WARNING**: ",
-- L87 **WARNING**: ({
-- L88 **WARNING**: ",
-- L172 **WARNING**: ({
-- L173 **WARNING**: ",
-- L321 **WARNING**: ({
-- L322 **WARNING**: ",
-- L332 **WARNING**: ({
-- L333 **WARNING**: ",
-- L386 **WARNING**: ({
-- L387 **WARNING**: ",
-- L397 **WARNING**: ({
-- L398 **WARNING**: ",
-- L601 **WARNING**: ({
-- L602 **WARNING**: ",
-- L619 **WARNING**: ({
-- L620 **WARNING**: ",
+- L52 **WARNING**: ({
+- L53 **WARNING**: ",
+- L69 **WARNING**: ({
+- L70 **WARNING**: ",
+- L86 **WARNING**: ({
+- L87 **WARNING**: ",
+- L189 **WARNING**: ({
+- L190 **WARNING**: ",
+- L347 **WARNING**: ({
+- L348 **WARNING**: ",
+- L358 **WARNING**: ({
+- L359 **WARNING**: ",
+- L421 **WARNING**: ({
+- L422 **WARNING**: ",
+- L432 **WARNING**: ({
+- L433 **WARNING**: ",
+- L636 **WARNING**: ({
+- L637 **WARNING**: ",
+- L654 **WARNING**: ({
+- L655 **WARNING**: ",

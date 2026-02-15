@@ -1,6 +1,7 @@
 import os
-from dotenv import load_dotenv
+
 import psycopg2
+from dotenv import load_dotenv
 
 env_path = os.path.join(os.getcwd(), ".env")
 load_dotenv(env_path)

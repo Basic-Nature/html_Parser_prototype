@@ -3,7 +3,7 @@
 # This file contains functions to manage the context library for the HTML parser,
 # including loading, saving, and updating the context library, as well as
 # It also includes utilities for logging unknown HTML tags and attributes,
-# extending context library structures, and handling ML/LLM feedback.
+# extending context library structures, and handling ML feedback.
 #
 # SECURITY: All file operations are validated using safe_path() to prevent path traversal attacks.
 # -----------------------------------------------------------------------------------
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -20,7 +21,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Pattern, Set
 
 import numpy as np
 import orjson
@@ -35,7 +36,6 @@ from ..utils.shared_logic import (
     safe_merge_defaults,
     safe_setdefault,
 )
-from .vocab.loader import get_vocab_loader
 from .Context_Library.constants import (
     BALLOT_TYPES,
     CANDIDATE_KEYWORDS,
@@ -49,6 +49,7 @@ from .Context_Library.constants import (
     PANEL_TAGS,
     STATE_ABBR,
 )
+from .vocab.loader import get_vocab_loader
 
 _CONTEXT_LOCK = threading.Lock()
 SCHEMA_VERSION = "1.0"
@@ -71,6 +72,34 @@ DEFAULT_STRUCTURE = {
     "metadata": {},
 }
 _context_library_cache = None
+_LOG_ENTRY_LIMITS = {
+    "max_depth": 6,
+    "max_list": 200,
+    "max_dict": 120,
+    "max_string": 2000,
+}
+
+def _cap_log_value(value: Any, *, depth: int = 0) -> Any:
+    if depth > _LOG_ENTRY_LIMITS["max_depth"]:
+        return None
+    if isinstance(value, str):
+        if len(value) > _LOG_ENTRY_LIMITS["max_string"]:
+            return value[: _LOG_ENTRY_LIMITS["max_string"]] + "...(truncated)"
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        size = len(value)
+        return f"<bytes:{size}>"
+    if isinstance(value, dict):
+        capped = {}
+        for idx, (key, item) in enumerate(value.items()):
+            if idx >= _LOG_ENTRY_LIMITS["max_dict"]:
+                break
+            capped[key] = _cap_log_value(item, depth=depth + 1)
+        return capped
+    if isinstance(value, (list, tuple, set)):
+        items = list(value)
+        return [_cap_log_value(item, depth=depth + 1) for item in items[: _LOG_ENTRY_LIMITS["max_list"]]]
+    return value
 
 
 def get_vocab_constant(
@@ -213,13 +242,47 @@ def extend_html_tags(new_tags: List[str]) -> None:
     global HTML_TAGS
     HTML_TAGS |= set(t.lower() for t in new_tags)
 
+def _normalize_custom_attr_pattern(value) -> tuple[str | None, Pattern | None]:
+    if isinstance(value, str):
+        pattern_str = value.strip()
+        if not pattern_str:
+            return None, None
+        return pattern_str, re.compile(pattern_str)
+    if isinstance(value, Pattern):
+        pattern_str = value.pattern
+        if not pattern_str:
+            return None, None
+        return pattern_str, value
+    pattern_str = str(value).strip()
+    if not pattern_str:
+        return None, None
+    return pattern_str, re.compile(pattern_str)
+
+def _dedupe_custom_attr_pattern_strings(patterns: List[Any]) -> List[str]:
+    deduped: List[str] = []
+    seen: Set[str] = set()
+    for value in patterns:
+        if isinstance(value, str):
+            pattern_str = value.strip()
+        elif isinstance(value, Pattern):
+            pattern_str = value.pattern
+        else:
+            pattern_str = str(value).strip()
+        if not pattern_str or pattern_str in seen:
+            continue
+        seen.add(pattern_str)
+        deduped.append(pattern_str)
+    return deduped
+
 def extend_custom_attr_patterns(new_patterns: List[str]) -> None:
     global CUSTOM_ATTR_PATTERNS
-    for pat in new_patterns:
-        if isinstance(pat, str):
-            CUSTOM_ATTR_PATTERNS.append(re.compile(pat))
-        else:
-            CUSTOM_ATTR_PATTERNS.append(pat)
+    existing = {pat.pattern for pat in CUSTOM_ATTR_PATTERNS if isinstance(pat, Pattern)}
+    for value in new_patterns:
+        pattern_str, compiled = _normalize_custom_attr_pattern(value)
+        if not pattern_str or pattern_str in existing:
+            continue
+        CUSTOM_ATTR_PATTERNS.append(compiled)
+        existing.add(pattern_str)
 
 def extend_location_keywords(new_keywords: List[str]) -> None:
     global LOCATION_KEYWORDS
@@ -346,7 +409,15 @@ def load_context_library(path=None) -> Dict[str, Any]:
         return context_lib
 
     # Merge in any missing keys from default (preserve existing data)
-    if safe_merge_defaults(context_lib, DEFAULT_STRUCTURE):
+    needs_save = safe_merge_defaults(context_lib, DEFAULT_STRUCTURE)
+
+    if "custom_attr_patterns" in context_lib:
+        deduped_patterns = _dedupe_custom_attr_pattern_strings(context_lib["custom_attr_patterns"])
+        if deduped_patterns != context_lib["custom_attr_patterns"]:
+            context_lib["custom_attr_patterns"] = deduped_patterns
+            needs_save = True
+
+    if needs_save:
         save_context_library(context_lib, safe_path_obj)
 
     # Extend dynamic sets with loaded values
@@ -381,7 +452,7 @@ def update_context_library(path, update_fn) -> None:
         lib = clean_for_json(lib)  # <-- Ensure all sets are converted before saving
         save_context_library(lib, path)
        
-def backup_context_library(path=None, max_backups=5) -> None:
+def backup_context_library(path=None, max_backups=5, min_backups=3) -> None:
     """
     Make a timestamped backup of the context library before overwriting,
     SECURITY: All paths validated.
@@ -428,12 +499,24 @@ def backup_context_library(path=None, max_backups=5) -> None:
     backup_path = f"{path}.{timestamp}.bak"
     shutil.copy2(path, backup_path)
 
-    # Prune old backups (keep only the most recent max_backups)
+    max_backups = max(1, int(max_backups))
+    min_backups = max(1, min(int(min_backups), max_backups))
+
+    # Prune old backups (keep newest plus randomized sampling)
     backups = sorted(
         [f for f in dir_.iterdir() if f.name.startswith(base + ".") and f.name.endswith(".bak")],
         reverse=True
     )
-    for old in backups[max_backups:]:
+    keep = backups[:min_backups]
+    remaining = backups[min_backups:]
+    if remaining and len(keep) < max_backups:
+        rng = random.Random(int(time.time() // 86400))
+        extra = min(max_backups - len(keep), len(remaining))
+        keep.extend(rng.sample(remaining, extra))
+    keep_set = {str(p) for p in keep}
+    for old in backups:
+        if str(old) in keep_set:
+            continue
         try:
             os.remove(old)
         except Exception:
@@ -502,6 +585,58 @@ def merge_and_save_context_library(partial_dict, path=CONTEXT_LIBRARY_PATH) -> N
     lib.update(partial_dict)
     save_context_library(lib, path)
 
+def _dedupe_string_list(values: List[Any], lower: bool = False) -> List[str]:
+    deduped: List[str] = []
+    seen: Set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            value = str(value)
+        normalized = value.strip()
+        if not normalized:
+            continue
+        if lower:
+            normalized = normalized.lower()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+    return deduped
+
+def dedupe_context_library_fields(path=None) -> Dict[str, Any]:
+    """
+    Deduplicate list-based fields in the context library and persist changes.
+    Returns the updated library.
+    """
+    lib = load_context_library(path)
+    changed = False
+
+    list_fields = {
+        "panel_tags": True,
+        "heading_tags": True,
+        "html_tags": True,
+        "location_keywords": True,
+        "candidate_keywords": True,
+        "ballot_types": False,
+    }
+
+    for field, lower in list_fields.items():
+        if field not in lib:
+            continue
+        deduped = _dedupe_string_list(lib[field], lower=lower)
+        if deduped != lib[field]:
+            lib[field] = deduped
+            changed = True
+
+    if "custom_attr_patterns" in lib:
+        deduped_patterns = _dedupe_custom_attr_pattern_strings(lib["custom_attr_patterns"])
+        if deduped_patterns != lib["custom_attr_patterns"]:
+            lib["custom_attr_patterns"] = deduped_patterns
+            changed = True
+
+    if changed:
+        save_context_library(lib, path)
+    return lib
+
 def update_context_library_field(key, value, path=CONTEXT_LIBRARY_PATH) -> None:
     """
     Safely update a top-level key in the context library.
@@ -545,7 +680,7 @@ def log_selector_attempt(domain, selector, label, success) -> None:
     Robustly log a selector attempt for a domain, using safe_append and safe_get.
     """
     lib = load_context_library()
-    attempts = safe_get(lib, "selector_attempts", [])
+    attempts = list(safe_get(lib, "selector_attempts", []))
     safe_append(
         attempts,
         {
@@ -557,10 +692,9 @@ def log_selector_attempt(domain, selector, label, success) -> None:
         },
         logger
     )
-    lib["selector_attempts"] = attempts
     update_context_library_field("selector_attempts", attempts)
 
-# --- Unknown Tag/Attr Logging for ML/LLM Feedback ---
+# --- Unknown Tag/Attr Logging for ML Feedback ---
 UNKNOWN_TAGS_LOG = set()
 UNKNOWN_ATTRS_LOG = set()
 
@@ -633,7 +767,8 @@ def log_unknown_tag(tag: str, context_library) -> None:
         try:
             log_path = _get_log_path("unknown_tags_log.jsonl")
             with open(log_path, "ab") as f:
-                f.write(orjson.dumps({"tag": str(tag)}) + b"\n")
+                entry = _cap_log_value({"tag": str(tag)})
+                f.write(orjson.dumps(entry) + b"\n")
         except Exception as exc:
             logger.error(f"[LOG_UNKNOWN_TAG] Failed to log tag '{tag}': {exc}")
 
@@ -657,12 +792,13 @@ def log_unknown_attr(attr: str, context_library) -> None:
         try:
             log_path = _get_log_path("unknown_attrs_log.jsonl")
             with open(log_path, "ab") as f:
-                f.write(orjson.dumps({"attr": str(attr)}) + b"\n")
+                entry = _cap_log_value({"attr": str(attr)})
+                f.write(orjson.dumps(entry) + b"\n")
         except Exception as exc:
             logger.error(f"[LOG_UNKNOWN_ATTR] Failed to log attr '{attr}': {exc}")
 
-# --- ML/LLM Feedback Integration Example ---
-def integrate_llm_feedback(new_panel_tags=None, new_heading_tags=None, new_attr_patterns=None, new_location_keywords=None, new_candidate_keywords=None, new_ballot_types=None) -> None:
+# --- ML Feedback Integration Example ---
+def integrate_feedback(new_panel_tags=None, new_heading_tags=None, new_attr_patterns=None, new_location_keywords=None, new_candidate_keywords=None, new_ballot_types=None) -> None:
     if new_panel_tags:
         extend_panel_tags(new_panel_tags)
     if new_heading_tags:

@@ -9,9 +9,9 @@ from .config import (
     PIPELINE_HEARTBEAT_INTERVAL,
     PIPELINE_MAX_WORKERS,
     PROCESSED_URLS_FILE,
-    URL_LIST_FILE,
-    SLOW_NLP_AUDIT_THRESHOLD,
     SLOW_NLP_AUDIT_MIN_HITS,
+    SLOW_NLP_AUDIT_THRESHOLD,
+    URL_LIST_FILE,
 )
 from .html_election_parser import main
 from .utils.logger_singleton import logger, prompt

@@ -6,32 +6,40 @@ title: "TODO/FIXME Index"
 <!-- markdownlint-disable-file MD001 MD004 MD011 MD022 MD024 MD025 MD033 MD034 MD037 MD050 MD052 -->
 
 Index scope: TODO/FIXME/HACK/XXX annotations under `webapp, scripts, docs`.
-Generated: 2026-02-05 23:48:37Z
-Total annotations: 41
-High: 2, Medium: 39, Low: 0
+Generated: 2026-02-15 05:37:16Z
+Total annotations: 57
+High: 2, Medium: 55, Low: 0
 
 ## Scan Profile
 
 - Roots: webapp, scripts, docs
 - Tracked markers: TODO, FIXME, HACK, XXX
 - Priority map: high: FIXME; medium: HACK, TODO, XXX; low: none
-- Exclusions (sample): docs/DEVELOPMENT/todos_high.md, webapp/static/vendor/xlsx.full.min.js, docs/DEVELOPMENT/todos_low.md, docs/DEVELOPMENT/todos_medium.md, docs/DEVELOPMENT/todos.md
+- Exclusions (sample): docs/DEVELOPMENT/todos_high.md, webapp/parser/Context_Integration/Context_Library/cache/context_cache.json, docs/DEVELOPMENT/project_audit.md, docs/DEVELOPMENT/todos_low.md, docs/DEVELOPMENT/todos.md
 - Regex: \b(TODO|FIXME|HACK|XXX)\b (case-insensitive)
 
 ## Marker Breakdown
 
 - FIXME: 2 (high)
 - HACK: 5 (medium)
-- TODO: 30 (medium)
+- TODO: 46 (medium)
 - XXX: 4 (medium)
 
 ## Root Coverage
 
 - docs\DEVELOPMENT\TODOS_OVERVIEW.md: 28
+- docs\QUALITY\DATA_COMPARISON_ROADMAP.md: 1
+- docs\QUALITY\GOOGLE_SHEETS_MIGRATION.md: 1
 - docs\README.md: 3
+- docs\STATE_HANDLER_INTEGRATION.md: 3
 - docs\_data\navigation.yml: 1
+- scripts\generate_county_handler.py: 4
+- scripts\generate_state_handler.py: 2
 - scripts\generate_todo_index.py: 2
+- scripts\migrate_google_sheets.py: 1
 - webapp\parser\fixtures\candidate_summary_index.json: 3
+- webapp\parser\handlers\states\new_york\county\westchester.py: 2
+- webapp\parser\handlers\vendor_state_map.py: 2
 - webapp\parser\quality_assurance\qa_endpoints.py: 1
 - webapp\parser\utils\shared_logic.py: 1
 - webapp\parser\verification_endpoints.py: 1
@@ -72,6 +80,14 @@ High: 2, Medium: 39, Low: 0
 - L179 **TODO**: - Commit with "TODO: test this" type placeholders
 - L202 **TODO**: - Ensure marker format is correct: `# TODO: Description` or `# FIXME: Description`
 
+### docs/QUALITY/DATA_COMPARISON_ROADMAP.md
+
+- L287 **TODO**: # TODO: replace with regression script once implemented
+
+### docs/QUALITY/GOOGLE_SHEETS_MIGRATION.md
+
+- L480 **TODO**: # TODO: replace with load script once implemented
+
 ### docs/README.md
 
 - L53 **TODO**: - [TODO Overview](./DEVELOPMENT/TODOS_OVERVIEW.md) - How-to guide for the TODO system
@@ -81,14 +97,36 @@ High: 2, Medium: 39, Low: 0
   The [DEVELOPMENT/](./DEVELOPMENT/) directory includes auto-generated TODO items that track outstanding
   work.
 
+### docs/STATE_HANDLER_INTEGRATION.md
+
+- L342 **TODO**: ### TODO: High Priority
+- L348 **TODO**: ### TODO: Medium Priority
+- L354 **TODO**: ### TODO: Low Priority
+
 ### docs/_data/navigation.yml
 
 - L58 **TODO**: - title: TODO Overview
+
+### scripts/generate_county_handler.py
+
+- L122 **TODO**: TODO: Customize this handler for {county_name} County's specific UI.
+- L193 **TODO**: # TODO: Add button toggles, navigation sequences, etc. specific to {county_name} County
+- L257 **TODO**: # TODO: Add URL patterns specific to this county
+- L270 **TODO**: # TODO: Add navigation steps specific to this county
+
+### scripts/generate_state_handler.py
+
+- L166 **TODO**: TODO: Implement state-specific extraction logic.
+- L196 **TODO**: # TODO: Add {state_name}-specific transformations here
 
 ### scripts/generate_todo_index.py
 
 - L261 **HACK**: f"Index scope: {_TASK}/{_FIXME}/HACK/XXX annotations under `{roots_text}`.",
 - L309 **HACK**: lines.append(f"No {_TASK}/{_FIXME}/HACK/XXX annotations found under specified roots.")
+
+### scripts/migrate_google_sheets.py
+
+- L335 **TODO**: # TODO: Migrate DL1/DL2 data sheets (requires discovery first to identify them)
 
 ### webapp/parser/fixtures/candidate_summary_index.json
 
@@ -96,13 +134,23 @@ High: 2, Medium: 39, Low: 0
 - L480199 **XXX**: "Cand_Party_Affiliation": "XXX",
 - L631839 **HACK**: "CLYMER": "HACK, HELMUTH",
 
+### webapp/parser/handlers/states/new_york/county/westchester.py
+
+- L61 **TODO**: TODO: Customize this handler for Westchester County's specific UI.
+- L132 **TODO**: # TODO: Add button toggles, navigation sequences, etc. specific to Westchester County
+
+### webapp/parser/handlers/vendor_state_map.py
+
+- L38 **TODO**: "notes": "TODO: enhancedvoting.com domain; confirm vendor",
+- L45 **TODO**: "notes": "TODO: enhancedvoting.com domain; confirm vendor",
+
 ### webapp/parser/quality_assurance/qa_endpoints.py
 
-- L485 **TODO**: "rejected_count": 0,  # TODO: Query for rejected count
+- L481 **TODO**: "rejected_count": 0,  # TODO: Query for rejected count
 
 ### webapp/parser/utils/shared_logic.py
 
-- L3976 **TODO**: """Generate project audit + pipeline map, optionally a basic TODO index."""
+- L4073 **TODO**: """Generate project audit + pipeline map, optionally a basic TODO index."""
 
 ### webapp/parser/verification_endpoints.py
 

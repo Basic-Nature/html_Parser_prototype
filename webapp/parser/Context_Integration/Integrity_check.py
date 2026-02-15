@@ -39,6 +39,12 @@ matplotlib.use("Agg")
 
 # Lightweight, bounded monitor log (non-DB)
 INTEGRITY_MONITOR_LOG = Path(LOG_DIR) / "integrity_monitor.jsonl"
+_LOG_ENTRY_LIMITS = {
+    "max_depth": 6,
+    "max_list": 200,
+    "max_dict": 120,
+    "max_string": 2000,
+}
 try:
     INTEGRITY_MONITOR_LOG.touch(exist_ok=True)
 except Exception:
@@ -67,9 +73,32 @@ def _trim_monitor_log(path: Path, max_bytes: int, keep_tail: int) -> None:
     except Exception:
         return
 
+def _cap_log_value(value: Any, *, depth: int = 0) -> Any:
+    if depth > _LOG_ENTRY_LIMITS["max_depth"]:
+        return None
+    if isinstance(value, str):
+        if len(value) > _LOG_ENTRY_LIMITS["max_string"]:
+            return value[: _LOG_ENTRY_LIMITS["max_string"]] + "...(truncated)"
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        size = len(value)
+        return f"<bytes:{size}>"
+    if isinstance(value, dict):
+        capped = {}
+        for idx, (key, item) in enumerate(value.items()):
+            if idx >= _LOG_ENTRY_LIMITS["max_dict"]:
+                break
+            capped[key] = _cap_log_value(item, depth=depth + 1)
+        return capped
+    if isinstance(value, (list, tuple, set)):
+        items = list(value)
+        return [_cap_log_value(item, depth=depth + 1) for item in items[: _LOG_ENTRY_LIMITS["max_list"]]]
+    return value
+
 def log_integrity_monitor(event: Dict[str, Any], max_bytes: int = 2_000_000, keep_tail: int = 1_500_000) -> None:
     payload = dict(event or {})
     payload.setdefault("timestamp", time.time())
+    payload = _cap_log_value(clean_for_json(payload))
     try:
         with INTEGRITY_MONITOR_LOG.open("ab") as handle:
             handle.write(orjson.dumps(payload) + b"\n")
@@ -439,6 +468,7 @@ def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str
     with open(log_path, "ab") as f:
         for issue_type, contest in issues:
             obj = {"issue": issue_type, "contest": clean_for_json(contest)}
+            obj = _cap_log_value(obj)
             f.write(orjson.dumps(obj) + b"\n")
 
 def detect_statistical_outliers(

@@ -5,10 +5,10 @@ import sys
 try:
     print("Importing constants...")
     from webapp.parser.Context_Integration.Context_Library.constants import (
-        PARTY_CODE_MAP,
-        PARTY_CODE_DESCRIPTIONS,
-        DIVISION_TYPES,
         CONTEST_KEYWORDS,
+        DIVISION_TYPES,
+        PARTY_CODE_DESCRIPTIONS,
+        PARTY_CODE_MAP,
     )
     print(f"✓ PARTY_CODE_MAP: {len(PARTY_CODE_MAP)} items")
     print(f"✓ PARTY_CODE_DESCRIPTIONS: {len(PARTY_CODE_DESCRIPTIONS)} items")

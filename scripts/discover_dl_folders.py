@@ -19,14 +19,14 @@ Options:
     --limit N   : Limit results to first N files
 """
 
-import os
 import json
+import os
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
+from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from dotenv import load_dotenv
 
 # Load environment
 load_dotenv()
@@ -87,14 +87,14 @@ def list_folder_contents(service, folder_id: str, folder_name: str, details: boo
                 file_types[mime] = []
             file_types[mime].append(file)
         
-        print(f"\n📊 File Types:")
+        print("\n📊 File Types:")
         for mime, type_files in sorted(file_types.items()):
             count = len(type_files)
             mime_display = mime.split('.')[-1] if '.' in mime else mime
             print(f"   {mime_display:40} | {count:4} files")
         
         # Sample files
-        print(f"\n📋 Sample Files (first 10):")
+        print("\n📋 Sample Files (first 10):")
         for i, file in enumerate(files[:10], 1):
             name = file['name']
             size = int(file.get('size', 0)) if file.get('size') else 0
@@ -113,7 +113,7 @@ def list_folder_contents(service, folder_id: str, folder_name: str, details: boo
                 print(f"      Link: {file.get('webViewLink')}")
         
         # Look for patterns in filenames
-        print(f"\n🔍 Filename Patterns:")
+        print("\n🔍 Filename Patterns:")
         
         # Extract years from filenames
         years = set()
@@ -205,7 +205,7 @@ def analyze_file_structure(files: List[Dict[str, Any]], folder_name: str):
         pct = (count * 100 // total) if total > 0 else 0
         print(f"   {pattern:20} | {count:4} files ({pct}%)")
     
-    print(f"\n💡 Recommendations:")
+    print("\n💡 Recommendations:")
     if patterns['is_csv'] > total * 0.5:
         print("   • Primary format: CSV files")
         print("   • Use pandas.read_csv() for import")

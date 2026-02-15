@@ -17,17 +17,16 @@ Requirements:
     - "Overview" worksheet in workbook 1AnKXIi7fkP3FNzFSbPABSj_QYPY8WGu4ZGzwyW4A_Ac
 """
 
+import argparse
 import os
 import sys
-import argparse
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-from datetime import datetime
+from typing import List, Optional
 
 import gspread
 import psycopg2
-from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
+from google.oauth2.service_account import Credentials
 
 # Load environment
 load_dotenv()
@@ -228,7 +227,7 @@ def migrate_overview_worksheet(workbook: gspread.Spreadsheet, conn, dry_run: boo
             sample = {k: v for k, v in records[0].items() if v}  # Only show non-empty values
             print(json.dumps(sample, indent=2, default=str))
         
-        print(f"\n  🔍 DRY RUN - All unique headers found:")
+        print("\n  🔍 DRY RUN - All unique headers found:")
         unique_headers = sorted(set(h for h in headers if h))
         for i, h in enumerate(unique_headers, 1):
             print(f"    {i:2d}. {h}")
@@ -321,7 +320,7 @@ def migrate_overview_worksheet(workbook: gspread.Spreadsheet, conn, dry_run: boo
                 print(f"  ❌ Row {record.get('_row_number')}: {e}")
     
     conn.commit()
-    print(f"\n✅ Migration complete:")
+    print("\n✅ Migration complete:")
     print(f"   Inserted: {inserted} records")
     print(f"   Skipped:  {skipped} empty records")
 

@@ -40,15 +40,14 @@ Features:
 
 import argparse
 import csv
+import gzip
 import json
 import os
 import sys
-import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-import gzip
 
 try:
     import jsonschema
@@ -183,7 +182,7 @@ def read_smart_database_csv(csv_path: str, auditor: Auditor) -> Dict[str, List[D
                 
                 if not state or not year_str:
                     auditor.log('skip', row_num, csv_path, 
-                                f"Missing state or year; skipping row",
+                                "Missing state or year; skipping row",
                                 row_data={k: v for k, v in row.items() if v})
                     continue
                 
@@ -201,7 +200,7 @@ def read_smart_database_csv(csv_path: str, auditor: Auditor) -> Dict[str, List[D
                 
                 if pres_votes is None and ballot_votes is None:
                     auditor.log('skip', row_num, csv_path, 
-                                f"No vote data found",
+                                "No vote data found",
                                 row_data=dict(row))
                     continue
                 

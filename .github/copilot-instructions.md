@@ -4,6 +4,12 @@
 - Docs live in `docs/` (architecture, handlers, project_audit, index). Open the relevant doc before touching code; follow described contracts and hotspots.
 - Repo entry points: CLI [webapp/parser/html_election_parser.py](../webapp/parser/html_election_parser.py); Flask UI [webapp/Smart_Elections_Parser_Webapp.py](../webapp/Smart_Elections_Parser_Webapp.py). `.env` must be populated.
 
+**NEW: Selenium-NLP Integration** (Feb 2026)
+- Selenium is now a **strategic NLP training data collector**, not just CAPTCHA fallback
+- Enabled by default (`ENABLE_SELENIUM_FALLBACK=true`) to capture entity-rich data from Cloudflare-protected government sites
+- New logs: `selenium_ner_training.jsonl`, `captcha_resolution_log.jsonl`, `captcha_transition_log.jsonl`
+- See [SELENIUM_NLP_INTEGRATION.md](../docs/FEATURES/SELENIUM_NLP_INTEGRATION.md) for architecture and Phase 2 roadmap
+
 **Workflow (keep edits minimal)**
 - Locate the handler/format/state router before adding logic; reuse helpers in `utils/shared_logic.py`, `Context_Integration`, and `handlers/shared` instead of ad-hoc code.
 - Preserve existing logging style (`logger.mode` CLI vs non-CLI) and avoid noisy warnings; favor info/debug for non-critical paths.

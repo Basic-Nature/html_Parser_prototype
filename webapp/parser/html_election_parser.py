@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import re
 import threading
+import time
 from collections import Counter, defaultdict
 from datetime import datetime
 from multiprocessing import Pool
@@ -19,6 +20,7 @@ from sqlalchemy.exc import OperationalError
 from .config import (
     CACHE_LOCK,
     CACHE_RESET,
+    DEFAULT_CAPTCHA_TIMEOUT,
     ENABLE_AI_ANALYSIS,
     ENABLE_PARALLEL,
     ENABLE_REALTIME_STREAM,
@@ -33,10 +35,10 @@ from .config import (
     UPLOADS_DIR,
     URL_LIST_FILE,
 )
+from .Context_Integration.librarian import get_safe_log_path
 from .navigator import NavigationInstructionRunner, NavigationRecipeStore
 from .navigator.dom_snapshot import snapshot_mode_pipeline
 from .state_router import get_handler, preload_handler_map
-from .Context_Integration.librarian import get_safe_log_path
 from .utils.browser_utils import (
     SCROLL_METRIC_KEYS,
     TABLE_DISCOVERY_SELECTOR,
@@ -55,7 +57,12 @@ from .utils.format_router import prompt_and_handle_download, route_format_handle
 from .utils.logger_singleton import logger, prompt
 from .utils.misc_utils import extract_url_and_label, load_processed_urls
 from .utils.output_utils import finalize_election_output
-from .utils.seleniumbase_launcher import SELENIUMBASE_AVAILABLE, close_driver, launch_browser
+from .utils.seleniumbase_launcher import (
+    SELENIUMBASE_AVAILABLE,
+    close_driver,
+    launch_browser,
+    relaunch_browser_fullscreen_if_needed,
+)
 from .utils.shared_logic import (
     infer_state_county_from_url,
     safe_is_set,
@@ -79,6 +86,7 @@ if CACHE_RESET and PROCESSED_URLS_FILE.exists():
 
 _navigation_store = NavigationRecipeStore()
 NAVIGATION_RUNNER = NavigationInstructionRunner(_navigation_store)
+_CAPTCHA_DETECTION_COUNTS: Dict[str, int] = defaultdict(int)
 
 
 def _close_browser_quietly(browser, session_id=None) -> None:
@@ -101,6 +109,84 @@ def _close_browser_quietly(browser, session_id=None) -> None:
         except Exception:
             # Best-effort logging; do not raise
             pass
+
+
+def _captcha_detection_key(session_id: str | None, target_url: str) -> str:
+    return f"{session_id or 'no_session'}::{target_url}"
+
+
+def _register_cloudflare_detection(session_id: str | None, target_url: str, agent: str) -> int:
+    key = _captcha_detection_key(session_id, target_url)
+    _CAPTCHA_DETECTION_COUNTS[key] = _CAPTCHA_DETECTION_COUNTS.get(key, 0) + 1
+    try:
+        logger.info({
+            "level": "INFO",
+            "type": "browser",
+            "message": f"Cloudflare detection count={_CAPTCHA_DETECTION_COUNTS[key]} via {agent}.",
+            "session_id": session_id,
+            "url": target_url,
+        })
+    except Exception:
+        pass
+    return _CAPTCHA_DETECTION_COUNTS[key]
+
+
+def _prompt_for_captcha_assist(
+    session_id: str | None,
+    target_url: str,
+    agent: str,
+    detection_count: int,
+) -> str:
+    if prompt is None:
+        return "assist"
+    options = [
+        {
+            "index": 1,
+            "label": "Open CAPTCHA Assist",
+            "meta": "Launch a browser window for manual solve",
+            "metadata": {"action": "open_assist"},
+        },
+        {
+            "index": 2,
+            "label": "Skip (fail this URL)",
+            "meta": "Continue without solving",
+            "metadata": {"action": "skip"},
+        },
+    ]
+    context = {
+        "title": "Cloudflare challenge detected",
+        "message": "Cloudflare challenge detected. Click Open CAPTCHA Assist, complete the challenge, then click Continue.",
+        "options": options,
+        "metadata": {
+            "prompt_kind": "captcha_assist",
+            "url": target_url,
+            "agent": agent,
+            "detection_count": detection_count,
+            "hint_after_sec": 30,
+        },
+    }
+    try:
+        response = prompt.prompt_input(
+            "Cloudflare challenge detected. Select an action:",
+            session_id=session_id,
+            allow_cancel=False,
+            context=context,
+        )
+    except Exception as exc:
+        logger.warning({
+            "level": "WARNING",
+            "type": "prompt",
+            "message": f"CAPTCHA assist prompt failed: {exc}",
+            "session_id": session_id,
+            "url": target_url,
+        })
+        return "skip"
+    response_norm = safe_strip(response).lower()
+    if response_norm in {"1", "open", "assist", "captcha", "open captcha assist"}:
+        return "assist"
+    if response_norm in {"2", "skip", "fail", "no"}:
+        return "skip"
+    return "assist" if response_norm else "skip"
 
 
 def _sanitize_error_metadata(metadata: dict) -> dict:
@@ -1310,7 +1396,7 @@ def orchestrate_url(
         quarantine_rejected = False
         hard_blockers = bool(trust_factors.get("phishing_indicators")) or bool(trust_factors.get("domain_mimicry"))
         try:
-            from .health.quarantine_queue import get_quarantine_queue, ReviewStatus
+            from .health.quarantine_queue import ReviewStatus, get_quarantine_queue
             queue = get_quarantine_queue()
             quarantine_status = queue.get_latest_review_status_for_url(target_url)
             if quarantine_status == ReviewStatus.APPROVED.value:
@@ -1406,9 +1492,9 @@ def orchestrate_url(
                 # --- Enqueue for transparent review with audit trail ---
                 try:
                     from .health.quarantine_queue import (
-                        get_quarantine_queue,
-                        QuarantineReason,
                         DataCollectionNotice,
+                        QuarantineReason,
+                        get_quarantine_queue,
                     )
 
                     queue = get_quarantine_queue()
@@ -1624,6 +1710,7 @@ def orchestrate_url(
     if ENABLE_SELENIUM_FALLBACK:
         strategies.append({"agent": "selenium", "timeout_ms": NAV_TIMEOUT_SELENIUM_MS})
     max_attempts = min(len(strategies), NAV_MAX_ATTEMPTS)
+    captcha_assist_requested = False
 
     try:
         for attempt_idx, strat in enumerate(strategies[:max_attempts], start=1):
@@ -1670,6 +1757,42 @@ def orchestrate_url(
                             playwright_instance = None
                         continue
                     if nav_meta.get("cloudflare_detected") and ENABLE_SELENIUM_FALLBACK:
+                        detection_count = _register_cloudflare_detection(session_id, target_url, "playwright")
+                        if detection_count < 2:
+                            decision = _prompt_for_captcha_assist(
+                                session_id,
+                                target_url,
+                                "playwright",
+                                detection_count,
+                            )
+                            if decision == "skip":
+                                logger.warning({
+                                    "level": "WARNING",
+                                    "type": "browser",
+                                    "message": "Cloudflare challenge skipped by user; marking URL as failed.",
+                                    "session_id": session_id,
+                                    "url": target_url,
+                                })
+                                mark_url_processed(target_url, status="error", session_id=session_id)
+                                _close_browser_quietly(browser, session_id)
+                                if playwright_instance is not None:
+                                    try:
+                                        playwright_instance.stop()
+                                    except Exception:
+                                        pass
+                                    playwright_instance = None
+                                return
+                            if decision == "assist":
+                                captcha_assist_requested = True
+                        else:
+                            captcha_assist_requested = True
+                            logger.warning({
+                                "level": "WARNING",
+                                "type": "browser",
+                                "message": "Cloudflare challenge detected again; auto-launching CAPTCHA Assist.",
+                                "session_id": session_id,
+                                "url": target_url,
+                            })
                         logger.warning({
                             "level": "WARNING",
                             "type": "browser",
@@ -1727,14 +1850,45 @@ def orchestrate_url(
                     continue
                 driver = None
                 try:
-                    _, _, driver = launch_browser()
+                    if captcha_assist_requested:
+                        _, _, driver = relaunch_browser_fullscreen_if_needed(
+                            None,
+                            target_url,
+                            timeout=DEFAULT_CAPTCHA_TIMEOUT,
+                            user_agent=nav_meta.get("user_agent"),
+                        )
+                    else:
+                        _, _, driver = launch_browser()
                     try:
                         driver.set_page_load_timeout((strat.get("timeout_ms") or NAV_TIMEOUT_SELENIUM_MS) / 1000)
                     except Exception:
                         pass
-                    driver.get(target_url)
+                    if not captcha_assist_requested:
+                        driver.get(target_url)
                     html_text = getattr(driver, "page_source", "") or ""
                     blocked = detect_cloudflare_challenge(driver)
+                    if blocked and not captcha_assist_requested:
+                        detection_count = _register_cloudflare_detection(session_id, target_url, "selenium")
+                        if detection_count >= 2:
+                            logger.warning({
+                                "level": "WARNING",
+                                "type": "browser",
+                                "message": "Cloudflare challenge persisted; auto-launching CAPTCHA Assist.",
+                                "session_id": session_id,
+                                "url": target_url,
+                            })
+                            try:
+                                close_driver(driver)
+                            except Exception:
+                                pass
+                            _, _, driver = relaunch_browser_fullscreen_if_needed(
+                                None,
+                                target_url,
+                                timeout=DEFAULT_CAPTCHA_TIMEOUT,
+                                user_agent=nav_meta.get("user_agent"),
+                            )
+                            html_text = getattr(driver, "page_source", "") or ""
+                            blocked = detect_cloudflare_challenge(driver)
                     nav_meta = {"agent": "selenium", "cloudflare_detected": blocked}
                     if not html_text:
                         raise RuntimeError("Selenium fallback returned empty page_source")
@@ -1754,6 +1908,11 @@ def orchestrate_url(
                     )
                     if result:
                         agent_used = "selenium"
+                        # Capture NER training data from Selenium-extracted HTML for ML pipeline
+                        try:
+                            _capture_selenium_ner_training(html_text, result, target_url, coordinator)
+                        except Exception as ner_exc:
+                            logger.debug(f"[Selenium-NLP] NER capture failed: {ner_exc}")
                         try:
                             increment_counter("nav_agent_selenium_success", 1)
                         except Exception:
@@ -2468,6 +2627,76 @@ def main(
         })
         # Raise instead of exiting so callers (e.g., web pipeline) can handle failures
         raise
+
+
+def _capture_selenium_ner_training(html_text: str, result: tuple, source_url: str, coordinator=None) -> None:
+    """
+    Capture NER training data from Selenium-extracted HTML for spaCy model training.
+    
+    Selenium accesses Cloudflare-protected government sites with rich entity mentions
+    (counties, offices, candidates, dates) that would otherwise be unavailable for training.
+    
+    Args:
+        html_text: Raw HTML from Selenium driver.page_source
+        result: Extraction result tuple (headers, rows, contest, metadata)
+        source_url: Original URL for metadata
+        coordinator: Optional ContextCoordinator for entity extraction
+    """
+    if not html_text or not result:
+        return
+    
+    headers, rows, contest, metadata = result
+    if not headers or not rows:
+        return
+    
+    # Extract text sample from headers and first few rows
+    text_sample_parts = []
+    text_sample_parts.extend(headers[:5])
+    
+    for row in rows[:3]:
+        if isinstance(row, dict):
+            text_sample_parts.extend(str(v) for v in list(row.values())[:5] if v)
+        elif isinstance(row, (list, tuple)):
+            text_sample_parts.extend(str(v) for v in row[:5] if v)
+    
+    text_sample = " ".join(text_sample_parts)
+    if len(text_sample) < 10:
+        return
+    
+    # Extract entities using spaCy
+    try:
+        from .utils.spacy_utils import extract_entities
+        entities = extract_entities(text_sample)
+        
+        if not entities:
+            return
+        
+        # Prepare training entry
+        training_entry = {
+            "text": text_sample[:500],  # Cap length for storage
+            "entities": [(start, end, label) for _, start, end, label in entities],
+            "source": "selenium_fallback",
+            "url": source_url,
+            "contest": contest,
+            "timestamp": int(time.time())
+        }
+        
+        # Write to separate Selenium NER log for quality review
+        from .config import LOG_DIR
+        log_path = os.path.join(LOG_DIR, "selenium_ner_training.jsonl")
+        
+        import orjson
+        os.makedirs(LOG_DIR, exist_ok=True)
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(training_entry))
+            f.write(b"\n")
+        
+        logger.debug(f"[Selenium-NLP] Captured {len(entities)} entities for training from {source_url}")
+        
+    except Exception as exc:
+        logger.debug(f"[Selenium-NLP] Entity extraction failed: {exc}")
+        raise
+
 
 if __name__ == "__main__":
     logger.set_mode("cli")

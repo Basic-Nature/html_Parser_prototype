@@ -54,6 +54,39 @@ FILENAME_FROM_DISPOSITION = re.compile(
     re.IGNORECASE,
 )
 
+_DB_MAX_TEXT = 2000
+_DB_MAX_LINKS = 200
+_DB_LINK_KEYS = {"href", "format", "source", "label", "filename"}
+_DB_SHEET_KEYS = {"spreadsheet_id", "gid", "export_csv", "export_xlsx", "source_url"}
+
+
+def _guard_text(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    text = str(value)
+    if len(text) > _DB_MAX_TEXT:
+        return text[:_DB_MAX_TEXT]
+    return text
+
+
+def _guard_download_links(links: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    guarded: List[Dict[str, str]] = []
+    if not isinstance(links, list):
+        return guarded
+    for link in links[:_DB_MAX_LINKS]:
+        if not isinstance(link, dict):
+            continue
+        cleaned = {key: _guard_text(link.get(key)) for key in _DB_LINK_KEYS if link.get(key)}
+        if cleaned.get("href") and cleaned.get("format"):
+            guarded.append(cleaned)
+    return guarded
+
+
+def _guard_google_sheet_meta(meta: Dict[str, str]) -> Dict[str, str]:
+    if not isinstance(meta, dict):
+        return {}
+    return {key: _guard_text(meta.get(key)) for key in _DB_SHEET_KEYS if meta.get(key)}
+
 
 def _normalize_text(text: Optional[str]) -> str:
     return (text or "").strip().lower()
@@ -798,9 +831,9 @@ def prompt_and_handle_download(
     try:
         context_result = safe_context_result(page, session_id=session_id)
         if isinstance(context_result, dict):
-            context_result.setdefault("metadata", {})["download_links"] = merged_links
+            context_result.setdefault("metadata", {})["download_links"] = _guard_download_links(merged_links)
             if google_sheet_meta:
-                context_result["metadata"]["google_sheet"] = google_sheet_meta
+                context_result["metadata"]["google_sheet"] = _guard_google_sheet_meta(google_sheet_meta)
             logger.debug({
                 "level": "DEBUG",
                 "type": "download",

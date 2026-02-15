@@ -23,17 +23,15 @@ Database Schema:
     - dl2.election_results    : Parser-extracted data
 """
 
+import argparse
 import os
 import sys
-import argparse
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-from datetime import datetime
 
 import gspread
 import psycopg2
-from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
+from google.oauth2.service_account import Credentials
 
 # Load environment
 load_dotenv()

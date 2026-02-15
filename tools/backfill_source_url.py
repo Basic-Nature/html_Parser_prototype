@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 import orjson
-
 from webapp.parser.config import OUTPUT_DIR, PROCESSED_URLS_FILE
 from webapp.parser.utils.misc_utils import load_processed_urls
 

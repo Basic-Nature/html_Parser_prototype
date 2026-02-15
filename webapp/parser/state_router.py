@@ -19,6 +19,12 @@ from .Context_Integration.Context_Library.constants import (
     KNOWN_COUNTY_TO_PRECINCTS_MAP,
     STATE_MODULE_MAP,
 )
+from .handlers.registry import (
+    apply_vendor_overrides,
+    get_county_handler_module_path,
+    get_state_handler_module_path,
+)
+from .handlers.shared.parity_hooks import attach_router_parity_note, safe_parity_note
 from .utils.logger_singleton import console, logger, prompt
 from .utils.shared_logic import (
     normalize_county_name,
@@ -42,12 +48,45 @@ HANDLER_MAP = {
 FUZZY_MATCH_THRESHOLD = 0.6  # Default, can be overridden
 DEBUG_MODE = False
 
+apply_vendor_overrides()
+
+_DB_CONTEXT_KEYS = {
+    "state",
+    "county",
+    "state_abbr",
+    "state_code",
+    "detected_state",
+    "detected_county",
+    "url",
+    "source_url",
+    "session_id",
+}
+_DB_MAX_TEXT = 2000
+
+
+def _guard_context_for_db(context: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(context, dict):
+        return {}
+    guarded: Dict[str, Any] = {}
+    for key in _DB_CONTEXT_KEYS:
+        value = context.get(key)
+        if value is None:
+            continue
+        if isinstance(value, (int, float, bool)):
+            guarded[key] = value
+            continue
+        text = str(value)
+        if len(text) > _DB_MAX_TEXT:
+            text = text[:_DB_MAX_TEXT]
+        guarded[key] = text
+    return guarded
+
 def list_available_states() -> list:
     """List all available state handler modules (normalized names)."""
     base_path = STATE_HANDLER_BASE_PATH
     if not os.path.isdir(base_path):
         logger.warning("[Router] handlers/states directory not found.")
-        return []
+        return sorted([normalize_state_name(s) for s in STATE_MODULE_MAP.keys()])
     return sorted([
         normalize_state_name(d)
         for d in os.listdir(base_path)
@@ -416,32 +455,46 @@ def get_handler(
     if valid_county:
         context["county"] = valid_county
     context["session_id"] = session_id
+    parity_note = safe_parity_note(context.get("router_parity_note")) or "router_cli_web_parity"
+    attach_router_parity_note(context, parity_note)
     summary["final"] = {"state": valid_state, "county": valid_county, "session_id": session_id}
+    summary["db_context"] = _guard_context_for_db(context)
     log.append(f"Final resolved state: {valid_state}, county: {valid_county}, session_id: {session_id}")
     # Step 6: Attempt to import the handler module
     handler = None
     error = None
     attempted_paths = []
     if valid_state and valid_county:
-        handler_path = f"webapp.parser.handlers.states.{valid_state}.county.{valid_county}"
-        attempted_paths.append(handler_path)
-        log.append(f"Attempting to import handler: {handler_path}")
-        handler = import_handler(handler_path)
-        if handler and hasattr(handler, "parse"):
-            log.append(f"Routed to handler: {handler_path}")
-        else:
-            log.append(f"Could not import handler or missing 'parse': {handler_path}")
-            handler = None
+        registry_county_path = get_county_handler_module_path(valid_state, valid_county)
+        if registry_county_path:
+            attempted_paths.append(registry_county_path)
+            log.append(f"Attempting registry county handler: {registry_county_path}")
+            handler = import_handler(registry_county_path)
+            if handler and hasattr(handler, "parse"):
+                log.append(f"Routed to registry county handler: {registry_county_path}")
+            else:
+                log.append(f"Could not import registry county handler or missing 'parse': {registry_county_path}")
+                handler = None
+        if not handler:
+            handler_path = f"webapp.parser.handlers.states.{valid_state}.county.{valid_county}"
+            attempted_paths.append(handler_path)
+            log.append(f"Attempting to import handler: {handler_path}")
+            handler = import_handler(handler_path)
+            if handler and hasattr(handler, "parse"):
+                log.append(f"Routed to handler: {handler_path}")
+            else:
+                log.append(f"Could not import handler or missing 'parse': {handler_path}")
+                handler = None
     # Fallback to state-level handler if county handler not found
     if not handler and valid_state:
-        fallback_path = f"webapp.parser.handlers.states.{valid_state}"
-        attempted_paths.append(fallback_path)
-        log.append(f"Attempting fallback to state handler: {fallback_path}")
-        handler = import_handler(fallback_path)
+        registry_path = get_state_handler_module_path(valid_state)
+        attempted_paths.append(registry_path)
+        log.append(f"Attempting registry handler: {registry_path}")
+        handler = import_handler(registry_path)
         if handler and hasattr(handler, "parse"):
-            log.append(f"Routed to fallback state handler: {fallback_path}")
+            log.append(f"Routed to registry handler: {registry_path}")
         else:
-            log.append(f"Could not import fallback state handler or missing 'parse': {fallback_path}")
+            log.append(f"Could not import registry handler or missing 'parse': {registry_path}")
             handler = None
     # Fallback: prompt user for manual selection if still not found
     allow_manual_prompt = session_id is None

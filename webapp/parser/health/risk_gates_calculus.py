@@ -32,10 +32,11 @@ Calculus analogy: Integrals & derivatives in n-dimensional space
   - Convergence = limit as precision → ∞ (1/3 = 0.333... → 1/∞)
 """
 
-from typing import Dict, Tuple, Optional, List
-from dataclasses import dataclass
 import math
-from webapp.parser.health.risk_gates import RiskGateEvaluator, RiskGateScores, RiskGateConfig
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
+
+from webapp.parser.health.risk_gates import RiskGateConfig, RiskGateEvaluator, RiskGateScores
 
 
 @dataclass
@@ -153,7 +154,6 @@ class CalculusRiskEvaluator:
         suspicion = current_scores.composite_suspicion
         
         # Slope toward WARN boundary (0.45)
-        dist_to_warn = abs(suspicion - self.config.tier_boundary_warn_log)
         slope_warn = self._compute_boundary_slope(
             suspicion,
             self.config.tier_boundary_warn_log,
@@ -161,7 +161,6 @@ class CalculusRiskEvaluator:
         )
         
         # Slope toward BLOCK boundary (0.72)
-        dist_to_block = abs(suspicion - self.config.tier_boundary_block_warn)
         slope_block = self._compute_boundary_slope(
             suspicion,
             self.config.tier_boundary_block_warn,
@@ -268,7 +267,6 @@ class CalculusRiskEvaluator:
         if main_tier == "log":
             nearest_boundary = self.config.tier_boundary_warn_log
             boundary_distance = nearest_boundary - suspicion
-            relevant_slope = derivatives.slope_toward_warn
         elif main_tier == "warn":
             # WARN tier has two boundaries; pick nearest
             dist_to_log = suspicion - self.config.tier_boundary_warn_log
@@ -276,15 +274,12 @@ class CalculusRiskEvaluator:
             if dist_to_log < dist_to_block:
                 nearest_boundary = self.config.tier_boundary_warn_log
                 boundary_distance = -dist_to_log  # Negative = below boundary
-                relevant_slope = derivatives.slope_toward_warn
             else:
                 nearest_boundary = self.config.tier_boundary_block_warn
                 boundary_distance = dist_to_block
-                relevant_slope = derivatives.slope_toward_block
         else:  # block
             nearest_boundary = self.config.tier_boundary_block_warn
             boundary_distance = -(suspicion - nearest_boundary)  # Negative = above boundary
-            relevant_slope = derivatives.slope_toward_block
         
         # Compute approach velocity (magnitude of dS/dt)
         approach_velocity = abs(

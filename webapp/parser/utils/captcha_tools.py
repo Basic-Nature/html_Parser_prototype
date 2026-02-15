@@ -132,14 +132,35 @@ def wait_for_user_to_solve_captcha(page_or_driver, timeout: int = DEFAULT_CAPTCH
     """
     Waits for manual CAPTCHA resolution by checking if challenge elements disappear.
     Works for both Playwright and SeleniumBase.
+    
+    Enhanced: Captures DOM structure transitions for ML training.
     """
     logger.info(f"[CAPTCHA] Waiting up to {timeout} seconds for CAPTCHA to be solved...")
     start = time.time()
     retries = 0
+    initial_dom_snapshot = None
+    
     while time.time() - start < timeout:
         try:
+            # Capture initial challenge state on first iteration
+            if retries == 0:
+                try:
+                    initial_dom_snapshot = _capture_captcha_dom_state(page_or_driver, "challenge_present")
+                except Exception as snap_exc:
+                    logger.debug(f"[CAPTCHA-NLP] Initial snapshot failed: {snap_exc}")
+            
             if not is_cloudflare_captcha_present(page_or_driver):
                 logger.info("[CAPTCHA] CAPTCHA resolved — continuing.")
+                # Capture cleared state and log transition for ML training
+                try:
+                    cleared_snapshot = _capture_captcha_dom_state(page_or_driver, "challenge_cleared")
+                    _log_captcha_transition(
+                        initial_state=initial_dom_snapshot,
+                        cleared_state=cleared_snapshot,
+                        time_to_clear=time.time() - start
+                    )
+                except Exception as trans_exc:
+                    logger.debug(f"[CAPTCHA-NLP] Transition logging failed: {trans_exc}")
                 return True
             if retries % 3 == 0:
                 try:
@@ -153,3 +174,85 @@ def wait_for_user_to_solve_captcha(page_or_driver, timeout: int = DEFAULT_CAPTCH
             break
     logger.warning("[CAPTCHA] CAPTCHA not resolved within timeout.")
     return False
+
+
+def _capture_captcha_dom_state(page_or_driver, state_label: str) -> dict:
+    """
+    Capture DOM structure snapshot during CAPTCHA interaction.
+    
+    Args:
+        page_or_driver: Playwright page or SeleniumBase driver
+        state_label: "challenge_present" or "challenge_cleared"
+        
+    Returns:
+        Dict with HTML snippet, indicators, and element counts
+    """
+    try:
+        html_content = get_page_content(page_or_driver)
+        html_snippet = html_content[:1000] if html_content else ""
+        
+        from .browser_utils import CLOUDFLARE_CAPTCHA_INDICATORS
+        indicators_matched = [
+            kw for kw in CLOUDFLARE_CAPTCHA_INDICATORS 
+            if kw.lower() in html_content.lower()
+        ] if html_content else []
+        
+        return {
+            "state": state_label,
+            "html_snippet": html_snippet,
+            "indicators_matched": indicators_matched,
+            "html_length": len(html_content) if html_content else 0,
+            "timestamp": time.time()
+        }
+    except Exception as exc:
+        logger.debug(f"[CAPTCHA-NLP] DOM state capture failed: {exc}")
+        return {"state": state_label, "error": str(exc)}
+
+
+def _log_captcha_transition(initial_state: dict, cleared_state: dict, time_to_clear: float) -> None:
+    """
+    Log CAPTCHA DOM state transition for supervised ML training.
+    
+    Builds dataset for:
+    - Automated CAPTCHA type classification (Cloudflare vs reCAPTCHA vs custom)
+    - Challenge resolution time prediction
+    - Navigation recipe optimization (skip auto-actions during challenges)
+    
+    Args:
+        initial_state: DOM snapshot when challenge was detected
+        cleared_state: DOM snapshot after clearance
+        time_to_clear: Seconds elapsed from detection to resolution
+    """
+    if not initial_state or not cleared_state:
+        return
+    
+    try:
+        import os
+
+        import orjson
+
+        from ..config import LOG_DIR
+        
+        transition_entry = {
+            "captcha_type": "cloudflare",  # Could be enhanced to detect type from indicators
+            "initial_indicators": initial_state.get("indicators_matched", []),
+            "cleared_indicators": cleared_state.get("indicators_matched", []),
+            "time_to_clear_seconds": time_to_clear,
+            "html_delta_bytes": cleared_state.get("html_length", 0) - initial_state.get("html_length", 0),
+            "initial_snippet": initial_state.get("html_snippet", "")[:500],
+            "cleared_snippet": cleared_state.get("html_snippet", "")[:500],
+            "timestamp": int(time.time())
+        }
+        
+        log_path = os.path.join(LOG_DIR, "captcha_transition_log.jsonl")
+        os.makedirs(LOG_DIR, exist_ok=True)
+        
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(transition_entry))
+            f.write(b"\n")
+        
+        logger.debug(f"[CAPTCHA-NLP] Logged transition: {len(initial_state.get('indicators_matched', []))} → "
+                    f"{len(cleared_state.get('indicators_matched', []))} indicators, {time_to_clear:.1f}s")
+        
+    except Exception as exc:
+        logger.debug(f"[CAPTCHA-NLP] Transition logging failed: {exc}")

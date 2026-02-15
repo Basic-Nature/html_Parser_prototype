@@ -1,14 +1,14 @@
 """
 manual_correction.py
 
-Deep ML/LLM-enhanced batch review and correction bot for all context fields.
+Deep ML-enhanced batch review and correction bot for all context fields.
 - Reads all *_selection_log.jsonl logs produced by ContextCoordinator.
 - Allows user to review, accept, edit, or remove corrections for any field.
 - Updates the context library atomically and (optionally) the DB.
 - Integrates with integrity_check for anomaly/suspicion highlighting.
-- Uses spaCy, ML, and external LLMs for advanced feedback, context awareness, and self-improvement.
+- Uses spaCy and local ML for advanced feedback, context awareness, and self-improvement.
 - Can connect to ContextCoordinator and context_organizer for deeper learning and automation.
-- Supports advanced debate/decision logic, including LLM-powered suggestions and process improvement.
+- Supports advanced decision logic and process improvement.
 
 SECURITY: All file operations are validated using safe_path() to prevent path traversal attacks.
 """
@@ -26,18 +26,12 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import openai
 import orjson
 
 from ..config import (
     CACHE_DIR,
     CONTEXT_LIBRARY_DIR,
     CONTEXT_LIBRARY_PATH,
-    LLM_API_KEY,
-    LLM_EXTRA_INSTRUCTIONS,
-    LLM_MODEL,
-    LLM_PROVIDER,
-    LLM_SYSTEM_PROMPT,
     LOG_DIR,
     PROJECT_ROOT,
     USER_NAME,
@@ -287,64 +281,16 @@ def atomic_write_json(obj, path):
         except Exception:
             pass
 
-# --- Optional: spaCy and LLM integration ---
+# --- Optional: spaCy integration for internal NLP ---
 try:
     import spacy
     nlp = spacy.load("en_core_web_sm")
 except Exception:
     nlp = None
 
-def llm_suggest_action(
-    entry,
-    context=None,
-    api_key=None,
-    model=None,
-    provider=None,
-    system_prompt=None,
-    temperature=0.2,
-    max_tokens=200,
-    extra_instructions=None
-):
-    """
-    Use OpenAI LLM to suggest a field or correction for the entry.
-    """
-    # Use config.py values if not provided
-    api_key = api_key or LLM_API_KEY
-    model = model or LLM_MODEL or "gpt-4-turbo"
-    provider = provider or LLM_PROVIDER or "openai"
-    system_prompt = system_prompt or LLM_SYSTEM_PROMPT or (
-        "You are a highly reliable, context-aware election data assistant. "
-        "Always provide clear, actionable suggestions and flag ambiguous cases."
-    )
-    extra_instructions = extra_instructions or LLM_EXTRA_INSTRUCTIONS
-
-    prompt = (
-        "You are an expert election data context classifier and corrector.\n"
-        "Given the following extracted value from an election context, and the context dictionary, "
-        "suggest the most appropriate field (e.g., year, state, candidate, contest, etc.), a confidence score (0-1), "
-        "and, if possible, a correction or improvement. "
-        "If the value is ambiguous, explain why and suggest a process improvement or flag for review.\n"
-        f"Extracted value: '{entry.get('extracted_value', '')}'\n"
-        f"Context: {orjson.dumps(context or {}, ensure_ascii=False)}\n"
-    )
-    if extra_instructions:
-        prompt += f"\nAdditional instructions: {extra_instructions}\n"
-
-    try:
-        openai.api_key = api_key
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        return response.choices[0].message["content"]
-    except Exception as e:
-        logger.error(f"LLM suggestion failed (openai): {e}")
-    return None
+# REMOVED: external suggestion hook
+# System now uses internal NLP/ML only (spaCy, sentence-transformers, scikit-learn)
+# No external API calls
 
 def ml_score_entry(entry, coordinator=None):
     """
@@ -729,7 +675,7 @@ def aggregate_successful_field_entries(log_file: Path, context_library=None, fie
             field_entries[context_key].append(entry)
     return field_entries, dup_count, skipped_existing, len(unique_entries)
 
-# --- Feedback loop (interactive and LLM/ML-powered) ---
+# --- Feedback loop (interactive and ML-powered) ---
 def feedback_loop(
     new_entries,
     field_type,
@@ -737,11 +683,6 @@ def feedback_loop(
     enhanced=True,
     coordinator=None,
     context_organizer=None,
-    llm_api_key=None,
-    llm_provider=None,
-    llm_model=None,
-    llm_system_prompt=None,
-    llm_extra_instructions=None,
     fast_mode=False
 ) -> tuple[int, int, int]:
     coordinator = coordinator or ContextCoordinator()
@@ -763,11 +704,6 @@ def feedback_loop(
     for val, count in preview.most_common(5):
         logger.info(f"  {val!r}: {count} times")
     # Use config values if not provided
-    llm_api_key = llm_api_key or LLM_API_KEY
-    llm_provider = llm_provider or LLM_PROVIDER or "openai"
-    llm_model = llm_model or LLM_MODEL or "gpt-4-turbo"
-    llm_system_prompt = llm_system_prompt or LLM_SYSTEM_PROMPT
-    llm_extra_instructions = llm_extra_instructions or LLM_EXTRA_INSTRUCTIONS
     for context_key, values in new_entries.items():
         logger.info(f"\nContext: {context_key}")
         for idx, val in enumerate(values):
@@ -785,17 +721,7 @@ def feedback_loop(
                 ml_score = ml_score_entry(val, coordinator)
                 ml_field = ml_suggest_field(val, coordinator)
                 logger.info(f"    [ML] Score: {ml_score:.2f} | ML Field: {ml_field}")
-                if llm_api_key:
-                    llm_suggestion = llm_suggest_action(
-                        val,
-                        context=context_library,
-                        api_key=llm_api_key,
-                        model=llm_model,
-                        provider=llm_provider,
-                        system_prompt=llm_system_prompt,
-                        extra_instructions=llm_extra_instructions
-                    )
-                    logger.info(f"    [LLM] Suggestion: {llm_suggestion}")
+                # Internal NLP/ML only - no external model suggestions
             action = "a" if fast_mode else (input("Accept (a), Edit (e), Remove (r), Skip (s)? [a]: ").strip().lower() or "a")
             if action == "a":
                 accepted += 1
@@ -1311,7 +1237,7 @@ def process_auto_mode(file_field_map, context_path, cache, batch_size=BATCH_SIZE
 # --- Main CLI logic ---
 def main():
     parser = argparse.ArgumentParser(
-        description="Deep ML/LLM-enhanced batch review and correction bot for all context fields.\n"
+        description="Deep ML-enhanced batch review and correction bot for all context fields.\n"
                     "Log files are matched to fields by checking if the field name is a substring of the log file name. "
                     "If no files match, you may need to adjust your log file naming or field list."
     )
@@ -1323,12 +1249,7 @@ def main():
     parser.add_argument("--cache-expire-days", type=int, default=None, help="Expire cache entries older than N days")
     parser.add_argument("--sync-db", action="store_true", help="Sync context library to DB now")
     parser.add_argument("--export-audit-log", type=str, help="Export audit log to given path")
-    parser.add_argument("--enhanced", action="store_true", help="Enable enhanced learning and automation (spaCy, coordinator, context_organizer, LLM)")
-    parser.add_argument("--llm-api-key", type=str, default=None, help="API key for external LLM (e.g., OpenAI)")
-    parser.add_argument("--llm-provider", type=str, default="openai", help="LLM provider: openai")
-    parser.add_argument("--llm-model", type=str, default="gpt-4-turbo", help="LLM model name")
-    parser.add_argument("--llm-system-prompt", type=str, default=None, help="Custom system prompt for LLM")
-    parser.add_argument("--llm-extra-instructions", type=str, default=None, help="Extra instructions for LLM prompt")
+    parser.add_argument("--enhanced", action="store_true", help="Enable enhanced learning and automation (spaCy, coordinator, context_organizer)")
     parser.add_argument("--integrity", action="store_true", help="Highlight anomalies using integrity_check")
     parser.add_argument("--update-db", action="store_true", help="Update the DB with the new context library after processing")
     parser.add_argument("--db-path", type=str, default=None, help="Path to DB file (if --update-db is set)")
@@ -1483,12 +1404,7 @@ def main():
                         field_entries, field, context_path,
                         enhanced=args.enhanced,
                         coordinator=None,
-                        context_organizer=None,
-                        llm_api_key=LLM_API_KEY,
-                        llm_provider=LLM_PROVIDER,
-                        llm_model=LLM_MODEL,
-                        llm_system_prompt=LLM_SYSTEM_PROMPT,
-                        llm_extra_instructions=LLM_EXTRA_INSTRUCTIONS
+                        context_organizer=None
                     )
                     total_accepted += accepted
                     total_edited += edited

@@ -46,7 +46,6 @@ from .pivot import pivot_candidate_groups_from_rawjson
 from .pivot import pivot_to_wide as pivot_to_wide_format
 from .salvage import collapse_ballot_synonym_columns
 from .shared_logic import (
-    batch_log_rejections,
     build_camelot_row_filter_for_context,
     log_rejection_reason,
     record_noise_suggestion,

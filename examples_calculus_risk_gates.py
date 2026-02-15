@@ -8,12 +8,11 @@ This demonstrates the enhanced calculus-based risk assessment with:
   - PASS/SLOW/STOP sub-tier classification
 """
 
-from webapp.parser.health.risk_gates_calculus import (
-    evaluate_risk_with_calculus,
-    CalculusRiskEvaluator,
-    visualize_sub_tier_classification
-)
 from webapp.parser.health.risk_gates import evaluate_risk
+from webapp.parser.health.risk_gates_calculus import (
+    CalculusRiskEvaluator,
+    evaluate_risk_with_calculus,
+)
 
 
 # =============================================================================
@@ -199,11 +198,11 @@ def example_infinity_convergence():
         print(f"  Derivative Magnitude: {abs(derivatives.d_confidence_dt) + abs(derivatives.d_verification_dt) + abs(derivatives.d_anomaly_dt):.4f}")
         
         if derivatives.convergence_stability > 0.95:
-            print(f"  ✅ CONVERGED (stability → 1.0, derivatives → 0)")
+            print("  ✅ CONVERGED (stability → 1.0, derivatives → 0)")
         elif derivatives.convergence_stability > 0.80:
-            print(f"  ⏳ APPROACHING CONVERGENCE...")
+            print("  ⏳ APPROACHING CONVERGENCE...")
         else:
-            print(f"  📈 UNSTABLE (high rate of change)")
+            print("  📈 UNSTABLE (high rate of change)")
         
         previous = scores
     

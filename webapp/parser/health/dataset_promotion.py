@@ -9,6 +9,7 @@ from typing import Any, Iterable, Sequence
 import orjson
 from webapp.parser.config import OUTPUT_DIR
 from webapp.parser.Context_Integration.librarian import clean_for_json
+from webapp.parser.health.promotion_helpers import check_exact_duplicate, get_url_verification_tier
 from webapp.parser.utils.db_utils import (
     create_batch_metadata,
     create_warehouse_election_result,
@@ -16,8 +17,6 @@ from webapp.parser.utils.db_utils import (
 )
 from webapp.parser.utils.logger_singleton import logger
 from webapp.parser.utils.models import StatusEnum
-from webapp.parser.health.promotion_helpers import check_exact_duplicate, get_url_verification_tier
-
 
 PRECINCT_HINTS: tuple[str, ...] = (
     "precinct",

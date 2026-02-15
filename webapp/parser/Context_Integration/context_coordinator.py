@@ -11,6 +11,7 @@ Production-grade Context Coordinator for Election Data Pipeline
 from __future__ import annotations
 
 import difflib
+import hashlib
 import numbers
 import os
 import re
@@ -20,6 +21,7 @@ from collections import Counter, defaultdict
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import numpy as np
 import orjson
@@ -81,14 +83,12 @@ from .Context_Library.constants import (
     LOCATION_KEYWORDS,
     PANEL_TAGS,
     PARTY_KEYWORDS,
-    PERCENT_KEYWORDS,
     RESULTS_KEYWORDS,
-    STATUS_KEYWORDS,
     STATE_ABBR,
     STATE_MODULE_MAP,
     STATE_TAGS,
+    STATUS_KEYWORDS,
     TABLE_TAGS,
-    TOTAL_KEYWORDS,
     VIEW_BY_PHRASES,
     resolve_keyword_priority,
 )
@@ -869,6 +869,12 @@ class ContextCoordinator(object):
     Use this class to access contests, buttons, panels, tables, candidates, precincts, etc.
     """
     _dom_parts_warning_count = 0
+    _log_entry_limits = {
+        "max_depth": 6,
+        "max_list": 200,
+        "max_dict": 120,
+        "max_string": 2000,
+    }
     def __init__(self, use_library=True, enable_ml=True, alert_monitor=True, debug=False) -> None:
         self.enable_ml = enable_ml
         self.alert_monitor = alert_monitor
@@ -1753,7 +1759,31 @@ class ContextCoordinator(object):
         """Centralized JSONL logging utility."""
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+            capped_entry = self._cap_log_value(log_entry)
+            f.write(orjson.dumps(clean_for_json(capped_entry)) + b"\n")
+
+    def _cap_log_value(self, value: Any, *, depth: int = 0) -> Any:
+        limits = self._log_entry_limits
+        if depth > limits["max_depth"]:
+            return None
+        if isinstance(value, str):
+            if len(value) > limits["max_string"]:
+                return value[: limits["max_string"]] + "...(truncated)"
+            return value
+        if isinstance(value, (bytes, bytearray)):
+            size = len(value)
+            return f"<bytes:{size}>"
+        if isinstance(value, dict):
+            capped = {}
+            for idx, (key, item) in enumerate(value.items()):
+                if idx >= limits["max_dict"]:
+                    break
+                capped[key] = self._cap_log_value(item, depth=depth + 1)
+            return capped
+        if isinstance(value, (list, tuple, set)):
+            items = list(value)
+            return [self._cap_log_value(item, depth=depth + 1) for item in items[: limits["max_list"]]]
+        return value
 
     def _safe_get(self, dct, key, default=None) -> Optional[Any]:
         """Safely get a key from a dict, returning default if not a dict or key missing."""
@@ -2022,6 +2052,123 @@ class ContextCoordinator(object):
         summary = result.get("summary") if isinstance(result, dict) else None
         self._log_enrichment_snapshot(enrichment_plan, self.organized, summary=summary)
         return self.organized
+    
+    def predict_missing_fields(self, html_context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Use ContestFieldClassifier ML model to predict missing state/county/year/type fields.
+        
+        Only fills fields that are None or empty in html_context. Respects existing values.
+        
+        Args:
+            html_context: Context dict that may have contests and field gaps
+        
+        Returns:
+            Updated html_context with predicted fields (if model available and confident)
+        
+        Usage:
+            context_result = coordinator.predict_missing_fields(context_result)
+        """
+        try:
+            # Import here to avoid circular dependency
+            import os
+
+            from ..config import MODEL_DIR
+            from ..utils.model_registry import ContestFieldClassifier
+            
+            # Check if model checkpoint exists
+            model_path = os.path.join(MODEL_DIR, "contest_field_classifier.pt")
+            if not os.path.exists(model_path):
+                logger.debug("[predict_missing_fields] Model checkpoint not found, skipping prediction")
+                return html_context
+            
+            # Load model
+            try:
+                classifier = ContestFieldClassifier.load_from_checkpoint(model_path)
+            except Exception as e:
+                logger.debug(f"[predict_missing_fields] Could not load classifier: {e}")
+                return html_context
+            
+            # Predict fields for each contest with missing data
+            contests = html_context.get("contests", [])
+            contest_titles = []
+            
+            # Collect contest title for prediction (try first contest if no specific selection)
+            if contests and isinstance(contests, list) and len(contests) > 0:
+                first_contest = contests[0]
+                if isinstance(first_contest, dict):
+                    title = first_contest.get("title", "")
+                    if title:
+                        contest_titles.append((first_contest, title))
+            
+            # Also try from top-level context
+            if not contest_titles:
+                top_level_title = html_context.get("contest_title") or html_context.get("selected_race")
+                if top_level_title:
+                    contest_titles.append((html_context, top_level_title))
+            
+            # Run predictions
+            for target_dict, title in contest_titles:
+                if not title or len(title) < 5:
+                    continue
+                
+                try:
+                    predictions = classifier.predict(title)
+                    
+                    # Only use predictions with confidence > 0.5
+                    confidence_threshold = 0.5
+                    
+                    # State prediction
+                    if not target_dict.get("state") or target_dict.get("state") == "":
+                        state_pred = predictions.get("state", {})
+                        if state_pred.get("confidence", 0) > confidence_threshold and state_pred.get("value"):
+                            target_dict["state"] = state_pred["value"]
+                            logger.info(f"[ML] Predicted state: {state_pred['value']} (conf: {state_pred['confidence']:.2f})")
+                    
+                    # County prediction
+                    if not target_dict.get("county") or target_dict.get("county") == "":
+                        county_pred = predictions.get("county", {})
+                        if county_pred.get("confidence", 0) > confidence_threshold and county_pred.get("value"):
+                            target_dict["county"] = county_pred["value"]
+                            logger.info(f"[ML] Predicted county: {county_pred['value']} (conf: {county_pred['confidence']:.2f})")
+                    
+                    # Year prediction
+                    if not target_dict.get("year") or target_dict.get("year") == "":
+                        year_pred = predictions.get("year", {})
+                        if year_pred.get("confidence", 0) > confidence_threshold and year_pred.get("value"):
+                            target_dict["year"] = year_pred["value"]
+                            logger.info(f"[ML] Predicted year: {year_pred['value']} (conf: {year_pred['confidence']:.2f})")
+                    
+                    # Type prediction (optional field)
+                    if not target_dict.get("type_") or target_dict.get("type_") == "":
+                        type_pred = predictions.get("type_", {})
+                        if type_pred.get("confidence", 0) > confidence_threshold and type_pred.get("value"):
+                            target_dict["contest_type"] = type_pred["value"]
+                            logger.debug(f"[ML] Predicted type: {type_pred['value']} (conf: {type_pred['confidence']:.2f})")
+                
+                except Exception as e:
+                    logger.debug(f"[predict_missing_fields] Prediction failed for '{title}': {e}")
+                    continue
+            
+            # Propagate top-level predictions to all contests if they're still missing
+            top_level_state = html_context.get("state")
+            top_level_county = html_context.get("county")
+            top_level_year = html_context.get("year")
+            
+            if top_level_state or top_level_county or top_level_year:
+                for contest in contests:
+                    if isinstance(contest, dict):
+                        if top_level_state and not contest.get("state"):
+                            contest["state"] = top_level_state
+                        if top_level_county and not contest.get("county"):
+                            contest["county"] = top_level_county
+                        if top_level_year and not contest.get("year"):
+                            contest["year"] = top_level_year
+            
+            return html_context
+        
+        except Exception as e:
+            logger.debug(f"[predict_missing_fields] Error: {e}")
+            return html_context
 
     def organize_context_advanced(self, raw_context, **kwargs) -> Dict[str, Any]:
         """
@@ -2744,6 +2891,7 @@ class ContextCoordinator(object):
                 "context": context,
                 "user_feedback": user_feedback
             }
+            log_entry = self._cap_log_value(log_entry)
             # Defensive: clean for JSON, handle serialization errors
             entry_bytes = None
             try:
@@ -3659,10 +3807,8 @@ class ContextCoordinator(object):
             "result": result,  # e.g., "match", "no_match", "clicked", "skipped"
             "context": context or {}
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "pattern_attempts_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     def get_best_button_advanced(
         self,
@@ -3877,12 +4023,17 @@ class ContextCoordinator(object):
             "button_label": button.get("label"),
             "selector": button.get("selector"),
             "context": context,
+            # Enhanced: Add DOM neighborhood for semantic learning
+            "button_html_context": {
+                "parent_text": button.get("parent_segment", {}).get("html", "")[:200] if isinstance(button.get("parent_segment"), dict) else "",
+                "sibling_labels": [s.get("label", "") for s in button.get("siblings", [])[:3]] if isinstance(button.get("siblings"), list) else [],
+                "classes": button.get("classes", []) if isinstance(button.get("classes"), list) else [],
+                "aria_label": button.get("attrs", {}).get("aria-label", "") if isinstance(button.get("attrs"), dict) else ""
+            },
             "result": "learning_confirmed"
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "button_learning_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     def _get_confirmed_button_from_log(self, contest: dict = None, keywords: list[str] = None, context: dict = None) -> Optional[Dict[str, Any]]:
         """
@@ -3921,10 +4072,8 @@ class ContextCoordinator(object):
             "selector": button.get("selector"),
             "result": result
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "button_selection_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     def record_navigation_feedback(
         self,
@@ -3937,7 +4086,19 @@ class ContextCoordinator(object):
         metadata: dict | None = None,
     ) -> None:
         """Persist navigation runner outcomes for ML feedback loops."""
-
+        meta = dict(metadata or {})
+        url = (
+            meta.get("page_url")
+            or (context_after or {}).get("url")
+            or (context_before or {}).get("url")
+        )
+        if isinstance(url, str) and url:
+            try:
+                parsed = urlparse(url)
+                meta.setdefault("url_domain", parsed.hostname or None)
+                meta.setdefault("url_hash", hashlib.sha1(url.encode("utf-8")).hexdigest()[:12])
+            except Exception:
+                pass
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "script_id": script_id,
@@ -3945,12 +4106,10 @@ class ContextCoordinator(object):
             "context_before": context_before or {},
             "context_after": context_after or {},
             "telemetry": telemetry or [],
-            "metadata": metadata or {},
+            "metadata": meta,
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "navigation_learning_log.jsonl")
-        with open(log_path, "ab") as handle:
-            handle.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     # --- Table structure learning/lookup ---
     def get_table_structure_from_log(
@@ -4099,10 +4258,8 @@ class ContextCoordinator(object):
             "method": "get_contests",
             "filters": filters,
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_contests_access_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     def _log_get_buttons_access(self, contest: Dict[str, Any], keyword: str, url: str) -> None:
         log_entry = {
@@ -4113,10 +4270,8 @@ class ContextCoordinator(object):
             "url": url,
         }
 
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_buttons_access_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     def _log_get_best_button_access(self, contest: Dict[str, Any], keywords: List[str], class_hint: str, url: str) -> None:
         log_entry = {
@@ -4127,10 +4282,8 @@ class ContextCoordinator(object):
             "class_hint": class_hint,
             "url": url,
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_best_button_access_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     def _log_get_panel_access(self, contest: Dict[str, Any]) -> None:
         log_entry = {
@@ -4138,10 +4291,8 @@ class ContextCoordinator(object):
             "method": "get_panel",
             "contest": contest,
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_panel_access_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     def _log_get_tables_access(self, contest: Dict[str, Any]) -> None:
         log_entry = {
@@ -4149,10 +4300,8 @@ class ContextCoordinator(object):
             "method": "get_tables",
             "contest": contest,
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_tables_access_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     def _log_get_candidates_access(self, contest: Dict[str, Any]) -> None:
         log_entry = {
@@ -4160,10 +4309,8 @@ class ContextCoordinator(object):
             "method": "get_candidates",
             "contest": contest,
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_candidates_access_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     def _log_get_precincts_access(self, state, county) -> None:
         log_entry = {
@@ -4172,40 +4319,32 @@ class ContextCoordinator(object):
             "state": state,
             "county": county,
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_precincts_access_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     def _log_get_states_access(self) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_states",
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_states_access_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     def _log_get_election_types_access(self) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_election_types",
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_election_types_access_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
 
     def _log_get_years_access(self) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_years",
         }
-        os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_years_access_log.jsonl")
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+        self._log_jsonl(log_path, log_entry)
             
     # --- Dynamic Data for Downstream Consumers ---
     def get_for_selector(self) -> dict:

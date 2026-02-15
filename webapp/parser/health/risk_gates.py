@@ -30,8 +30,8 @@ The ⅓ partitioning ensures:
   - Data clusters that emerge naturally from multi-gate interactions
 """
 
-from typing import Dict, Tuple, Optional, List
 from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
 
 @dataclass

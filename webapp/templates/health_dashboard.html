@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Azure Health Control Center</title>
+    <title>Health Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
-<body class="azure-health-body">
+<body class="health-dashboard-body">
     <nav class="navbar">
-        <a href="{{ url_for('index') }}">Home</a>
+        <a href="{{ url_for('data_framework') }}">Data Framework</a>
         <a href="https://portal.azure.com/" target="_blank" rel="noreferrer">Azure Portal</a>
         <a href="https://status.azure.com/en-us/status" target="_blank" rel="noreferrer">Azure Status</a>
     </nav>
@@ -17,8 +17,8 @@
     <div class="container py-5">
         <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-4">
             <div>
-                <h1 class="mb-2">Azure Health Control Center</h1>
-                <p class="lead text-muted mb-0">Kick off health scripts, observe logs in real time, and plan the next safeguards for Smart Elections Parser.</p>
+                <h1 class="mb-2">Health Dashboard</h1>
+                <p class="lead text-muted mb-0">Internal health monitoring: queue maintenance tasks, review logs, and audit system safeguards.</p>
             </div>
             <a class="btn btn-outline-primary mt-3 mt-md-0" href="{{ url_for('index') }}">Back to Dashboard</a>
         </div>
@@ -127,7 +127,10 @@
         </section>
 
         <footer class="mt-5 text-center text-muted small">
-            Health endpoint also available at <code>{{ url_for('health') }}</code>
+            <div class="mb-2">
+                <strong>Public Health Endpoint</strong>: <code>{{ url_for('health') }}</code> (no auth required)<br>
+                <span class="small">Protected Dashboard</span>: Requires <code>ENABLE_HEALTH_TASKS=true</code>
+            </div>
         </footer>
     </div>
 
@@ -136,6 +139,6 @@
          data-runtime='{{ runtime_hints|tojson|safe }}'></div>
 
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/azure_health.js') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/health_dashboard.js') }}" defer></script>
 </body>
 </html>

@@ -29,7 +29,18 @@ This document provides the comprehensive architecture overview of the Smart Elec
 - Supports batch mode, multiprocessing, and integration modes
 - Logs all actions for auditability
 
+**CLI branch**:
+
+- Primary CLI entry path for batch runs, headless parsing, and automation
+- Accepts file/URL lists, interactive prompts, and integration flags
+- Shares the same routing and handler contracts as the web app
+
 ### 2. Router Layer
+
+**CLI vs Web parity**:
+
+- Both entry paths route through the same `state_router.py` and `format_router.py` logic
+- Any routing change applies to CLI and web runs, ensuring consistent handler selection
 
 #### State Router
 
@@ -72,6 +83,30 @@ This document provides the comprehensive architecture overview of the Smart Elec
 
 - Reusable templates, normalizers, and validation functions
 - Contest selection, header harmonization, data cleaning utilities
+- Parity hook layer (`handlers/shared/parity_hooks.py`) safely passes router notes into handler outputs
+
+### Internal NLP/ML Foundation (No External AI APIs)
+
+**Design Philosophy**:
+
+- **No external AI APIs**: System relies exclusively on local NLP models (spaCy) + ML framework (scikit-learn, sentence-transformers)
+- **Reproducibility**: Consistent results for election integrity verification
+- **Non-partisan**: Mathematical risk assessment without bias
+- **Mathematical Framework**: 9-dimensional risk vector space (see `ALGORITHMIC_APPROACH_SUMMARY.md`)
+
+**Core Components**:
+
+- **spaCy NER** (`en_core_web_sm`): Entity recognition for candidates, parties, jurisdictions
+- **sentence-transformers**: Embedding generation for semantic similarity and context matching
+- **scikit-learn**: Clustering, outlier detection, and validation scoring
+- **Risk Gates Calculus**: Three-gate threshold system (Confidence, Verification, Anomaly) with six derivative dimensions for rate-of-change analysis
+- **HuggingFace pipelines**: Optional local transformer models for specialized tasks (no cloud dependencies)
+
+**Key Files**:
+
+- `webapp/parser/health/risk_gates.py`: Risk vector calculation and threshold enforcement
+- `webapp/parser/health/risk_gates_calculus.py`: Derivative dimension computation
+- `ALGORITHMIC_APPROACH_SUMMARY.md`: Mathematical foundation and 9-dimensional vector space specification
 
 ### 4. Core Utilities
 
@@ -92,7 +127,7 @@ This document provides the comprehensive architecture overview of the Smart Elec
 
 **`utils/ml_table_detector.py`**:
 
-- ML/LLM-powered table detection and structure learning
+- ML-powered table detection and structure learning
 - Advanced extraction and anomaly detection
 
 #### Table Processing
@@ -197,12 +232,22 @@ This document provides the comprehensive architecture overview of the Smart Elec
 
 ```tree
 URL Input
-   ↓
-state_router.py (state match?)
-   ├→ YES: handlers/states/<state>.py parse()
-   └→ NO: format_router.py
-         ├→ html_scanner.py (detect format)
-         └→ handlers/formats/<type>_handler.py parse()
+   ├→ CLI: html_election_parser.py
+   │     ↓
+   │   state_router.py (state match?)
+   │     ├→ YES: handlers/states/<state>.py parse()
+   │     └→ NO: format_router.py
+   │           ├→ html_scanner.py (detect format)
+   │           └→ handlers/formats/<type>_handler.py parse()
+   └→ Web: Smart_Elections_Parser_Webapp.py
+         ↓
+       web_pipeline.process_urls_for_web()
+         ↓
+       state_router.py (state match?)
+         ├→ YES: handlers/states/<state>.py parse()
+         └→ NO: format_router.py
+               ├→ html_scanner.py (detect format)
+               └→ handlers/formats/<type>_handler.py parse()
    ↓
 html_context (scout extraction paths)
    ├→ dynamic_table_extractor.py (find tables)

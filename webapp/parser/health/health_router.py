@@ -28,11 +28,6 @@ from ..config import (
     FILTER_VALUE,
     FLUSH_CACHE,
     INTEGRITY_CHECK,
-    LLM_API_KEY,
-    LLM_EXTRA_INSTRUCTIONS,
-    LLM_MODEL,
-    LLM_PROVIDER,
-    LLM_SYSTEM_PROMPT,
     LOG_DIR,
     MAX_RETRIES,
     MODEL_DIR,
@@ -62,7 +57,8 @@ from .navigation_feedback_ingest import ingest_navigation_feedback
 # 2. Feature extraction from successful + failed parsing attempts
 # 3. Confidence scoring based on pattern recognition from historical data
 # 4. SQL backend (warehoused election results) provides training signals
-# 5. HuggingFace NLP models (no OpenAI) for embeddings & entity recognition
+# 5. Internal NLP/ML only: spaCy NER, sentence-transformers, scikit-learn
+# 6. Optional HuggingFace local models (no cloud dependencies)
 #
 # Learning Loop:
 # - Session processes election data -> IntegrityMonitor captures features
@@ -149,16 +145,49 @@ def run_orchestration_plugins(context=None):
             logger.error(f"[BOT ROUTER][PLUGIN ERROR] {e}")
     return suggestions
 
-def preclean_json_logs(log_dirs, required_files=None):
+def preclean_json_logs(log_dirs, required_files=None, max_line_length=200000):
     """
     Clean all JSON/JSONL files in log_dirs.
     Quarantine corrupt lines, salvage valid lines, and create missing required files.
     """
     
-    # Clean all .jsonl and .json files
+    # Clean all .jsonl, .ndjson, and .json files
     for log_dir in log_dirs:
-        for suf in [".jsonl", ".json"]:
+        for suf in [".jsonl", ".ndjson", ".json"]:
             for path in glob.glob(os.path.join(log_dir, f"*{suf}")):
+                import json
+                
+                # Detect if .json is block JSON or JSONL by checking first non-whitespace char
+                # .jsonl and .ndjson files are always line-delimited
+                is_block_json = False
+                if suf == ".json":
+                    try:
+                        with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+                            first_char = None
+                            for char in f:
+                                if char.strip():
+                                    first_char = char.strip()[0]
+                                    break
+                            # If file starts with array/object, assume block JSON
+                            if first_char in "{[":
+                                is_block_json = True
+                    except Exception:
+                        pass
+                
+                # Handle block JSON files separately
+                if is_block_json:
+                    try:
+                        with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+                            json.load(f)
+                        print(f"[FIXED] Block JSON validated: {path}")
+                    except json.JSONDecodeError as e:
+                        print(f"[CORRUPT] Block JSON invalid in {path}: {str(e)}")
+                        corrupt_path = path + ".corrupt"
+                        with open(corrupt_path, "w", encoding="utf-8") as out:
+                            out.write(f"Block JSON parsing failed:\n{str(e)}\n")
+                    continue
+                
+                # Handle JSONL/line-delimited files
                 valid_lines = []
                 corrupt_lines = []
                 with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
@@ -166,12 +195,14 @@ def preclean_json_logs(log_dirs, required_files=None):
                         line = line.strip()
                         if not line:
                             continue
+                        if len(line) > max_line_length:
+                            corrupt_lines.append((i, "<line too long>", "exceeds max_line_length"))
+                            continue
                         try:
                             # Try to parse as JSON
-                            import json
                             json.loads(line)
                             valid_lines.append(line)
-                        except Exception as e:
+                        except json.JSONDecodeError as e:
                             # Try to fix common issues
                             fixed = line
                             fixed = re.sub(r",\s*$", "", fixed)
@@ -181,7 +212,7 @@ def preclean_json_logs(log_dirs, required_files=None):
                             try:
                                 json.loads(fixed)
                                 valid_lines.append(fixed)
-                            except Exception:
+                            except json.JSONDecodeError:
                                 corrupt_lines.append((i, line, str(e)))
                 # Write back valid lines
                 with open(path, "w", encoding="utf-8") as out:
@@ -209,7 +240,7 @@ class BotPipeline:
         self.results = {}
         self.context = None
         self.last_run = None
-        self.llm_suggestions = []
+        self.ai_suggestions = []
         self.lockfile = os.path.join(PROJECT_ROOT, "pipeline.lock")
 
     def ensure_db_tables(self):
@@ -245,21 +276,10 @@ class BotPipeline:
             args.append("--integrity")
         if str(UPDATE_DB).lower() == "true":
             args.append("--update-db")
-        llm_api_key = LLM_API_KEY
-        # Prefer HuggingFace over OpenAI for privacy/cost
-        llm_provider = str(LLM_PROVIDER or "huggingface").lower()
-        llm_model = LLM_MODEL or "sentence-transformers/all-MiniLM-L6-v2"
         
-        if llm_api_key:
-            args.extend([
-                "--llm-api-key", llm_api_key,
-                "--llm-provider", llm_provider,
-                "--llm-model", llm_model
-            ])
-            if LLM_SYSTEM_PROMPT:
-                args.extend(["--llm-system-prompt", LLM_SYSTEM_PROMPT])
-            if LLM_EXTRA_INSTRUCTIONS:
-                args.extend(["--llm-extra-instructions", LLM_EXTRA_INSTRUCTIONS])
+        # Internal NLP/ML only - no external API dependencies
+        # Uses local spaCy, sentence-transformers, and scikit-learn models
+        
         if FILTER_CONTEXT_KEY:
             args.extend(["--filter-context-key", FILTER_CONTEXT_KEY])
         if FILTER_VALUE:
@@ -326,7 +346,7 @@ class BotPipeline:
         for attempt in range(1, retries + 1):
             try:
                 logger.info(f"[health_router] Running manual_correction (enhanced mode, attempt={attempt}) with args: {args}")
-                cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction"] + args
+                cmd = [sys.executable, "-m", "webapp.parser.health.manual_correction_bot"] + args
                 result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=timeout)
                 logger.info(f"[health_router] manual_correction stdout:\n{result.stdout[:1000]}")
                 if result.returncode == 0:
@@ -353,7 +373,7 @@ class BotPipeline:
             if not dir_path.exists():
                 continue
             cmd = [
-                sys.executable, "-m", "webapp.parser.bots.manual_correction",
+                sys.executable, "-m", "webapp.parser.health.manual_correction_bot",
                 "--log-dir", str(dir_path),
                 "--fields", "all",
                 "--dry-run"
@@ -453,7 +473,7 @@ class BotPipeline:
 
             # 3. Fix corrupted JSON files before any processing
             try:
-                cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction", "--fix-corrupt-json"]
+                cmd = [sys.executable, "-m", "webapp.parser.health.manual_correction_bot", "--fix-corrupt-json"]
                 subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
                 logger.info("[PIPELINE] Corrupted JSON files checked and fixed.")
             except Exception as e:
@@ -490,12 +510,6 @@ class BotPipeline:
             extra_args = []
             if str(INTEGRITY_CHECK).lower() == "true":
                 extra_args.append("--integrity")
-            if LLM_API_KEY:
-                extra_args.extend([
-                    "--llm-api-key", LLM_API_KEY,
-                    "--llm-provider", LLM_PROVIDER or "huggingface",
-                    "--llm-model", LLM_MODEL or "sentence-transformers/all-MiniLM-L6-v2"
-                ])
             if EXPORT_AUDIT_LOG:
                 extra_args.extend(["--export-audit-log", EXPORT_AUDIT_LOG])
             if str(FLUSH_CACHE).lower() == "true":
@@ -523,7 +537,7 @@ class BotPipeline:
             # 9. Run orchestration plugins
             self.run_orchestration_plugins()
 
-            # 10. Self-improvement suggestions (LLM/static)
+            # 10. Self-improvement suggestions (local NLP/ML + static fallback)
             self.self_improve()
 
             # 11. Print pipeline summary
@@ -537,7 +551,7 @@ class BotPipeline:
 
     def manual_correction(self, args=None):
         try:
-            cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction"]
+            cmd = [sys.executable, "-m", "webapp.parser.health.manual_correction_bot"]
             if args:
                 cmd.extend(args)
             subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
@@ -550,7 +564,7 @@ class BotPipeline:
 
     def retrain_models(self):
         try:
-            cmd = [sys.executable, "-m", "webapp.parser.bots.retrain_table_structure_models"]
+            cmd = [sys.executable, "-m", "webapp.parser.health.retrain_table_structure_models"]
             subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
             self.results['retrain_models'] = 'success'
             return True
@@ -561,7 +575,7 @@ class BotPipeline:
 
     def scan_misaligned(self):
         try:
-            cmd = [sys.executable, "-m", "webapp.parser.bots.scan_misaligned_ner"]
+            cmd = [sys.executable, "-m", "webapp.parser.health.scan_misaligned_ner"]
             result = subprocess.run(cmd, cwd=PROJECT_ROOT)
             exit_code = result.returncode
             self.results['scan_misaligned'] = 'clean' if exit_code == 0 else 'misaligned'
@@ -573,9 +587,9 @@ class BotPipeline:
 
     def clean_and_migrate(self):
         try:
-            cmd = [sys.executable, "-m", "webapp.parser.bots.log_cache_cleaner_bot"]
+            cmd = [sys.executable, "-m", "webapp.parser.health.log_cache_cleaner_bot"]
             subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
-            cmd = [sys.executable, "-m", "webapp.parser.bots.context_migration"]
+            cmd = [sys.executable, "-m", "webapp.parser.health.context_migration"]
             subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
             self.results['clean_migrate'] = 'success'
             return True
@@ -621,54 +635,52 @@ class BotPipeline:
     def self_improve(self):
         suggestion = None
         # Use LOCAL LEARNING ENGINE for session health and improvement suggestions
-        if LLM_PROVIDER == "huggingface":
-            try:
-                # Use LocalLearningEngine for learning-based suggestions
-                learning_engine = get_learning_engine()
-                
-                # Prepare session context from current results
-                session_context = {
-                    "contest": self.results.get("contest") or self.context.get("contest"),
-                    "state": self.results.get("state") or self.context.get("state"),
-                    "county": self.results.get("county") or self.context.get("county"),
-                    "handler": "health_router",
-                    "session_id": "health_bot"
-                }
-                
-                # Get learned accuracy score based on historical patterns
-                learned_score = learning_engine.get_learned_accuracy_score(session_context)
-                
-                # Get integrity monitor assessment
-                monitor = get_integrity_monitor()
-                flags = self.results.get("integrity_issues", [])
-                health_result = monitor.assess_session_health(session_context, flags)
-                
-                # Merge learning engine insights
-                health_result["learned_accuracy_score"] = learned_score
-                health_result["learning_engine"] = "active"
-                
-                console.log(f"[HEALTH] Integrity score: {health_result['health_score']:.2f} (confidence: {health_result['confidence']:.2f})")
-                console.log(f"[HEALTH] Learned accuracy: {learned_score:.2f} | Priority: {health_result['priority']}")
-                console.log(f"[HEALTH] Recommendations: {health_result['recommendations']}")
-                return health_result
-            except Exception as e:
-                logger.error(f"[HEALTH] Local learning analysis failed: {e}")
+        try:
+            learning_engine = get_learning_engine()
+
+            # Prepare session context from current results
+            session_context = {
+                "contest": self.results.get("contest") or self.context.get("contest"),
+                "state": self.results.get("state") or self.context.get("state"),
+                "county": self.results.get("county") or self.context.get("county"),
+                "handler": "health_router",
+                "session_id": "health_bot"
+            }
+
+            # Get learned accuracy score based on historical patterns
+            learned_score = learning_engine.get_learned_accuracy_score(session_context)
+
+            # Get integrity monitor assessment
+            monitor = get_integrity_monitor()
+            flags = self.results.get("integrity_issues", [])
+            health_result = monitor.assess_session_health(session_context, flags)
+
+            # Merge learning engine insights
+            health_result["learned_accuracy_score"] = learned_score
+            health_result["learning_engine"] = "active"
+
+            console.log(f"[HEALTH] Integrity score: {health_result['health_score']:.2f} (confidence: {health_result['confidence']:.2f})")
+            console.log(f"[HEALTH] Learned accuracy: {learned_score:.2f} | Priority: {health_result['priority']}")
+            console.log(f"[HEALTH] Recommendations: {health_result['recommendations']}")
+            return health_result
+        except Exception as e:
+            logger.error(f"[HEALTH] Local learning analysis failed: {e}")
+
+        # Fallback: rule-based suggestions from historical patterns
+        if self.results.get("scan_misaligned") == "misaligned":
+            suggestion = "Consider running manual_correction with --self-heal or retraining models based on learned patterns."
         else:
-            # Fallback: rule-based suggestions from historical patterns
-            if self.results.get("scan_misaligned") == "misaligned":
-                suggestion = "Consider running manual_correction with --self-heal or retraining models based on learned patterns."
-            else:
-                suggestion = "Pipeline ran clean. Monitor logs for anomalies."
-            logger.info(f"[PIPELINE][STATIC SUGGESTION]: {suggestion}")
-            self.llm_suggestions.append(suggestion)
+            suggestion = "Pipeline ran clean. Monitor logs for anomalies."
+        logger.info(f"[PIPELINE][STATIC SUGGESTION]: {suggestion}")
+        self.ai_suggestions.append(suggestion)
 
     def print_summary(self):
         logger.info("\n[PIPELINE] Run Summary:")
         for k, v in self.results.items():
             logger.info(f"  {k:<20}: {v}")
-        if self.llm_suggestions:
-            console.print("\n[PIPELINE] LLM/AI Suggestions:")
-            for s in self.llm_suggestions:
+        if self.ai_suggestions:
+            console.print("\n[PIPELINE] AI Suggestions:")
+            for s in self.ai_suggestions:
                 console.print(f"  - {s}")
 
 if __name__ == "__main__":

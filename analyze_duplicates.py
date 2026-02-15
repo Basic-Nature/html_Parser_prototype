@@ -9,13 +9,13 @@ from webapp.parser.Context_Integration.Context_Library.constants import (
     BALLOT_TYPES,
     BUTTON_CLASSES,
     BUTTON_TAGS,
+    CONTAINER_EXTRA_KEYWORDS,
+    CONTAINER_FALLBACK_SELECTORS,
     CONTEST_HEADER_KEYWORDS,
     CONTEST_HEADER_PREFERENCE,
     CONTEST_PANEL_TAGS,
     CONTEST_TITLE_KEYWORDS,
     CONTEST_TITLE_TAGS,
-    CONTAINER_EXTRA_KEYWORDS,
-    CONTAINER_FALLBACK_SELECTORS,
     ELECTION_ENTITY_LABELS,
     ELECTION_OFFICIAL_KEYWORDS,
     ELECTION_TYPES,
@@ -142,7 +142,7 @@ for kw in sorted(duplicates.keys()):
     print(f"  '{kw}': {duplicates[kw]}")
 
 # Statistics
-print(f"\n=== STATISTICS ===")
+print("\n=== STATISTICS ===")
 total_unique = len(keyword_to_categories)
 total_items = sum(len(v) for v in all_categories.values())
 print(f"Total keywords across all categories: {total_items}")
@@ -150,18 +150,18 @@ print(f"Total UNIQUE keywords: {total_unique}")
 print(f"Redundancy: {100 * (1 - total_unique/total_items):.1f}%")
 
 # Keywords that appear 3+ times
-print(f"\n=== HIGH-REDUNDANCY KEYWORDS (3+) ===")
+print("\n=== HIGH-REDUNDANCY KEYWORDS (3+) ===")
 high_redundancy = {kw: cats for kw, cats in keyword_to_categories.items() if len(cats) >= 3}
 for kw in sorted(high_redundancy.keys()):
     print(f"  '{kw}': {high_redundancy[kw]}")
 
 # Category sizes
-print(f"\n=== CATEGORY SIZES ===")
+print("\n=== CATEGORY SIZES ===")
 for cat in sorted(all_categories.keys(), key=lambda x: len(all_categories[x]), reverse=True):
     print(f"  {cat}: {len(all_categories[cat])} items")
     
-print(f"\n=== RECOMMENDATIONS FOR CONSOLIDATION ===")
-print(f"1. Create KEYWORD_TAXONOMY mapping showing which keywords are in which categories")
-print(f"2. Build contextual relationships for keywords that appear in multiple places")
-print(f"3. Consider consolidating overlapping sets into a unified 'SEMANTIC_KEYWORDS' map")
-print(f"4. Track keyword-to-label mappings for ML pipeline enrichment")
+print("\n=== RECOMMENDATIONS FOR CONSOLIDATION ===")
+print("1. Create KEYWORD_TAXONOMY mapping showing which keywords are in which categories")
+print("2. Build contextual relationships for keywords that appear in multiple places")
+print("3. Consider consolidating overlapping sets into a unified 'SEMANTIC_KEYWORDS' map")
+print("4. Track keyword-to-label mappings for ML pipeline enrichment")

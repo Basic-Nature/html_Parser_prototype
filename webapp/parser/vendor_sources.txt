@@ -1,0 +1,53 @@
+# === Voting equipment vendor sources (2012-2026) ===
+# Schema (tab-delimited): year	contest	state	scope	format	notes	url
+2012-2026	Voting Systems by County	Texas	statewide	HTML/PDF	Provides Voting Systems by County PDF; vendor/model/version/quantity	https://www.sos.state.tx.us/elections/forms/index.shtml
+2012-2026	Voting Equipment by County	Michigan	statewide	HTML/PDF	Provides Voting Equipment by County PDF; vendor+model per county	https://www.michigan.gov/sos/elections/voting-equipment
+2012-2026	Voting Systems	Colorado	statewide	HTML/PDF	County-level assignments; includes Dominion Democracy Suite versions	https://www.coloradosos.gov/pubs/elections/VotingSystems/
+2012-2026	Voting Systems	Oregon	statewide	HTML	County-level central count scanner vendors; vote-by-mail focus	https://sos.oregon.gov/elections/Pages/voting-systems.aspx
+2012-2026	Voting Systems	California	statewide	HTML/PDF	County-level certified systems; model names + certification versions	https://www.sos.ca.gov/elections/voting-systems
+2012-2026	Voting Systems	Florida	statewide	HTML	County-level usage; scanner + BMD models	https://dos.myflorida.com/elections/voting-systems/
+2012-2026	Voting Equipment	Georgia	statewide	HTML	Statewide uniform system (Dominion ICX + ICP); historical PDFs	https://sos.ga.gov/elections/voting-equipment
+2012-2026	Voting Equipment	North Carolina	statewide	HTML	County-level lists; good historical archives	https://www.ncsbe.gov/voting/voting-equipment
+2012-2026	Voting Equipment	Virginia	statewide	HTML	County-level system usage; strong documentation post-2017	https://www.elections.virginia.gov/casting-a-ballot/voting-equipment/
+2012-2026	Voting Equipment	Wisconsin	statewide	HTML	County-level lists; certification status	https://elections.wi.gov/resources/voting-equipment
+2012-2026	Voting Equipment	Alabama	statewide	HTML	County lists; some years require county PDFs	https://www.sos.alabama.gov/elections
+2012-2026	Voting Equipment	Alaska	statewide	HTML	Statewide uniform system (Dominion)	https://www.elections.alaska.gov
+2012-2026	Voting Equipment	Arizona	statewide	HTML	County system summaries; Maricopa/Pima detailed PDFs	https://azsos.gov/elections
+2012-2026	Voting Equipment	Arkansas	statewide	HTML	County lists; ES&S statewide; PDFs vary	https://www.sos.arkansas.gov/elections
+2012-2026	Voting Equipment	Connecticut	statewide	HTML	Statewide uniform (ES&S DS200)	https://portal.ct.gov/SOTS
+2012-2026	Voting Equipment	Delaware	statewide	HTML	Statewide uniform (ES&S ExpressVote XL)	https://elections.delaware.gov
+2012-2026	Voting Equipment	District of Columbia	statewide	HTML	Single jurisdiction	https://dcboe.org
+2012-2026	Voting Equipment	Hawaii	statewide	HTML	Statewide uniform system (ES&S)	https://elections.hawaii.gov
+2012-2026	Voting Equipment	Idaho	statewide	HTML	County lists; ES&S/Hart/Clear Ballot mix	https://voteidaho.gov
+2012-2026	Voting Equipment	Illinois	statewide	HTML/PDF	County PDFs; fragmented coverage	https://www.elections.il.gov
+2012-2026	Voting Equipment	Indiana	statewide	HTML	County lists; MicroVote/ES&S/Hart	https://www.in.gov/sos/elections
+2012-2026	Voting Equipment	Iowa	statewide	HTML	County lists; ES&S dominant; PDFs available	https://sos.iowa.gov/elections
+2012-2026	Voting Equipment	Kansas	statewide	HTML	County lists; ES&S/Hart/Clear Ballot mix	https://sos.ks.gov/elections
+2012-2026	Voting Equipment	Kentucky	statewide	HTML	County lists; many county PDFs	https://elect.ky.gov
+2012-2026	Voting Equipment	Louisiana	statewide	HTML	Statewide uniform DRE system (legacy)	https://www.sos.la.gov/ElectionsAndVoting
+2012-2026	Voting Equipment	Maine	statewide	HTML	County summaries; central count + precinct scanners	https://www.maine.gov/sos/cec/elec
+2012-2026	Voting Equipment	Maryland	statewide	HTML	Statewide uniform system (ES&S)	https://elections.maryland.gov
+2012-2026	Voting Equipment	Massachusetts	statewide	HTML/PDF	Town-level lists; detailed PDFs	https://www.sec.state.ma.us/ele
+2012-2026	Voting Equipment	Minnesota	statewide	HTML	County lists; ES&S/Dominion/Hart mix	https://www.sos.state.mn.us/elections-voting
+2012-2026	Voting Equipment	Mississippi	statewide	HTML	County lists; TSX/ImageCast mix	https://www.sos.ms.gov/elections-voting
+2012-2026	Voting Equipment	Missouri	statewide	HTML	County lists; ES&S/Dominion/Unisyn mix	https://www.sos.mo.gov/elections
+2012-2026	Voting Equipment	Montana	statewide	HTML	County lists; ES&S dominant	https://sosmt.gov/elections
+2012-2026	Voting Equipment	Nebraska	statewide	HTML	County lists; ES&S statewide	https://sos.nebraska.gov/elections
+2012-2026	Voting Equipment	Nevada	statewide	HTML	County lists; Dominion statewide	https://www.nvsos.gov/sos/elections
+2012-2026	Voting Equipment	New Hampshire	statewide	HTML	Town-level lists; AccuVote OS legacy	https://sos.nh.gov/elections
+2012-2026	Voting Equipment	New Jersey	statewide	HTML	County lists; many county PDFs	https://www.state.nj.us/state/elections
+2012-2026	Voting Equipment	New Mexico	statewide	HTML	County lists; Dominion statewide	https://www.sos.nm.gov/voting-and-elections
+2012-2026	Voting Equipment	New York	statewide	HTML	County lists; ES&S + Dominion mix	https://www.elections.ny.gov
+2012-2026	Voting Equipment	North Dakota	statewide	HTML	County lists; ES&S statewide	https://sos.nd.gov/elections
+2012-2026	Voting Equipment	Ohio	statewide	HTML/PDF	County lists; detailed PDFs	https://www.ohiosos.gov/elections
+2012-2026	Voting Equipment	Oklahoma	statewide	HTML	Statewide uniform system (ES&S)	https://oklahoma.gov/elections
+2012-2026	Voting Equipment	Pennsylvania	statewide	HTML/PDF	County lists; PDFs per county	https://www.vote.pa.gov
+2012-2026	Voting Equipment	Rhode Island	statewide	HTML	Statewide uniform system (ES&S)	https://vote.sos.ri.gov
+2012-2026	Voting Equipment	South Carolina	statewide	HTML	Statewide uniform system (ES&S ExpressVote)	https://www.scvotes.gov
+2012-2026	Voting Equipment	South Dakota	statewide	HTML	County lists; ES&S statewide	https://sdsos.gov/elections-voting
+2012-2026	Voting Equipment	Tennessee	statewide	HTML	County lists; ES&S/Dominion/Hart mix	https://sos.tn.gov/elections
+2012-2026	Voting Equipment	Utah	statewide	HTML	County lists; Dominion statewide	https://vote.utah.gov
+2012-2026	Voting Equipment	Vermont	statewide	HTML	Town-level lists; Dominion ImageCast	https://sos.vermont.gov/elections
+2012-2026	Voting Equipment	Washington	statewide	HTML	County lists; Clear Ballot + ES&S mix	https://www.sos.wa.gov/elections
+2012-2026	Voting Equipment	West Virginia	statewide	HTML	County lists; ES&S statewide	https://sos.wv.gov/elections
+2012-2026	Voting Equipment	Wyoming	statewide	HTML	County lists; ES&S statewide	https://sos.wyo.gov/elections

@@ -11,8 +11,9 @@ Use cases:
   4. Guarded actions: Require confirmation for high-risk operations
 """
 
-from typing import Dict, Any, Optional
-from webapp.parser.health.risk_gates import RiskGateEvaluator, RiskGateConfig
+from typing import Any, Dict, Optional
+
+from webapp.parser.health.risk_gates import RiskGateEvaluator
 
 
 # =============================================================================

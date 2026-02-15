@@ -88,6 +88,13 @@ def relaunch_browser_fullscreen_if_needed(_, url, timeout=300, user_agent=None, 
             "just a moment..."
         ]):
             logger.info("[SeleniumBase] CAPTCHA appears to be cleared.")
+            # Capture DOM metadata after CAPTCHA resolution for pattern learning
+            try:
+                dom_metadata = _capture_post_captcha_dom_metadata(driver)
+                if dom_metadata:
+                    _log_captcha_resolution_data(url, start, dom_metadata)
+            except Exception as meta_exc:
+                logger.debug(f"[Selenium-NLP] DOM metadata capture failed: {meta_exc}")
             break
         time.sleep(5)
     return driver
@@ -117,3 +124,82 @@ def close_driver(driver):
         driver.quit()
     except Exception:
         pass
+
+
+def _capture_post_captcha_dom_metadata(driver) -> dict:
+    """
+    Capture DOM metadata after CAPTCHA resolution for pattern learning.
+    
+    This data helps train NLP models on post-CAPTCHA page structures
+    and informs navigation recipes for Cloudflare-protected sites.
+    
+    Args:
+        driver: SeleniumBase Driver instance
+        
+    Returns:
+        Dict with DOM structure metrics and interactive element counts
+    """
+    try:
+        dom_metadata = driver.execute_script("""
+            return {
+                interactive_elements: document.querySelectorAll('button, a[href], select, input[type="submit"]').length,
+                form_count: document.forms.length,
+                table_count: document.querySelectorAll('table').length,
+                challenge_artifacts: document.querySelectorAll('[class*="cloudflare"], [id*="captcha"], [class*="challenge"]').length,
+                heading_count: document.querySelectorAll('h1, h2, h3').length,
+                body_text_length: document.body.innerText.length,
+                viewport: {
+                    width: window.innerWidth,
+                    height: window.innerHeight
+                }
+            };
+        """)
+        return dom_metadata or {}
+    except Exception as exc:
+        logger.debug(f"[Selenium-NLP] DOM metadata JS execution failed: {exc}")
+        return {}
+
+
+def _log_captcha_resolution_data(url: str, start_time: float, dom_metadata: dict) -> None:
+    """
+    Log CAPTCHA resolution event with DOM transition data for ML analysis.
+    
+    Builds dataset for:
+    - Automated CAPTCHA detection classifier
+    - Post-challenge page structure patterns
+    - Navigation recipe optimization
+    
+    Args:
+        url: Target URL that triggered CAPTCHA
+        start_time: Timestamp when CAPTCHA wait began
+        dom_metadata: DOM structure after resolution
+    """
+    import os
+    import time
+
+    import orjson
+    
+    try:
+        # Import config for LOG_DIR
+        from ..config import LOG_DIR
+        
+        resolution_entry = {
+            "url": url,
+            "captcha_type": "cloudflare",
+            "time_to_clear_seconds": time.time() - start_time,
+            "dom_after_clearance": dom_metadata,
+            "timestamp": int(time.time())
+        }
+        
+        log_path = os.path.join(LOG_DIR, "captcha_resolution_log.jsonl")
+        os.makedirs(LOG_DIR, exist_ok=True)
+        
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(resolution_entry))
+            f.write(b"\n")
+        
+        logger.info(f"[Selenium-NLP] Logged CAPTCHA resolution: {dom_metadata.get('table_count', 0)} tables, "
+                   f"{dom_metadata.get('interactive_elements', 0)} interactive elements")
+        
+    except Exception as exc:
+        logger.debug(f"[Selenium-NLP] CAPTCHA resolution logging failed: {exc}")

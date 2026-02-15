@@ -15,9 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
-
-import orjson
+from typing import List, Optional, Tuple
 
 
 class DecisionCode(Enum):

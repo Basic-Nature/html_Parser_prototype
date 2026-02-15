@@ -4,7 +4,7 @@ integrity_monitor.py
 Context-aware integrity monitoring system with:
 - Download cache deduplication (15-minute TTL)
 - Async file integrity verification (SHA-256)
-- HuggingFace NLP integration (replacing OpenAI)
+- HuggingFace NLP integration
 - PyTorch neural network for health scoring
 - Session flag prioritization
 - Context library persistence
@@ -96,7 +96,7 @@ class IntegrityNeuralNetwork(nn.Module if TORCH_AVAILABLE else object):
 class HuggingFaceNLPAnalyzer:
     """
     HuggingFace-based NLP analyzer for session flag assessment.
-    Replaces OpenAI with local/private transformer models.
+    Local/private transformer models.
     """
     
     def __init__(self):

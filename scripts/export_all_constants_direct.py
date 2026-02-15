@@ -4,7 +4,6 @@ Export remaining constants to vocab by directly parsing constants.py.
 Avoids heavy imports (sentence_transformers, etc.).
 """
 import ast
-import re
 from pathlib import Path
 
 WORKSPACE_ROOT = Path(__file__).parent.parent
@@ -60,7 +59,7 @@ def write_vocab_file(filepath: Path, lines: list, description: str = ""):
     filepath.parent.mkdir(parents=True, exist_ok=True)
     content = "\n".join(lines) + "\n"
     filepath.write_text(content, encoding="utf-8")
-    count = len([l for l in lines if l.strip() and not l.startswith("#")])
+    count = len([line for line in lines if line.strip() and not line.startswith("#")])
     print(f"✓ Exported {count} items to {filepath.name}")
 
 

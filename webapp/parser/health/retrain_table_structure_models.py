@@ -673,7 +673,7 @@ def run_manual_correction() -> None:
     """
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "webapp.parser.bots.manual_correction", "--fields", "tables", "--enhanced"],
+            [sys.executable, "-m", "webapp.parser.health.manual_correction_bot", "--fields", "tables", "--enhanced"],
             check=True,
             cwd=PROJECT_ROOT,
             capture_output=True,
@@ -942,7 +942,7 @@ def main() -> None:
                 f.write(orjson.dumps({"text": text, "entities": entities}, option=orjson.OPT_APPEND_NEWLINE))
         try:
             subprocess.run([
-                sys.executable, "-m", "webapp.parser.bots.scan_misaligned_ner", "--jsonl", misaligned_path
+                sys.executable, "-m", "webapp.parser.health.scan_misaligned_ner", "--jsonl", misaligned_path
             ], check=True, cwd=PROJECT_ROOT, env=get_subprocess_env())
         except Exception as e:
             console.table(f"scan_misaligned_ner diagnostics failed: {e}")
@@ -964,6 +964,17 @@ def main() -> None:
         min_delta=SPACY_NER_MIN_DELTA,
         batch_size=SPACY_NER_BATCH_SIZE
     )
+    
+    # Fine-tune BERT/RoBERTa for NER (if enabled)
+    if os.environ.get("ENABLE_BERT_NER_FINETUNING", "false").lower() == "true":
+        try:
+            from .fine_tune_bert_ner import fine_tune_bert_ner
+            console.log("\n[BERT_NER] Starting HuggingFace BERT/RoBERTa fine-tuning...")
+            fine_tune_bert_ner()
+            console.log("[BERT_NER] Fine-tuning complete.")
+        except Exception as e:
+            console.log(f"[BERT_NER] Fine-tuning failed (non-critical): {e}")
+    
     cluster_container_patterns()
     console.log("\n[SUMMARY] Table Structure Model Retraining Complete.")
     console.log("If you see repeated model save failures, close any file explorers or editors viewing the model directory.")

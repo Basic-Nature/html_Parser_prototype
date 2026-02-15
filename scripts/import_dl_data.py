@@ -36,17 +36,15 @@ Options:
 
 import os
 import re
-import json
 import time
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import gspread
 import psycopg2
+from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from dotenv import load_dotenv
 
 # Load environment
 load_dotenv()
@@ -243,7 +241,7 @@ def import_sheet_data(gspread_client, sheet_id: str, sheet_name: str, contest_id
         all_values = _get_all_values_with_retry(ws)
         
         if not all_values or len(all_values) < 2:
-            print(f"  ⚠️  No data found in sheet")
+            print("  ⚠️  No data found in sheet")
             return 0
         
         headers = all_values[0]
@@ -284,7 +282,7 @@ def import_sheet_data(gspread_client, sheet_id: str, sheet_name: str, contest_id
                 # Parse votes (remove commas, convert to int)
                 try:
                     votes = int(votes_str.replace(',', '').replace(' ', '').strip())
-                except:
+                except (AttributeError, TypeError, ValueError):
                     votes = 0
                 
                 # Parse write-in flag
@@ -374,8 +372,6 @@ def match_files_to_contests(drive_service, gspread_client, conn, dl_type: str):
     
     for sheet in sheets:
         sheet_name = sheet['name']
-        sheet_id = sheet['id']
-        
         # Parse filename
         meta = parse_filename(sheet_name)
         if not meta:
@@ -395,12 +391,12 @@ def match_files_to_contests(drive_service, gspread_client, conn, dl_type: str):
             unmatched.append(sheet_name)
     
     print(f"\n{'='*70}")
-    print(f"📊 Matching Results:")
+    print("📊 Matching Results:")
     print(f"   Matched:   {matched}/{len(sheets)} sheets")
     print(f"   Unmatched: {len(unmatched)}")
     
     if unmatched and len(unmatched) <= 10:
-        print(f"\n   Unmatched sheets:")
+        print("\n   Unmatched sheets:")
         for name in unmatched:
             print(f"      - {name}")
     
@@ -448,14 +444,14 @@ def import_dl_data(
         # Parse filename
         meta = parse_filename(sheet_name)
         if not meta:
-            print(f"  ⚠️  Could not parse filename, skipping")
+            print("  ⚠️  Could not parse filename, skipping")
             skipped += 1
             continue
         
         # Find matching contest
         contest_id = match_sheet_to_contest(meta, conn)
         if not contest_id:
-            print(f"  ⚠️  No matching contest found, skipping")
+            print("  ⚠️  No matching contest found, skipping")
             skipped += 1
             continue
         
@@ -483,21 +479,21 @@ def import_dl_data(
         )
         
         if rows_imported == -1:
-            print(f"  ⏭️  Already imported, skipping")
+            print("  ⏭️  Already imported, skipping")
             skipped += 1
         elif rows_imported > 0:
             print(f"  ✅ Imported {rows_imported} rows")
             total_imported += rows_imported
             total_sheets += 1
         else:
-            print(f"  ⚠️  No data imported")
+            print("  ⚠️  No data imported")
             skipped += 1
         
         if rate_limit_seconds > 0:
             time.sleep(rate_limit_seconds)
     
     print(f"\n{'='*70}")
-    print(f"📊 Import Results:")
+    print("📊 Import Results:")
     print(f"   Sheets processed: {total_sheets}")
     print(f"   Total rows:       {total_imported}")
     print(f"   Skipped:          {skipped}")
@@ -509,7 +505,7 @@ def verify_import(conn):
     Show statistics on imported data.
     """
     print(f"\n{'='*70}")
-    print(f"📊 IMPORT VERIFICATION")
+    print("📊 IMPORT VERIFICATION")
     print(f"{'='*70}")
     
     with conn.cursor() as cur:
@@ -525,7 +521,7 @@ def verify_import(conn):
         """)
         result = cur.fetchone()
         
-        print(f"\n✅ DL1 (Ground Truth):")
+        print("\n✅ DL1 (Ground Truth):")
         print(f"   Total rows:    {result[0]:,}")
         print(f"   Contests:      {result[1]}")
         print(f"   States:        {result[2]}")
@@ -544,7 +540,7 @@ def verify_import(conn):
         """)
         result = cur.fetchone()
         
-        print(f"\n✅ DL2 (Parser-Extracted):")
+        print("\n✅ DL2 (Parser-Extracted):")
         print(f"   Total rows:    {result[0]:,}")
         print(f"   Contests:      {result[1]}")
         print(f"   States:        {result[2]}")
@@ -552,7 +548,7 @@ def verify_import(conn):
         print(f"   Total votes:   {result[4]:,}" if result[4] else "   Total votes:   0")
         
         # Sample comparison
-        print(f"\n📋 Sample DL1 vs DL2 Match:")
+        print("\n📋 Sample DL1 vs DL2 Match:")
         cur.execute("""
             SELECT 
                 c.year, c.state, c.race,
@@ -605,7 +601,7 @@ def main():
     print("✅ Authentication successful")
     
     # Connect to PostgreSQL
-    print(f"\n🐘 Connecting to PostgreSQL...")
+    print("\n🐘 Connecting to PostgreSQL...")
     conn = psycopg2.connect(**DB_CONFIG)
     print("✅ Database connected")
     

@@ -3371,7 +3371,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                                    'pandas', 'requests', 'beautifulsoup4', 'lxml', 'selenium',
                                    'pytest', 'coverage', 'black', 'flake8', 'mypy', 'bandit',
                                    'sqlalchemy', 'psycopg2', 'pymongo', 'redis', 'celery',
-                                   'twilio', 'sendgrid', 'boto3', 'google', 'azure', 'openai',
+                                   'twilio', 'sendgrid', 'boto3', 'google', 'azure',
                                    'huggingface', 'sentence-transformers', 'scikit-learn', 'nltk'):
                     third_party_imports.append(im)
                 else:
@@ -4120,6 +4120,7 @@ def log_rejection_reason(
     """
     try:
         import time
+
         from ..utils.logger_singleton import logger
         
         # Get caller info if not provided

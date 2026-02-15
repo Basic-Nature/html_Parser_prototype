@@ -20,13 +20,11 @@ Design:
 """
 
 import hashlib
-import os
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from webapp.parser.utils.logger_singleton import logger
-
 
 # ===== EXCEPTIONS =====
 

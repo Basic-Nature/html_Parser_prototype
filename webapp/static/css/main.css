@@ -265,7 +265,7 @@
     border-color:var(--cyan);
     box-shadow:0 0 18px 2px var(--cyan),0 2px 12px #bfc9d1;
   }
-  .feature[href*="azure_health"] {
+  .feature[href*="health_dashboard"] {
     border-color:var(--neon4);
     box-shadow:0 0 18px 2px var(--neon4),0 2px 12px #bfc9d1;
   }
@@ -277,7 +277,7 @@
   .feature[href*="quality_dashboard"]:focus-visible {
     box-shadow:0 0 0 3px rgba(0 255 231 /.45),0 0 18px 4px var(--cyan);
   }
-  .feature[href*="azure_health"]:focus-visible {
+  .feature[href*="health_dashboard"]:focus-visible {
     box-shadow:0 0 0 3px rgba(0 255 231 /.45),0 0 18px 4px var(--neon4);
   }
   .feature[href*="ballot_lens"]:hover,
@@ -307,7 +307,7 @@
     border-color:var(--neon);
     background:rgba(0 255 231 /.10);
   }
-  .feature[href*="azure_health"]:hover {
+  .feature[href*="health_dashboard"]:hover {
     transform:translate(8px,-8px) scale(1.05) rotate(2deg);
     box-shadow:0 0 28px 10px var(--neon4),0 2px 18px #bfc9d1;
     border-color:var(--main-blue);
@@ -330,7 +330,7 @@
   .feature[href*="ballot_lens"] h3 { color:var(--main-red); text-shadow:0 2px 12px var(--neon3); }
   .feature p { margin:0; color:#c6e2f7; font-size:1em; }
   .feature[href*="quality_dashboard"] h3 { color:var(--cyan); text-shadow:0 2px 12px var(--neon); }
-  .feature[href*="azure_health"] h3 { color:var(--neon4); text-shadow:0 2px 12px var(--neon); }
+  .feature[href*="health_dashboard"] h3 { color:var(--neon4); text-shadow:0 2px 12px var(--neon); }
 
   /* Bottom tile (About & Docs): gentle upward hover echoing pyramid tip */
   .feature[href*="html_Parser_prototype"]:hover,
@@ -361,7 +361,7 @@
     .feature[href*="data_framework"] { grid-area: left-top; }
     .feature[href*="quality_dashboard"] { grid-area: right-top; }
     .feature[href*="history"]        { grid-area: left-bottom; }
-    .feature[href*="azure_health"]   { grid-area: right-bottom; }
+    .feature[href*="health_dashboard"]   { grid-area: right-bottom; }
     .feature[href*="html_Parser_prototype"],
     .feature[href*="basic-nature.github.io"] { grid-area: bottom; }
   }

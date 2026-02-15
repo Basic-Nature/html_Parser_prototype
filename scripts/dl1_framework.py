@@ -21,11 +21,10 @@ Usage:
     python scripts/dl1_framework.py --export-fixtures
 """
 
-import os
 import json
-from pathlib import Path
+import os
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from pathlib import Path
 
 import psycopg2
 from dotenv import load_dotenv

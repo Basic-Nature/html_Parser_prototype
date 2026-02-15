@@ -13,13 +13,32 @@ Usage: python automate.py [--skip-web] [--skip-health] [--skip-tests]
 """
 
 import argparse
+import os
+import shutil
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent.resolve()
 sys.path.insert(0, str(project_root))
+
+# Detect localhost/development environment
+POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
+IS_LOCALHOST = POSTGRES_HOST in ("localhost", "127.0.0.1")
+FLASK_ENV = os.environ.get("FLASK_ENV", "")
+IS_DEVELOPMENT = FLASK_ENV.lower() in ("development", "dev")
+
+# Silence warnings on localhost/development environments
+if IS_LOCALHOST or IS_DEVELOPMENT:
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    # Suppress specific noisy warnings in development
+    warnings.filterwarnings("ignore", message=".*eventlet.*")
+    warnings.filterwarnings("ignore", message=".*socketio.*")
+    os.environ.setdefault("PYTHONWARNINGS", "ignore::DeprecationWarning,ignore::FutureWarning")
 
 from webapp.parser.health.health_router import BotPipeline
 from webapp.parser.utils.logger_singleton import logger
@@ -103,9 +122,12 @@ def run_web_checks():
     print("[AUTOMATE] Running web asset checks (linting, type checking)...")
     logger.info("[AUTOMATE] Running web asset checks (linting, type checking)...")
     try:
+        npm_cmd = shutil.which("npm.cmd") or shutil.which("npm")
+        if not npm_cmd:
+            raise FileNotFoundError("npm not found on PATH")
         # Run npm verify:all which includes JS lint, TS check, and Python checks
         result = subprocess.run(
-            ["npm", "run", "verify:all"],
+            [npm_cmd, "run", "verify:all"],
             cwd=project_root,
             capture_output=True,
             text=True,

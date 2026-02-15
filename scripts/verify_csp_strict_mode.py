@@ -9,16 +9,16 @@ Usage:
     python scripts/verify_csp_strict_mode.py [--port 5000] [--timeout 10]
 """
 
+import argparse
 import os
+import subprocess
 import sys
 import time
-import subprocess
-import requests
-import json
-import argparse
 from pathlib import Path
-from urllib.parse import urljoin
-from typing import Dict, Tuple, List
+from typing import Dict, List, Tuple
+
+import requests
+
 
 # Color codes for terminal output
 class Colors:
@@ -92,7 +92,7 @@ def start_flask_server(env: Dict[str, str], port: int = 5000) -> subprocess.Pope
     """Start the Flask development server in STRICT CSP mode."""
     print_header(f"3. Starting Flask Server (port {port})")
     
-    print(f"  Starting: python -m webapp.Smart_Elections_Parser_Webapp")
+    print("  Starting: python -m webapp.Smart_Elections_Parser_Webapp")
     print(f"  {Colors.OKBLUE}ℹ Wait for 'Running on' message...{Colors.ENDC}\n")
     
     process = subprocess.Popen(
@@ -206,7 +206,7 @@ def test_page_load(base_url: str = "http://localhost:5000") -> Tuple[bool, str]:
         html = response.text
         has_bootstrap_css = "bootstrap" in html.lower()
         check = has_bootstrap_css
-        print_check(check, f"Bootstrap CSS referenced in HTML")
+        print_check(check, "Bootstrap CSS referenced in HTML")
         
         # Check for Chart.js if quality page exists
         has_chart = "chart.umd.js" in html or "Chart" in html
@@ -305,7 +305,7 @@ def main():
         
         if all_passed:
             print(f"\n{Colors.OKGREEN}Next Step: Deploy to Azure with CSP_MODE=STRICT{Colors.ENDC}")
-            print(f"See docs/DEPLOYMENT/AZURE_CSP_DEPLOYMENT.md for instructions\n")
+            print("See docs/DEPLOYMENT/AZURE_CSP_DEPLOYMENT.md for instructions\n")
             return 0
         else:
             print(f"\n{Colors.FAIL}⚠ Fix the failed checks before deploying to Azure{Colors.ENDC}\n")

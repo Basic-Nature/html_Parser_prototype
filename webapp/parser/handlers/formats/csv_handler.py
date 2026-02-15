@@ -5,7 +5,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple, cast
 
-from ...config import ENABLE_PARALLEL  # type: ignore[attr-defined]
+from ...config import ENABLE_PARALLEL
 from ...Context_Integration.Context_Library.constants import (
     CONTEST_TITLE_SKIP_PHRASES,
 )
@@ -316,7 +316,7 @@ def parse_csv_election_results(
     })
     
     # Add ML quality metrics
-    from ...config import log_extraction_quality  # type: ignore[attr-defined]
+    from ...config import log_extraction_quality
     quality = log_extraction_quality(
         headers_final, data_final, metadata, "csv_handler", logger, session_id
     )
@@ -405,7 +405,7 @@ def parse(
         }
         
         # Add ML quality metrics
-        from ...config import log_extraction_quality  # type: ignore[attr-defined]
+        from ...config import log_extraction_quality
         quality = log_extraction_quality(
             headers_final, data_final, metadata, "csv_handler", logger, session_id
         )

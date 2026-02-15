@@ -32,11 +32,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 import orjson
 from sqlalchemy.exc import SQLAlchemyError
@@ -55,7 +54,6 @@ from webapp.parser.utils.models import (
     Candidate,
     Contest,
     County,
-    Office,
     Party,
     Result,
     State,

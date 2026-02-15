@@ -22,19 +22,19 @@ Output:
     - (Future) Uploads to Azure Blob Storage and stores blob URLs
 """
 
-import os
-import sys
-import re
 import argparse
+import os
+import re
+import sys
 from pathlib import Path
-from typing import Optional, List, Dict, Any
-from urllib.parse import urlparse, parse_qs
+from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qs, urlparse
 
 import psycopg2
+from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
-from dotenv import load_dotenv
 
 # Load environment
 load_dotenv()
@@ -207,7 +207,7 @@ def download_contest_files(service, contest: Dict[str, Any], dry_run: bool = Fal
             if download_file(service, file_id, save_path, dry_run):
                 downloaded_paths['download_1'].append(str(save_path))
         elif folder_id:
-            print(f"  📁 Folder detected, listing files...")
+            print("  📁 Folder detected, listing files...")
             files = list_folder_files(service, folder_id)
             for file in files:
                 save_path = contest_dir / "download_1" / file['name']
@@ -225,7 +225,7 @@ def download_contest_files(service, contest: Dict[str, Any], dry_run: bool = Fal
             if download_file(service, file_id, save_path, dry_run):
                 downloaded_paths['download_2'].append(str(save_path))
         elif folder_id:
-            print(f"  📁 Folder detected, listing files...")
+            print("  📁 Folder detected, listing files...")
             files = list_folder_files(service, folder_id)
             for file in files:
                 save_path = contest_dir / "download_2" / file['name']
@@ -243,7 +243,7 @@ def download_contest_files(service, contest: Dict[str, Any], dry_run: bool = Fal
                 downloaded_paths['source_link'].append(str(save_path))
         elif contest['source_link'].startswith('http'):
             # External URL (not Google Drive) - could fetch with requests
-            print(f"  ⚠️  External URL (not Google Drive), skipping for now")
+            print("  ⚠️  External URL (not Google Drive), skipping for now")
     
     return downloaded_paths
 

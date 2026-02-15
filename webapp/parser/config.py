@@ -48,11 +48,11 @@ VOCAB_DIR = PARSER_DIR / "Context_Integration" / "vocab"
 VOCAB_DIR.mkdir(parents=True, exist_ok=True)
 
 # Input and output directories at the project root
-INPUT_DIR = PROJECT_ROOT / "input"
+INPUT_DIR: Path = PROJECT_ROOT / "input"
 INPUT_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_DIR = PROJECT_ROOT / "output"
+OUTPUT_DIR: Path = PROJECT_ROOT / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-UPLOADS_DIR = PROJECT_ROOT / "uploads"
+UPLOADS_DIR: Path = PROJECT_ROOT / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Path to the download manifest file (used for tracking downloads)
@@ -146,14 +146,8 @@ VERIFIED_DATA_DB_NAME = os.environ.get("VERIFIED_DATA_DB_NAME", "verified_data")
 VERIFIED_DATA_DB_USER = os.environ.get("VERIFIED_DATA_DB_USER", os.environ.get("POSTGRES_USER", "postgres"))
 VERIFIED_DATA_DB_PASSWORD = os.environ.get("VERIFIED_DATA_DB_PASSWORD", os.environ.get("POSTGRES_PASSWORD", ""))
  
-# === LLM & Pipeline Configuration ===
-
-# LLM provider and model (used for OpenAI or other LLM integrations)
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openai").lower()
-LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4-turbo")
-LLM_API_KEY = os.environ.get("LLM_API_KEY")
-LLM_SYSTEM_PROMPT = os.environ.get("LLM_SYSTEM_PROMPT")
-LLM_EXTRA_INSTRUCTIONS = os.environ.get("LLM_EXTRA_INSTRUCTIONS")
+# === Internal NLP/ML Configuration (No External AI APIs) ===
+# System uses internal NLP/ML only: spaCy, sentence-transformers, scikit-learn.
 USER_NAME = os.environ.get("USER", "system")
 
 # Path to table detection model (for ML/NLP table structure tasks)
@@ -213,11 +207,11 @@ CACHE_LOCK = threading.Lock()
 CACHE_RESET = os.environ.get("CACHE_RESET", "false").lower() == "true"
 
 # Headless browser and timeout settings
-HEADLESS_DEFAULT = os.environ.get("HEADLESS", "true").lower() == "true"
-TIMEOUT_SEC = int(os.environ.get("CAPTCHA_TIMEOUT", "300"))
-INCLUDE_TIMESTAMP_IN_FILENAME = os.environ.get("TIMESTAMP_IN_FILENAME", "true").lower() == "true"
-ENABLE_PARALLEL = os.environ.get("ENABLE_PARALLEL", "false").lower() == "true"
-ENABLE_AI_ANALYSIS = os.environ.get("ENABLE_AI_ANALYSIS", "false").lower() == "true"
+HEADLESS_DEFAULT: bool = os.environ.get("HEADLESS", "true").lower() == "true"
+TIMEOUT_SEC: int = int(os.environ.get("CAPTCHA_TIMEOUT", "300"))
+INCLUDE_TIMESTAMP_IN_FILENAME: bool = os.environ.get("TIMESTAMP_IN_FILENAME", "true").lower() == "true"
+ENABLE_PARALLEL: bool = os.environ.get("ENABLE_PARALLEL", "false").lower() == "true"
+ENABLE_AI_ANALYSIS: bool = os.environ.get("ENABLE_AI_ANALYSIS", "false").lower() == "true"
 ENABLE_REALTIME_STREAM = os.environ.get("ENABLE_REALTIME_STREAM", "false").lower() == "true"
 FORCE_PARSE_INPUT_FILE = os.environ.get("FORCE_PARSE_INPUT_FILE", "false").lower() == "true"
 FORCE_PARSE_FORMAT = os.environ.get("FORCE_PARSE_FORMAT", "").strip().lower()
@@ -284,7 +278,8 @@ except Exception:
     MAX_SOCKET_LOG_BYTES = 131072
 
 # Agent selection / navigation hardening
-ENABLE_SELENIUM_FALLBACK = os.environ.get("ENABLE_SELENIUM_FALLBACK", "false").lower() in ("1", "true", "yes")
+# Enable Selenium by default for NLP training data collection from Cloudflare-protected sites
+ENABLE_SELENIUM_FALLBACK = os.environ.get("ENABLE_SELENIUM_FALLBACK", "true").lower() in ("1", "true", "yes")
 try:
     NAV_MAX_ATTEMPTS = max(1, int(os.environ.get("NAV_MAX_ATTEMPTS", "2")))
 except Exception:
@@ -455,9 +450,8 @@ __all__ = [
     "POSTGRES_URL","POSTGRES_SERVICE_NAME", "POSTGRES_AUTH",
     "POSTGRES_AAD_USER","get_sqlalchemy_engine",
 
-    # LLM
-    "LLM_PROVIDER","LLM_MODEL","LLM_API_KEY","LLM_SYSTEM_PROMPT",
-    "LLM_EXTRA_INSTRUCTIONS","USER_NAME","TABLE_MODEL_PATH",
+    # Internal NLP/ML
+    "USER_NAME","TABLE_MODEL_PATH",
 
     # Feature toggles / options
     "ENABLE_ENHANCED","CORRECTION_MODE","INTEGRITY_CHECK","UPDATE_DB",
@@ -526,11 +520,6 @@ __all__ = [
 # - POSTGRES_PORT
 # - POSTGRES_URL
 # - POSTGRES_SERVICE_NAME
-# - LLM_PROVIDER
-# - LLM_MODEL
-# - LLM_API_KEY
-# - LLM_SYSTEM_PROMPT
-# - LLM_EXTRA_INSTRUCTIONS
 # - USER
 # - TABLE_MODEL_PATH
 # - ENABLE_ENHANCED
@@ -947,7 +936,7 @@ def log_extraction_quality(
     data: list[dict],
     metadata: dict,
     handler_name: str,
-    logger,
+    logger: object,
     session_id: str | None = None,
 ) -> dict:
     """Build and log extraction quality metrics for ML analysis.

@@ -17,15 +17,12 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import gspread
-from sqlalchemy import MetaData, Table, inspect
 from google.oauth2.service_account import Credentials
-from dotenv import load_dotenv
-
+from sqlalchemy import MetaData, Table, inspect
 from webapp.parser.Context_Integration.librarian import clean_for_json
 from webapp.parser.utils.db_utils import SessionLocal, get_engine, update_batch_metadata
-from webapp.parser.utils.models import BatchMetadata
 from webapp.parser.utils.logger_singleton import logger
-
+from webapp.parser.utils.models import BatchMetadata
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets.readonly",

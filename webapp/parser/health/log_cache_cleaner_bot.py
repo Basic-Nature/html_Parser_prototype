@@ -12,13 +12,13 @@ Automated log/cache cleaner for Smart Elections pipeline.
 - Can be called from other scripts or run as a scheduled daemon.
 
 Usage:
-    python -m webapp.parser.bots.log_cache_cleaner_bot [--log-dir log] [--context-lib-dir .../Context_Library] [--max-size-mb 200] [--daemon] [--interval-min 60] [--db-maintenance]
+    python -m webapp.parser.health.log_cache_cleaner_bot [--log-dir log] [--context-lib-dir .../Context_Library] [--max-size-mb 200] [--daemon] [--interval-min 60] [--db-maintenance]
 Manual one-off clean:
-python -m webapp.parser.bots.log_cache_cleaner_bot
+python -m webapp.parser.health.log_cache_cleaner_bot
 Daemon mode (every 30 minutes):
-python -m webapp.parser.bots.log_cache_cleaner_bot --daemon --interval-min 30
+python -m webapp.parser.health.log_cache_cleaner_bot --daemon --interval-min 30
 From another script:
-from webapp.parser.bots.log_cache_cleaner_bot import run_log_cache_cleaner
+from webapp.parser.health.log_cache_cleaner_bot import run_log_cache_cleaner
 run_log_cache_cleaner()
 """
 import argparse

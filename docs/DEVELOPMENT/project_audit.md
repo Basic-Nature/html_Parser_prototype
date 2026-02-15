@@ -5,7 +5,7 @@ title: "Project Audit"
 
 Audit scope: `webapp/parser/` modules.
 
-Modules scanned: 197 | ~73505 non-empty LOC
+Modules scanned: 217 | ~78512 non-empty LOC
 
 ## Pipeline map (Mermaid)
 
@@ -93,16 +93,16 @@ Key module-to-module and cluster relationships to watch during refactors.
 
 ### Cluster flow summary
 
-- Utils → Utils: 1089 edges (intra-cluster)
+- Utils → Utils: 1108 edges (intra-cluster)
+- Context_Integration → Context_Integration: 386 edges (intra-cluster)
+- Entry → Entry: 267 edges (intra-cluster)
 - Format Handlers → Format Handlers: 234 edges (intra-cluster)
-- Health → Health: 174 edges (intra-cluster)
-- Entry → Entry: 172 edges (intra-cluster)
-- Context_Integration → Context_Integration: 170 edges (intra-cluster)
-- Other → Other: 150 edges (intra-cluster)
+- Health → Health: 179 edges (intra-cluster)
+- Other → Other: 163 edges (intra-cluster)
+- State Handlers → State Handlers: 61 edges (intra-cluster)
 - Health → Context_Integration: 39 edges (cross-cluster)
 - Utils → Context_Integration: 38 edges (cross-cluster)
-- Routing → Routing: 25 edges (intra-cluster)
-- Services → Services: 17 edges (intra-cluster)
+- Routing → Routing: 27 edges (intra-cluster)
 
 ## Pipeline focus (compact)
 
@@ -178,27 +178,29 @@ graph LR
 
 - webapp.parser.utils.dynamic_table_extractor:_emit ← 62 refs
   (dynamic_table_extractor.py)
+- webapp.parser.Context_Integration.Context_Library.constants:load_vocab_list ←
+  58 refs (constants.py)
 - webapp.parser.Context_Integration.librarian:safe_path ← 50 refs (librarian.py)
 - webapp.parser.utils.table_builder:_norm_header ← 50 refs (table_builder.py)
-- webapp.parser.Context_Integration.context_coordinator:ContextCoordinator ← 32
+- webapp.parser.Context_Integration.context_coordinator:ContextCoordinator ← 34
   refs (context_coordinator.py)
 - webapp.parser.utils.pdf_table_utils:_record_recon_event ← 23 refs
   (pdf_table_utils.py)
-- webapp.parser.html_election_parser:mark_url_processed ← 21 refs
+- webapp.parser.html_election_parser:mark_url_processed ← 22 refs
   (html_election_parser.py)
+- webapp.Smart_Elections_Parser_Weba:get_request_principal ← 20 refs
+  (Smart_Elections_Parser_Webapp.py)
+- webapp.parser.Context_Integration.Context_Library.constants:load_vocab_mapping
+  ← 20 refs (constants.py)
 - webapp.parser.utils.contest_selector:_norm_key ← 20 refs (contest_selector.py)
 - webapp.parser.utils.pivot:_safe_col_name ← 20 refs (pivot.py)
+- webapp.Smart_Elections_Parser_Weba:resolve_session_id ← 19 refs
+  (Smart_Elections_Parser_Webapp.py)
+- webapp.parser.Context_Integration.Context_Library.constants:_load_html_taxonomy_category
+  ← 19 refs (constants.py)
 - webapp.parser.handlers.formats.pdf_handler:_ensure_not_cancelled ← 19 refs
   (pdf_handler.py)
 - webapp.parser.utils.shared_logic:safe_lower ← 18 refs (shared_logic.py)
-- webapp.parser.utils.db_utils:get_session ← 17 refs (db_utils.py)
-- webapp.Smart_Elections_Parser_Weba:get_request_principal ← 16 refs
-  (Smart_Elections_Parser_Webapp.py)
-- webapp.parser.Context_Integration.library.entity_confidence_ma:SignalCoefficient
-  ← 16 refs (entity_confidence_map.py)
-- webapp.parser.utils.rawjson_utils:_rj_first ← 16 refs (rawjson_utils.py)
-- webapp.Smart_Elections_Parser_Weba:resolve_session_id ← 15 refs
-  (Smart_Elections_Parser_Webapp.py)
 
 ## Leaf modules (candidates for review)
 
@@ -209,50 +211,34 @@ graph LR
 - `fec_handler.py`
 - `download_finder.py`
 - `html_dynamic_fallback.py`
-- `alabama.py`
-- `alaska.py`
-- `american_samoa.py`
+- `state_handler_base.py`
+- `state_scaffold.py`
+- `clarity_base_handler.py`
+- `dominion_base_handler.py`
+- `voteworks_base_handler.py`
 - `arizona.py`
-- `arkansas.py`
 - `california.py`
-- `colorado.py`
-- `connecticut.py`
-- `delaware.py`
-- `district_of_columbia.py`
 - `example_county.py`
-- `florida.py`
-- `georgia.py`
-- `guam.py`
-- `hawaii.py`
-- `idaho.py`
-- `illinois.py`
-- `indiana.py`
-- `iowa.py`
-- `kansas.py`
-- `kentucky.py`
-- `louisiana.py`
-- `maine.py`
-- `maryland.py`
-- `massachusetts.py`
-- `michigan.py`
-- `minnesota.py`
-- `mississippi.py`
-- `missouri.py`
-- `montana.py`
-- `nebraska.py`
-- `nevada.py`
-- `new_hampshire.py`
-- `new_jersey.py`
-- `new_mexico.py`
 - `rockland.py`
+- `westchester.py`
 - `new_york.py`
-- `north_carolina.py`
-- `north_dakota.py`
-- `northern_mariana_islands.py`
-- `ohio.py`
-- `oklahoma.py`
-- `oregon.py`
-- (+27 more hidden)
+- `texas.py`
+- `vendor_state_map.py`
+- `health_config.py`
+- `promotion_helpers.py`
+- `risk_gates_integration_examples.py`
+- `risk_gates_spec.py`
+- `session_manager.py`
+- `navigation_recipes.py`
+- `qa_endpoints.py`
+- `coordinator_protocol.py`
+- `date_utils.py`
+- `logger_singleton.py`
+- `merge_utils.py`
+- `session_state.py`
+- `strategy_concurrency.py`
+- `structure_cache.py`
+- `url_ingestion.py`
 
 ## Pipeline clusters (Mermaid)
 
@@ -275,7 +261,7 @@ graph LR
     json_handler["json_handler"]
     pdf_handler["pdf_handler"]
     rockland["rockland"]
-    xlsx_handler["xlsx_handler"]
+    state_handler_base["state_handler_base"]
   end
   subgraph Services["Services"]
     election_data_services["election_data_services"]
@@ -335,509 +321,677 @@ graph LR
 ### webapp/Smart\_Elections\_Parser\_Webapp.py {#webapp-smart-elections-parser-webapp-py}
 
 - Definitions:
-  - function: `\_flagged\_url\_log\_dir` (line 191)
-  - function: `\_rotate\_flagged\_url\_path` (line 199)
-  - function: `\_prune\_flagged\_url\_logs` (line 217)
-  - function: `log\_flagged\_url` (line 233)
-  - function: `\_require\_health\_auth` (line 377)
-  - function: `\_health\_auth\_response` (line 396)
-  - function: `\_public\_health\_task\_definitions` (line 401)
-  - function: `\_get\_health\_tasks` (line 413)
-  - function: `\_get\_health\_task` (line 420)
-  - function: `\_append\_health\_task\_log` (line 426)
-  - function: `\_trim\_health\_task\_history` (line 442)
-  - function: `\_finalize\_health\_task` (line 454)
-  - function: `\_launch\_health\_task` (line 465)
-  - function: `\_run\_health\_task` (line 489)
-  - function: `ensure\_utf8` (line 539)
-  - function: `\_is\_request\_secure` (line 553)
-  - class: `EnsureWsSecurityHeaders` (line 561)
-  - function: `\_socket\_payload\_too\_large` (line 689)
-  - function: `\_rate\_limit\_socket\_action` (line 700)
-  - function: `\_rate\_limit` (line 714)
-  - function: `\_generate\_upload\_filename` (line 719)
-  - function: `\_enforce\_request\_size` (line 725)
-  - function: `\_validate\_uploaded\_file` (line 734)
-  - function: `\_save\_uploaded\_file` (line 777)
-  - function: `\_log\_download\_access` (line 800)
-  - function: `\_resolve\_output\_metadata\_path` (line 810)
-  - function: `\_is\_output\_download\_allowed` (line 822)
-  - function: `is\_owner` (line 841)
-  - function: `create\_session\_metadata` (line 845)
-  - function: `\_recover\_stale\_session` (line 848)
-  - function: `cleanup\_sessions` (line 876)
-  - function: `transition\_session` (line 904)
-  - function: `cleanup\_old\_log\_files` (line 943)
-  - function: `client\_fingerprint` (line 964)
-  - function: `get\_request\_principal` (line 974)
-  - function: `resolve\_session\_id` (line 993)
-  - function: `emit\_contest\_options` (line 1102)
-  - function: `\_promote\_inner` (line 1140)
-  - function: `ensure\_db\_tables` (line 1162)
-  - function: `normalize\_log\_obj` (line 1191)
-  - function: `store\_log` (line 1323)
-  - function: `\_heartbeat\_loop` (line 1335)
-  - function: `socketio\_emit\_func` (line 1350)
-  - function: `get\_prompt\_queue` (line 1458)
-  - function: `broadcast\_sessions` (line 1461)
-  - function: `lock\_session` (line 1478)
-  - function: `unlock\_session` (line 1489)
-  - function: `safe\_is\_alive` (line 1500)
-  - function: `is\_output\_bypassed` (line 1520)
-  - function: `get\_manual\_source` (line 1523)
-  - function: `get\_manual\_source\_origin` (line 1526)
-  - function: `get\_all\_file\_lists` (line 1529)
-  - function: `get\_session\_enums` (line 1537)
-  - function: `redirect\_to\_https\_www` (line 1554)
-  - function: `\_csp\_nonce` (line 1626)
-  - function: `build\_csp` (line 1635)
-  - function: `add\_headers` (line 1711)
-  - function: `\_handle\_global\_exception` (line 1788)
-  - function: `add\_url` (line 1835)
-  - function: `allowed\_file` (line 1847)
-  - function: `get\_url\_list` (line 1856)
-  - function: `list\_urls` (line 1872)
-  - function: `log\_run\_event` (line 1898)
-  - function: `\_validate\_filter\_value` (line 1922)
-  - function: `log\_db\_monitor\_event` (line 1939)
-  - function: `index` (line 1950)
-  - function: `api\_urls` (line 1955)
-  - function: `data\_framework` (line 2045)
-  - function: `\_collect\_data\_framework\_scaffold` (line 2049)
-  - function: `api\_data\_framework\_scaffold` (line 2104)
-  - function: `api\_data\_framework\_scaffold\_csv` (line 2118)
-  - function: `api\_data\_framework\_exports` (line 2143)
-  - function: `azure\_health\_page` (line 2192)
-  - function: `api\_list\_health\_tasks` (line 2213)
-  - function: `api\_start\_health\_task` (line 2221)
-  - function: `api\_health\_task\_detail` (line 2236)
-  - function: `test\_ui\_prompt` (line 2247)
-  - function: `api\_fs\_list` (line 2298)
-  - function: `api\_list\_dir\_compat` (line 2344)
-  - function: `api\_fs\_mkdir` (line 2348)
-  - function: `api\_fs\_delete` (line 2378)
-  - function: `download\_fs` (line 2415)
-  - function: `view\_csv` (line 2494)
-  - function: `\_build\_or\_load\_csv\_index` (line 2684)
-  - function: `csv\_locate` (line 2732)
-  - function: `favicon` (line 2774)
-  - function: `robots\_txt` (line 2834)
-  - function: `serve\_well\_known\_appspecific` (line 2840)
-  - function: `api\_warehouse\_election\_results` (line 2849)
-  - function: `delete\_input\_file` (line 3094)
-  - function: `delete\_output\_file` (line 3104)
-  - function: `delete\_upload\_file` (line 3114)
-  - function: `download\_input\_file` (line 3124)
-  - function: `download\_output\_file` (line 3128)
-  - function: `download\_upload\_file` (line 3212)
-  - function: `ballot\_lens` (line 3216)
-  - function: `ballot\_lens\_modern` (line 3248)
-  - function: `site\_webmanifest` (line 3252)
-  - function: `quality\_dashboard` (line 3290)
-  - function: `quick\_reference\_page` (line 3296)
-  - function: `api\_quality\_metrics` (line 3301)
-  - function: `api\_auth\_certificate\_info` (line 3371)
-  - function: `auth\_welcome` (line 3410)
-  - function: `upload\_to\_input` (line 3439)
-  - function: `upload\_to\_output` (line 3492)
-  - function: `upload\_to\_uploads` (line 3543)
-  - function: `health` (line 3593)
-  - function: `heartbeat` (line 3597)
-  - function: `clear\_history` (line 3601)
-  - function: `history` (line 3611)
-  - function: `rerun\_prior` (line 3654)
-  - function: `handle\_contest\_selected` (line 3686)
-  - function: `handle\_get\_session\_history` (line 3727)
-  - function: `handle\_clone\_session` (line 3779)
-  - function: `on\_join` (line 3823)
-  - function: `handle\_get\_sessions` (line 3862)
-  - function: `handle\_connect` (line 3869)
-  - function: `handle\_disconnect` (line 4049)
-  - function: `handle\_set\_output\_mode` (line 4079)
-  - function: `handle\_parser\_prompt` (line 4108)
-  - function: `handle\_prompt\_cancel` (line 4165)
-  - function: `handle\_cancel\_parser` (line 4217)
-  - function: `handle\_toggle\_output\_bypass` (line 4282)
-  - function: `handle\_set\_manual\_source` (line 4311)
-  - function: `handle\_delete\_session` (line 4357)
-  - function: `handle\_ballot\_lens` (line 4379)
-  - function: `\_read\_jsonl` (line 4717)
-  - function: `fec\_mappings\_review` (line 4738)
-  - function: `api\_fec\_problem\_rows` (line 4781)
-  - function: `api\_fec\_save\_mapping` (line 4805)
+  - function: `\_flagged\_url\_log\_dir` (line 201)
+  - function: `\_rotate\_flagged\_url\_path` (line 209)
+  - function: `\_prune\_flagged\_url\_logs` (line 227)
+  - function: `\_is\_local\_request` (line 243)
+  - function: `\_guarded\_ingestion\_allowed` (line 259)
+  - function: `\_ingestion\_audit\_context` (line 279)
+  - function: `log\_flagged\_url` (line 295)
+  - function: `\_require\_health\_auth` (line 445)
+  - function: `\_health\_auth\_response` (line 464)
+  - function: `\_public\_health\_task\_definitions` (line 469)
+  - function: `\_get\_health\_tasks` (line 481)
+  - function: `\_get\_health\_task` (line 488)
+  - function: `\_append\_health\_task\_log` (line 494)
+  - function: `\_trim\_health\_task\_history` (line 510)
+  - function: `\_finalize\_health\_task` (line 522)
+  - function: `\_launch\_health\_task` (line 533)
+  - function: `\_run\_health\_task` (line 557)
+  - function: `ensure\_utf8` (line 607)
+  - function: `\_is\_request\_secure` (line 621)
+  - class: `EnsureWsSecurityHeaders` (line 629)
+  - function: `\_socket\_payload\_too\_large` (line 762)
+  - function: `\_rate\_limit\_socket\_action` (line 773)
+  - function: `\_rate\_limit` (line 787)
+  - function: `\_generate\_upload\_filename` (line 792)
+  - function: `\_enforce\_request\_size` (line 798)
+  - function: `\_validate\_uploaded\_file` (line 807)
+  - function: `\_save\_uploaded\_file` (line 850)
+  - function: `\_log\_download\_access` (line 873)
+  - function: `\_resolve\_output\_metadata\_path` (line 883)
+  - function: `\_quick\_copy\_session\_dir` (line 895)
+  - function: `\_ensure\_quick\_copy\_dir` (line 903)
+  - function: `\_cleanup\_quick\_copy\_dir` (line 919)
+  - function: `\_unique\_quick\_copy\_name` (line 933)
+  - function: `\_is\_output\_download\_allowed` (line 947)
+  - function: `is\_owner` (line 966)
+  - function: `create\_session\_metadata` (line 970)
+  - function: `\_recover\_stale\_session` (line 973)
+  - function: `cleanup\_sessions` (line 1001)
+  - function: `transition\_session` (line 1030)
+  - function: `cleanup\_old\_log\_files` (line 1069)
+  - function: `client\_fingerprint` (line 1090)
+  - function: `get\_request\_principal` (line 1100)
+  - function: `\_is\_local\_host` (line 1115)
+  - function: `\_is\_azure\_environment` (line 1126)
+  - function: `\_get\_dev\_isolation\_bypass\_ips` (line 1136)
+  - function: `\_is\_dev\_isolation\_bypass\_request` (line 1142)
+  - function: `\_resolve\_cert\_session\_id` (line 1157)
+  - function: `\_derive\_auth\_context` (line 1166)
+  - function: `\_apply\_auth\_context` (line 1176)
+  - function: `\_session\_has\_principal` (line 1183)
+  - function: `resolve\_session\_id` (line 1187)
+  - function: `emit\_contest\_options` (line 1328)
+  - function: `\_promote\_inner` (line 1366)
+  - function: `ensure\_db\_tables` (line 1388)
+  - function: `normalize\_log\_obj` (line 1417)
+  - function: `store\_log` (line 1552)
+  - function: `\_heartbeat\_loop` (line 1564)
+  - function: `socketio\_emit\_func` (line 1579)
+  - function: `get\_prompt\_queue` (line 1701)
+  - function: `broadcast\_sessions` (line 1704)
+  - function: `lock\_session` (line 1721)
+  - function: `unlock\_session` (line 1732)
+  - function: `safe\_is\_alive` (line 1743)
+  - function: `is\_output\_bypassed` (line 1763)
+  - function: `get\_manual\_source` (line 1766)
+  - function: `get\_manual\_source\_origin` (line 1769)
+  - function: `get\_all\_file\_lists` (line 1772)
+  - function: `get\_session\_enums` (line 1780)
+  - function: `redirect\_to\_https\_www` (line 1797)
+  - function: `\_csp\_nonce` (line 1869)
+  - function: `build\_csp` (line 1878)
+  - function: `add\_headers` (line 1954)
+  - function: `\_handle\_global\_exception` (line 2031)
+  - function: `add\_url` (line 2078)
+  - function: `allowed\_file` (line 2196)
+  - function: `get\_url\_list` (line 2206)
+  - function: `list\_urls` (line 2222)
+  - function: `log\_run\_event` (line 2248)
+  - function: `\_validate\_filter\_value` (line 2272)
+  - function: `log\_db\_monitor\_event` (line 2289)
+  - function: `index` (line 2300)
+  - function: `api\_urls` (line 2305)
+  - function: `\_load\_output\_metadata` (line 2446)
+  - function: `\_build\_output\_lookup\_match` (line 2457)
+  - function: `api\_outputs\_lookup` (line 2497)
+  - function: `\_get\_warehouse\_columns` (line 2555)
+  - function: `api\_warehouse\_match` (line 2565)
+  - function: `api\_warehouse\_export` (line 2653)
+  - function: `api\_warehouse\_coverage` (line 2707)
+  - function: `data\_framework` (line 2784)
+  - function: `\_collect\_data\_framework\_scaffold` (line 2788)
+  - function: `\_extract\_year\_from\_text` (line 2842)
+  - function: `\_collect\_data\_framework\_curated` (line 2851)
+  - function: `\_resolve\_preview\_filters` (line 2882)
+  - function: `\_select\_preview\_context` (line 2902)
+  - function: `\_fetch\_preview\_rows` (line 2933)
+  - function: `api\_data\_framework\_preview` (line 2973)
+  - function: `api\_data\_framework\_scaffold` (line 3093)
+  - function: `api\_data\_framework\_scaffold\_csv` (line 3107)
+  - function: `api\_data\_framework\_curated` (line 3132)
+  - function: `api\_data\_framework\_warehouse\_status` (line 3146)
+  - function: `api\_data\_framework\_exports` (line 3343)
+  - function: `azure\_health\_page` (line 3392)
+  - function: `api\_list\_health\_tasks` (line 3413)
+  - function: `api\_start\_health\_task` (line 3421)
+  - function: `api\_health\_task\_detail` (line 3436)
+  - function: `test\_ui\_prompt` (line 3447)
+  - function: `api\_fs\_list` (line 3498)
+  - function: `api\_list\_dir\_compat` (line 3544)
+  - function: `api\_fs\_mkdir` (line 3548)
+  - function: `api\_fs\_delete` (line 3578)
+  - function: `api\_quick\_copy` (line 3615)
+  - function: `api\_quick\_copy\_clear` (line 3675)
+  - function: `download\_fs` (line 3684)
+  - function: `view\_csv` (line 3763)
+  - function: `\_build\_or\_load\_csv\_index` (line 3953)
+  - function: `csv\_locate` (line 4001)
+  - function: `favicon` (line 4043)
+  - function: `robots\_txt` (line 4103)
+  - function: `serve\_well\_known\_appspecific` (line 4109)
+  - function: `\_normalize\_party\_bucket` (line 4118)
+  - function: `\_compute\_dropoff\_items` (line 4129)
+  - function: `api\_warehouse\_election\_results` (line 4169)
+  - function: `delete\_input\_file` (line 4540)
+  - function: `delete\_output\_file` (line 4550)
+  - function: `delete\_upload\_file` (line 4560)
+  - function: `download\_input\_file` (line 4570)
+  - function: `download\_output\_file` (line 4574)
+  - function: `download\_upload\_file` (line 4658)
+  - function: `ballot\_lens` (line 4662)
+  - function: `ballot\_lens\_modern` (line 4704)
+  - function: `site\_webmanifest` (line 4708)
+  - function: `quality\_dashboard` (line 4746)
+  - function: `quick\_reference\_page` (line 4752)
+  - function: `api\_quality\_metrics` (line 4757)
+  - function: `api\_auth\_certificate\_info` (line 4827)
+  - function: `auth\_welcome` (line 4865)
+  - function: `upload\_to\_input` (line 4894)
+  - function: `upload\_to\_output` (line 4957)
+  - function: `upload\_to\_uploads` (line 5018)
+  - function: `health` (line 5078)
+  - function: `heartbeat` (line 5082)
+  - function: `clear\_history` (line 5086)
+  - function: `history` (line 5096)
+  - function: `rerun\_prior` (line 5139)
+  - function: `handle\_contest\_selected` (line 5171)
+  - function: `handle\_get\_session\_history` (line 5212)
+  - function: `handle\_clone\_session` (line 5264)
+  - function: `on\_join` (line 5309)
+  - function: `handle\_get\_sessions` (line 5349)
+  - function: `handle\_connect` (line 5356)
+  - function: `handle\_disconnect` (line 5565)
+  - function: `handle\_ack\_cert\_reauth` (line 5596)
+  - function: `handle\_set\_output\_mode` (line 5632)
+  - function: `handle\_parser\_prompt` (line 5661)
+  - function: `handle\_prompt\_cancel` (line 5718)
+  - function: `handle\_cancel\_parser` (line 5770)
+  - function: `handle\_toggle\_output\_bypass` (line 5835)
+  - function: `handle\_set\_manual\_source` (line 5864)
+  - function: `handle\_delete\_session` (line 5910)
+  - function: `handle\_ballot\_lens` (line 5932)
+  - function: `\_read\_jsonl` (line 6304)
+  - function: `fec\_mappings\_review` (line 6325)
+  - function: `api\_fec\_problem\_rows` (line 6368)
+  - function: `api\_fec\_save\_mapping` (line 6392)
 - Imports:
-  - **Standard Library** (18):
+  - **Standard Library** (20):
     - `import os as os` (line 4)
-    - `import csv as csv` (line 44)
-    - `import json as json` (line 46)
-    - `import re as re` (line 47)
-    - `import shutil as shutil` (line 49)
-    - `import subprocess as subprocess` (line 50)
-    - `import sys as sys` (line 51)
-    - `import threading as threading` (line 52)
-    - `import time as time` (line 53)
-    - `from datetime import datetime` (line 54)
-    - `from datetime import timedelta` (line 54)
-    - `from datetime import timezone` (line 54)
-    - `from pathlib import Path` (line 55)
-    - `from threading import Event` (line 56)
-    - `from threading import Thread` (line 56)
-    - `from typing import Callable` (line 57)
-    - `from typing import Tuple` (line 57)
-    - `from urllib.parse import urlparse` (line 58)
-  - **Third-party** (68):
-    - `import orjson as orjson` (line 60)
-    - `import psycopg2 as psycopg2` (line 61)
-    - `from flask import Flask` (line 62)
-    - `from flask import Response` (line 62)
-    - `from flask import flash` (line 62)
-    - `from flask import g` (line 62)
-    - `from flask import jsonify` (line 62)
-    - `from flask import redirect` (line 62)
-    - `from flask import render_template` (line 62)
-    - `from flask import request` (line 62)
-    - `from flask import send_file` (line 62)
-    - `from flask import send_from_directory` (line 62)
-    - `from flask import session` (line 62)
-    - `from flask import url_for` (line 62)
-    - `from psycopg2 import errors as pg_errors` (line 76)
-    - `from sqlalchemy.exc import OperationalError` (line 77)
-    - `from werkzeug.exceptions import HTTPException` (line 78)
-    - `from werkzeug.exceptions import NotFound` (line 78)
+    - `import csv as csv` (line 47)
+    - `import io as io` (line 49)
+    - `import json as json` (line 50)
+    - `import re as re` (line 51)
+    - `import shutil as shutil` (line 53)
+    - `import subprocess as subprocess` (line 54)
+    - `import sys as sys` (line 55)
+    - `import threading as threading` (line 56)
+    - `import time as time` (line 57)
+    - `from datetime import datetime` (line 58)
+    - `from datetime import timedelta` (line 58)
+    - `from datetime import timezone` (line 58)
+    - `from pathlib import Path` (line 59)
+    - `from threading import Event` (line 60)
+    - `from threading import Thread` (line 60)
+    - `from typing import Callable` (line 61)
+    - `from typing import Tuple` (line 61)
+    - `from urllib.parse import urlparse` (line 62)
+    - `from urllib.parse import urlunparse` (line 62)
+  - **Third-party** (76):
+    - `import orjson as orjson` (line 64)
+    - `import psycopg2 as psycopg2` (line 65)
+    - `from flask import Flask` (line 66)
+    - `from flask import Response` (line 66)
+    - `from flask import flash` (line 66)
+    - `from flask import g` (line 66)
+    - `from flask import jsonify` (line 66)
+    - `from flask import redirect` (line 66)
+    - `from flask import render_template` (line 66)
+    - `from flask import request` (line 66)
+    - `from flask import send_file` (line 66)
+    - `from flask import send_from_directory` (line 66)
+    - `from flask import session` (line 66)
+    - `from flask import url_for` (line 66)
+    - `from psycopg2 import errors as pg_errors` (line 80)
+    - `from sqlalchemy import inspect` (line 81)
+    - `from sqlalchemy import text` (line 81)
+    - `from sqlalchemy.exc import OperationalError` (line 82)
+    - `from werkzeug.exceptions import HTTPException` (line 83)
+    - `from werkzeug.exceptions import NotFound` (line 83)
     - `from webapp.parser.health.integrity_monitor import get_integrity_monitor`
-      (line 108)
+      (line 113)
     - `from webapp.parser.health.session_manager import SessionManager` (line
-      109)
-    - `from webapp.parser.utils.logger_singleton import logger` (line 110)
-    - `from webapp.parser.utils.logger_singleton import prompt` (line 110)
+      114)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 115)
+    - `from webapp.parser.utils.logger_singleton import prompt` (line 115)
     - `from webapp.parser.utils.session_state import DEFAULT_PHASE_BY_STATE`
-      (line 111)
-    - `from webapp.parser.utils.session_state import PipelinePhase` (line 111)
-    - `from webapp.parser.utils.session_state import SessionState` (line 111)
+      (line 116)
+    - `from webapp.parser.utils.session_state import PipelinePhase` (line 116)
+    - `from webapp.parser.utils.session_state import SessionState` (line 116)
     - `from webapp.parser.utils.session_state import export_session_enums` (line
-      111)
-    - `from webapp.parser.config import ALLOW_GOOGLE_DOCS` (line 126)
-    - `from webapp.parser.config import ALLOW_LEGACY_OUTPUT_DOWNLOAD` (line 126)
-    - `from webapp.parser.config import DATA_API_URL` (line 126)
-    - `from webapp.parser.config import DEPLOY_ENV` (line 126)
-    - `from webapp.parser.config import INPUT_DIR` (line 126)
-    - `from webapp.parser.config import LOG_DIR` (line 126)
-    - `from webapp.parser.config import MAX_CSV_ROWS` (line 126)
-    - `from webapp.parser.config import MAX_PDF_PAGES` (line 126)
-    - `from webapp.parser.config import MAX_SOCKET_EVENT_BYTES` (line 126)
-    - `from webapp.parser.config import MAX_SOCKET_LOG_BYTES` (line 126)
-    - `from webapp.parser.config import MAX_UPLOAD_BYTES` (line 126)
-    - `from webapp.parser.config import MAX_UPLOAD_SIZE_MB` (line 126)
-    - `from webapp.parser.config import MAX_XLSX_BYTES` (line 126)
-    - `from webapp.parser.config import OUTPUT_DIR` (line 126)
-    - `from webapp.parser.config import POSTGRES_DB` (line 126)
-    - `from webapp.parser.config import POSTGRES_HOST` (line 126)
-    - `from webapp.parser.config import POSTGRES_PASSWORD_RAW` (line 126)
-    - `from webapp.parser.config import POSTGRES_PORT` (line 126)
-    - `from webapp.parser.config import POSTGRES_USER_RAW` (line 126)
-    - `from webapp.parser.config import PROJECT_ROOT` (line 126)
-    - `from webapp.parser.config import RUN_HISTORY_FILE` (line 126)
-    - `from webapp.parser.config import SUPPORTED_EXTENSION_SET` (line 126)
-    - `from webapp.parser.config import UPLOADS_DIR` (line 126)
-    - `from webapp.parser.config import URL_ALLOWLIST_HOSTS` (line 126)
+      116)
+    - `from webapp.parser.config import ALLOW_GOOGLE_DOCS` (line 131)
+    - `from webapp.parser.config import ALLOW_LEGACY_OUTPUT_DOWNLOAD` (line 131)
+    - `from webapp.parser.config import DATA_API_URL` (line 131)
+    - `from webapp.parser.config import DEPLOY_ENV` (line 131)
+    - `from webapp.parser.config import INPUT_DIR` (line 131)
+    - `from webapp.parser.config import LOG_DIR` (line 131)
+    - `from webapp.parser.config import MAX_CSV_ROWS` (line 131)
+    - `from webapp.parser.config import MAX_PDF_PAGES` (line 131)
+    - `from webapp.parser.config import MAX_SOCKET_EVENT_BYTES` (line 131)
+    - `from webapp.parser.config import MAX_SOCKET_LOG_BYTES` (line 131)
+    - `from webapp.parser.config import MAX_UPLOAD_BYTES` (line 131)
+    - `from webapp.parser.config import MAX_UPLOAD_SIZE_MB` (line 131)
+    - `from webapp.parser.config import MAX_XLSX_BYTES` (line 131)
+    - `from webapp.parser.config import OUTPUT_DIR` (line 131)
+    - `from webapp.parser.config import POSTGRES_DB` (line 131)
+    - `from webapp.parser.config import POSTGRES_HOST` (line 131)
+    - `from webapp.parser.config import POSTGRES_PASSWORD_RAW` (line 131)
+    - `from webapp.parser.config import POSTGRES_PORT` (line 131)
+    - `from webapp.parser.config import POSTGRES_USER_RAW` (line 131)
+    - `from webapp.parser.config import PROJECT_ROOT` (line 131)
+    - `from webapp.parser.config import QUICK_COPY_DIR` (line 131)
+    - `from webapp.parser.config import RUN_HISTORY_FILE` (line 131)
   - **Local/Project** (4):
     - `from __future__ import annotations` (line 1)
     - `import hmac as hmac` (line 3)
-    - `import gzip as gzip` (line 45)
-    - `import secrets as secrets` (line 48)
+    - `import gzip as gzip` (line 48)
+    - `import secrets as secrets` (line 52)
 - Task markers:
-  - L559 **WARNING**: ").upper().split(","))
-  - L595 **WARNING**: ({
-  - L596 **WARNING**: ",
-  - L613 **WARNING**: ({
-  - L614 **WARNING**: ",
-  - L631 **WARNING**: ({
-  - L632 **WARNING**: ",
-  - L749 **WARNING**: ({
-  - L750 **WARNING**: ",
-  - L766 **WARNING**: ({
-  - L767 **WARNING**: ",
-  - L1194 **WARNING**: , ERROR, CRITICAL, TRACE
-  - L1233 **WARNING**: ", "ERROR", "CRITICAL", "TRACE"}
-  - L1269 **WARNING**: " in mlow:
-  - L1763 **WARNING**:         # For websocket handshake only: add Cache-Control
+  - L627 **WARNING**: ").upper().split(","))
+  - L663 **WARNING**: ({
+  - L664 **WARNING**: ",
+  - L681 **WARNING**: ({
+  - L682 **WARNING**: ",
+  - L699 **WARNING**: ({
+  - L700 **WARNING**: ",
+  - L822 **WARNING**: ({
+  - L823 **WARNING**: ",
+  - L839 **WARNING**: ({
+  - L840 **WARNING**: ",
+  - L926 **WARNING**: ({
+  - L927 **WARNING**: ",
+  - L1420 **WARNING**: , ERROR, CRITICAL, TRACE
+  - L1462 **WARNING**: ", "ERROR", "CRITICAL", "TRACE"}
+  - L1498 **WARNING**: " in mlow:
+  - L2006 **WARNING**:         # For websocket handshake only: add Cache-Control
     so webhint stops warning
-  - L2784 **WARNING**: ({"type": "sec", "message": "Favicon path escape
+  - L2089 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URL
+    too long or invalid.", "session_id": None})
+  - L2093 **WARNING**: ({"level": "WARNING", "type": "status", "message": "No
+    valid http(s) URL found.", "session_id": None})
+  - L2102 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URL
+    too long.", "session_id": None})
+  - L2112 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URLs
+    with credentials are not allowed.", "session_id": None})
+  - L2132 **WARNING**: ({"level": "WARNING", "type": "status", "message": f"URL
+    blocked: {reason}", "session_id": None})
+  - L2165 **WARNING**: ({"level": "WARNING", "type": "status", "message": "Only
+    http/https URLs with a host are accepted.", "session_id": None})
+  - L2175 **WARNING**: ({"level": "WARNING", "type": "status", "message": "Host
+    requires manual review; URL logged for safety.", "session_id": None})
+  - L2323 **WARNING**: ({
+  - L2324 **WARNING**: ",
+  - L2545 **WARNING**: ({
+  - L2546 **WARNING**: ",
+  - L2643 **WARNING**: ({
+  - L2644 **WARNING**: ",
+  - L2685 **WARNING**: ({
+  - L2686 **WARNING**: ",
+  - L2775 **WARNING**: ({
+  - L2776 **WARNING**: ",
+  - L3040 **WARNING**: ({
+  - L3041 **WARNING**: ",
+  - L3080 **WARNING**: ({
+  - L3081 **WARNING**: ",
+  - L3333 **WARNING**: ({
+  - L3334 **WARNING**: ",
+  - L4053 **WARNING**: ({"type": "sec", "message": "Favicon path escape
     blocked", "requested": ico_path})
-  - L2913 **WARNING**: ({
-  - L2914 **WARNING**: ",
-  - L2997 **WARNING**: ({
-  - L2998 **WARNING**: ",
-  - L3014 **WARNING**: ({
-  - L3015 **WARNING**: ",
-  - L3475 **WARNING**: ")
-  - L3526 **WARNING**: ")
-  - L3574 **WARNING**: ")
-  - L3699 **WARNING**: ",
-  - L3782 **WARNING**: (
-  - L3784 **WARNING**: ",
-  - L3794 **WARNING**: (
-  - L3796 **WARNING**: ",
-  - L3826 **WARNING**: (
-  - L3828 **WARNING**: ",
-  - L3896 **WARNING**: ({
-  - L3897 **WARNING**: ",
-  - L3909 **WARNING**: ({
-  - L3910 **WARNING**: ",
-  - L4008 **WARNING**: ({
-  - L4009 **WARNING**: ",
-  - L4142 **WARNING**: ({
-  - L4143 **WARNING**: ",
-  - L4179 **WARNING**: ({
-  - L4180 **WARNING**: ",
-  - L4229 **WARNING**: ({
-  - L4230 **WARNING**: ",
-  - L4293 **WARNING**: ({
-  - L4294 **WARNING**: ",
-  - L4323 **WARNING**: ({
-  - L4324 **WARNING**: ",
-  - L4360 **WARNING**: ({
-  - L4361 **WARNING**: ",
+  - L4359 **WARNING**: ({
+  - L4360 **WARNING**: ",
+  - L4443 **WARNING**: ({
+  - L4444 **WARNING**: ",
+  - L4460 **WARNING**: ({
+  - L4461 **WARNING**: ",
+  - L4671 **WARNING**: ({
+  - L4672 **WARNING**: ",
+  - L4904 **WARNING**: ({
 - Outgoing cross-module calls (sample):
   - origin.strip (line 30)
   - \_RAW\_SOCKETIO\_ORIGINS.split (line 31)
   - origin.strip (line 32)
-  - dotenv.load\_dotenv (line 120)
-  - DB\_MONITOR\_FILE.touch (line 182)
-  - webapp.parser.config.LOG\_DIR.mkdir (line 193)
-  - datetime.datetime.now (line 201)
-  - now.strftime (line 203)
-  - prefix.with\_suffix (line 204)
-  - candidate.exists (line 205)
-  - candidate.stat (line 205)
-  - prefix.with\_name (line 209)
-  - cand.exists (line 210)
-  - cand.stat (line 210)
-  - datetime.datetime.now (line 218)
-  - datetime.timedelta (line 219)
-  - base.glob (line 222)
-  - datetime.datetime.fromtimestamp (line 224)
-  - entry.stat (line 224)
-  - entry.unlink (line 226)
-  - payload.setdefault (line 235)
-  - datetime.datetime.now (line 235)
-  - f.write (line 239)
-  - orjson.dumps (line 239)
-  - flask.Flask (line 246)
-  - flask.Response (line 281)
-  - webapp.parser.utils.logger\_singleton.logger.error (line 284)
-  - flask.Response (line 287)
-  - app.route (line 277)
-  - flask.jsonify (line 296)
-  - flask.jsonify (line 299)
-  - flask.jsonify (line 301)
-  - app.route (line 291)
-  - webapp.parser.utils.logger\_singleton.logger.info (line 304)
-  - webapp.parser.utils.logger\_singleton.logger.debug (line 314)
-  - threading.Lock (line 371)
-  - flask.jsonify (line 380)
-  - auth\_header.lower (line 385)
-  - auth\_header.split (line 386)
-  - hmac.compare\_digest (line 389)
-  - flask.jsonify (line 391)
-  - HEALTH\_TASK\_DEFINITIONS.items (line 403)
-  - entries.append (line 404)
-  - meta.get (line 408)
-  - \_HEALTH\_TASK\_RUNS.values (line 415)
-  - records.sort (line 416)
-  - item.get (line 416)
-  - \_HEALTH\_TASK\_RUNS.get (line 422)
-  - chunk.endswith (line 429)
-  - \_HEALTH\_TASK\_RUNS.get (line 432)
+  - dotenv.load\_dotenv (line 125)
+  - DB\_MONITOR\_FILE.touch (line 191)
+  - webapp.parser.config.LOG\_DIR.mkdir (line 203)
+  - datetime.datetime.now (line 211)
+  - now.strftime (line 213)
+  - prefix.with\_suffix (line 214)
+  - candidate.exists (line 215)
+  - candidate.stat (line 215)
+  - prefix.with\_name (line 219)
+  - cand.exists (line 220)
+  - cand.stat (line 220)
+  - datetime.datetime.now (line 228)
+  - datetime.timedelta (line 229)
+  - base.glob (line 232)
+  - datetime.datetime.fromtimestamp (line 234)
+  - entry.stat (line 234)
+  - entry.unlink (line 236)
+  - remote\_addr.startswith (line 252)
+  - hmac.compare\_digest (line 266)
+  - auth\_hdr.lower (line 269)
+  - auth\_hdr.split (line 271)
+  - hmac.compare\_digest (line 272)
+  - payload.setdefault (line 297)
+  - datetime.datetime.now (line 297)
+  - f.write (line 301)
+  - orjson.dumps (line 301)
+  - flask.Flask (line 308)
+  - flask.Response (line 349)
+  - webapp.parser.utils.logger\_singleton.logger.error (line 352)
+  - flask.Response (line 355)
+  - app.route (line 345)
+  - flask.jsonify (line 364)
+  - flask.jsonify (line 367)
+  - flask.jsonify (line 369)
+  - app.route (line 359)
+  - webapp.parser.utils.logger\_singleton.logger.info (line 372)
+  - webapp.parser.utils.logger\_singleton.logger.debug (line 382)
+  - threading.Lock (line 439)
+  - flask.jsonify (line 448)
+  - auth\_header.lower (line 453)
+  - auth\_header.split (line 454)
+  - hmac.compare\_digest (line 457)
+  - flask.jsonify (line 459)
+  - HEALTH\_TASK\_DEFINITIONS.items (line 471)
+  - entries.append (line 472)
+  - meta.get (line 476)
+  - \_HEALTH\_TASK\_RUNS.values (line 483)
 - Inbound references:
-  - \_flagged\_url\_log\_dir ← Smart_Elections_Parser_Webapp.py:202
-  - \_flagged\_url\_log\_dir ← Smart_Elections_Parser_Webapp.py:220
-  - \_rotate\_flagged\_url\_path ← Smart_Elections_Parser_Webapp.py:236
-  - \_prune\_flagged\_url\_logs ← Smart_Elections_Parser_Webapp.py:243
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:1990
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2021
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2029
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:3469
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:3520
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:3565
-  - \_require\_health\_auth ← Smart_Elections_Parser_Webapp.py:397
-  - \_health\_auth\_response ← Smart_Elections_Parser_Webapp.py:2193
-  - \_health\_auth\_response ← Smart_Elections_Parser_Webapp.py:2214
-  - \_health\_auth\_response ← Smart_Elections_Parser_Webapp.py:2222
-  - \_health\_auth\_response ← Smart_Elections_Parser_Webapp.py:2237
-  - \_public\_health\_task\_definitions ← Smart_Elections_Parser_Webapp.py:2205
-  - \_get\_health\_tasks ← Smart_Elections_Parser_Webapp.py:2208
-  - \_get\_health\_tasks ← Smart_Elections_Parser_Webapp.py:2217
-  - \_get\_health\_task ← Smart_Elections_Parser_Webapp.py:2240
-  - \_append\_health\_task\_log ← Smart_Elections_Parser_Webapp.py:496
-  - \_append\_health\_task\_log ← Smart_Elections_Parser_Webapp.py:504
-  - \_append\_health\_task\_log ← Smart_Elections_Parser_Webapp.py:508
-  - \_append\_health\_task\_log ← Smart_Elections_Parser_Webapp.py:520
-  - \_append\_health\_task\_log ← Smart_Elections_Parser_Webapp.py:527
-  - \_append\_health\_task\_log ← Smart_Elections_Parser_Webapp.py:529
-  - \_trim\_health\_task\_history ← Smart_Elections_Parser_Webapp.py:483
-  - \_finalize\_health\_task ← Smart_Elections_Parser_Webapp.py:497
-  - \_finalize\_health\_task ← Smart_Elections_Parser_Webapp.py:531
-  - \_launch\_health\_task ← Smart_Elections_Parser_Webapp.py:2231
-  - ensure\_utf8 ← Smart_Elections_Parser_Webapp.py:1783
-  - \_is\_request\_secure ← Smart_Elections_Parser_Webapp.py:1776
-  - EnsureWsSecurityHeaders ← Smart_Elections_Parser_Webapp.py:582
-  - \_socket\_payload\_too\_large ← Smart_Elections_Parser_Webapp.py:4114
-  - \_socket\_payload\_too\_large ← Smart_Elections_Parser_Webapp.py:4114
-  - \_rate\_limit\_socket\_action ← Smart_Elections_Parser_Webapp.py:4141
-  - \_rate\_limit\_socket\_action ← Smart_Elections_Parser_Webapp.py:4178
-  - \_rate\_limit\_socket\_action ← Smart_Elections_Parser_Webapp.py:4228
-  - \_rate\_limit\_socket\_action ← Smart_Elections_Parser_Webapp.py:4292
-  - \_rate\_limit\_socket\_action ← Smart_Elections_Parser_Webapp.py:4322
-  - \_rate\_limit\_socket\_action ← Smart_Elections_Parser_Webapp.py:4396
-  - \_rate\_limit ← Smart_Elections_Parser_Webapp.py:1954
-  - \_rate\_limit ← Smart_Elections_Parser_Webapp.py:3438
-  - \_rate\_limit ← Smart_Elections_Parser_Webapp.py:3491
-  - \_rate\_limit ← Smart_Elections_Parser_Webapp.py:3542
-  - \_generate\_upload\_filename ← Smart_Elections_Parser_Webapp.py:784
-  - \_generate\_upload\_filename ← Smart_Elections_Parser_Webapp.py:3465
-  - \_generate\_upload\_filename ← Smart_Elections_Parser_Webapp.py:3516
-  - \_generate\_upload\_filename ← Smart_Elections_Parser_Webapp.py:3561
-  - \_enforce\_request\_size ← Smart_Elections_Parser_Webapp.py:780
-  - \_validate\_uploaded\_file ← Smart_Elections_Parser_Webapp.py:791
+  - \_flagged\_url\_log\_dir ← Smart_Elections_Parser_Webapp.py:212
+  - \_flagged\_url\_log\_dir ← Smart_Elections_Parser_Webapp.py:230
+  - \_rotate\_flagged\_url\_path ← Smart_Elections_Parser_Webapp.py:298
+  - \_prune\_flagged\_url\_logs ← Smart_Elections_Parser_Webapp.py:305
+  - \_is\_local\_request ← Smart_Elections_Parser_Webapp.py:260
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:2321
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:4669
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:4902
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:4965
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:5020
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:6119
+  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2339
+  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2351
+  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2361
+  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2381
+  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2413
+  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2423
+  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2438
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2083
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2096
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2106
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2126
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2159
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2168
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2189
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2335
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2347
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2357
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2377
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2409
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2418
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2433
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:4934
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:4995
+  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:5050
+  - \_require\_health\_auth ← Smart_Elections_Parser_Webapp.py:465
+  - \_health\_auth\_response ← Smart_Elections_Parser_Webapp.py:3393
+  - \_health\_auth\_response ← Smart_Elections_Parser_Webapp.py:3414
+  - \_health\_auth\_response ← Smart_Elections_Parser_Webapp.py:3422
+  - \_health\_auth\_response ← Smart_Elections_Parser_Webapp.py:3437
+  - \_public\_health\_task\_definitions ← Smart_Elections_Parser_Webapp.py:3405
+  - \_get\_health\_tasks ← Smart_Elections_Parser_Webapp.py:3408
+  - \_get\_health\_tasks ← Smart_Elections_Parser_Webapp.py:3417
+  - \_get\_health\_task ← Smart_Elections_Parser_Webapp.py:3440
+  - \_append\_health\_task\_log ← Smart_Elections_Parser_Webapp.py:564
+  - \_append\_health\_task\_log ← Smart_Elections_Parser_Webapp.py:572
+  - \_append\_health\_task\_log ← Smart_Elections_Parser_Webapp.py:576
+  - \_append\_health\_task\_log ← Smart_Elections_Parser_Webapp.py:588
+  - \_append\_health\_task\_log ← Smart_Elections_Parser_Webapp.py:595
+  - \_append\_health\_task\_log ← Smart_Elections_Parser_Webapp.py:597
 
 ### Context\_Integration/Context\_Library/constants.py {#webapp-parser-context-integration-context-library-constants-py}
 
 - Definitions:
-  - function: `build\_state\_to\_division\_type\_map` (line 691)
-  - function: `get\_party\_code\_info` (line 1358)
-  - function: `\_sanitize\_party\_token` (line 2573)
-  - function: `normalize\_party\_code` (line 2592)
-  - function: `canonical\_ballot\_group` (line 2619)
-  - function: `split\_and\_normalize\_ballot\_groups` (line 2646)
-  - function: `normalize\_result\_group\_label` (line 2665)
-  - function: `normalize\_party\_label` (line 2683)
-  - function: `is\_pseudo\_result\_party` (line 2713)
-  - function: `\_iter\_strings` (line 2884)
-  - function: `\_compile\_union` (line 2895)
-  - function: `\_norm\_state\_key` (line 2938)
-  - function: `\_norm\_county\_key` (line 2949)
-  - function: `\_collect\_layered\_patterns` (line 2958)
-  - function: `get\_camelot\_title\_regex` (line 2969)
-  - function: `get\_camelot\_row\_regex` (line 2979)
-  - function: `build\_camelot\_row\_filter` (line 2992)
+  - function: `\_log\_vocab\_fallback` (line 11)
+  - function: `\_load\_state\_to\_county\_map\_from\_vocab` (line 21)
+  - function: `\_load\_county\_to\_precincts\_map\_from\_vocab` (line 48)
+  - class: `\_LazyMapping` (line 74)
+  - function: `load\_vocab\_list` (line 107)
+  - function: `load\_vocab\_mapping` (line 122)
+  - function: `\_load\_division\_type\_defaults\_from\_vocab` (line 137)
+  - function: `\_load\_division\_type\_overrides\_from\_vocab` (line 142)
+  - function: `\_load\_canonical\_state\_abbr\_from\_vocab` (line 156)
+  - function: `\_load\_party\_code\_map\_from\_vocab` (line 171)
+  - function: `\_load\_party\_code\_descriptions\_from\_vocab` (line 177)
+  - function: `\_load\_party\_aliases\_from\_vocab` (line 183)
+  - function: `\_load\_party\_normalization\_overrides\_from\_vocab` (line 189)
+  - function: `\_load\_office\_keywords\_from\_vocab` (line 195)
+  - function: `\_load\_html\_taxonomy\_from\_vocab` (line 201)
+  - function: `\_load\_html\_taxonomy\_category` (line 222)
+  - function: `\_load\_html\_tags\_from\_vocab` (line 236)
+  - function: `\_load\_button\_tags\_from\_vocab` (line 247)
+  - function: `\_load\_heading\_tags\_from\_vocab` (line 258)
+  - function: `\_load\_table\_tags\_from\_vocab` (line 269)
+  - function: `\_load\_state\_tags\_from\_vocab` (line 280)
+  - function: `\_load\_panel\_tags\_from\_vocab` (line 291)
+  - function: `\_load\_container\_extra\_keywords\_from\_vocab` (line 302)
+  - function: `\_load\_container\_fallback\_selectors\_from\_vocab` (line 308)
+  - function: `\_load\_root\_container\_tags\_from\_vocab` (line 314)
+  - function: `\_load\_special\_total\_row\_keywords\_from\_vocab` (line 325)
+  - function: `\_load\_table\_anchor\_label\_defaults\_from\_vocab` (line 331)
+  - function: `\_load\_location\_synonym\_map\_from\_vocab` (line 337)
+  - function: `\_load\_rawjson\_column\_aliases\_from\_vocab` (line 343)
+  - function: `\_load\_candidate\_value\_keys\_from\_vocab` (line 349)
+  - function: `\_load\_total\_value\_keys\_from\_vocab` (line 355)
+  - function: `\_load\_custom\_attr\_patterns\_from\_vocab` (line 361)
+  - function: `\_load\_noisy\_label\_patterns\_from\_vocab` (line 367)
+  - function: `\_load\_precinct\_header\_patterns\_from\_vocab` (line 373)
+  - function: `\_load\_selectors\_from\_vocab` (line 379)
+  - function: `\_load\_keyword\_priority\_resolver\_from\_vocab` (line 394)
+  - function: `\_load\_pseudo\_party\_labels\_from\_vocab` (line 400)
+  - function: `\_load\_pseudo\_party\_raw\_keys\_from\_vocab` (line 406)
+  - function: `\_load\_pseudo\_exclude\_tokens\_from\_vocab` (line 412)
+  - function: `\_load\_ballot\_group\_canon\_order\_from\_vocab` (line 418)
+  - function: `\_load\_ballot\_name\_canon\_overrides\_from\_vocab` (line 424)
+  - function: `\_load\_ballot\_display\_overrides\_from\_vocab` (line 430)
+  - function: `\_load\_division\_suffixes\_from\_vocab` (line 436)
+  - function: `\_load\_division\_heuristic\_terms\_from\_vocab` (line 442)
+  - function: `\_load\_camelot\_state\_noise\_overrides\_from\_vocab` (line 449)
+  - function: `\_load\_camelot\_county\_noise\_overrides\_from\_vocab` (line
+    464)
+  - function: `\_load\_allowed\_labels\_from\_vocab` (line 479)
+  - function: `\_load\_field\_type\_labels\_from\_vocab` (line 485)
+  - function: `\_load\_canonical\_segment\_labels\_from\_vocab` (line 491)
+  - function: `\_load\_update\_panel\_keywords\_from\_vocab` (line 497)
+  - function: `\_load\_nlp\_skip\_phrases\_from\_vocab` (line 503)
+  - function: `\_load\_misaligned\_patterns\_from\_vocab` (line 509)
+  - function: `\_load\_view\_by\_phrases\_from\_vocab` (line 515)
+  - function: `\_load\_container\_fallback\_selectors\_from\_vocab` (line 521)
+  - function: `\_load\_noisy\_label\_patterns\_from\_vocab` (line 527)
+  - function: `\_load\_precinct\_header\_patterns\_from\_vocab` (line 533)
+  - function: `\_load\_contest\_title\_keywords\_extra\_from\_vocab` (line 539)
+  - function: `\_load\_contest\_title\_tags\_from\_vocab` (line 545)
+  - function: `\_load\_contest\_title\_skip\_phrases\_from\_vocab` (line 551)
+  - function: `\_load\_contest\_header\_keywords\_from\_vocab` (line 557)
+  - function: `\_load\_contest\_header\_preference\_from\_vocab` (line 563)
+  - function: `\_load\_camelot\_noise\_categories\_from\_vocab` (line 569)
+  - function: `\_load\_always\_ignore\_classes\_from\_vocab` (line 579)
+  - function: `\_load\_always\_ignore\_ids\_from\_vocab` (line 590)
+  - function: `\_load\_icon\_classes\_from\_vocab` (line 596)
+  - function: `\_load\_icon\_tags\_from\_vocab` (line 607)
+  - function: `\_load\_button\_classes\_from\_vocab` (line 618)
+  - function: `\_load\_heading\_classes\_from\_vocab` (line 629)
+  - function: `\_load\_panel\_classes\_from\_vocab` (line 640)
+  - function: `\_load\_timestamp\_classes\_from\_vocab` (line 651)
+  - function: `\_load\_structural\_tags\_from\_vocab` (line 662)
+  - function: `\_load\_timestamp\_id\_patterns\_from\_vocab` (line 673)
+  - function: `\_load\_timestamp\_attrs\_from\_vocab` (line 679)
+  - function: `\_load\_always\_ignore\_tags\_from\_vocab` (line 685)
+  - function: `\_load\_likely\_row\_classes\_from\_vocab` (line 696)
+  - function: `\_load\_table\_builder\_location\_priority\_from\_vocab` (line
+    708)
+  - function: `\_load\_table\_builder\_location\_tokens\_from\_vocab` (line 714)
+  - function: `\_load\_table\_builder\_candidate\_suffix\_defaults\_from\_vocab`
+    (line 720)
+  - function: `\_load\_location\_abbreviations\_from\_vocab` (line 726)
+  - function: `\_load\_party\_canon\_map\_from\_vocab` (line 737)
+  - function: `\_load\_ballot\_inline\_alias\_defaults\_from\_vocab` (line 743)
+  - function: `\_load\_ballot\_group\_rename\_variants\_from\_vocab` (line 749)
+  - function: `\_load\_election\_entity\_labels\_from\_vocab` (line 755)
+  - function: `\_load\_extra\_heading\_tags\_from\_vocab` (line 761)
+  - function: `\_load\_contest\_panel\_tags\_from\_vocab` (line 772)
+  - function: `\_load\_election\_type\_regex\_map\_from\_vocab` (line 783)
+  - function: `build\_state\_to\_division\_type\_map` (line 809)
+  - function: `\_build\_state\_module\_map` (line 839)
+  - function: `get\_party\_code\_info` (line 919)
+  - function: `\_parse\_priority\_rule` (line 1198)
+  - function: `\_normalize\_token` (line 1218)
+  - function: `\_context\_terms` (line 1222)
+  - function: `\_context\_has\_any` (line 1235)
+  - function: `\_apply\_condition\_scores` (line 1245)
+  - function: `resolve\_keyword\_priority` (line 1281)
+  - function: `\_sanitize\_party\_token` (line 1471)
+  - function: `normalize\_party\_code` (line 1490)
+  - function: `canonical\_ballot\_group` (line 1517)
+  - function: `split\_and\_normalize\_ballot\_groups` (line 1544)
+  - function: `normalize\_result\_group\_label` (line 1563)
+  - function: `normalize\_party\_label` (line 1581)
+  - function: `is\_pseudo\_result\_party` (line 1611)
+  - function: `\_iter\_strings` (line 1723)
+  - function: `\_compile\_union` (line 1734)
+  - function: `\_norm\_state\_key` (line 1749)
+  - function: `\_norm\_county\_key` (line 1760)
+  - function: `\_collect\_layered\_patterns` (line 1769)
+  - function: `get\_camelot\_title\_regex` (line 1780)
+  - function: `get\_camelot\_row\_regex` (line 1790)
+  - function: `build\_camelot\_row\_filter` (line 1803)
 - Imports:
-  - **Standard Library** (11):
-    - `import re as re` (line 1)
-    - `from functools import lru_cache` (line 2)
-    - `from typing import Any` (line 3)
-    - `from typing import Callable` (line 3)
-    - `from typing import Dict` (line 3)
-    - `from typing import Iterable` (line 3)
-    - `from typing import List` (line 3)
-    - `from typing import Optional` (line 3)
-    - `from typing import Pattern` (line 3)
-    - `from typing import Set` (line 3)
-    - `from typing import Tuple` (line 3)
-- Task markers:
-  - L2005 **NOTE**: ._$",                     # Note
-  - L2194 **WARNING**: ",
-  - L2285 **WARNING**: ", "info_box", "navigation", "pagination", "tab",
-    "modal", "tooltip", "ignore", "unknown"
-  - L2318 **NOTE**: ", "comment",
-  - L2394 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
-  - L2410 **NOTE**: ", "Comment", "Feedback", "Suggestion",
+  - **Standard Library** (13):
+    - `import os as os` (line 1)
+    - `import re as re` (line 2)
+    - `from collections.abc import Mapping` (line 3)
+    - `from functools import lru_cache` (line 4)
+    - `from typing import Any` (line 5)
+    - `from typing import Callable` (line 5)
+    - `from typing import Dict` (line 5)
+    - `from typing import Iterable` (line 5)
+    - `from typing import List` (line 5)
+    - `from typing import Optional` (line 5)
+    - `from typing import Pattern` (line 5)
+    - `from typing import Set` (line 5)
+    - `from typing import Tuple` (line 5)
+  - **Local/Project** (2):
+    - `from utils.logger_singleton import logger` (line 7)
+    - `from vocab.loader import get_vocab_loader` (line 8)
 - Outgoing cross-module calls (sample):
-  - DEFAULT\_DIVISION\_TYPE\_BY\_STATE.get (line 707)
-  - KNOWN\_STATE\_TO\_COUNTY\_MAP.items (line 710)
-  - DIVISION\_TYPE\_OVERRIDES.items (line 714)
-  - KNOWN\_STATE\_TO\_COUNTY\_MAP.keys (line 750)
-  - CANONICAL\_STATE\_ABBR.items (line 811)
-  - k.upper (line 1252)
-  - PARTY\_CODE\_MAP.items (line 1252)
-  - PARTY\_CODE\_DESCRIPTIONS.get (line 1363)
-  - t.lower (line 1526)
-  - GROUP\_RENAME\_MAP.update (line 1528)
-  - \_BALLOT\_INLINE\_ALIAS\_DEFAULTS.items (line 1581)
-  - GROUP\_RENAME\_MAP.get (line 1584)
-  - \_target.lower (line 1584)
-  - \_token.lower (line 1585)
-  - dict.fromkeys (line 1775)
-  - label.strip (line 1776)
-  - kw.title (line 1779)
-  - label.strip (line 1781)
-  - dict.fromkeys (line 1802)
-  - dict.fromkeys (line 1819)
-  - kw.lower (line 1823)
-  - dict.fromkeys (line 1843)
-  - re.escape (line 1885)
-  - x.startswith (line 1885)
-  - re.escape (line 1940)
-  - re.escape (line 1941)
-  - re.escape (line 1942)
-  - re.escape (line 1943)
-  - re.escape (line 1944)
-  - re.escape (line 1945)
-  - re.escape (line 1946)
-  - re.escape (line 1947)
-  - re.escape (line 1948)
-  - re.escape (line 1949)
-  - re.escape (line 1950)
-  - re.escape (line 1951)
-  - re.escape (line 1952)
-  - re.compile (line 2145)
-  - re.compile (line 2146)
-  - re.compile (line 2147)
-  - re.compile (line 2151)
-  - re.compile (line 2225)
-  - re.compile (line 2226)
-  - GROUP\_RENAME\_MAP.items (line 2482)
-  - \_k.lower (line 2483)
-  - \_EXTRA\_BALLOT\_VARIANTS.items (line 2507)
-  - BALLOT\_NAME\_CANON\_MAP.setdefault (line 2508)
-  - \_PARTY\_CANON\_MAP.items (line 2562)
-  - PARTY\_CODE\_MAP.items (line 2566)
-  - PARTY\_NORMALIZATION\_MAP.setdefault (line 2567)
+  - os.getenv (line 14)
+  - utils.logger\_singleton.logger.debug (line 15)
+  - vocab.loader.get\_vocab\_loader (line 23)
+  - loader.load\_canonical (line 24)
+  - part.strip (line 36)
+  - line.split (line 36)
+  - state\_map.setdefault (line 39)
+  - state\_map.items (line 41)
+  - functools.lru\_cache (line 20)
+  - vocab.loader.get\_vocab\_loader (line 50)
+  - loader.load\_canonical (line 51)
+  - part.strip (line 63)
+  - line.split (line 63)
+  - county\_map.setdefault (line 66)
+  - county\_map.items (line 68)
+  - functools.lru\_cache (line 47)
+  - self.\_loader (line 81)
+  - self.\_data (line 85)
+  - self.\_data (line 88)
+  - self.\_data (line 91)
+  - self.\_data (line 94)
+  - self.\_data (line 97)
+  - self.\_data (line 100)
+  - self.\_data (line 103)
+  - vocab.loader.get\_vocab\_loader (line 110)
+  - loader.load\_canonical (line 111)
+  - functools.lru\_cache (line 106)
+  - vocab.loader.get\_vocab\_loader (line 125)
+  - loader.load\_mapping (line 126)
+  - functools.lru\_cache (line 121)
+  - functools.lru\_cache (line 136)
+  - mapping.items (line 145)
+  - part.strip (line 148)
+  - key.split (line 148)
+  - nested.setdefault (line 151)
+  - functools.lru\_cache (line 141)
+  - mapping.items (line 159)
+  - state\_map.setdefault (line 162)
+  - state\_map.items (line 164)
+  - functools.lru\_cache (line 155)
+  - functools.lru\_cache (line 170)
+  - functools.lru\_cache (line 176)
+  - functools.lru\_cache (line 182)
+  - functools.lru\_cache (line 188)
+  - functools.lru\_cache (line 194)
+  - raw.strip (line 209)
+  - line.startswith (line 210)
+  - part.strip (line 212)
+  - line.split (line 212)
+  - c.strip (line 215)
 - Inbound references:
-  - build\_state\_to\_division\_type\_map ← constants.py:721
-  - \_sanitize\_party\_token ← constants.py:2602
-  - \_sanitize\_party\_token ← constants.py:2697
-  - normalize\_party\_code ← constants.py:2700
-  - canonical\_ballot\_group ← constants.py:2654
-  - canonical\_ballot\_group ← constants.py:2657
-  - canonical\_ballot\_group ← constants.py:2678
-  - canonical\_ballot\_group ← salvage.py:93
-  - normalize\_party\_label ← constants.py:2717
-  - is\_pseudo\_result\_party ← constants.py:3008
-  - \_iter\_strings ← constants.py:2989
-  - \_compile\_union ← constants.py:2976
-  - \_compile\_union ← constants.py:2990
-  - \_norm\_state\_key ← constants.py:2960
-  - \_norm\_county\_key ← constants.py:2961
-  - \_collect\_layered\_patterns ← constants.py:2975
-  - \_collect\_layered\_patterns ← constants.py:2986
-  - \_collect\_layered\_patterns ← constants.py:2987
-  - get\_camelot\_title\_regex ← constants.py:2999
-  - get\_camelot\_row\_regex ← constants.py:3000
+  - \_log\_vocab\_fallback ← constants.py:26
+  - \_log\_vocab\_fallback ← constants.py:30
+  - \_log\_vocab\_fallback ← constants.py:53
+  - \_log\_vocab\_fallback ← constants.py:57
+  - \_log\_vocab\_fallback ← constants.py:113
+  - \_log\_vocab\_fallback ← constants.py:117
+  - \_log\_vocab\_fallback ← constants.py:128
+  - \_log\_vocab\_fallback ← constants.py:132
+  - \_LazyMapping ← constants.py:801
+  - \_LazyMapping ← constants.py:803
+  - \_LazyMapping ← constants.py:829
+  - \_LazyMapping ← constants.py:850
+  - \_LazyMapping ← constants.py:863
+  - load\_vocab\_list ← constants.py:205
+  - load\_vocab\_list ← constants.py:304
+  - load\_vocab\_list ← constants.py:310
+  - load\_vocab\_list ← constants.py:327
+  - load\_vocab\_list ← constants.py:333
+  - load\_vocab\_list ← constants.py:345
+  - load\_vocab\_list ← constants.py:351
+  - load\_vocab\_list ← constants.py:357
+  - load\_vocab\_list ← constants.py:363
+  - load\_vocab\_list ← constants.py:369
+  - load\_vocab\_list ← constants.py:375
+  - load\_vocab\_list ← constants.py:402
+  - load\_vocab\_list ← constants.py:408
+  - load\_vocab\_list ← constants.py:414
+  - load\_vocab\_list ← constants.py:420
+  - load\_vocab\_list ← constants.py:438
+  - load\_vocab\_list ← constants.py:452
+  - load\_vocab\_list ← constants.py:467
+  - load\_vocab\_list ← constants.py:481
+  - load\_vocab\_list ← constants.py:499
+  - load\_vocab\_list ← constants.py:505
+  - load\_vocab\_list ← constants.py:511
+  - load\_vocab\_list ← constants.py:517
+  - load\_vocab\_list ← constants.py:523
+  - load\_vocab\_list ← constants.py:529
+  - load\_vocab\_list ← constants.py:535
+  - load\_vocab\_list ← constants.py:541
+  - load\_vocab\_list ← constants.py:547
+  - load\_vocab\_list ← constants.py:553
+  - load\_vocab\_list ← constants.py:559
+  - load\_vocab\_list ← constants.py:565
+  - load\_vocab\_list ← constants.py:572
+  - load\_vocab\_list ← constants.py:573
+  - load\_vocab\_list ← constants.py:574
+  - load\_vocab\_list ← constants.py:592
+  - load\_vocab\_list ← constants.py:675
+  - load\_vocab\_list ← constants.py:681
 
 ### Context\_Integration/Integrity\_check.py {#webapp-parser-context-integration-integrity-check-py}
 
 - Definitions:
-  - function: `\_trim\_monitor\_log` (line 47)
-  - function: `log\_integrity\_monitor` (line 70)
-  - function: `\_ensure\_alerts\_table` (line 80)
-  - function: `find\_date\_anomalies` (line 87)
-  - function: `detect\_anomalies\_with\_ml` (line 95)
-  - function: `election\_integrity\_checks` (line 182)
-  - function: `advanced\_cross\_field\_validation` (line 203)
-  - function: `summarize\_context\_entities` (line 212)
-  - function: `analyze\_contests` (line 221)
-  - function: `auto\_tune\_contamination` (line 267)
-  - function: `print\_issues\_table` (line 288)
-  - function: `print\_entity\_summary` (line 308)
-  - function: `print\_ml\_anomalies` (line 316)
-  - function: `print\_date\_anomalies` (line 346)
-  - function: `print\_auto\_tune\_result` (line 364)
-  - function: `print\_analyze\_contests` (line 370)
-  - function: `monitor\_db\_for\_alerts` (line 382)
-  - function: `log\_integrity\_issues` (line 428)
-  - function: `detect\_statistical\_outliers` (line 444)
-  - function: `print\_integrity\_summary` (line 480)
+  - function: `\_trim\_monitor\_log` (line 53)
+  - function: `\_cap\_log\_value` (line 76)
+  - function: `log\_integrity\_monitor` (line 98)
+  - function: `\_ensure\_alerts\_table` (line 109)
+  - function: `find\_date\_anomalies` (line 116)
+  - function: `detect\_anomalies\_with\_ml` (line 124)
+  - function: `election\_integrity\_checks` (line 211)
+  - function: `advanced\_cross\_field\_validation` (line 232)
+  - function: `summarize\_context\_entities` (line 241)
+  - function: `analyze\_contests` (line 250)
+  - function: `auto\_tune\_contamination` (line 296)
+  - function: `print\_issues\_table` (line 317)
+  - function: `print\_entity\_summary` (line 337)
+  - function: `print\_ml\_anomalies` (line 345)
+  - function: `print\_date\_anomalies` (line 375)
+  - function: `print\_auto\_tune\_result` (line 393)
+  - function: `print\_analyze\_contests` (line 399)
+  - function: `monitor\_db\_for\_alerts` (line 411)
+  - function: `log\_integrity\_issues` (line 457)
+  - function: `detect\_statistical\_outliers` (line 474)
+  - function: `print\_integrity\_summary` (line 510)
 - Imports:
   - **Standard Library** (9):
     - `import re as re` (line 3)
@@ -882,77 +1036,85 @@ graph LR
 - Outgoing cross-module calls (sample):
   - matplotlib.use (line 38)
   - pathlib.Path (line 41)
-  - INTEGRITY\_MONITOR\_LOG.touch (line 43)
-  - path.exists (line 48)
-  - path.stat (line 51)
-  - path.open (line 54)
-  - handle.seek (line 57)
-  - handle.read (line 58)
-  - tail.find (line 62)
-  - path.open (line 65)
-  - handle.write (line 66)
-  - payload.setdefault (line 72)
-  - time.time (line 72)
-  - INTEGRITY\_MONITOR\_LOG.open (line 74)
-  - handle.write (line 75)
-  - orjson.dumps (line 75)
-  - utils.spacy\_utils.extract\_dates (line 90)
-  - utils.shared\_logic.safe\_get (line 90)
-  - anomalies.append (line 92)
-  - numpy.array (line 105)
-  - sklearn.preprocessing.LabelEncoder (line 107)
-  - sklearn.preprocessing.LabelEncoder (line 108)
-  - sklearn.preprocessing.LabelEncoder (line 109)
-  - utils.shared\_logic.safe\_get (line 110)
-  - utils.shared\_logic.safe\_get (line 111)
-  - utils.shared\_logic.safe\_get (line 112)
-  - le\_state.fit (line 113)
-  - le\_county.fit (line 114)
-  - le\_type.fit (line 115)
-  - le\_state.transform (line 119)
+  - INTEGRITY\_MONITOR\_LOG.touch (line 49)
+  - path.exists (line 54)
+  - path.stat (line 57)
+  - path.open (line 60)
+  - handle.seek (line 63)
+  - handle.read (line 64)
+  - tail.find (line 68)
+  - path.open (line 71)
+  - handle.write (line 72)
+  - value.items (line 88)
+  - payload.setdefault (line 100)
+  - time.time (line 100)
+  - Context\_Integration.librarian.clean\_for\_json (line 101)
+  - INTEGRITY\_MONITOR\_LOG.open (line 103)
+  - handle.write (line 104)
+  - orjson.dumps (line 104)
+  - utils.spacy\_utils.extract\_dates (line 119)
   - utils.shared\_logic.safe\_get (line 119)
-  - le\_county.transform (line 120)
-  - utils.shared\_logic.safe\_get (line 120)
-  - le\_type.transform (line 121)
-  - utils.shared\_logic.safe\_get (line 121)
-  - utils.shared\_logic.safe\_get (line 122)
-  - utils.shared\_logic.safe\_get (line 122)
-  - utils.shared\_logic.safe\_get (line 123)
-  - utils.shared\_logic.safe\_get (line 124)
-  - utils.shared\_logic.safe\_get (line 124)
-  - utils.shared\_logic.safe\_get (line 125)
-  - utils.shared\_logic.safe\_get (line 125)
-  - trust\_factors.get (line 132)
-  - trust\_factors.get (line 133)
-  - trust\_factors.get (line 134)
-  - trust\_factors.get (line 134)
-  - trust\_factors.get (line 135)
-  - trust\_factors.get (line 136)
-  - trust\_factors.get (line 137)
-  - trust\_factors.get (line 138)
+  - anomalies.append (line 121)
+  - numpy.array (line 134)
+  - sklearn.preprocessing.LabelEncoder (line 136)
+  - sklearn.preprocessing.LabelEncoder (line 137)
+  - sklearn.preprocessing.LabelEncoder (line 138)
+  - utils.shared\_logic.safe\_get (line 139)
+  - utils.shared\_logic.safe\_get (line 140)
+  - utils.shared\_logic.safe\_get (line 141)
+  - le\_state.fit (line 142)
+  - le\_county.fit (line 143)
+  - le\_type.fit (line 144)
+  - le\_state.transform (line 148)
+  - utils.shared\_logic.safe\_get (line 148)
+  - le\_county.transform (line 149)
+  - utils.shared\_logic.safe\_get (line 149)
+  - le\_type.transform (line 150)
+  - utils.shared\_logic.safe\_get (line 150)
+  - utils.shared\_logic.safe\_get (line 151)
+  - utils.shared\_logic.safe\_get (line 151)
+  - utils.shared\_logic.safe\_get (line 152)
+  - utils.shared\_logic.safe\_get (line 153)
+  - utils.shared\_logic.safe\_get (line 153)
+  - utils.shared\_logic.safe\_get (line 154)
+  - utils.shared\_logic.safe\_get (line 154)
+  - trust\_factors.get (line 161)
+  - trust\_factors.get (line 162)
+  - trust\_factors.get (line 163)
+  - trust\_factors.get (line 163)
+  - trust\_factors.get (line 164)
+  - trust\_factors.get (line 165)
 - Inbound references:
-  - \_trim\_monitor\_log ← Integrity_check.py:76
-  - log\_integrity\_monitor ← Integrity_check.py:247
-  - \_ensure\_alerts\_table ← Integrity_check.py:83
-  - find\_date\_anomalies ← Integrity_check.py:223
-  - detect\_anomalies\_with\_ml ← Integrity_check.py:224
-  - election\_integrity\_checks ← Integrity_check.py:222
-  - advanced\_cross\_field\_validation ← Integrity_check.py:502
-  - summarize\_context\_entities ← Integrity_check.py:498
-  - summarize\_context\_entities ← manual_correction_bot.py:1132
-  - analyze\_contests ← html_election_parser.py:641
-  - analyze\_contests ← Integrity_check.py:488
-  - analyze\_contests ← manual_correction_bot.py:1112
-  - auto\_tune\_contamination ← Integrity_check.py:507
-  - print\_issues\_table ← Integrity_check.py:371
-  - print\_issues\_table ← Integrity_check.py:503
-  - print\_entity\_summary ← Integrity_check.py:499
-  - print\_ml\_anomalies ← Integrity_check.py:373
-  - print\_date\_anomalies ← Integrity_check.py:372
-  - print\_auto\_tune\_result ← Integrity_check.py:508
-  - print\_analyze\_contests ← Integrity_check.py:495
-  - print\_integrity\_summary ← html_election_parser.py:699
-  - print\_integrity\_summary ← html_election_parser.py:747
+  - \_trim\_monitor\_log ← Integrity_check.py:105
+  - \_cap\_log\_value ← Integrity_check.py:91
+  - \_cap\_log\_value ← Integrity_check.py:95
+  - \_cap\_log\_value ← Integrity_check.py:101
+  - \_cap\_log\_value ← Integrity_check.py:471
+  - \_cap\_log\_value ← librarian.py:97
+  - \_cap\_log\_value ← librarian.py:101
+  - \_cap\_log\_value ← librarian.py:770
+  - \_cap\_log\_value ← librarian.py:795
+  - log\_integrity\_monitor ← Integrity_check.py:276
+  - \_ensure\_alerts\_table ← Integrity_check.py:112
+  - find\_date\_anomalies ← Integrity_check.py:252
+  - detect\_anomalies\_with\_ml ← Integrity_check.py:253
+  - election\_integrity\_checks ← Integrity_check.py:251
+  - advanced\_cross\_field\_validation ← Integrity_check.py:532
+  - summarize\_context\_entities ← Integrity_check.py:528
+  - summarize\_context\_entities ← manual_correction_bot.py:1058
+  - analyze\_contests ← html_election_parser.py:763
+  - analyze\_contests ← Integrity_check.py:518
+  - analyze\_contests ← manual_correction_bot.py:1038
+  - auto\_tune\_contamination ← Integrity_check.py:537
+  - print\_issues\_table ← Integrity_check.py:400
+  - print\_issues\_table ← Integrity_check.py:533
+  - print\_entity\_summary ← Integrity_check.py:529
+  - print\_ml\_anomalies ← Integrity_check.py:402
+  - print\_date\_anomalies ← Integrity_check.py:401
+  - print\_auto\_tune\_result ← Integrity_check.py:538
+  - print\_analyze\_contests ← Integrity_check.py:525
+  - print\_integrity\_summary ← html_election_parser.py:821
+  - print\_integrity\_summary ← html_election_parser.py:869
 
 ### Context\_Integration/\_\_init\_\_.py {#webapp-parser-context-integration-init-py}
 
@@ -963,233 +1125,238 @@ graph LR
 > context_coordinator.py
 
 - Definitions:
-  - function: `get\_semantic\_score` (line 97)
-  - function: `merge\_and\_rank\_candidates` (line 166)
-  - function: `dynamic\_state\_county\_detection` (line 256)
-  - class: `ContextCoordinator` (line 857)
+  - function: `get\_semantic\_score` (line 106)
+  - function: `merge\_and\_rank\_candidates` (line 175)
+  - function: `dynamic\_state\_county\_detection` (line 265)
+  - class: `ContextCoordinator` (line 866)
 - Imports:
-  - **Standard Library** (14):
-    - `import os as os` (line 15)
-    - `import re as re` (line 16)
-    - `import subprocess as subprocess` (line 17)
-    - `import threading as threading` (line 18)
-    - `from collections import Counter` (line 19)
-    - `from collections import defaultdict` (line 19)
-    - `from datetime import datetime` (line 20)
-    - `from datetime import timezone` (line 20)
-    - `from typing import Any` (line 21)
-    - `from typing import Callable` (line 21)
-    - `from typing import Dict` (line 21)
-    - `from typing import List` (line 21)
-    - `from typing import Optional` (line 21)
-    - `from typing import Tuple` (line 21)
+  - **Standard Library** (17):
+    - `import hashlib as hashlib` (line 14)
+    - `import os as os` (line 16)
+    - `import re as re` (line 17)
+    - `import subprocess as subprocess` (line 18)
+    - `import threading as threading` (line 19)
+    - `from collections import Counter` (line 20)
+    - `from collections import defaultdict` (line 20)
+    - `from collections.abc import Mapping` (line 21)
+    - `from datetime import datetime` (line 22)
+    - `from datetime import timezone` (line 22)
+    - `from typing import Any` (line 23)
+    - `from typing import Callable` (line 23)
+    - `from typing import Dict` (line 23)
+    - `from typing import List` (line 23)
+    - `from typing import Optional` (line 23)
+    - `from typing import Tuple` (line 23)
+    - `from urllib.parse import urlparse` (line 24)
   - **Third-party** (2):
-    - `import numpy as np` (line 23)
-    - `import orjson as orjson` (line 24)
-  - **Local/Project** (69):
+    - `import numpy as np` (line 26)
+    - `import orjson as orjson` (line 27)
+  - **Local/Project** (75):
     - `from __future__ import annotations` (line 11)
     - `import difflib as difflib` (line 13)
-    - `import numbers as numbers` (line 14)
-    - `from rapidfuzz import fuzz` (line 25)
-    - `from rapidfuzz import process` (line 25)
-    - `from sklearn.preprocessing import LabelEncoder` (line 26)
-    - `from config import BATCH_MAX_WORKERS` (line 28)
-    - `from config import CONTEXT_LIBRARY_PATH` (line 28)
-    - `from config import LOG_DIR` (line 28)
-    - `from config import PROJECT_ROOT` (line 28)
-    - `from handlers.batch_handler import BatchProcessor` (line 29)
+    - `import numbers as numbers` (line 15)
+    - `from rapidfuzz import fuzz` (line 28)
+    - `from rapidfuzz import process` (line 28)
+    - `from sklearn.preprocessing import LabelEncoder` (line 29)
+    - `from config import BATCH_MAX_WORKERS` (line 31)
+    - `from config import CONTEXT_LIBRARY_PATH` (line 31)
+    - `from config import LOG_DIR` (line 31)
+    - `from config import PROJECT_ROOT` (line 31)
+    - `from handlers.batch_handler import BatchProcessor` (line 32)
     - `from services.election_data_services import ElectionDataService` (line
-      30)
-    - `from utils.browser_utils import safe_click` (line 31)
-    - `from utils.browser_utils import safe_count` (line 31)
-    - `from utils.browser_utils import safe_evaluate` (line 31)
-    - `from utils.browser_utils import safe_get_attribute` (line 31)
-    - `from utils.browser_utils import safe_inner_text` (line 31)
-    - `from utils.browser_utils import safe_is_enabled` (line 31)
-    - `from utils.browser_utils import safe_is_visible` (line 31)
-    - `from utils.browser_utils import safe_locator` (line 31)
-    - `from utils.browser_utils import safe_nth` (line 31)
-    - `from utils.browser_utils import safe_wait_for_timeout` (line 31)
-    - `from utils.browser_utils import scan_buttons_with_progress` (line 31)
-    - `from utils.html_scanner import deduplicate_pattern_kb` (line 44)
-    - `from utils.html_scanner import get_segment_embedding` (line 44)
-    - `from utils.html_scanner import load_pattern_kb` (line 44)
-    - `from utils.logger_singleton import logger` (line 49)
-    - `from utils.model_registry import ModelRegistry` (line 50)
-    - `from utils.shared_logic import keyphrase_match` (line 51)
-    - `from utils.shared_logic import normalize_county_name` (line 51)
-    - `from utils.shared_logic import normalize_state_name` (line 51)
-    - `from utils.shared_logic import safe_append` (line 51)
-    - `from utils.shared_logic import safe_endswith` (line 51)
-    - `from utils.shared_logic import safe_filename` (line 51)
-    - `from utils.shared_logic import safe_get` (line 51)
-    - `from utils.shared_logic import safe_get_first` (line 51)
-    - `from utils.shared_logic import safe_isupper` (line 51)
-    - `from utils.shared_logic import safe_items` (line 51)
-    - `from utils.shared_logic import safe_lower` (line 51)
-    - `from utils.shared_logic import safe_model_encode` (line 51)
-    - `from utils.shared_logic import safe_replace` (line 51)
-    - `from utils.shared_logic import safe_similarity` (line 51)
-    - `from utils.shared_logic import safe_startswith` (line 51)
-    - `from utils.shared_logic import safe_strip` (line 51)
-    - `from utils.shared_logic import safe_tolist` (line 51)
-    - `from utils.shared_logic import sync_type_and_election_types` (line 51)
-    - `from utils.spacy_utils import extract_dates` (line 71)
-    - `from utils.spacy_utils import extract_entities` (line 71)
-    - `from utils.spacy_utils import extract_locations` (line 71)
-    - `from Context_Library.constants import BALLOT_TYPES` (line 72)
+      33)
+    - `from utils.browser_utils import safe_click` (line 34)
+    - `from utils.browser_utils import safe_count` (line 34)
+    - `from utils.browser_utils import safe_evaluate` (line 34)
+    - `from utils.browser_utils import safe_get_attribute` (line 34)
+    - `from utils.browser_utils import safe_inner_text` (line 34)
+    - `from utils.browser_utils import safe_is_enabled` (line 34)
+    - `from utils.browser_utils import safe_is_visible` (line 34)
+    - `from utils.browser_utils import safe_locator` (line 34)
+    - `from utils.browser_utils import safe_nth` (line 34)
+    - `from utils.browser_utils import safe_wait_for_timeout` (line 34)
+    - `from utils.browser_utils import scan_buttons_with_progress` (line 34)
+    - `from utils.html_scanner import deduplicate_pattern_kb` (line 47)
+    - `from utils.html_scanner import get_segment_embedding` (line 47)
+    - `from utils.html_scanner import load_pattern_kb` (line 47)
+    - `from utils.logger_singleton import logger` (line 52)
+    - `from utils.model_registry import ModelRegistry` (line 53)
+    - `from utils.shared_logic import keyphrase_match` (line 54)
+    - `from utils.shared_logic import normalize_county_name` (line 54)
+    - `from utils.shared_logic import normalize_state_name` (line 54)
+    - `from utils.shared_logic import safe_append` (line 54)
+    - `from utils.shared_logic import safe_endswith` (line 54)
+    - `from utils.shared_logic import safe_filename` (line 54)
+    - `from utils.shared_logic import safe_get` (line 54)
+    - `from utils.shared_logic import safe_get_first` (line 54)
+    - `from utils.shared_logic import safe_isupper` (line 54)
+    - `from utils.shared_logic import safe_items` (line 54)
+    - `from utils.shared_logic import safe_lower` (line 54)
+    - `from utils.shared_logic import safe_model_encode` (line 54)
+    - `from utils.shared_logic import safe_replace` (line 54)
+    - `from utils.shared_logic import safe_similarity` (line 54)
+    - `from utils.shared_logic import safe_startswith` (line 54)
+    - `from utils.shared_logic import safe_strip` (line 54)
+    - `from utils.shared_logic import safe_tolist` (line 54)
+    - `from utils.shared_logic import sync_type_and_election_types` (line 54)
+    - `from utils.spacy_utils import extract_dates` (line 74)
+    - `from utils.spacy_utils import extract_entities` (line 74)
+    - `from utils.spacy_utils import extract_locations` (line 74)
+    - `from Context_Library.constants import BALLOT_TYPES` (line 75)
 - Task markers:
-  - L896 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
-  - L984 **WARNING**: ({
-  - L985 **WARNING**: ",
-  - L1383 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
+  - L911 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
+  - L999 **WARNING**: ({
+  - L1000 **WARNING**: ",
+  - L1754 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
     {issues\['integrity_issues'\]}")
-  - L1622 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
+  - L2017 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
     contest: {contest}")
-  - L1799 **WARNING**: (f"\[get_feedback_pattern_kb\] Skipping corrupt line:
+  - L2322 **WARNING**: (f"\[get_feedback_pattern_kb\] Skipping corrupt line:
     {e}")
-  - L1911 **WARNING**: ("\[group_dom_nodes_by_label\] No organized DOM parts.
+  - L2434 **WARNING**: ("\[group_dom_nodes_by_label\] No organized DOM parts.
     (Further warnings suppressed)")
-  - L1913 **WARNING**: (f"\[group_dom_nodes_by_label\] No organized DOM parts.
+  - L2436 **WARNING**: (f"\[group_dom_nodes_by_label\] No organized DOM parts.
     (Occurred {ContextCoordinator._dom_parts_warning_count} times)")
-  - L1918 **WARNING**: ("\[group_dom_nodes_by_label\] No DOM nodes found.")
-  - L1936 **WARNING**: ("\[submit_user_feedback\] ContextOrganizer has no
+  - L2441 **WARNING**: ("\[group_dom_nodes_by_label\] No DOM nodes found.")
+  - L2459 **WARNING**: ("\[submit_user_feedback\] ContextOrganizer has no
     submit_user_feedback method.")
-  - L1964 **WARNING**: (f"\[correct_and_update_contest\] Contest {contest_id}
+  - L2487 **WARNING**: (f"\[correct_and_update_contest\] Contest {contest_id}
     missing type/election_types after sync.")
-  - L1988 **WARNING**: ("\[print_contest_summary\] No organized contests to
+  - L2511 **WARNING**: ("\[print_contest_summary\] No organized contests to
     summarize.")
-  - L2001 **WARNING**: ("\[plot_contest_distribution\] No organized contests to
+  - L2524 **WARNING**: ("\[plot_contest_distribution\] No organized contests to
     plot.")
-  - L2052 **WARNING**: ("No organized DOM parts.")
-  - L2055 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
-  - L2066 **WARNING**: ("\[get_contest_groups\] No contest groups found.")
-  - L2075 **WARNING**: ("\[get_panel_groups\] No panel groups found.")
-  - L2084 **WARNING**: ("\[get_button_groups\] No button groups found.")
-  - L2093 **WARNING**: ("\[get_table_groups\] No table groups found.")
-  - L2102 **WARNING**: ("\[get_relationships\] No organized context.")
-  - L2210 **WARNING**: (f"\[fuzzy_score\] One or both inputs are empty:
+  - L2591 **WARNING**: ("No organized DOM parts.")
+  - L2594 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
+  - L2605 **WARNING**: ("\[get_contest_groups\] No contest groups found.")
+  - L2614 **WARNING**: ("\[get_panel_groups\] No panel groups found.")
+  - L2623 **WARNING**: ("\[get_button_groups\] No button groups found.")
+  - L2632 **WARNING**: ("\[get_table_groups\] No table groups found.")
+  - L2641 **WARNING**: ("\[get_relationships\] No organized context.")
+  - L2749 **WARNING**: (f"\[fuzzy_score\] One or both inputs are empty:
     a='{a_str}', b='{b_str}'")
-  - L2216 **WARNING**: (f"\[fuzzy_score\] One or both inputs are too short:
+  - L2755 **WARNING**: (f"\[fuzzy_score\] One or both inputs are too short:
     a='{a_str}', b='{b_str}'")
-  - L2662 **WARNING**: (f"\[extract_field\] Unknown field_type: {field_type}")
-  - L2920 **WARNING**: (f"\[get_full_contest\] Contest {contest_id} missing
+  - L3202 **WARNING**: (f"\[extract_field\] Unknown field_type: {field_type}")
+  - L3460 **WARNING**: (f"\[get_full_contest\] Contest {contest_id} missing
     type/election_types after sync.")
-  - L3005 **WARNING**: (f"\[list_tables\] Table '{tbl}' missing metadata or
+  - L3545 **WARNING**: (f"\[list_tables\] Table '{tbl}' missing metadata or
     columns.")
-  - L3037 **WARNING**: (f"\[get_table_metadata\] Table '{table_name}' missing
+  - L3577 **WARNING**: (f"\[get_table_metadata\] Table '{table_name}' missing
     columns.")
-  - L3055 **WARNING**: (f"\[check_missing_tables\] Missing tables: {missing}")
-  - L3116 **WARNING**: (f"\[save_table_structure\] Failed to save structure for
+  - L3595 **WARNING**: (f"\[check_missing_tables\] Missing tables: {missing}")
+  - L3656 **WARNING**: (f"\[save_table_structure\] Failed to save structure for
     contest: {contest}")
-  - L3293 **WARNING**: (f"\[get_best_button_advanced\] Contest argument was not
+  - L3831 **WARNING**: (f"\[get_best_button_advanced\] Contest argument was not
     a dict. Converted to: {contest}")
-  - L3297 **WARNING**: (f"\[get_best_button_advanced\] Keywords argument was not
+  - L3835 **WARNING**: (f"\[get_best_button_advanced\] Keywords argument was not
     a list. Converted to: {keywords}")
-  - L3301 **WARNING**: (f"\[get_best_button_advanced\] Context argument was not
+  - L3839 **WARNING**: (f"\[get_best_button_advanced\] Context argument was not
     a dict. Converted to: {context}")
-  - L3308 **WARNING**: ("\[get_best_button_advanced\]_semantic_model is not set
+  - L3846 **WARNING**: ("\[get_best_button_advanced\]_semantic_model is not set
     or is not an object. Using None.")
-  - L3453 **WARNING**: (f"\[yellow\]\[Coordinator\] Button '{cand.get('label')}'
+  - L3991 **WARNING**: (f"\[yellow\]\[Coordinator\] Button '{cand.get('label')}'
     rejected, retrying...\[/yellow\]")
 - Outgoing cross-module calls (sample):
-  - utils.shared\_logic.safe\_model\_encode (line 134)
-  - utils.shared\_logic.safe\_model\_encode (line 135)
-  - utils.logger\_singleton.logger.debug (line 137)
-  - util.pytorch\_cos\_sim (line 140)
-  - cos\_sim.item (line 142)
-  - cos\_sim.numpy (line 144)
-  - arr.flatten (line 145)
-  - utils.logger\_singleton.logger.error (line 150)
-  - utils.logger\_singleton.logger.error (line 155)
-  - utils.shared\_logic.safe\_lower (line 159)
-  - text1.split (line 159)
-  - utils.shared\_logic.safe\_lower (line 160)
-  - text2.split (line 160)
-  - utils.shared\_logic.safe\_get (line 177)
-  - utils.shared\_logic.safe\_get (line 179)
-  - utils.shared\_logic.safe\_get (line 179)
-  - seen.add (line 181)
-  - all\_candidates.append (line 182)
-  - utils.shared\_logic.safe\_get (line 185)
+  - utils.shared\_logic.safe\_model\_encode (line 143)
+  - utils.shared\_logic.safe\_model\_encode (line 144)
+  - utils.logger\_singleton.logger.debug (line 146)
+  - util.pytorch\_cos\_sim (line 149)
+  - cos\_sim.item (line 151)
+  - cos\_sim.numpy (line 153)
+  - arr.flatten (line 154)
+  - utils.logger\_singleton.logger.error (line 159)
+  - utils.logger\_singleton.logger.error (line 164)
+  - utils.shared\_logic.safe\_lower (line 168)
+  - text1.split (line 168)
+  - utils.shared\_logic.safe\_lower (line 169)
+  - text2.split (line 169)
   - utils.shared\_logic.safe\_get (line 186)
-  - utils.shared\_logic.safe\_get (line 189)
-  - utils.shared\_logic.safe\_get (line 190)
-  - utils.shared\_logic.safe\_get (line 191)
-  - utils.shared\_logic.safe\_get (line 192)
+  - utils.shared\_logic.safe\_get (line 188)
+  - utils.shared\_logic.safe\_get (line 188)
+  - seen.add (line 190)
+  - all\_candidates.append (line 191)
+  - utils.shared\_logic.safe\_get (line 194)
   - utils.shared\_logic.safe\_get (line 195)
-  - utils.shared\_logic.safe\_get (line 196)
+  - utils.shared\_logic.safe\_get (line 198)
+  - utils.shared\_logic.safe\_get (line 199)
+  - utils.shared\_logic.safe\_get (line 200)
   - utils.shared\_logic.safe\_get (line 201)
-  - utils.shared\_logic.safe\_lower (line 203)
-  - label.strip (line 203)
-  - utils.shared\_logic.safe\_lower (line 203)
-  - contest\_title.strip (line 203)
-  - utils.shared\_logic.keyphrase\_match (line 207)
-  - utils.shared\_logic.keyphrase\_match (line 207)
-  - difflib.SequenceMatcher (line 212)
+  - utils.shared\_logic.safe\_get (line 204)
+  - utils.shared\_logic.safe\_get (line 205)
+  - utils.shared\_logic.safe\_get (line 210)
   - utils.shared\_logic.safe\_lower (line 212)
+  - label.strip (line 212)
   - utils.shared\_logic.safe\_lower (line 212)
-  - utils.shared\_logic.safe\_get (line 218)
-  - utils.shared\_logic.safe\_get (line 224)
-  - utils.shared\_logic.safe\_get (line 225)
-  - utils.shared\_logic.safe\_lower (line 226)
-  - utils.shared\_logic.safe\_lower (line 228)
-  - all\_candidates.sort (line 246)
-  - utils.shared\_logic.safe\_get (line 248)
-  - utils.shared\_logic.safe\_get (line 249)
-  - utils.shared\_logic.safe\_get (line 250)
-  - state\_to\_county.keys (line 284)
-  - state\_to\_county.values (line 285)
-  - utils.shared\_logic.normalize\_county\_name (line 286)
-  - county\_to\_precinct.values (line 287)
-  - utils.shared\_logic.normalize\_county\_name (line 288)
+  - contest\_title.strip (line 212)
+  - utils.shared\_logic.keyphrase\_match (line 216)
+  - utils.shared\_logic.keyphrase\_match (line 216)
+  - difflib.SequenceMatcher (line 221)
+  - utils.shared\_logic.safe\_lower (line 221)
+  - utils.shared\_logic.safe\_lower (line 221)
+  - utils.shared\_logic.safe\_get (line 227)
+  - utils.shared\_logic.safe\_get (line 233)
+  - utils.shared\_logic.safe\_get (line 234)
+  - utils.shared\_logic.safe\_lower (line 235)
+  - utils.shared\_logic.safe\_lower (line 237)
+  - all\_candidates.sort (line 255)
+  - utils.shared\_logic.safe\_get (line 257)
+  - utils.shared\_logic.safe\_get (line 258)
+  - utils.shared\_logic.safe\_get (line 259)
+  - state\_to\_county.keys (line 293)
+  - state\_to\_county.values (line 294)
+  - utils.shared\_logic.normalize\_county\_name (line 295)
+  - county\_to\_precinct.values (line 296)
+  - utils.shared\_logic.normalize\_county\_name (line 297)
 - Inbound references:
-  - get\_semantic\_score ← context_coordinator.py:216
-  - get\_semantic\_score ← context_coordinator.py:221
-  - get\_semantic\_score ← context_coordinator.py:2773
-  - get\_semantic\_score ← context_coordinator.py:2792
-  - get\_semantic\_score ← context_coordinator.py:2801
-  - get\_semantic\_score ← context_coordinator.py:2837
-  - get\_semantic\_score ← context_coordinator.py:2850
-  - get\_semantic\_score ← context_coordinator.py:2977
-  - get\_semantic\_score ← context_coordinator.py:3163
-  - merge\_and\_rank\_candidates ← context_coordinator.py:1863
-  - merge\_and\_rank\_candidates ← context_coordinator.py:3419
-  - dynamic\_state\_county\_detection ← state_router.py:365
-  - dynamic\_state\_county\_detection ← context_organizer.py:1705
-  - dynamic\_state\_county\_detection ← shared_logic.py:1953
-  - ContextCoordinator ← html_election_parser.py:1041
-  - ContextCoordinator ← html_election_parser.py:1208
-  - ContextCoordinator ← html_election_parser.py:1487
-  - ContextCoordinator ← state_router.py:361
+  - get\_semantic\_score ← context_coordinator.py:225
+  - get\_semantic\_score ← context_coordinator.py:230
+  - get\_semantic\_score ← context_coordinator.py:3313
+  - get\_semantic\_score ← context_coordinator.py:3332
+  - get\_semantic\_score ← context_coordinator.py:3341
+  - get\_semantic\_score ← context_coordinator.py:3377
+  - get\_semantic\_score ← context_coordinator.py:3390
+  - get\_semantic\_score ← context_coordinator.py:3517
+  - get\_semantic\_score ← context_coordinator.py:3703
+  - merge\_and\_rank\_candidates ← context_coordinator.py:2386
+  - merge\_and\_rank\_candidates ← context_coordinator.py:3957
+  - dynamic\_state\_county\_detection ← state_router.py:404
+  - dynamic\_state\_county\_detection ← context_organizer.py:1769
+  - dynamic\_state\_county\_detection ← shared_logic.py:2050
+  - ContextCoordinator ← html_election_parser.py:1163
+  - ContextCoordinator ← html_election_parser.py:1330
+  - ContextCoordinator ← html_election_parser.py:1625
+  - ContextCoordinator ← state_router.py:400
   - ContextCoordinator ← html_handler.py:103
+  - ContextCoordinator ← state_handler_base.py:210
   - ContextCoordinator ← example_state.py:34
   - ContextCoordinator ← example_county.py:27
   - ContextCoordinator ← rockland.py:39
+  - ContextCoordinator ← westchester.py:69
   - ContextCoordinator ← dom_snapshot.py:182
-  - ContextCoordinator ← contest_selector.py:896
-  - ContextCoordinator ← contest_selector.py:1036
-  - ContextCoordinator ← dynamic_table_extractor.py:284
-  - ContextCoordinator ← dynamic_table_extractor.py:312
-  - ContextCoordinator ← dynamic_table_extractor.py:478
-  - ContextCoordinator ← dynamic_table_extractor.py:497
-  - ContextCoordinator ← dynamic_table_extractor.py:984
-  - ContextCoordinator ← dynamic_table_extractor.py:1028
-  - ContextCoordinator ← dynamic_table_extractor.py:1058
-  - ContextCoordinator ← dynamic_table_extractor.py:1076
-  - ContextCoordinator ← dynamic_table_extractor.py:1108
-  - ContextCoordinator ← dynamic_table_extractor.py:1138
-  - ContextCoordinator ← html_scanner.py:730
-  - ContextCoordinator ← html_scanner.py:1195
-  - ContextCoordinator ← html_scanner.py:2585
-  - ContextCoordinator ← html_scanner.py:2776
-  - ContextCoordinator ← html_scanner.py:2882
-  - ContextCoordinator ← html_scanner.py:3161
+  - ContextCoordinator ← contest_selector.py:903
+  - ContextCoordinator ← contest_selector.py:1057
+  - ContextCoordinator ← dynamic_table_extractor.py:285
+  - ContextCoordinator ← dynamic_table_extractor.py:313
+  - ContextCoordinator ← dynamic_table_extractor.py:479
+  - ContextCoordinator ← dynamic_table_extractor.py:498
+  - ContextCoordinator ← dynamic_table_extractor.py:992
+  - ContextCoordinator ← dynamic_table_extractor.py:1036
+  - ContextCoordinator ← dynamic_table_extractor.py:1066
+  - ContextCoordinator ← dynamic_table_extractor.py:1084
+  - ContextCoordinator ← dynamic_table_extractor.py:1116
+  - ContextCoordinator ← dynamic_table_extractor.py:1146
+  - ContextCoordinator ← html_scanner.py:733
+  - ContextCoordinator ← html_scanner.py:1220
+  - ContextCoordinator ← html_scanner.py:2610
+  - ContextCoordinator ← html_scanner.py:2801
+  - ContextCoordinator ← html_scanner.py:2907
+  - ContextCoordinator ← html_scanner.py:3186
   - ContextCoordinator ← output_utils.py:99
-  - ContextCoordinator ← table_builder.py:766
-  - ContextCoordinator ← table_builder.py:1151
-  - ContextCoordinator ← table_builder.py:1461
-  - ContextCoordinator ← table_builder.py:1520
+  - ContextCoordinator ← table_builder.py:771
+  - ContextCoordinator ← table_builder.py:1156
+  - ContextCoordinator ← table_builder.py:1489
+  - ContextCoordinator ← table_builder.py:1552
 
 ### Context\_Integration/context\_organizer.py {#webapp-parser-context-integration-context-organizer-py}
 
@@ -1262,26 +1429,26 @@ graph LR
     - `from librarian import load_context_library` (line 57)
     - `from librarian import update_context_library` (line 57)
 - Task markers:
-  - L282 **WARNING**: (
-  - L407 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or
+  - L288 **WARNING**: (
+  - L413 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or
     missing title: {str(title)\[:100\]}...")
-  - L495 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered_out)} contests
+  - L501 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered_out)} contests
     due to missing required fields.")
-  - L497 **WARNING**: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
-  - L500 **WARNING**: ("\[CONTEST\] No contests with required fields for
+  - L503 **WARNING**: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
+  - L506 **WARNING**: ("\[CONTEST\] No contests with required fields for
     downstream output.")
-  - L816 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests
+  - L822 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests
     list of length {len(contests)}")
-  - L1602 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
-  - L1608 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
+  - L1665 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
+  - L1671 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
     contest detected.\n  \[dim\]Context:\[/dim\] {contest}")
-  - L1610 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+  - L1673 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
     missing location info.\n  \[dim\]Context:\[/dim\] {contest}")
-  - L1612 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+  - L1675 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
     missing year.\n  \[dim\]Context:\[/dim\] {contest}")
-  - L2082 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
+  - L2146 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
     with feedback: {e}")
-  - L2159 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
+  - L2223 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
     contest: {contest}")
 - Outgoing cross-module calls (sample):
   - utils.misc\_utils.load\_processed\_urls (line 59)
@@ -1315,46 +1482,46 @@ graph LR
   - dom\_parts\_dict.get (line 175)
   - utils.shared\_logic.safe\_get\_first (line 176)
   - utils.logger\_singleton.logger.error (line 179)
-  - librarian.load\_context\_library (line 205)
-  - self.\_default\_library (line 205)
-  - utils.logger\_singleton.logger.error (line 207)
-  - utils.logger\_singleton.logger.debug (line 209)
-  - utils.logger\_singleton.logger.error (line 211)
-  - utils.misc\_utils.load\_processed\_urls (line 214)
-  - utils.misc\_utils.load\_output\_cache (line 215)
-  - utils.html\_scanner.load\_context\_cache\_from\_disk (line 218)
-  - services.election\_data\_services.ElectionDataService (line 221)
-  - self.\_resolve\_embedding\_model (line 223)
-  - utils.logger\_singleton.logger.error (line 225)
-  - utils.model\_registry.ModelRegistry.get\_sentence\_transformer (line 272)
-  - utils.logger\_singleton.logger.info (line 274)
-  - utils.logger\_singleton.logger.info (line 279)
-  - utils.logger\_singleton.logger.warning (line 282)
-  - item.get (line 299)
-  - item.get (line 300)
-  - deduped.append (line 301)
-  - seen.add (line 302)
+  - librarian.load\_context\_library (line 211)
+  - self.\_default\_library (line 211)
+  - utils.logger\_singleton.logger.error (line 213)
+  - utils.logger\_singleton.logger.debug (line 215)
+  - utils.logger\_singleton.logger.error (line 217)
+  - utils.misc\_utils.load\_processed\_urls (line 220)
+  - utils.misc\_utils.load\_output\_cache (line 221)
+  - utils.html\_scanner.load\_context\_cache\_from\_disk (line 224)
+  - services.election\_data\_services.ElectionDataService (line 227)
+  - self.\_resolve\_embedding\_model (line 229)
+  - utils.logger\_singleton.logger.error (line 231)
+  - utils.model\_registry.ModelRegistry.get\_sentence\_transformer (line 278)
+  - utils.logger\_singleton.logger.info (line 280)
+  - utils.logger\_singleton.logger.info (line 285)
+  - utils.logger\_singleton.logger.warning (line 288)
+  - item.get (line 305)
+  - item.get (line 306)
+  - deduped.append (line 307)
+  - seen.add (line 308)
 - Inbound references:
-  - get\_loading\_indicator ← context_organizer.py:1809
-  - ensure\_dict ← context_organizer.py:668
-  - ensure\_dict ← context_organizer.py:676
-  - ensure\_dict ← context_organizer.py:684
-  - ensure\_dict ← context_organizer.py:692
-  - ensure\_dict ← context_organizer.py:700
-  - ensure\_dict ← context_organizer.py:708
-  - ensure\_dict ← context_organizer.py:716
-  - ensure\_dict ← context_organizer.py:724
-  - ensure\_dict ← context_organizer.py:732
-  - ensure\_dict ← context_organizer.py:740
+  - get\_loading\_indicator ← context_organizer.py:1873
+  - ensure\_dict ← context_organizer.py:674
+  - ensure\_dict ← context_organizer.py:682
+  - ensure\_dict ← context_organizer.py:690
+  - ensure\_dict ← context_organizer.py:698
+  - ensure\_dict ← context_organizer.py:706
+  - ensure\_dict ← context_organizer.py:714
+  - ensure\_dict ← context_organizer.py:722
+  - ensure\_dict ← context_organizer.py:730
+  - ensure\_dict ← context_organizer.py:738
+  - ensure\_dict ← context_organizer.py:746
   - remove\_functions ← context_organizer.py:81
   - remove\_functions ← context_organizer.py:83
-  - remove\_functions ← context_organizer.py:2128
-  - contest\_hash ← context_organizer.py:989
-  - repair\_dom\_segments ← context_organizer.py:333
-  - repair\_dom\_segments ← context_organizer.py:1783
-  - \_defensive\_dom\_check ← context_organizer.py:340
-  - ContextOrganizer ← html_scanner.py:1556
-  - ContextOrganizer ← html_scanner.py:3222
+  - remove\_functions ← context_organizer.py:2192
+  - contest\_hash ← context_organizer.py:995
+  - repair\_dom\_segments ← context_organizer.py:339
+  - repair\_dom\_segments ← context_organizer.py:1847
+  - \_defensive\_dom\_check ← context_organizer.py:346
+  - ContextOrganizer ← html_scanner.py:1581
+  - ContextOrganizer ← html_scanner.py:3247
 
 ### Context\_Integration/librarian.py {#webapp-parser-context-integration-librarian-py}
 
@@ -1372,7 +1539,7 @@ graph LR
 
 # It also includes utilities for logging unknown HTML tags and attributes,
 
-# extending context library structures, and handling ML/LLM feedback.
+# extending context library structures, and handling ML feedback.
 
 #
 
@@ -1383,266 +1550,271 @@ graph LR
 ```
 
 - Definitions:
-  - function: `safe\_path` (line 74)
-  - function: `get\_safe\_log\_path` (line 103)
-  - function: `atomic\_write\_json` (line 125)
-  - function: `extend\_panel\_tags` (line 188)
-  - function: `extend\_heading\_tags` (line 192)
-  - function: `extend\_html\_tags` (line 196)
-  - function: `extend\_custom\_attr\_patterns` (line 200)
-  - function: `extend\_location\_keywords` (line 208)
-  - function: `extend\_candidate\_keywords` (line 212)
-  - function: `extend\_ballot\_types` (line 216)
-  - function: `safe\_join` (line 220)
-  - function: `clean\_for\_json` (line 236)
-  - function: `robust\_orjson\_loads` (line 252)
-  - function: `load\_context\_library` (line 260)
-  - function: `update\_context\_library` (line 352)
-  - function: `backup\_context\_library` (line 368)
-  - function: `save\_context\_library` (line 426)
-  - function: `merge\_and\_save\_context\_library` (line 480)
-  - function: `update\_context\_library\_field` (line 489)
-  - function: `update\_domain\_selector\_cache` (line 501)
-  - function: `get\_domain\_selectors` (line 522)
-  - function: `log\_selector\_attempt` (line 527)
-  - function: `\_get\_log\_path` (line 551)
-  - function: `\_deduplicate\_jsonl\_log` (line 567)
-  - function: `log\_unknown\_tag` (line 602)
-  - function: `log\_unknown\_attr` (line 624)
-  - function: `integrate\_llm\_feedback` (line 649)
-  - function: `lookup\_state` (line 664)
-  - function: `get\_state\_abbr` (line 689)
-  - function: `lookup\_county` (line 702)
-  - function: `normalize\_segment\_text` (line 728)
-  - function: `get\_canonical\_segment\_label` (line 734)
-  - function: `cache\_segment\_label` (line 739)
-  - function: `get\_cached\_segment\_label` (line 743)
-  - function: `self\_heal\_context\_library` (line 748)
-  - function: `parse\_filename\_for\_location` (line 789)
+  - function: `\_cap\_log\_value` (line 82)
+  - function: `get\_vocab\_constant` (line 105)
+  - function: `safe\_path` (line 119)
+  - function: `get\_safe\_log\_path` (line 148)
+  - function: `atomic\_write\_json` (line 170)
+  - function: `extend\_panel\_tags` (line 233)
+  - function: `extend\_heading\_tags` (line 237)
+  - function: `extend\_html\_tags` (line 241)
+  - function: `\_normalize\_custom\_attr\_pattern` (line 245)
+  - function: `\_dedupe\_custom\_attr\_pattern\_strings` (line 261)
+  - function: `extend\_custom\_attr\_patterns` (line 277)
+  - function: `extend\_location\_keywords` (line 287)
+  - function: `extend\_candidate\_keywords` (line 291)
+  - function: `extend\_ballot\_types` (line 295)
+  - function: `safe\_join` (line 299)
+  - function: `clean\_for\_json` (line 315)
+  - function: `robust\_orjson\_loads` (line 331)
+  - function: `load\_context\_library` (line 339)
+  - function: `update\_context\_library` (line 439)
+  - function: `backup\_context\_library` (line 455)
+  - function: `save\_context\_library` (line 525)
+  - function: `merge\_and\_save\_context\_library` (line 579)
+  - function: `\_dedupe\_string\_list` (line 588)
+  - function: `dedupe\_context\_library\_fields` (line 605)
+  - function: `update\_context\_library\_field` (line 640)
+  - function: `update\_domain\_selector\_cache` (line 652)
+  - function: `get\_domain\_selectors` (line 673)
+  - function: `log\_selector\_attempt` (line 678)
+  - function: `\_get\_log\_path` (line 701)
+  - function: `\_deduplicate\_jsonl\_log` (line 717)
+  - function: `log\_unknown\_tag` (line 752)
+  - function: `log\_unknown\_attr` (line 775)
+  - function: `integrate\_feedback` (line 801)
+  - function: `lookup\_state` (line 816)
+  - function: `get\_state\_abbr` (line 841)
+  - function: `lookup\_county` (line 854)
+  - function: `normalize\_segment\_text` (line 880)
+  - function: `get\_canonical\_segment\_label` (line 886)
+  - function: `cache\_segment\_label` (line 891)
+  - function: `get\_cached\_segment\_label` (line 895)
+  - function: `self\_heal\_context\_library` (line 900)
+  - function: `parse\_filename\_for\_location` (line 941)
 - Imports:
-  - **Standard Library** (17):
+  - **Standard Library** (19):
     - `import argparse as argparse` (line 12)
     - `import os as os` (line 13)
-    - `import re as re` (line 14)
-    - `import shutil as shutil` (line 15)
-    - `import subprocess as subprocess` (line 16)
-    - `import sys as sys` (line 17)
-    - `import tempfile as tempfile` (line 18)
-    - `import threading as threading` (line 19)
-    - `import time as time` (line 20)
-    - `from datetime import datetime` (line 21)
-    - `from datetime import timezone` (line 21)
-    - `from pathlib import Path` (line 22)
-    - `from typing import Any` (line 23)
-    - `from typing import Dict` (line 23)
-    - `from typing import List` (line 23)
-    - `from typing import Optional` (line 23)
-    - `from typing import Set` (line 23)
+    - `import random as random` (line 14)
+    - `import re as re` (line 15)
+    - `import shutil as shutil` (line 16)
+    - `import subprocess as subprocess` (line 17)
+    - `import sys as sys` (line 18)
+    - `import tempfile as tempfile` (line 19)
+    - `import threading as threading` (line 20)
+    - `import time as time` (line 21)
+    - `from datetime import datetime` (line 22)
+    - `from datetime import timezone` (line 22)
+    - `from pathlib import Path` (line 23)
+    - `from typing import Any` (line 24)
+    - `from typing import Dict` (line 24)
+    - `from typing import List` (line 24)
+    - `from typing import Optional` (line 24)
+    - `from typing import Pattern` (line 24)
+    - `from typing import Set` (line 24)
   - **Third-party** (2):
-    - `import numpy as np` (line 25)
-    - `import orjson as orjson` (line 26)
-  - **Local/Project** (23):
+    - `import numpy as np` (line 26)
+    - `import orjson as orjson` (line 27)
+  - **Local/Project** (24):
     - `from __future__ import annotations` (line 10)
-    - `from config import BASE_DIR` (line 28)
-    - `from config import CONTEXT_LIBRARY_PATH` (line 28)
-    - `from config import LOG_DIR` (line 28)
-    - `from config import PROJECT_ROOT` (line 28)
-    - `from utils.logger_singleton import logger` (line 29)
-    - `from utils.misc_utils import file_hash` (line 30)
-    - `from utils.shared_logic import safe_append` (line 31)
-    - `from utils.shared_logic import safe_filename` (line 31)
-    - `from utils.shared_logic import safe_get` (line 31)
-    - `from utils.shared_logic import safe_merge_defaults` (line 31)
-    - `from utils.shared_logic import safe_setdefault` (line 31)
-    - `from Context_Library.constants import BALLOT_TYPES` (line 38)
-    - `from Context_Library.constants import CANDIDATE_KEYWORDS` (line 38)
-    - `from Context_Library.constants import CANONICAL_SEGMENT_LABELS` (line 38)
-    - `from Context_Library.constants import CANONICAL_STATE_ABBR` (line 38)
-    - `from Context_Library.constants import CUSTOM_ATTR_PATTERNS` (line 38)
-    - `from Context_Library.constants import HEADING_TAGS` (line 38)
-    - `from Context_Library.constants import HTML_TAGS` (line 38)
+    - `from config import BASE_DIR` (line 29)
+    - `from config import CONTEXT_LIBRARY_PATH` (line 29)
+    - `from config import LOG_DIR` (line 29)
+    - `from config import PROJECT_ROOT` (line 29)
+    - `from utils.logger_singleton import logger` (line 30)
+    - `from utils.misc_utils import file_hash` (line 31)
+    - `from utils.shared_logic import safe_append` (line 32)
+    - `from utils.shared_logic import safe_filename` (line 32)
+    - `from utils.shared_logic import safe_get` (line 32)
+    - `from utils.shared_logic import safe_merge_defaults` (line 32)
+    - `from utils.shared_logic import safe_setdefault` (line 32)
+    - `from Context_Library.constants import BALLOT_TYPES` (line 39)
+    - `from Context_Library.constants import CANDIDATE_KEYWORDS` (line 39)
+    - `from Context_Library.constants import CANONICAL_SEGMENT_LABELS` (line 39)
+    - `from Context_Library.constants import CANONICAL_STATE_ABBR` (line 39)
+    - `from Context_Library.constants import CUSTOM_ATTR_PATTERNS` (line 39)
+    - `from Context_Library.constants import HEADING_TAGS` (line 39)
+    - `from Context_Library.constants import HTML_TAGS` (line 39)
     - `from Context_Library.constants import KNOWN_STATE_TO_COUNTY_MAP` (line
-      38)
-    - `from Context_Library.constants import LOCATION_KEYWORDS` (line 38)
-    - `from Context_Library.constants import PANEL_TAGS` (line 38)
-    - `from Context_Library.constants import STATE_ABBR` (line 38)
+      39)
+    - `from Context_Library.constants import LOCATION_KEYWORDS` (line 39)
+    - `from Context_Library.constants import PANEL_TAGS` (line 39)
+    - `from Context_Library.constants import STATE_ABBR` (line 39)
+    - `from vocab.loader import get_vocab_loader` (line 52)
 - Task markers:
-  - L763 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
-  - L773 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
+  - L915 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
+  - L925 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
     manual_correction...")
-  - L776 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
+  - L928 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
     rescanning...")
 - Outgoing cross-module calls (sample):
-  - threading.Lock (line 52)
-  - pathlib.Path (line 57)
-  - pathlib.Path (line 58)
+  - threading.Lock (line 54)
   - pathlib.Path (line 59)
   - pathlib.Path (line 60)
-  - pathlib.Path (line 91)
-  - pathlib.Path (line 93)
-  - path.relative\_to (line 96)
-  - log\_dir.mkdir (line 111)
-  - utils.shared\_logic.safe\_filename (line 114)
-  - path.with\_suffix (line 136)
-  - path.with\_suffix (line 137)
-  - tmp\_path.exists (line 144)
-  - tmp\_path.unlink (line 146)
-  - backup\_path.exists (line 151)
-  - backup\_path.unlink (line 153)
-  - tf.write (line 159)
-  - orjson.dumps (line 159)
-  - path.exists (line 162)
-  - shutil.copy2 (line 163)
-  - shutil.move (line 168)
-  - os.remove (line 173)
-  - time.sleep (line 176)
-  - tmp\_path.exists (line 181)
-  - tmp\_path.unlink (line 183)
-  - t.lower (line 190)
-  - t.lower (line 194)
-  - t.lower (line 198)
-  - Context\_Library.constants.CUSTOM\_ATTR\_PATTERNS.append (line 204)
-  - re.compile (line 204)
-  - Context\_Library.constants.CUSTOM\_ATTR\_PATTERNS.append (line 206)
-  - k.lower (line 210)
-  - k.lower (line 214)
-  - Context\_Library.constants.BALLOT\_TYPES.extend (line 218)
-  - utils.logger\_singleton.logger.debug (line 231)
-  - obj.items (line 238)
-  - obj.tolist (line 244)
-  - orjson.loads (line 254)
-  - orjson.loads (line 256)
-  - val.encode (line 256)
-  - safe\_path\_obj.exists (line 278)
-  - safe\_path\_obj.stat (line 278)
-  - f.write (line 289)
-  - orjson.dumps (line 289)
-  - f.read (line 295)
-  - fw.write (line 308)
-  - orjson.dumps (line 308)
-  - utils.logger\_singleton.logger.error (line 312)
-  - os.rename (line 316)
-  - f.write (line 329)
+  - pathlib.Path (line 61)
+  - pathlib.Path (line 62)
+  - value.items (line 94)
+  - vocab.loader.get\_vocab\_loader (line 113)
+  - loader.load\_mapping (line 115)
+  - loader.load\_canonical (line 116)
+  - pathlib.Path (line 136)
+  - pathlib.Path (line 138)
+  - path.relative\_to (line 141)
+  - log\_dir.mkdir (line 156)
+  - utils.shared\_logic.safe\_filename (line 159)
+  - path.with\_suffix (line 181)
+  - path.with\_suffix (line 182)
+  - tmp\_path.exists (line 189)
+  - tmp\_path.unlink (line 191)
+  - backup\_path.exists (line 196)
+  - backup\_path.unlink (line 198)
+  - tf.write (line 204)
+  - orjson.dumps (line 204)
+  - path.exists (line 207)
+  - shutil.copy2 (line 208)
+  - shutil.move (line 213)
+  - os.remove (line 218)
+  - time.sleep (line 221)
+  - tmp\_path.exists (line 226)
+  - tmp\_path.unlink (line 228)
+  - t.lower (line 235)
+  - t.lower (line 239)
+  - t.lower (line 243)
+  - value.strip (line 247)
+  - re.compile (line 250)
+  - re.compile (line 259)
+  - value.strip (line 266)
+  - seen.add (line 273)
+  - deduped.append (line 274)
+  - Context\_Library.constants.CUSTOM\_ATTR\_PATTERNS.append (line 284)
+  - existing.add (line 285)
+  - k.lower (line 289)
+  - k.lower (line 293)
+  - Context\_Library.constants.BALLOT\_TYPES.extend (line 297)
+  - utils.logger\_singleton.logger.debug (line 310)
+  - obj.items (line 317)
+  - obj.tolist (line 323)
+  - orjson.loads (line 333)
+  - orjson.loads (line 335)
+  - val.encode (line 335)
+  - safe\_path\_obj.exists (line 357)
 - Inbound references:
-  - safe\_path ← librarian.py:119
-  - safe\_path ← librarian.py:134
-  - safe\_path ← librarian.py:140
-  - safe\_path ← librarian.py:141
-  - safe\_path ← librarian.py:229
-  - safe\_path ← librarian.py:274
-  - safe\_path ← librarian.py:314
-  - safe\_path ← librarian.py:378
-  - safe\_path ← librarian.py:394
-  - safe\_path ← librarian.py:440
-  - safe\_path ← librarian.py:461
-  - safe\_path ← librarian.py:563
-  - safe\_path ← librarian.py:574
-  - safe\_path ← librarian.py:757
-  - safe\_path ← librarian.py:767
+  - safe\_path ← librarian.py:164
+  - safe\_path ← librarian.py:179
+  - safe\_path ← librarian.py:185
+  - safe\_path ← librarian.py:186
+  - safe\_path ← librarian.py:308
+  - safe\_path ← librarian.py:353
+  - safe\_path ← librarian.py:393
+  - safe\_path ← librarian.py:465
+  - safe\_path ← librarian.py:481
+  - safe\_path ← librarian.py:539
+  - safe\_path ← librarian.py:560
+  - safe\_path ← librarian.py:713
+  - safe\_path ← librarian.py:724
+  - safe\_path ← librarian.py:909
+  - safe\_path ← librarian.py:919
   - safe\_path ← log_cache_cleaner_bot.py:408
-  - safe\_path ← manual_correction_bot.py:107
-  - safe\_path ← manual_correction_bot.py:126
+  - safe\_path ← manual_correction_bot.py:101
+  - safe\_path ← manual_correction_bot.py:120
+  - safe\_path ← manual_correction_bot.py:231
   - safe\_path ← manual_correction_bot.py:237
-  - safe\_path ← manual_correction_bot.py:243
-  - safe\_path ← manual_correction_bot.py:244
-  - safe\_path ← manual_correction_bot.py:393
-  - safe\_path ← manual_correction_bot.py:432
-  - safe\_path ← manual_correction_bot.py:446
-  - safe\_path ← manual_correction_bot.py:462
-  - safe\_path ← manual_correction_bot.py:492
-  - safe\_path ← manual_correction_bot.py:525
-  - safe\_path ← manual_correction_bot.py:548
-  - safe\_path ← manual_correction_bot.py:552
-  - safe\_path ← manual_correction_bot.py:595
-  - safe\_path ← manual_correction_bot.py:613
-  - safe\_path ← manual_correction_bot.py:638
-  - safe\_path ← manual_correction_bot.py:656
-  - safe\_path ← manual_correction_bot.py:659
-  - safe\_path ← manual_correction_bot.py:748
-  - safe\_path ← manual_correction_bot.py:830
-  - safe\_path ← manual_correction_bot.py:1149
-  - safe\_path ← manual_correction_bot.py:1167
-  - safe\_path ← manual_correction_bot.py:1174
-  - safe\_path ← manual_correction_bot.py:1177
-  - safe\_path ← manual_correction_bot.py:1185
-  - safe\_path ← manual_correction_bot.py:1186
-  - safe\_path ← manual_correction_bot.py:1214
-  - safe\_path ← manual_correction_bot.py:1242
-  - safe\_path ← manual_correction_bot.py:1254
-  - safe\_path ← manual_correction_bot.py:1356
-  - safe\_path ← manual_correction_bot.py:1357
-  - safe\_path ← manual_correction_bot.py:1366
-  - safe\_path ← manual_correction_bot.py:1389
-  - safe\_path ← manual_correction_bot.py:1514
+  - safe\_path ← manual_correction_bot.py:238
+  - safe\_path ← manual_correction_bot.py:339
+  - safe\_path ← manual_correction_bot.py:378
+  - safe\_path ← manual_correction_bot.py:392
+  - safe\_path ← manual_correction_bot.py:408
+  - safe\_path ← manual_correction_bot.py:438
+  - safe\_path ← manual_correction_bot.py:471
+  - safe\_path ← manual_correction_bot.py:494
+  - safe\_path ← manual_correction_bot.py:498
+  - safe\_path ← manual_correction_bot.py:541
+  - safe\_path ← manual_correction_bot.py:559
+  - safe\_path ← manual_correction_bot.py:584
+  - safe\_path ← manual_correction_bot.py:602
+  - safe\_path ← manual_correction_bot.py:605
+  - safe\_path ← manual_correction_bot.py:689
+  - safe\_path ← manual_correction_bot.py:756
+  - safe\_path ← manual_correction_bot.py:1075
+  - safe\_path ← manual_correction_bot.py:1093
+  - safe\_path ← manual_correction_bot.py:1100
+  - safe\_path ← manual_correction_bot.py:1103
+  - safe\_path ← manual_correction_bot.py:1111
+  - safe\_path ← manual_correction_bot.py:1112
+  - safe\_path ← manual_correction_bot.py:1140
+  - safe\_path ← manual_correction_bot.py:1168
+  - safe\_path ← manual_correction_bot.py:1180
+  - safe\_path ← manual_correction_bot.py:1277
+  - safe\_path ← manual_correction_bot.py:1278
+  - safe\_path ← manual_correction_bot.py:1287
+  - safe\_path ← manual_correction_bot.py:1310
+  - safe\_path ← manual_correction_bot.py:1430
 
 ### Context\_Integration/library/entity\_confidence\_map.py {#webapp-parser-context-integration-library-entity-confidence-map-py}
 
 > Entity Confidence Mapping: Weighted Signal Catalog for Decision Gates
 
 - Definitions:
-  - class: `DecisionCode` (line 23)
-  - class: `SignalType` (line 30)
-  - class: `AnomalyType` (line 44)
-  - class: `OverrideTrigger` (line 56)
-  - class: `SignalCoefficient` (line 67)
-  - class: `AnomalyCoefficient` (line 77)
-  - class: `ConfidenceCautionResult` (line 87)
-  - class: `EntityConfidenceMap` (line 289)
-  - function: `get\_confidence\_map` (line 468)
+  - class: `DecisionCode` (line 21)
+  - class: `SignalType` (line 28)
+  - class: `AnomalyType` (line 42)
+  - class: `OverrideTrigger` (line 54)
+  - class: `SignalCoefficient` (line 65)
+  - class: `AnomalyCoefficient` (line 75)
+  - class: `ConfidenceCautionResult` (line 85)
+  - class: `EntityConfidenceMap` (line 287)
+  - function: `get\_confidence\_map` (line 466)
 - Imports:
-  - **Standard Library** (7):
+  - **Standard Library** (5):
     - `from dataclasses import dataclass` (line 16)
     - `from enum import Enum` (line 17)
-    - `from typing import Any` (line 18)
-    - `from typing import Dict` (line 18)
     - `from typing import List` (line 18)
     - `from typing import Optional` (line 18)
     - `from typing import Tuple` (line 18)
-  - **Third-party** (1):
-    - `import orjson as orjson` (line 20)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 14)
 - Outgoing cross-module calls (sample):
-  - catalog\_map.get (line 317)
-  - entity\_type.lower (line 317)
-  - catalog.get (line 318)
-  - self.get\_signal\_coefficient (line 357)
-  - observed\_signals.append (line 362)
-  - self.get\_anomaly\_coefficient (line 373)
-  - observed\_anomalies.append (line 378)
-  - self.\_generate\_reasoning (line 403)
-  - entity\_type.upper (line 444)
-  - parts.append (line 448)
-  - parts.append (line 452)
+  - catalog\_map.get (line 315)
+  - entity\_type.lower (line 315)
+  - catalog.get (line 316)
+  - self.get\_signal\_coefficient (line 355)
+  - observed\_signals.append (line 360)
+  - self.get\_anomaly\_coefficient (line 371)
+  - observed\_anomalies.append (line 376)
+  - self.\_generate\_reasoning (line 401)
+  - entity\_type.upper (line 442)
+  - parts.append (line 446)
+  - parts.append (line 450)
+  - parts.append (line 454)
   - parts.append (line 456)
-  - parts.append (line 458)
-  - parts.append (line 459)
+  - parts.append (line 457)
 - Inbound references:
-  - SignalCoefficient ← entity_confidence_map.py:109
-  - SignalCoefficient ← entity_confidence_map.py:116
-  - SignalCoefficient ← entity_confidence_map.py:123
-  - SignalCoefficient ← entity_confidence_map.py:130
-  - SignalCoefficient ← entity_confidence_map.py:137
-  - SignalCoefficient ← entity_confidence_map.py:147
-  - SignalCoefficient ← entity_confidence_map.py:154
-  - SignalCoefficient ← entity_confidence_map.py:161
-  - SignalCoefficient ← entity_confidence_map.py:168
-  - SignalCoefficient ← entity_confidence_map.py:178
-  - SignalCoefficient ← entity_confidence_map.py:185
-  - SignalCoefficient ← entity_confidence_map.py:192
-  - SignalCoefficient ← entity_confidence_map.py:199
-  - SignalCoefficient ← entity_confidence_map.py:209
-  - SignalCoefficient ← entity_confidence_map.py:216
-  - SignalCoefficient ← entity_confidence_map.py:223
-  - AnomalyCoefficient ← entity_confidence_map.py:237
-  - AnomalyCoefficient ← entity_confidence_map.py:244
-  - AnomalyCoefficient ← entity_confidence_map.py:251
-  - AnomalyCoefficient ← entity_confidence_map.py:258
-  - AnomalyCoefficient ← entity_confidence_map.py:265
-  - AnomalyCoefficient ← entity_confidence_map.py:272
-  - AnomalyCoefficient ← entity_confidence_map.py:279
-  - ConfidenceCautionResult ← entity_confidence_map.py:415
-  - EntityConfidenceMap ← entity_confidence_map.py:472
+  - SignalCoefficient ← entity_confidence_map.py:107
+  - SignalCoefficient ← entity_confidence_map.py:114
+  - SignalCoefficient ← entity_confidence_map.py:121
+  - SignalCoefficient ← entity_confidence_map.py:128
+  - SignalCoefficient ← entity_confidence_map.py:135
+  - SignalCoefficient ← entity_confidence_map.py:145
+  - SignalCoefficient ← entity_confidence_map.py:152
+  - SignalCoefficient ← entity_confidence_map.py:159
+  - SignalCoefficient ← entity_confidence_map.py:166
+  - SignalCoefficient ← entity_confidence_map.py:176
+  - SignalCoefficient ← entity_confidence_map.py:183
+  - SignalCoefficient ← entity_confidence_map.py:190
+  - SignalCoefficient ← entity_confidence_map.py:197
+  - SignalCoefficient ← entity_confidence_map.py:207
+  - SignalCoefficient ← entity_confidence_map.py:214
+  - SignalCoefficient ← entity_confidence_map.py:221
+  - AnomalyCoefficient ← entity_confidence_map.py:235
+  - AnomalyCoefficient ← entity_confidence_map.py:242
+  - AnomalyCoefficient ← entity_confidence_map.py:249
+  - AnomalyCoefficient ← entity_confidence_map.py:256
+  - AnomalyCoefficient ← entity_confidence_map.py:263
+  - AnomalyCoefficient ← entity_confidence_map.py:270
+  - AnomalyCoefficient ← entity_confidence_map.py:277
+  - ConfidenceCautionResult ← entity_confidence_map.py:413
+  - EntityConfidenceMap ← entity_confidence_map.py:470
 
 ### Context\_Integration/location\_inference.py {#webapp-parser-context-integration-location-inference-py}
 
@@ -1675,56 +1847,55 @@ graph LR
 > Vocab Loader: Safe, audited vocabulary file management for confidence/caution framework.
 
 - Definitions:
-  - class: `VocabLoaderError` (line 33)
-  - class: `VocabSecurityError` (line 38)
-  - class: `VocabFileNotFound` (line 43)
-  - class: `VocabIntegrityError` (line 48)
-  - class: `RateLimitError` (line 53)
-  - class: `VocabLoader` (line 68)
-  - function: `get\_vocab\_loader` (line 356)
+  - class: `VocabLoaderError` (line 31)
+  - class: `VocabSecurityError` (line 36)
+  - class: `VocabFileNotFound` (line 41)
+  - class: `VocabIntegrityError` (line 46)
+  - class: `RateLimitError` (line 51)
+  - class: `VocabLoader` (line 66)
+  - function: `get\_vocab\_loader` (line 358)
 - Imports:
-  - **Standard Library** (8):
+  - **Standard Library** (7):
     - `import hashlib as hashlib` (line 22)
-    - `import os as os` (line 23)
-    - `import time as time` (line 24)
-    - `from pathlib import Path` (line 25)
-    - `from typing import Dict` (line 26)
-    - `from typing import List` (line 26)
-    - `from typing import Optional` (line 26)
-    - `from typing import Tuple` (line 26)
+    - `import time as time` (line 23)
+    - `from pathlib import Path` (line 24)
+    - `from typing import Dict` (line 25)
+    - `from typing import List` (line 25)
+    - `from typing import Optional` (line 25)
+    - `from typing import Tuple` (line 25)
   - **Third-party** (1):
-    - `from webapp.parser.utils.logger_singleton import logger` (line 28)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 27)
 - Outgoing cross-module calls (sample):
-  - pathlib.Path (line 60)
-  - pathlib.Path (line 85)
-  - self.\_make\_cache\_key (line 122)
-  - self.\_load\_from\_disk (line 127)
-  - self.\_make\_cache\_key (line 153)
-  - self.\_load\_from\_disk (line 158)
-  - self.\_parse\_mapping (line 159)
-  - self.\_make\_cache\_key (line 184)
-  - time.time (line 185)
-  - self.\_load\_from\_disk (line 195)
-  - self.\_make\_cache\_key (line 205)
-  - self.\_make\_cache\_key (line 210)
-  - self.\_make\_cache\_key (line 221)
-  - filename.lower (line 257)
-  - file\_path.relative\_to (line 269)
-  - file\_path.exists (line 273)
-  - file\_path.is\_file (line 276)
-  - file\_path.read\_text (line 281)
-  - hashlib.sha256 (line 286)
-  - content.encode (line 286)
-  - self.\_make\_cache\_key (line 287)
-  - content.split (line 293)
-  - raw\_line.strip (line 294)
-  - line.startswith (line 297)
-  - seen.add (line 305)
-  - entries.append (line 306)
-  - webapp.parser.utils.logger\_singleton.logger.info (line 310)
-  - entry.split (line 338)
-  - key.strip (line 339)
-  - value.strip (line 340)
+  - pathlib.Path (line 58)
+  - pathlib.Path (line 83)
+  - self.\_make\_cache\_key (line 120)
+  - self.\_load\_from\_disk (line 125)
+  - self.\_make\_cache\_key (line 151)
+  - self.\_load\_from\_disk (line 156)
+  - self.\_parse\_mapping (line 157)
+  - self.\_make\_cache\_key (line 182)
+  - time.time (line 183)
+  - self.\_load\_from\_disk (line 193)
+  - self.\_make\_cache\_key (line 203)
+  - self.\_make\_cache\_key (line 208)
+  - self.\_make\_cache\_key (line 219)
+  - filename.lower (line 255)
+  - file\_path.relative\_to (line 267)
+  - file\_path.exists (line 271)
+  - file\_path.is\_file (line 274)
+  - file\_path.read\_text (line 279)
+  - hashlib.sha256 (line 284)
+  - content.encode (line 284)
+  - self.\_make\_cache\_key (line 285)
+  - content.split (line 291)
+  - raw\_line.strip (line 292)
+  - line.startswith (line 295)
+  - seen.add (line 303)
+  - entries.append (line 304)
+  - webapp.parser.utils.logger\_singleton.logger.info (line 309)
+  - entry.split (line 340)
+  - key.strip (line 341)
+  - value.strip (line 342)
 
 ### Context\_Integration/vocab\_loader.py {#webapp-parser-context-integration-vocab-loader-py}
 
@@ -1739,7 +1910,7 @@ graph LR
   - class: `VocabLoader` (line 47)
   - function: `get\_vocab\_loader` (line 413)
 - Imports:
-  - **Standard Library** (11):
+  - **Standard Library** (10):
     - `import hashlib as hashlib` (line 10)
     - `import os as os` (line 11)
     - `import threading as threading` (line 12)
@@ -1750,7 +1921,6 @@ graph LR
     - `from typing import Dict` (line 16)
     - `from typing import List` (line 16)
     - `from typing import Optional` (line 16)
-    - `from typing import Set` (line 16)
   - **Third-party** (1):
     - `from webapp.parser.utils.logger_singleton import logger` (line 18)
   - **Local/Project** (1):
@@ -1792,38 +1962,39 @@ graph LR
   - webapp.parser.utils.logger\_singleton.logger.info (line 398)
 - Inbound references:
   - VocabLoaderError ← vocab_loader.py:288
-  - VocabLoaderError ← loader.py:283
+  - VocabLoaderError ← loader.py:281
   - VocabFileNotFound ← vocab_loader.py:246
-  - VocabFileNotFound ← loader.py:94
-  - VocabFileNotFound ← loader.py:274
+  - VocabFileNotFound ← loader.py:92
+  - VocabFileNotFound ← loader.py:272
   - VocabIntegrityError ← vocab_loader.py:318
-  - VocabIntegrityError ← loader.py:302
-  - VocabIntegrityError ← loader.py:334
-  - VocabIntegrityError ← loader.py:343
+  - VocabIntegrityError ← loader.py:300
+  - VocabIntegrityError ← loader.py:336
+  - VocabIntegrityError ← loader.py:345
   - VocabSecurityError ← vocab_loader.py:236
   - VocabSecurityError ← vocab_loader.py:242
-  - VocabSecurityError ← loader.py:252
-  - VocabSecurityError ← loader.py:258
-  - VocabSecurityError ← loader.py:261
-  - VocabSecurityError ← loader.py:271
-  - VocabSecurityError ← loader.py:277
+  - VocabSecurityError ← loader.py:250
+  - VocabSecurityError ← loader.py:256
+  - VocabSecurityError ← loader.py:259
+  - VocabSecurityError ← loader.py:269
+  - VocabSecurityError ← loader.py:275
   - RateLimitError ← vocab_loader.py:270
-  - RateLimitError ← loader.py:190
+  - RateLimitError ← loader.py:188
   - VocabLoader ← vocab_loader.py:431
-  - VocabLoader ← loader.py:360
+  - VocabLoader ← loader.py:362
+  - get\_vocab\_loader ← context_coordinator.py:2543
 
 ### config.py {#webapp-parser-config-py}
 
 > Central configuration module for the Smart Elections Parser Webapp.
 
 - Definitions:
-  - function: `get\_subprocess\_env` (line 336)
-  - function: `get\_supported\_formats` (line 345)
-  - function: `get\_sqlalchemy\_engine` (line 381)
-  - function: `get\_ocr\_config\_dict` (line 616)
-  - function: `log\_ocr\_config\_summary` (line 668)
-  - function: `build\_extraction\_quality\_metrics` (line 686)
-  - function: `log\_extraction\_quality` (line 881)
+  - function: `get\_subprocess\_env` (line 335)
+  - function: `get\_supported\_formats` (line 344)
+  - function: `get\_sqlalchemy\_engine` (line 380)
+  - function: `get\_ocr\_config\_dict` (line 669)
+  - function: `log\_ocr\_config\_summary` (line 721)
+  - function: `build\_extraction\_quality\_metrics` (line 739)
+  - function: `log\_extraction\_quality` (line 934)
 - Imports:
   - **Standard Library** (4):
     - `import os as os` (line 8)
@@ -1838,9 +2009,9 @@ graph LR
   - **Local/Project** (1):
     - `from utils.logger_singleton import logger` (line 18)
 - Task markers:
-  - L911 **WARNING**: ({
-  - L912 **WARNING**: ",
-  - L930 **NOTE**: Both DL1 and DL2 are now stored in
+  - L964 **WARNING**: ({
+  - L965 **WARNING**: ",
+  - L983 **NOTE**: Both DL1 and DL2 are now stored in
     CONTEXT_LIBRARY_DIR/verification
 - Outgoing cross-module calls (sample):
   - dotenv.load\_dotenv (line 22)
@@ -1855,52 +2026,52 @@ graph LR
   - f.write (line 70)
   - LOG\_DIR.mkdir (line 78)
   - CACHE\_DIR.mkdir (line 79)
-  - RUN\_HISTORY\_FILE.exists (line 84)
-  - RUN\_HISTORY\_FILE.touch (line 86)
-  - OCR\_DEBUG\_DIR.mkdir (line 204)
-  - threading.Lock (line 208)
+  - QUICK\_COPY\_DIR.mkdir (line 83)
+  - RUN\_HISTORY\_FILE.exists (line 88)
+  - RUN\_HISTORY\_FILE.touch (line 90)
+  - OCR\_DEBUG\_DIR.mkdir (line 202)
+  - threading.Lock (line 206)
+  - s.strip (line 244)
   - s.strip (line 246)
-  - s.strip (line 248)
+  - s.strip (line 249)
   - s.strip (line 251)
-  - s.strip (line 253)
-  - URL\_ALLOWLIST\_HOSTS.append (line 264)
-  - ext.startswith (line 356)
-  - env\_formats.split (line 357)
-  - CONTEXT\_LIBRARY\_PATH.exists (line 360)
-  - orjson.loads (line 362)
-  - f.read (line 362)
-  - context\_library.get (line 364)
-  - json.loads (line 369)
-  - ext.lower (line 375)
-  - ext.startswith (line 377)
-  - ext.lower (line 377)
-  - ext.lower (line 377)
-  - utils.logger\_singleton.logger.error (line 393)
-  - azure.identity.DefaultAzureCredential (line 397)
-  - cred.get\_token (line 398)
-  - utils.logger\_singleton.logger.info (line 399)
-  - psycopg2.connect (line 400)
-  - utils.logger\_singleton.logger.info (line 410)
-  - sqlalchemy.create\_engine (line 411)
-  - utils.logger\_singleton.logger.error (line 418)
-  - utils.logger\_singleton.logger.info (line 422)
-  - sqlalchemy.create\_engine (line 423)
-  - utils.logger\_singleton.logger.info (line 432)
-  - sqlalchemy.create\_engine (line 433)
-  - x.strip (line 587)
-  - x.strip (line 587)
+  - URL\_ALLOWLIST\_HOSTS.append (line 262)
+  - ext.startswith (line 355)
+  - env\_formats.split (line 356)
+  - CONTEXT\_LIBRARY\_PATH.exists (line 359)
+  - orjson.loads (line 361)
+  - f.read (line 361)
+  - context\_library.get (line 363)
+  - json.loads (line 368)
+  - ext.lower (line 374)
+  - ext.startswith (line 376)
+  - ext.lower (line 376)
+  - ext.lower (line 376)
+  - utils.logger\_singleton.logger.error (line 392)
+  - azure.identity.DefaultAzureCredential (line 396)
+  - cred.get\_token (line 397)
+  - utils.logger\_singleton.logger.info (line 398)
+  - psycopg2.connect (line 399)
+  - utils.logger\_singleton.logger.info (line 409)
+  - sqlalchemy.create\_engine (line 410)
+  - utils.logger\_singleton.logger.error (line 417)
+  - utils.logger\_singleton.logger.info (line 421)
+  - sqlalchemy.create\_engine (line 422)
+  - utils.logger\_singleton.logger.info (line 431)
+  - sqlalchemy.create\_engine (line 432)
   - x.strip (line 588)
   - x.strip (line 588)
   - x.strip (line 589)
   - x.strip (line 589)
+  - x.strip (line 590)
 - Inbound references:
-  - get\_supported\_formats ← config.py:375
-  - get\_ocr\_config\_dict ← config.py:674
+  - get\_supported\_formats ← config.py:374
+  - get\_ocr\_config\_dict ← config.py:727
   - get\_ocr\_config\_dict ← _ocr_helpers.py:51
   - get\_ocr\_config\_dict ← pdf_handler.py:4595
   - log\_ocr\_config\_summary ← pdf_handler.py:4581
-  - build\_extraction\_quality\_metrics ← config.py:898
-  - log\_extraction\_quality ← html_election_parser.py:1191
+  - build\_extraction\_quality\_metrics ← config.py:951
+  - log\_extraction\_quality ← html_election_parser.py:1313
   - log\_extraction\_quality ← csv_handler.py:320
   - log\_extraction\_quality ← csv_handler.py:409
   - log\_extraction\_quality ← json_handler.py:970
@@ -2045,7 +2216,7 @@ graph LR
   - load\_urls ← data_manager.py:66
   - load\_urls ← data_manager.py:76
   - load\_urls ← data_manager.py:100
-  - load\_urls ← html_election_parser.py:2220
+  - load\_urls ← html_election_parser.py:2503
   - save\_urls ← data_manager.py:71
   - save\_urls ← data_manager.py:93
   - save\_urls ← data_manager.py:97
@@ -2066,68 +2237,65 @@ graph LR
 > Election results fixture loader with lazy caching (mirrors fec_lookup.py pattern).
 
 - Definitions:
-  - function: `\_get\_fixture\_dir` (line 39)
-  - function: `load\_election\_results\_index` (line 44)
-  - function: `load\_election\_results\_shards` (line 79)
-  - function: `get\_results\_by\_state` (line 113)
-  - function: `get\_results\_by\_contest` (line 168)
-  - function: `find\_candidate\_by\_name` (line 209)
-  - function: `get\_cache\_metrics` (line 285)
-  - function: `clear\_cache` (line 291)
-  - function: `reset\_metrics` (line 301)
+  - function: `\_get\_fixture\_dir` (line 37)
+  - function: `load\_election\_results\_index` (line 42)
+  - function: `load\_election\_results\_shards` (line 77)
+  - function: `get\_results\_by\_state` (line 111)
+  - function: `get\_results\_by\_contest` (line 166)
+  - function: `find\_candidate\_by\_name` (line 207)
+  - function: `get\_cache\_metrics` (line 283)
+  - function: `clear\_cache` (line 289)
+  - function: `reset\_metrics` (line 299)
 - Imports:
-  - **Standard Library** (10):
+  - **Standard Library** (7):
     - `import json as json` (line 11)
-    - `import os as os` (line 12)
-    - `import threading as threading` (line 13)
-    - `from functools import lru_cache` (line 14)
-    - `from pathlib import Path` (line 15)
-    - `from typing import Dict` (line 16)
-    - `from typing import List` (line 16)
-    - `from typing import Optional` (line 16)
-    - `from typing import Tuple` (line 16)
-    - `from typing import Any` (line 16)
+    - `import threading as threading` (line 12)
+    - `from pathlib import Path` (line 13)
+    - `from typing import Any` (line 14)
+    - `from typing import Dict` (line 14)
+    - `from typing import List` (line 14)
+    - `from typing import Optional` (line 14)
 - Outgoing cross-module calls (sample):
-  - threading.RLock (line 25)
-  - pathlib.Path (line 41)
-  - index\_path.exists (line 61)
-  - json.load (line 68)
-  - shard\_dir.exists (line 95)
-  - shard\_dir.glob (line 100)
-  - json.load (line 103)
-  - state.upper (line 129)
-  - main\_index.items (line 136)
-  - key.startswith (line 137)
-  - key.split (line 138)
-  - results.append (line 146)
-  - key.split (line 153)
-  - results.append (line 161)
-  - state.upper (line 186)
-  - name.strip (line 231)
-  - idx\_dict.items (line 234)
-  - key.split (line 236)
-  - state.upper (line 244)
-  - candidate.get (line 252)
-  - fuzzy\_fuzz.token\_sort\_ratio (line 255)
-  - matches.append (line 262)
-  - record.get (line 265)
-  - shards.items (line 273)
-  - matches.sort (line 277)
+  - threading.RLock (line 23)
+  - pathlib.Path (line 39)
+  - index\_path.exists (line 59)
+  - json.load (line 66)
+  - shard\_dir.exists (line 93)
+  - shard\_dir.glob (line 98)
+  - json.load (line 101)
+  - state.upper (line 127)
+  - main\_index.items (line 134)
+  - key.startswith (line 135)
+  - key.split (line 136)
+  - results.append (line 144)
+  - key.split (line 151)
+  - results.append (line 159)
+  - state.upper (line 184)
+  - name.strip (line 229)
+  - idx\_dict.items (line 232)
+  - key.split (line 234)
+  - state.upper (line 242)
+  - candidate.get (line 250)
+  - fuzzy\_fuzz.token\_sort\_ratio (line 253)
+  - matches.append (line 260)
+  - record.get (line 263)
+  - shards.items (line 271)
+  - matches.sort (line 275)
 - Inbound references:
-  - \_get\_fixture\_dir ← election_fixtures.py:58
-  - \_get\_fixture\_dir ← election_fixtures.py:92
-  - load\_election\_results\_index ← election_fixtures.py:130
-  - load\_election\_results\_index ← election_fixtures.py:189
-  - load\_election\_results\_index ← election_fixtures.py:227
-  - load\_election\_results\_index ← election_fixtures.py:320
-  - load\_election\_results\_shards ← election_fixtures.py:131
-  - load\_election\_results\_shards ← election_fixtures.py:190
-  - load\_election\_results\_shards ← election_fixtures.py:228
-  - load\_election\_results\_shards ← election_fixtures.py:323
-  - get\_results\_by\_state ← election_fixtures.py:328
-  - get\_results\_by\_contest ← election_fixtures.py:332
-  - find\_candidate\_by\_name ← election_fixtures.py:336
-  - get\_cache\_metrics ← election_fixtures.py:340
+  - \_get\_fixture\_dir ← election_fixtures.py:56
+  - \_get\_fixture\_dir ← election_fixtures.py:90
+  - load\_election\_results\_index ← election_fixtures.py:128
+  - load\_election\_results\_index ← election_fixtures.py:187
+  - load\_election\_results\_index ← election_fixtures.py:225
+  - load\_election\_results\_index ← election_fixtures.py:318
+  - load\_election\_results\_shards ← election_fixtures.py:129
+  - load\_election\_results\_shards ← election_fixtures.py:188
+  - load\_election\_results\_shards ← election_fixtures.py:226
+  - load\_election\_results\_shards ← election_fixtures.py:321
+  - get\_results\_by\_state ← election_fixtures.py:326
+  - get\_results\_by\_contest ← election_fixtures.py:330
+  - find\_candidate\_by\_name ← election_fixtures.py:334
+  - get\_cache\_metrics ← election_fixtures.py:338
 
 ### fec\_lookup.py {#webapp-parser-fec-lookup-py}
 
@@ -3079,7 +3247,7 @@ graph LR
   - re.sub (line 528)
 - Inbound references:
   - \_env\_truthy ← pdf_handler.py:196
-  - \_env\_truthy ← contest_selector.py:65
+  - \_env\_truthy ← contest_selector.py:72
   - PDFParseCancelled ← pdf_handler.py:595
   - \_register\_pdf\_cleanup ← pdf_handler.py:2766
   - \_register\_pdf\_cleanup ← pdf_handler.py:2813
@@ -3318,53 +3486,386 @@ graph LR
   - \_dataframe\_to\_records ← xlsx_handler.py:109
   - parse\_xlsx\_election\_results ← xlsx_handler.py:470
 
+### handlers/registry.py {#webapp-parser-handlers-registry-py}
+
+- Definitions:
+  - function: `register\_state\_handler` (line 16)
+  - function: `register\_county\_handler` (line 23)
+  - function: `apply\_vendor\_overrides` (line 32)
+  - function: `\_module\_exists` (line 43)
+  - function: `get\_state\_handler\_module\_path` (line 50)
+  - function: `get\_county\_handler\_module\_path` (line 67)
+- Imports:
+  - **Standard Library** (2):
+    - `from typing import Dict` (line 4)
+    - `from typing import Optional` (line 4)
+  - **Third-party** (4):
+    - `from webapp.parser.Context_Integration.Context_Library.constants import
+      STATE_MODULE_MAP` (line 6)
+    - `from webapp.parser.handlers.vendor_state_map import VENDOR_STATE_MAP`
+      (line 7)
+    - `from webapp.parser.utils.shared_logic import normalize_county_name` (line
+      8)
+    - `from webapp.parser.utils.shared_logic import normalize_state_name` (line
+      8)
+  - **Local/Project** (2):
+    - `from __future__ import annotations` (line 1)
+    - `import importlib.util as importlib` (line 3)
+- Outgoing cross-module calls (sample):
+  - webapp.parser.utils.shared\_logic.normalize\_state\_name (line 18)
+  - webapp.parser.utils.shared\_logic.normalize\_state\_name (line 25)
+  - webapp.parser.utils.shared\_logic.normalize\_county\_name (line 26)
+  - \_COUNTY\_HANDLER\_OVERRIDES.setdefault (line 29)
+  - entry.get (line 35)
+  - entry.get (line 37)
+  - webapp.parser.utils.shared\_logic.normalize\_state\_name (line 52)
+  - \_STATE\_HANDLER\_OVERRIDES.get (line 56)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.STATE\_MODULE\_MAP.get
+    (line 60)
+  - webapp.parser.utils.shared\_logic.normalize\_state\_name (line 69)
+  - webapp.parser.utils.shared\_logic.normalize\_county\_name (line 70)
+  - \_COUNTY\_HANDLER\_OVERRIDES.get (line 74)
+- Inbound references:
+  - register\_state\_handler ← registry.py:40
+  - \_module\_exists ← registry.py:57
+  - \_module\_exists ← registry.py:61
+  - \_module\_exists ← registry.py:75
+
+### handlers/shared/\_\_init\_\_.py {#webapp-parser-handlers-shared-init-py}
+
+> Shared handler helpers.
+
+### handlers/shared/parity\_hooks.py {#webapp-parser-handlers-shared-parity-hooks-py}
+
+- Definitions:
+  - function: `safe\_parity\_note` (line 10)
+  - function: `attach\_router\_parity\_note` (line 21)
+  - function: `extract\_router\_parity\_note` (line 30)
+  - function: `attach\_parity\_note\_to\_metadata` (line 36)
+- Imports:
+  - **Standard Library** (2):
+    - `from typing import Any` (line 3)
+    - `from typing import Dict` (line 3)
+  - **Local/Project** (1):
+    - `from __future__ import annotations` (line 1)
+- Task markers:
+  - L10 **NOTE**: str | None) -&gt; str | None:
+  - L11 **NOTE**: , str):
+  - L13 **NOTE**: .strip()
+  - L21 **NOTE**: str | None) -&gt; None:
+  - L24 **NOTE**: )
+  - L36 **NOTE**: str | None) -&gt; Dict\[str, Any\]:
+  - L37 **NOTE**: )
+- Outgoing cross-module calls (sample):
+  - note.strip (line 13)
+  - context.get (line 33)
+  - metadata.setdefault (line 42)
+- Inbound references:
+  - safe\_parity\_note ← parity_hooks.py:24
+  - safe\_parity\_note ← parity_hooks.py:33
+  - safe\_parity\_note ← parity_hooks.py:37
+
+### handlers/shared/state\_handler\_base.py {#webapp-parser-handlers-shared-state-handler-base-py}
+
+> State Handler Base Class
+
+- Definitions:
+  - class: `StateHandlerBase` (line 35)
+  - class: `SimpleTableHandler` (line 450)
+- Imports:
+  - **Standard Library** (7):
+    - `from abc import ABC` (line 20)
+    - `from abc import abstractmethod` (line 20)
+    - `from typing import Any` (line 21)
+    - `from typing import Dict` (line 21)
+    - `from typing import List` (line 21)
+    - `from typing import Optional` (line 21)
+    - `from typing import Tuple` (line 21)
+  - **Third-party** (8):
+    - `from webapp.parser.Context_Integration.librarian import clean_for_json`
+      (line 23)
+    - `from webapp.parser.handlers.shared.parity_hooks import
+      attach_parity_note_to_metadata` (line 24)
+    - `from webapp.parser.handlers.shared.parity_hooks import
+      extract_router_parity_note` (line 24)
+    - `from webapp.parser.utils.contest_selector import
+      select_contest_auto_first` (line 28)
+    - `from webapp.parser.utils.html_scanner import scan_html_for_context` (line
+      29)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 30)
+    - `from webapp.parser.utils.retry_utils import retry_with_snapshot` (line
+      31)
+    - `from webapp.parser.utils.table_core import robust_table_extraction` (line
+      32)
+  - **Local/Project** (1):
+    - `from __future__ import annotations` (line 18)
+- Task markers:
+  - L157 **WARNING**: (f"\[{self.STATE_NAME}\] No contest selected")
+  - L178 **NOTE**:             # Attach parity note
+  - L252 **WARNING**: (f"\[{self.STATE_NAME}\] No contests detected in HTML")
+- Outgoing cross-module calls (sample):
+  - self.\_parse\_internal (line 97)
+  - webapp.parser.utils.retry\_utils.retry\_with\_snapshot (line 91)
+  - self.\_parse\_internal (line 102)
+  - html\_context.get (line 129)
+  - webapp.parser.utils.logger\_singleton.logger.info (line 131)
+  - webapp.parser.handlers.shared.parity\_hooks.extract\_router\_parity\_note
+    (line 134)
+  - self.pre\_scan\_hook (line 137)
+  - self.should\_use\_fallback (line 140)
+  - webapp.parser.utils.logger\_singleton.logger.info (line 141)
+  - self.\_fallback\_parse (line 142)
+  - self.scan\_for\_contests (line 145)
+  - self.\_ensure\_location\_fields (line 148)
+  - self.post\_scan\_hook (line 151)
+  - self.select\_contest (line 154)
+  - webapp.parser.utils.logger\_singleton.logger.warning (line 157)
+  - self.pre\_extraction\_hook (line 161)
+  - self.extract\_tables (line 164)
+  - self.post\_extraction\_hook (line 169)
+  - self.build\_metadata (line 174)
+  - webapp.parser.handlers.shared.parity\_hooks.attach\_parity\_note\_to\_metadata
+    (line 179)
+  - self.log\_extraction\_attempt (line 182)
+  - selected\_contest.get (line 184)
+  - webapp.parser.utils.logger\_singleton.logger.info (line 185)
+  - webapp.parser.utils.logger\_singleton.logger.error (line 190)
+  - self.log\_extraction\_attempt (line 191)
+  - webapp.parser.utils.html\_scanner.scan\_html\_for\_context (line 212)
+  - html\_context.get (line 213)
+  - html\_context.get (line 219)
+  - webapp.parser.Context\_Integration.librarian.clean\_for\_json (line 224)
+  - coordinator.organize\_and\_enrich (line 225)
+  - coordinator.predict\_missing\_fields (line 229)
+  - context\_result.update (line 233)
+  - context\_result.get (line 249)
+  - webapp.parser.utils.logger\_singleton.logger.warning (line 252)
+  - context\_result.get (line 256)
+  - context\_result.get (line 257)
+  - context\_result.get (line 258)
+  - webapp.parser.utils.contest\_selector.select\_contest\_auto\_first (line
+    263)
+  - html\_context.get (line 268)
+  - contest.get (line 339)
+  - contest.get (line 340)
+  - contest.get (line 341)
+  - contest.get (line 342)
+  - html\_context.get (line 343)
+  - context\_result.get (line 343)
+  - contest.get (line 367)
+  - metadata.get (line 370)
+  - webapp.parser.utils.logger\_singleton.logger.debug (line 377)
+  - webapp.parser.utils.logger\_singleton.logger.error (line 379)
+  - context\_result.get (line 411)
+
+### handlers/shared/state\_scaffold.py {#webapp-parser-handlers-shared-state-scaffold-py}
+
+- Definitions:
+  - function: `parse` (line 12)
+- Imports:
+  - **Standard Library** (3):
+    - `from typing import Any` (line 3)
+    - `from typing import Dict` (line 3)
+    - `from typing import Tuple` (line 3)
+  - **Third-party** (3):
+    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
+      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.parity_hooks import
+      attach_parity_note_to_metadata` (line 6)
+    - `from webapp.parser.handlers.shared.parity_hooks import
+      extract_router_parity_note` (line 6)
+  - **Local/Project** (1):
+    - `from __future__ import annotations` (line 1)
+- Outgoing cross-module calls (sample):
+  - webapp.parser.handlers.shared.parity\_hooks.extract\_router\_parity\_note
+    (line 22)
+  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 23)
+  - webapp.parser.handlers.shared.parity\_hooks.attach\_parity\_note\_to\_metadata
+    (line 27)
+
+### handlers/shared/vendor\_dispatch.py {#webapp-parser-handlers-shared-vendor-dispatch-py}
+
+> Vendor dispatch handler.
+
+- Definitions:
+  - function: `\_display\_state\_name` (line 27)
+  - function: `\_get\_canonical\_state` (line 31)
+  - function: `\_get\_handler` (line 44)
+  - function: `parse` (line 71)
+- Imports:
+  - **Standard Library** (4):
+    - `from typing import Any` (line 8)
+    - `from typing import Dict` (line 8)
+    - `from typing import List` (line 8)
+    - `from typing import Tuple` (line 8)
+  - **Third-party** (8):
+    - `from webapp.parser.Context_Integration.librarian import get_state_abbr`
+      (line 10)
+    - `from webapp.parser.Context_Integration.librarian import lookup_state`
+      (line 10)
+    - `from webapp.parser.handlers.shared.state_scaffold import parse as
+      scaffold_parse` (line 11)
+    - `from webapp.parser.handlers.shared.vendors.clarity_base_handler import
+      ClarityBaseHandler` (line 12)
+    - `from webapp.parser.handlers.shared.vendors.dominion_base_handler import
+      DominionBaseHandler` (line 13)
+    - `from webapp.parser.handlers.shared.vendors.voteworks_base_handler import
+      VoteWorksBaseHandler` (line 14)
+    - `from webapp.parser.handlers.vendor_state_map import get_vendor_for_state`
+      (line 15)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 16)
+  - **Local/Project** (1):
+    - `from __future__ import annotations` (line 6)
+- Outgoing cross-module calls (sample):
+  - canonical\_state.replace (line 28)
+  - ctx.get (line 34)
+  - ctx.get (line 35)
+  - ctx.get (line 36)
+  - ctx.get (line 37)
+  - webapp.parser.Context\_Integration.librarian.lookup\_state (line 41)
+  - webapp.parser.handlers.vendor\_state\_map.get\_vendor\_for\_state (line 45)
+  - \_VENDOR\_CLASS\_MAP.get (line 49)
+  - webapp.parser.Context\_Integration.librarian.get\_state\_abbr (line 53)
+  - \_HANDLER\_CACHE.get (line 58)
+  - webapp.parser.handlers.shared.state\_scaffold.parse (line 82)
+  - webapp.parser.utils.logger\_singleton.logger.debug (line 86)
+  - webapp.parser.handlers.shared.state\_scaffold.parse (line 87)
+  - handler.parse (line 89)
+- Inbound references:
+  - \_display\_state\_name ← vendor_dispatch.py:63
+  - \_get\_canonical\_state ← vendor_dispatch.py:80
+  - \_get\_handler ← vendor_dispatch.py:84
+
+### handlers/shared/vendors/\_\_init\_\_.py {#webapp-parser-handlers-shared-vendors-init-py}
+
+- Imports:
+  - **Third-party** (3):
+    - `from webapp.parser.handlers.shared.vendors.clarity_base_handler import
+      ClarityBaseHandler` (line 1)
+    - `from webapp.parser.handlers.shared.vendors.dominion_base_handler import
+      DominionBaseHandler` (line 2)
+    - `from webapp.parser.handlers.shared.vendors.voteworks_base_handler import
+      VoteWorksBaseHandler` (line 3)
+
+### handlers/shared/vendors/clarity\_base\_handler.py {#webapp-parser-handlers-shared-vendors-clarity-base-handler-py}
+
+> Clarity Elections base handler.
+
+- Definitions:
+  - class: `ClarityBaseHandler` (line 15)
+- Imports:
+  - **Standard Library** (3):
+    - `import re as re` (line 8)
+    - `from typing import Any` (line 9)
+    - `from typing import Dict` (line 9)
+  - **Third-party** (2):
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      StateHandlerBase` (line 11)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 12)
+  - **Local/Project** (1):
+    - `from __future__ import annotations` (line 6)
+- Outgoing cross-module calls (sample):
+  - re.search (line 30)
+  - webapp.parser.utils.logger\_singleton.logger.info (line 33)
+
+### handlers/shared/vendors/dominion\_base\_handler.py {#webapp-parser-handlers-shared-vendors-dominion-base-handler-py}
+
+> Dominion base handler.
+
+- Definitions:
+  - class: `DominionBaseHandler` (line 15)
+- Imports:
+  - **Standard Library** (3):
+    - `import re as re` (line 8)
+    - `from typing import Any` (line 9)
+    - `from typing import Dict` (line 9)
+  - **Third-party** (2):
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      StateHandlerBase` (line 11)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 12)
+  - **Local/Project** (1):
+    - `from __future__ import annotations` (line 6)
+- Outgoing cross-module calls (sample):
+  - re.search (line 30)
+  - webapp.parser.utils.logger\_singleton.logger.info (line 33)
+
+### handlers/shared/vendors/voteworks\_base\_handler.py {#webapp-parser-handlers-shared-vendors-voteworks-base-handler-py}
+
+> VoteWorks base handler.
+
+- Definitions:
+  - class: `VoteWorksBaseHandler` (line 15)
+- Imports:
+  - **Standard Library** (3):
+    - `import re as re` (line 8)
+    - `from typing import Any` (line 9)
+    - `from typing import Dict` (line 9)
+  - **Third-party** (2):
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      StateHandlerBase` (line 11)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 12)
+  - **Local/Project** (1):
+    - `from __future__ import annotations` (line 6)
+- Outgoing cross-module calls (sample):
+  - re.search (line 30)
+  - webapp.parser.utils.logger\_singleton.logger.info (line 33)
+
 ### handlers/states/alabama/alabama.py {#webapp-parser-handlers-states-alabama-alabama-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `AlabamaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - AlabamaHandler ← alabama.py:15
 
 ### handlers/states/alaska/alaska.py {#webapp-parser-handlers-states-alaska-alaska-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `AlaskaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - AlaskaHandler ← alaska.py:15
 
 ### handlers/states/american\_samoa/american\_samoa.py {#webapp-parser-handlers-states-american-samoa-american-samoa-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `AmericanSamoaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - AmericanSamoaHandler ← american_samoa.py:15
 
 ### handlers/states/arizona/\_\_init\_\_.py {#webapp-parser-handlers-states-arizona-init-py}
 
@@ -3468,98 +3969,131 @@ graph LR
 ### handlers/states/arkansas/arkansas.py {#webapp-parser-handlers-states-arkansas-arkansas-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `ArkansasHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - ArkansasHandler ← arkansas.py:15
+
+### handlers/states/california.py {#webapp-parser-handlers-states-california-py}
+
+> California State Handler
+
+- Definitions:
+  - class: `CaliforniaHandler` (line 19)
+  - function: `parse` (line 44)
+- Imports:
+  - **Third-party** (1):
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 16)
+- Outgoing cross-module calls (sample):
+  - \_handler\_instance.parse (line 46)
+- Inbound references:
+  - CaliforniaHandler ← california.py:42
+  - CaliforniaHandler ← california.py:15
 
 ### handlers/states/california/california.py {#webapp-parser-handlers-states-california-california-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `CaliforniaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
 
 ### handlers/states/colorado/colorado.py {#webapp-parser-handlers-states-colorado-colorado-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `ColoradoHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - ColoradoHandler ← colorado.py:15
 
 ### handlers/states/connecticut/connecticut.py {#webapp-parser-handlers-states-connecticut-connecticut-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `ConnecticutHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - ConnecticutHandler ← connecticut.py:15
 
 ### handlers/states/delaware/delaware.py {#webapp-parser-handlers-states-delaware-delaware-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `DelawareHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - DelawareHandler ← delaware.py:15
 
 ### handlers/states/district\_of\_columbia/district\_of\_columbia.py {#webapp-parser-handlers-states-district-of-columbia-district-of-columbia-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `DistrictofColumbiaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - DistrictofColumbiaHandler ← district_of_columbia.py:15
 
 ### handlers/states/example state/example\_county/example\_county.py {#webapp-parser-handlers-states-example-state-example-county-example-county-py}
 
@@ -3702,386 +4236,458 @@ graph LR
 ### handlers/states/florida/florida.py {#webapp-parser-handlers-states-florida-florida-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `FloridaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - FloridaHandler ← florida.py:15
 
 ### handlers/states/georgia/georgia.py {#webapp-parser-handlers-states-georgia-georgia-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `GeorgiaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - GeorgiaHandler ← georgia.py:15
 
 ### handlers/states/guam/guam.py {#webapp-parser-handlers-states-guam-guam-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `GuamHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - GuamHandler ← guam.py:15
 
 ### handlers/states/hawaii/hawaii.py {#webapp-parser-handlers-states-hawaii-hawaii-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `HawaiiHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - HawaiiHandler ← hawaii.py:15
 
 ### handlers/states/idaho/idaho.py {#webapp-parser-handlers-states-idaho-idaho-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `IdahoHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - IdahoHandler ← idaho.py:15
 
 ### handlers/states/illinois/illinois.py {#webapp-parser-handlers-states-illinois-illinois-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `IllinoisHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - IllinoisHandler ← illinois.py:15
 
 ### handlers/states/indiana/indiana.py {#webapp-parser-handlers-states-indiana-indiana-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `IndianaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - IndianaHandler ← indiana.py:15
 
 ### handlers/states/iowa/iowa.py {#webapp-parser-handlers-states-iowa-iowa-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `IowaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - IowaHandler ← iowa.py:15
 
 ### handlers/states/kansas/kansas.py {#webapp-parser-handlers-states-kansas-kansas-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `KansasHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - KansasHandler ← kansas.py:15
 
 ### handlers/states/kentucky/kentucky.py {#webapp-parser-handlers-states-kentucky-kentucky-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `KentuckyHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - KentuckyHandler ← kentucky.py:15
 
 ### handlers/states/louisiana/louisiana.py {#webapp-parser-handlers-states-louisiana-louisiana-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `LouisianaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - LouisianaHandler ← louisiana.py:15
 
 ### handlers/states/maine/maine.py {#webapp-parser-handlers-states-maine-maine-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `MaineHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - MaineHandler ← maine.py:15
 
 ### handlers/states/maryland/maryland.py {#webapp-parser-handlers-states-maryland-maryland-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `MarylandHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - MarylandHandler ← maryland.py:15
 
 ### handlers/states/massachusetts/massachusetts.py {#webapp-parser-handlers-states-massachusetts-massachusetts-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `MassachusettsHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - MassachusettsHandler ← massachusetts.py:15
 
 ### handlers/states/michigan/michigan.py {#webapp-parser-handlers-states-michigan-michigan-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `MichiganHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - MichiganHandler ← michigan.py:15
 
 ### handlers/states/minnesota/minnesota.py {#webapp-parser-handlers-states-minnesota-minnesota-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `MinnesotaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - MinnesotaHandler ← minnesota.py:15
 
 ### handlers/states/mississippi/mississippi.py {#webapp-parser-handlers-states-mississippi-mississippi-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `MississippiHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - MississippiHandler ← mississippi.py:15
 
 ### handlers/states/missouri/missouri.py {#webapp-parser-handlers-states-missouri-missouri-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `MissouriHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - MissouriHandler ← missouri.py:15
 
 ### handlers/states/montana/montana.py {#webapp-parser-handlers-states-montana-montana-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `MontanaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - MontanaHandler ← montana.py:15
 
 ### handlers/states/nebraska/nebraska.py {#webapp-parser-handlers-states-nebraska-nebraska-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `NebraskaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - NebraskaHandler ← nebraska.py:15
 
 ### handlers/states/nevada/nevada.py {#webapp-parser-handlers-states-nevada-nevada-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `NevadaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - NevadaHandler ← nevada.py:15
 
 ### handlers/states/new\_hampshire/new\_hampshire.py {#webapp-parser-handlers-states-new-hampshire-new-hampshire-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `NewHampshireHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - NewHampshireHandler ← new_hampshire.py:15
 
 ### handlers/states/new\_jersey/new\_jersey.py {#webapp-parser-handlers-states-new-jersey-new-jersey-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `NewJerseyHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - NewJerseyHandler ← new_jersey.py:15
 
 ### handlers/states/new\_mexico/new\_mexico.py {#webapp-parser-handlers-states-new-mexico-new-mexico-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `NewMexicoHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - NewMexicoHandler ← new_mexico.py:15
 
 ### handlers/states/new\_york/county/rockland.py {#webapp-parser-handlers-states-new-york-county-rockland-py}
 
@@ -4168,6 +4774,73 @@ graph LR
   - utils.browser\_utils.safe\_is\_enabled (line 166)
   - utils.logger\_singleton.logger.debug (line 168)
 
+### handlers/states/new\_york/county/westchester.py {#webapp-parser-handlers-states-new-york-county-westchester-py}
+
+> Westchester County Handler (New York)
+
+- Definitions:
+  - function: `parse` (line 43)
+- Imports:
+  - **Standard Library** (5):
+    - `from typing import TYPE_CHECKING` (line 21)
+    - `from typing import Any` (line 21)
+    - `from typing import Dict` (line 21)
+    - `from typing import List` (line 21)
+    - `from typing import Tuple` (line 21)
+  - **Third-party** (8):
+    - `from playwright.sync_api import Page` (line 23)
+    - `from webapp.parser.Context_Integration.librarian import clean_for_json`
+      (line 24)
+    - `from webapp.parser.utils.browser_utils import autoscroll_until_stable`
+      (line 25)
+    - `from webapp.parser.utils.contest_selector import
+      select_contest_auto_first` (line 28)
+    - `from webapp.parser.utils.html_scanner import scan_html_for_context` (line
+      29)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 30)
+    - `from webapp.parser.utils.shared_logic import safe_get` (line 31)
+    - `from webapp.parser.utils.table_core import robust_table_extraction` (line
+      32)
+- Task markers:
+  - L61 **TODO**: Customize this handler for Westchester County's specific UI.
+  - L122 **WARNING**: ("\[Westchester County\] No contest selected")
+  - L132 **TODO**: Add button toggles, navigation sequences, etc. specific to
+    Westchester County
+- Outgoing cross-module calls (sample):
+  - webapp.parser.utils.logger\_singleton.logger.info (line 71)
+  - webapp.parser.utils.html\_scanner.scan\_html\_for\_context (line 74)
+  - html\_context.get (line 75)
+  - html\_context.get (line 81)
+  - context\_result.get (line 86)
+  - context\_result.get (line 87)
+  - context\_result.get (line 88)
+  - webapp.parser.utils.shared\_logic.safe\_get (line 91)
+  - contest.setdefault (line 92)
+  - contest.setdefault (line 93)
+  - contest.setdefault (line 95)
+  - webapp.parser.Context\_Integration.librarian.clean\_for\_json (line 100)
+  - coordinator.organize\_and\_enrich (line 101)
+  - context\_result.get (line 108)
+  - html\_context.items (line 110)
+  - webapp.parser.utils.contest\_selector.select\_contest\_auto\_first (line
+    113)
+  - html\_context.get (line 118)
+  - webapp.parser.utils.logger\_singleton.logger.warning (line 122)
+  - webapp.parser.utils.logger\_singleton.logger.info (line 129)
+  - selected.get (line 129)
+  - html\_context.get (line 151)
+  - webapp.parser.utils.logger\_singleton.logger.info (line 152)
+  - webapp.parser.utils.browser\_utils.autoscroll\_until\_stable (line 153)
+  - webapp.parser.utils.table\_core.robust\_table\_extraction (line 156)
+  - result.get (line 164)
+  - result.get (line 165)
+  - selected.get (line 172)
+  - html\_context.get (line 173)
+  - context\_result.get (line 173)
+  - state.lower (line 175)
+  - selected.get (line 180)
+  - webapp.parser.utils.logger\_singleton.logger.info (line 181)
+
 ### handlers/states/new\_york/new\_york.py {#webapp-parser-handlers-states-new-york-new-york-py}
 
 - Definitions:
@@ -4188,7 +4861,7 @@ graph LR
     - `from utils.shared_logic import safe_strip` (line 7)
 - Task markers:
   - L27 **WARNING**: ("\[NY Handler\] No county specified in html_context.")
-  - L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
+  - L47 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
     county: '{county}'. Please add it under {module_path}.py")
 - Outgoing cross-module calls (sample):
   - utils.shared\_logic.safe\_get (line 24)
@@ -4198,104 +4871,122 @@ graph LR
   - importlib.import\_module (line 33)
   - utils.logger\_singleton.logger.info (line 34)
   - utils.shared\_logic.safe\_parse (line 36)
-  - utils.logger\_singleton.logger.warning (line 43)
-  - utils.logger\_singleton.logger.error (line 46)
+  - utils.logger\_singleton.logger.warning (line 47)
+  - utils.logger\_singleton.logger.error (line 50)
 
 ### handlers/states/north\_carolina/north\_carolina.py {#webapp-parser-handlers-states-north-carolina-north-carolina-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `NorthCarolinaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - NorthCarolinaHandler ← north_carolina.py:15
 
 ### handlers/states/north\_dakota/north\_dakota.py {#webapp-parser-handlers-states-north-dakota-north-dakota-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `NorthDakotaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - NorthDakotaHandler ← north_dakota.py:15
 
 ### handlers/states/northern\_mariana\_islands/northern\_mariana\_islands.py {#webapp-parser-handlers-states-northern-mariana-islands-northern-mariana-islands-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `NorthernMarianaIslandsHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - NorthernMarianaIslandsHandler ← northern_mariana_islands.py:15
 
 ### handlers/states/ohio/ohio.py {#webapp-parser-handlers-states-ohio-ohio-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `OhioHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - OhioHandler ← ohio.py:15
 
 ### handlers/states/oklahoma/oklahoma.py {#webapp-parser-handlers-states-oklahoma-oklahoma-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `OklahomaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - OklahomaHandler ← oklahoma.py:15
 
 ### handlers/states/oregon/oregon.py {#webapp-parser-handlers-states-oregon-oregon-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `OregonHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - OregonHandler ← oregon.py:15
 
 ### handlers/states/pennsylvania/\_\_init\_\_.py {#webapp-parser-handlers-states-pennsylvania-init-py}
 
@@ -4396,226 +5087,308 @@ graph LR
 ### handlers/states/puerto\_rico/puerto\_rico.py {#webapp-parser-handlers-states-puerto-rico-puerto-rico-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `PuertoRicoHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - PuertoRicoHandler ← puerto_rico.py:15
 
 ### handlers/states/rhode\_island/rhode\_island.py {#webapp-parser-handlers-states-rhode-island-rhode-island-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `RhodeIslandHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - RhodeIslandHandler ← rhode_island.py:15
 
 ### handlers/states/south\_carolina/south\_carolina.py {#webapp-parser-handlers-states-south-carolina-south-carolina-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `SouthCarolinaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - SouthCarolinaHandler ← south_carolina.py:15
 
 ### handlers/states/south\_dakota/south\_dakota.py {#webapp-parser-handlers-states-south-dakota-south-dakota-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `SouthDakotaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - SouthDakotaHandler ← south_dakota.py:15
 
 ### handlers/states/tennessee/tennessee.py {#webapp-parser-handlers-states-tennessee-tennessee-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `TennesseeHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - TennesseeHandler ← tennessee.py:15
+
+### handlers/states/texas.py {#webapp-parser-handlers-states-texas-py}
+
+> Texas State Handler
+
+- Definitions:
+  - class: `TexasHandler` (line 19)
+  - function: `parse` (line 44)
+- Imports:
+  - **Third-party** (1):
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 16)
+- Outgoing cross-module calls (sample):
+  - \_handler\_instance.parse (line 46)
+- Inbound references:
+  - TexasHandler ← texas.py:42
+  - TexasHandler ← texas.py:15
 
 ### handlers/states/texas/texas.py {#webapp-parser-handlers-states-texas-texas-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `TexasHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
 
 ### handlers/states/us\_virgin\_islands/us\_virgin\_islands.py {#webapp-parser-handlers-states-us-virgin-islands-us-virgin-islands-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `USVirginIslandsHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - USVirginIslandsHandler ← us_virgin_islands.py:15
 
 ### handlers/states/utah/utah.py {#webapp-parser-handlers-states-utah-utah-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `UtahHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - UtahHandler ← utah.py:15
 
 ### handlers/states/vermont/vermont.py {#webapp-parser-handlers-states-vermont-vermont-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `VermontHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - VermontHandler ← vermont.py:15
 
 ### handlers/states/virginia/virginia.py {#webapp-parser-handlers-states-virginia-virginia-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `VirginiaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - VirginiaHandler ← virginia.py:15
 
 ### handlers/states/washington/washington.py {#webapp-parser-handlers-states-washington-washington-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `WashingtonHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - WashingtonHandler ← washington.py:15
 
 ### handlers/states/west\_virginia/west\_virginia.py {#webapp-parser-handlers-states-west-virginia-west-virginia-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `WestVirginiaHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - WestVirginiaHandler ← west_virginia.py:15
 
 ### handlers/states/wisconsin/wisconsin.py {#webapp-parser-handlers-states-wisconsin-wisconsin-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `WisconsinHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - WisconsinHandler ← wisconsin.py:15
 
 ### handlers/states/wyoming/wyoming.py {#webapp-parser-handlers-states-wyoming-wyoming-py}
 
 - Definitions:
-  - function: `parse` (line 8)
+  - class: `WyomingHandler` (line 8)
+  - function: `parse` (line 17)
 - Imports:
   - **Standard Library** (2):
     - `from typing import Any` (line 3)
     - `from typing import Dict` (line 3)
   - **Third-party** (1):
-    - `from webapp.parser.handlers.formats.html_dynamic_fallback import parse as
-      dynamic_parse` (line 5)
+    - `from webapp.parser.handlers.shared.state_handler_base import
+      SimpleTableHandler` (line 5)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.handlers.formats.html\_dynamic\_fallback.parse (line 13)
+  - \_handler\_instance.parse (line 19)
+- Inbound references:
+  - WyomingHandler ← wyoming.py:15
+
+### handlers/vendor\_state\_map.py {#webapp-parser-handlers-vendor-state-map-py}
+
+> State to vendor mapping for vendor-dispatch handlers.
+
+- Definitions:
+  - function: `get\_vendor\_for\_state` (line 51)
+- Imports:
+  - **Standard Library** (2):
+    - `from typing import Dict` (line 8)
+    - `from typing import List` (line 8)
+  - **Third-party** (1):
+    - `from webapp.parser.utils.shared_logic import normalize_state_name` (line
+      10)
+  - **Local/Project** (1):
+    - `from __future__ import annotations` (line 6)
+- Task markers:
+  - L38 **TODO**: enhancedvoting.com domain; confirm vendor",
+  - L45 **TODO**: enhancedvoting.com domain; confirm vendor",
+- Outgoing cross-module calls (sample):
+  - webapp.parser.utils.shared\_logic.normalize\_state\_name (line 53)
+  - webapp.parser.utils.shared\_logic.normalize\_state\_name (line 57)
+  - entry.get (line 57)
+  - entry.get (line 58)
+  - entry.get (line 59)
 
 ### health/context\_migration.py {#webapp-parser-health-context-migration-py}
 
@@ -4736,19 +5509,19 @@ graph LR
 ### health/dataset\_promotion.py {#webapp-parser-health-dataset-promotion-py}
 
 - Definitions:
-  - function: `discover\_dataset\_dirs` (line 68)
-  - function: `resolve\_dataset\_path` (line 80)
-  - function: `\_load\_metadata` (line 95)
-  - function: `\_load\_rows` (line 102)
-  - function: `\_has\_value` (line 111)
-  - function: `\_match\_field` (line 119)
-  - function: `\_coerce\_text` (line 138)
-  - function: `\_coerce\_votes` (line 145)
-  - function: `\_resolve\_election\_date` (line 169)
-  - function: `build\_warehouse\_records` (line 194)
-  - function: `promote\_dataset` (line 243)
-  - function: `\_build\_arg\_parser` (line 351)
-  - function: `main` (line 375)
+  - function: `discover\_dataset\_dirs` (line 67)
+  - function: `resolve\_dataset\_path` (line 79)
+  - function: `\_load\_metadata` (line 94)
+  - function: `\_load\_rows` (line 101)
+  - function: `\_has\_value` (line 110)
+  - function: `\_match\_field` (line 118)
+  - function: `\_coerce\_text` (line 137)
+  - function: `\_coerce\_votes` (line 144)
+  - function: `\_resolve\_election\_date` (line 168)
+  - function: `build\_warehouse\_records` (line 193)
+  - function: `promote\_dataset` (line 242)
+  - function: `\_build\_arg\_parser` (line 350)
+  - function: `main` (line 374)
 - Imports:
   - **Standard Library** (8):
     - `import argparse as argparse` (line 3)
@@ -4764,100 +5537,100 @@ graph LR
     - `from webapp.parser.config import OUTPUT_DIR` (line 10)
     - `from webapp.parser.Context_Integration.librarian import clean_for_json`
       (line 11)
-    - `from webapp.parser.utils.db_utils import create_batch_metadata` (line 12)
-    - `from webapp.parser.utils.db_utils import
-      create_warehouse_election_result` (line 12)
-    - `from webapp.parser.utils.db_utils import update_batch_metadata` (line 12)
-    - `from webapp.parser.utils.logger_singleton import logger` (line 17)
-    - `from webapp.parser.utils.models import StatusEnum` (line 18)
     - `from webapp.parser.health.promotion_helpers import check_exact_duplicate`
-      (line 19)
+      (line 12)
     - `from webapp.parser.health.promotion_helpers import
-      get_url_verification_tier` (line 19)
+      get_url_verification_tier` (line 12)
+    - `from webapp.parser.utils.db_utils import create_batch_metadata` (line 13)
+    - `from webapp.parser.utils.db_utils import
+      create_warehouse_election_result` (line 13)
+    - `from webapp.parser.utils.db_utils import update_batch_metadata` (line 13)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 18)
+    - `from webapp.parser.utils.models import StatusEnum` (line 19)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Task markers:
-  - L295 **WARNING**: (f"\[PROMOTE\] Skipping blocked URL: {source_url}")
+  - L294 **WARNING**: (f"\[PROMOTE\] Skipping blocked URL: {source_url}")
 - Outgoing cross-module calls (sample):
-  - root.exists (line 70)
-  - root.iterdir (line 73)
-  - entry.is\_dir (line 74)
-  - candidates.append (line 75)
-  - candidates.sort (line 76)
-  - p.stat (line 76)
-  - pathlib.Path (line 83)
-  - candidate.is\_absolute (line 84)
-  - candidate.exists (line 86)
-  - candidate.is\_dir (line 86)
-  - metadata\_path.exists (line 97)
-  - orjson.loads (line 99)
-  - metadata\_path.read\_bytes (line 99)
-  - csv\_path.exists (line 104)
-  - csv\_path.open (line 106)
-  - csv.DictReader (line 107)
-  - value.strip (line 115)
-  - header.lower (line 124)
-  - row.keys (line 124)
-  - lower\_map.get (line 126)
-  - exact.lower (line 126)
+  - root.exists (line 69)
+  - root.iterdir (line 72)
+  - entry.is\_dir (line 73)
+  - candidates.append (line 74)
+  - candidates.sort (line 75)
+  - p.stat (line 75)
+  - pathlib.Path (line 82)
+  - candidate.is\_absolute (line 83)
+  - candidate.exists (line 85)
+  - candidate.is\_dir (line 85)
+  - metadata\_path.exists (line 96)
+  - orjson.loads (line 98)
+  - metadata\_path.read\_bytes (line 98)
+  - csv\_path.exists (line 103)
+  - csv\_path.open (line 105)
+  - csv.DictReader (line 106)
+  - value.strip (line 114)
+  - header.lower (line 123)
+  - row.keys (line 123)
+  - lower\_map.get (line 125)
+  - exact.lower (line 125)
+  - row.get (line 126)
   - row.get (line 127)
-  - row.get (line 128)
-  - row.items (line 129)
-  - header.strip (line 132)
-  - text.replace (line 157)
-  - normalized.lower (line 158)
-  - metadata.get (line 170)
+  - row.items (line 128)
+  - header.strip (line 131)
+  - text.replace (line 156)
+  - normalized.lower (line 157)
+  - metadata.get (line 169)
+  - context.get (line 171)
   - context.get (line 172)
   - context.get (line 173)
-  - context.get (line 174)
-  - metadata.get (line 175)
-  - candidate.replace (line 181)
-  - text.replace (line 185)
-  - datetime.datetime.fromisoformat (line 187)
-  - parsed.replace (line 190)
+  - metadata.get (line 174)
+  - candidate.replace (line 180)
+  - text.replace (line 184)
+  - datetime.datetime.fromisoformat (line 186)
+  - parsed.replace (line 189)
+  - metadata.get (line 201)
   - metadata.get (line 202)
+  - context.get (line 202)
+  - context.get (line 202)
   - metadata.get (line 203)
   - context.get (line 203)
   - context.get (line 203)
   - metadata.get (line 204)
   - context.get (line 204)
   - context.get (line 204)
-  - metadata.get (line 205)
-  - context.get (line 205)
-  - context.get (line 205)
-  - metadata.get (line 209)
-  - webapp.parser.Context\_Integration.librarian.clean\_for\_json (line 236)
-  - records.append (line 239)
-  - metadata.get (line 255)
+  - metadata.get (line 208)
+  - webapp.parser.Context\_Integration.librarian.clean\_for\_json (line 235)
+  - records.append (line 238)
+  - metadata.get (line 254)
 - Inbound references:
-  - discover\_dataset\_dirs ← dataset_promotion.py:89
-  - resolve\_dataset\_path ← dataset_promotion.py:380
-  - \_load\_metadata ← dataset_promotion.py:250
-  - \_load\_rows ← dataset_promotion.py:251
-  - \_has\_value ← dataset_promotion.py:127
-  - \_has\_value ← dataset_promotion.py:130
+  - discover\_dataset\_dirs ← dataset_promotion.py:88
+  - resolve\_dataset\_path ← dataset_promotion.py:379
+  - \_load\_metadata ← dataset_promotion.py:249
+  - \_load\_rows ← dataset_promotion.py:250
+  - \_has\_value ← dataset_promotion.py:126
+  - \_has\_value ← dataset_promotion.py:129
   - \_has\_value ← location_helpers.py:315
+  - \_match\_field ← dataset_promotion.py:215
   - \_match\_field ← dataset_promotion.py:216
   - \_match\_field ← dataset_promotion.py:217
   - \_match\_field ← dataset_promotion.py:218
-  - \_match\_field ← dataset_promotion.py:219
+  - \_coerce\_text ← dataset_promotion.py:202
+  - \_coerce\_text ← dataset_promotion.py:202
+  - \_coerce\_text ← dataset_promotion.py:202
   - \_coerce\_text ← dataset_promotion.py:203
   - \_coerce\_text ← dataset_promotion.py:203
   - \_coerce\_text ← dataset_promotion.py:203
   - \_coerce\_text ← dataset_promotion.py:204
   - \_coerce\_text ← dataset_promotion.py:204
   - \_coerce\_text ← dataset_promotion.py:204
-  - \_coerce\_text ← dataset_promotion.py:205
-  - \_coerce\_text ← dataset_promotion.py:205
-  - \_coerce\_text ← dataset_promotion.py:205
+  - \_coerce\_text ← dataset_promotion.py:227
   - \_coerce\_text ← dataset_promotion.py:228
-  - \_coerce\_text ← dataset_promotion.py:229
-  - \_coerce\_text ← dataset_promotion.py:231
-  - \_coerce\_votes ← dataset_promotion.py:220
-  - \_resolve\_election\_date ← dataset_promotion.py:210
-  - build\_warehouse\_records ← dataset_promotion.py:252
-  - promote\_dataset ← dataset_promotion.py:381
-  - \_build\_arg\_parser ← dataset_promotion.py:376
+  - \_coerce\_text ← dataset_promotion.py:230
+  - \_coerce\_votes ← dataset_promotion.py:219
+  - \_resolve\_election\_date ← dataset_promotion.py:209
+  - build\_warehouse\_records ← dataset_promotion.py:251
+  - promote\_dataset ← dataset_promotion.py:380
+  - \_build\_arg\_parser ← dataset_promotion.py:375
   - \_build\_arg\_parser ← integrity_check_runner.py:69
 
 ### health/health\_config.py {#webapp-parser-health-health-config-py}
@@ -4871,6 +5644,9 @@ graph LR
     - `from config import LOG_DIR` (line 9)
     - `from config import MODEL_DIR` (line 9)
     - `from config import PROJECT_ROOT` (line 9)
+- Task markers:
+  - L110 **WARN**: 0.45 ≤ suspicion &lt; 0.72  (middle third, 45–72%) →
+    confirm/verify
 - Outgoing cross-module calls (sample):
   - pathlib.Path (line 28)
   - pathlib.Path (line 29)
@@ -4879,12 +5655,12 @@ graph LR
 ### health/health\_router.py {#webapp-parser-health-health-router-py}
 
 - Definitions:
-  - class: `LocalLearningEngine` (line 74)
-  - function: `get\_learning\_engine` (line 131)
-  - function: `register\_orchestration\_plugin` (line 140)
-  - function: `run\_orchestration\_plugins` (line 143)
-  - function: `preclean\_json\_logs` (line 152)
-  - class: `BotPipeline` (line 207)
+  - class: `LocalLearningEngine` (line 70)
+  - function: `get\_learning\_engine` (line 127)
+  - function: `register\_orchestration\_plugin` (line 136)
+  - function: `run\_orchestration\_plugins` (line 139)
+  - function: `preclean\_json\_logs` (line 148)
+  - class: `BotPipeline` (line 238)
 - Imports:
   - **Standard Library** (8):
     - `import os as os` (line 3)
@@ -4898,7 +5674,7 @@ graph LR
   - **Third-party** (2):
     - `import orjson as orjson` (line 11)
     - `from sqlalchemy import inspect` (line 12)
-  - **Local/Project** (39):
+  - **Local/Project** (34):
     - `import errno as errno` (line 1)
     - `import glob as glob` (line 2)
     - `from config import BATCH_MODE` (line 14)
@@ -4917,11 +5693,6 @@ graph LR
     - `from config import FILTER_VALUE` (line 14)
     - `from config import FLUSH_CACHE` (line 14)
     - `from config import INTEGRITY_CHECK` (line 14)
-    - `from config import LLM_API_KEY` (line 14)
-    - `from config import LLM_EXTRA_INSTRUCTIONS` (line 14)
-    - `from config import LLM_MODEL` (line 14)
-    - `from config import LLM_PROVIDER` (line 14)
-    - `from config import LLM_SYSTEM_PROMPT` (line 14)
     - `from config import LOG_DIR` (line 14)
     - `from config import MAX_RETRIES` (line 14)
     - `from config import MODEL_DIR` (line 14)
@@ -4931,89 +5702,89 @@ graph LR
     - `from config import REST_API` (line 14)
     - `from config import SELF_HEAL` (line 14)
     - `from config import UPDATE_DB` (line 14)
-    - `from Context_Integration.librarian import load_context_library` (line 46)
-    - `from utils.db_utils import get_engine` (line 47)
-    - `from utils.logger_singleton import console` (line 48)
-    - `from utils.logger_singleton import logger` (line 48)
-    - `from utils.models import Base` (line 49)
-    - `from integrity_monitor import get_integrity_monitor` (line 50)
+    - `from Context_Integration.librarian import load_context_library` (line 41)
+    - `from utils.db_utils import get_engine` (line 42)
+    - `from utils.logger_singleton import console` (line 43)
+    - `from utils.logger_singleton import logger` (line 43)
+    - `from utils.models import Base` (line 44)
+    - `from integrity_monitor import get_integrity_monitor` (line 45)
     - `from navigation_feedback_ingest import ingest_navigation_feedback` (line
-      51)
+      46)
 - Task markers:
-  - L99 **WARNING**: (f"\[LocalLearning\] Failed to record training signal:
+  - L95 **WARNING**: (f"\[LocalLearning\] Failed to record training signal:
     {e}")
-  - L337 **WARNING**: (f"\[health_router\] manual_correction failed (attempt
+  - L357 **WARNING**: (f"\[health_router\] manual_correction failed (attempt
     {attempt}): {result.stderr}")
-  - L421 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+  - L441 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
     manual_correction...")
-  - L423 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+  - L443 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
     rescanning...")
-  - L425 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+  - L445 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
     may remain.")
-  - L460 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
-  - L477 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
+  - L480 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
+  - L497 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
     loop will be handled by scan_misaligned_ner.")
-  - L479 **WARNING**: ("\[PIPELINE\] scan_misaligned_ner failed or file missing.
+  - L499 **WARNING**: ("\[PIPELINE\] scan_misaligned_ner failed or file missing.
     Proceeding with caution.")
-  - L511 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
+  - L525 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
 - Outgoing cross-module calls (sample):
-  - integrity\_monitor.get\_integrity\_monitor (line 78)
-  - datetime.datetime.now (line 85)
-  - session\_context.get (line 86)
-  - session\_context.get (line 87)
-  - session\_context.get (line 88)
-  - session\_context.get (line 89)
-  - f.write (line 97)
-  - orjson.dumps (line 97)
-  - utils.logger\_singleton.logger.warning (line 99)
-  - session\_context.get (line 104)
-  - session\_context.get (line 105)
-  - Context\_Integration.librarian.load\_context\_library (line 109)
-  - library.get (line 110)
-  - c.get (line 115)
-  - c.get (line 116)
-  - m.get (line 120)
-  - utils.logger\_singleton.logger.debug (line 124)
-  - ORCHESTRATION\_PLUGINS.append (line 141)
-  - suggestions.extend (line 147)
-  - utils.logger\_singleton.logger.error (line 149)
-  - glob.glob (line 161)
-  - line.strip (line 166)
-  - json.loads (line 172)
-  - valid\_lines.append (line 173)
-  - re.sub (line 177)
-  - re.sub (line 178)
-  - re.sub (line 179)
-  - fixed.replace (line 180)
-  - json.loads (line 182)
-  - valid\_lines.append (line 183)
-  - corrupt\_lines.append (line 185)
-  - out.write (line 189)
-  - out.write (line 195)
-  - utils.db\_utils.get\_engine (line 217)
-  - sqlalchemy.inspect (line 219)
-  - inspector.get\_table\_names (line 220)
-  - table.add\_column (line 223)
-  - table.add\_row (line 225)
-  - utils.logger\_singleton.console.table (line 226)
-  - utils.logger\_singleton.logger.info (line 227)
-  - utils.logger\_singleton.logger.info (line 228)
-  - utils.logger\_singleton.logger.error (line 232)
-  - args.append (line 239)
-  - args.append (line 241)
-  - args.append (line 243)
-  - args.append (line 245)
-  - args.append (line 247)
-  - args.extend (line 254)
-  - args.extend (line 260)
-  - args.extend (line 262)
+  - integrity\_monitor.get\_integrity\_monitor (line 74)
+  - datetime.datetime.now (line 81)
+  - session\_context.get (line 82)
+  - session\_context.get (line 83)
+  - session\_context.get (line 84)
+  - session\_context.get (line 85)
+  - f.write (line 93)
+  - orjson.dumps (line 93)
+  - utils.logger\_singleton.logger.warning (line 95)
+  - session\_context.get (line 100)
+  - session\_context.get (line 101)
+  - Context\_Integration.librarian.load\_context\_library (line 105)
+  - library.get (line 106)
+  - c.get (line 111)
+  - c.get (line 112)
+  - m.get (line 116)
+  - utils.logger\_singleton.logger.debug (line 120)
+  - ORCHESTRATION\_PLUGINS.append (line 137)
+  - suggestions.extend (line 143)
+  - utils.logger\_singleton.logger.error (line 145)
+  - glob.glob (line 157)
+  - char.strip (line 168)
+  - char.strip (line 169)
+  - json.load (line 181)
+  - out.write (line 187)
+  - line.strip (line 195)
+  - corrupt\_lines.append (line 199)
+  - json.loads (line 203)
+  - valid\_lines.append (line 204)
+  - re.sub (line 208)
+  - re.sub (line 209)
+  - re.sub (line 210)
+  - fixed.replace (line 211)
+  - json.loads (line 213)
+  - valid\_lines.append (line 214)
+  - corrupt\_lines.append (line 216)
+  - out.write (line 220)
+  - out.write (line 226)
+  - utils.db\_utils.get\_engine (line 248)
+  - sqlalchemy.inspect (line 250)
+  - inspector.get\_table\_names (line 251)
+  - table.add\_column (line 254)
+  - table.add\_row (line 256)
+  - utils.logger\_singleton.console.table (line 257)
+  - utils.logger\_singleton.logger.info (line 258)
+  - utils.logger\_singleton.logger.info (line 259)
+  - utils.logger\_singleton.logger.error (line 263)
+  - args.append (line 270)
+  - args.append (line 272)
+  - args.append (line 274)
 - Inbound references:
-  - LocalLearningEngine ← health_router.py:135
-  - get\_learning\_engine ← web_pipeline.py:586
-  - get\_learning\_engine ← health_router.py:627
-  - run\_orchestration\_plugins ← health_router.py:615
-  - preclean\_json\_logs ← health_router.py:441
-  - BotPipeline ← health_router.py:675
+  - LocalLearningEngine ← health_router.py:131
+  - get\_learning\_engine ← web_pipeline.py:621
+  - get\_learning\_engine ← health_router.py:639
+  - run\_orchestration\_plugins ← health_router.py:629
+  - preclean\_json\_logs ← health_router.py:461
+  - BotPipeline ← health_router.py:687
 
 ### health/integrity\_check\_runner.py {#webapp-parser-health-integrity-check-runner-py}
 
@@ -5269,44 +6040,43 @@ graph LR
 > manual_correction.py
 
 - Definitions:
-  - function: `safe\_path` (line 76)
-  - function: `load\_cache` (line 105)
-  - function: `close\_cache` (line 120)
-  - function: `write\_audit\_log` (line 124)
-  - function: `process\_logs\_with\_cache` (line 139)
-  - function: `process\_and\_sync` (line 151)
-  - function: `discover\_field\_types\_from\_logs` (line 195)
-  - function: `atomic\_write\_json` (line 228)
-  - function: `llm\_suggest\_action` (line 297)
-  - function: `ml\_score\_entry` (line 349)
-  - function: `ml\_suggest\_field` (line 372)
-  - function: `load\_jsonl` (line 391)
-  - function: `check\_and\_fix\_json\_files` (line 407)
-  - function: `find\_log\_files` (line 569)
-  - function: `load\_jsonl\_incremental` (line 636)
-  - function: `save\_jsonl` (line 654)
-  - function: `deduplicate\_entries` (line 667)
-  - function: `entry\_key` (line 681)
-  - function: `aggregate\_successful\_field\_entries` (line 692)
-  - function: `feedback\_loop` (line 733)
-  - function: `trim\_log\_file` (line 821)
-  - function: `update\_context\_with\_new\_entries` (line 828)
-  - function: `validate\_context\_schema` (line 845)
-  - function: `extract\_year` (line 870)
-  - function: `extract\_state` (line 884)
-  - function: `extract\_county` (line 903)
-  - function: `extract\_type` (line 925)
-  - function: `autofix\_contest\_fields` (line 945)
-  - function: `suggest\_fields\_with\_models` (line 991)
-  - function: `prompt\_for\_missing\_fields` (line 1071)
-  - function: `highlight\_anomalies` (line 1094)
-  - function: `update\_database\_with\_context` (line 1142)
-  - function: `export\_correction\_session` (line 1161)
-  - function: `import\_correction\_session` (line 1182)
-  - function: `field\_matches\_log` (line 1190)
-  - function: `ensure\_context\_library` (line 1207)
-  - function: `process\_auto\_mode` (line 1235)
-  - function: `main` (line 1312)
+  - function: `safe\_path` (line 70)
+  - function: `load\_cache` (line 99)
+  - function: `close\_cache` (line 114)
+  - function: `write\_audit\_log` (line 118)
+  - function: `process\_logs\_with\_cache` (line 133)
+  - function: `process\_and\_sync` (line 145)
+  - function: `discover\_field\_types\_from\_logs` (line 189)
+  - function: `atomic\_write\_json` (line 222)
+  - function: `ml\_score\_entry` (line 295)
+  - function: `ml\_suggest\_field` (line 318)
+  - function: `load\_jsonl` (line 337)
+  - function: `check\_and\_fix\_json\_files` (line 353)
+  - function: `find\_log\_files` (line 515)
+  - function: `load\_jsonl\_incremental` (line 582)
+  - function: `save\_jsonl` (line 600)
+  - function: `deduplicate\_entries` (line 613)
+  - function: `entry\_key` (line 627)
+  - function: `aggregate\_successful\_field\_entries` (line 638)
+  - function: `feedback\_loop` (line 679)
+  - function: `trim\_log\_file` (line 747)
+  - function: `update\_context\_with\_new\_entries` (line 754)
+  - function: `validate\_context\_schema` (line 771)
+  - function: `extract\_year` (line 796)
+  - function: `extract\_state` (line 810)
+  - function: `extract\_county` (line 829)
+  - function: `extract\_type` (line 851)
+  - function: `autofix\_contest\_fields` (line 871)
+  - function: `suggest\_fields\_with\_models` (line 917)
+  - function: `prompt\_for\_missing\_fields` (line 997)
+  - function: `highlight\_anomalies` (line 1020)
+  - function: `update\_database\_with\_context` (line 1068)
+  - function: `export\_correction\_session` (line 1087)
+  - function: `import\_correction\_session` (line 1108)
+  - function: `field\_matches\_log` (line 1116)
+  - function: `ensure\_context\_library` (line 1133)
+  - function: `process\_auto\_mode` (line 1161)
+  - function: `main` (line 1238)
 - Imports:
   - **Standard Library** (12):
     - `import argparse as argparse` (line 16)
@@ -5321,183 +6091,176 @@ graph LR
     - `from datetime import datetime` (line 26)
     - `from datetime import timedelta` (line 26)
     - `from pathlib import Path` (line 27)
-  - **Third-party** (2):
-    - `import openai as openai` (line 29)
-    - `import orjson as orjson` (line 30)
-  - **Local/Project** (24):
+  - **Third-party** (1):
+    - `import orjson as orjson` (line 29)
+  - **Local/Project** (19):
     - `import importlib as importlib` (line 17)
     - `import shelve as shelve` (line 20)
-    - `from config import CACHE_DIR` (line 32)
-    - `from config import CONTEXT_LIBRARY_DIR` (line 32)
-    - `from config import CONTEXT_LIBRARY_PATH` (line 32)
-    - `from config import LLM_API_KEY` (line 32)
-    - `from config import LLM_EXTRA_INSTRUCTIONS` (line 32)
-    - `from config import LLM_MODEL` (line 32)
-    - `from config import LLM_PROVIDER` (line 32)
-    - `from config import LLM_SYSTEM_PROMPT` (line 32)
-    - `from config import LOG_DIR` (line 32)
-    - `from config import PROJECT_ROOT` (line 32)
-    - `from config import USER_NAME` (line 32)
+    - `from config import CACHE_DIR` (line 31)
+    - `from config import CONTEXT_LIBRARY_DIR` (line 31)
+    - `from config import CONTEXT_LIBRARY_PATH` (line 31)
+    - `from config import LOG_DIR` (line 31)
+    - `from config import PROJECT_ROOT` (line 31)
+    - `from config import USER_NAME` (line 31)
     - `from Context_Integration.context_coordinator import ContextCoordinator`
-      (line 45)
-    - `from Context_Integration.librarian import DEFAULT_STRUCTURE` (line 46)
-    - `from Context_Integration.librarian import SCHEMA_VERSION` (line 46)
-    - `from Context_Integration.librarian import get_state_abbr` (line 46)
-    - `from Context_Integration.librarian import load_context_library` (line 46)
-    - `from Context_Integration.librarian import lookup_county` (line 46)
-    - `from Context_Integration.librarian import lookup_state` (line 46)
+      (line 39)
+    - `from Context_Integration.librarian import DEFAULT_STRUCTURE` (line 40)
+    - `from Context_Integration.librarian import SCHEMA_VERSION` (line 40)
+    - `from Context_Integration.librarian import get_state_abbr` (line 40)
+    - `from Context_Integration.librarian import load_context_library` (line 40)
+    - `from Context_Integration.librarian import lookup_county` (line 40)
+    - `from Context_Integration.librarian import lookup_state` (line 40)
     - `from Context_Integration.librarian import update_context_library` (line
-      46)
-    - `from utils.logger_singleton import logger` (line 55)
-    - `from utils.misc_utils import file_hash` (line 56)
-    - `from utils.model_registry import ModelRegistry` (line 57)
+      40)
+    - `from utils.logger_singleton import logger` (line 49)
+    - `from utils.misc_utils import file_hash` (line 50)
+    - `from utils.model_registry import ModelRegistry` (line 51)
 - Task markers:
-  - L361 **WARNING**: (f"Coordinator ML scoring failed: {e}")
-  - L382 **WARNING**: (f"Coordinator field suggestion failed: {e}")
-  - L395 **WARNING**: (f"Log file not found: {path}")
-  - L404 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
-  - L434 **WARNING**: (f"\[SECURITY\] Skipping invalid directory: {directory} -
+  - L307 **WARNING**: (f"Coordinator ML scoring failed: {e}")
+  - L328 **WARNING**: (f"Coordinator field suggestion failed: {e}")
+  - L341 **WARNING**: (f"Log file not found: {path}")
+  - L350 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
+  - L380 **WARNING**: (f"\[SECURITY\] Skipping invalid directory: {directory} -
     {e}")
-  - L448 **WARNING**: (f"\[SECURITY\] Skipping file outside allowed directories:
+  - L394 **WARNING**: (f"\[SECURITY\] Skipping file outside allowed directories:
     {file} - {e}")
-  - L454 **WARNING**: (f"\[SKIP\] File not found: {file}")
-  - L458 **WARNING**: (f"\[SKIP\] File too large: {file}")
-  - L483 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
+  - L400 **WARNING**: (f"\[SKIP\] File not found: {file}")
+  - L404 **WARNING**: (f"\[SKIP\] File too large: {file}")
+  - L429 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
     ({e})")
-  - L497 **WARNING**: (f"\[CORRUPT\] {len(corrupt_items)} lines saved to
+  - L443 **WARNING**: (f"\[CORRUPT\] {len(corrupt_items)} lines saved to
     {corrupt_path}")
-  - L502 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
+  - L448 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
     file: {file}")
-  - L516 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
-  - L530 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt_path}")
-  - L536 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
+  - L462 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+  - L476 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt_path}")
+  - L482 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
     JSON in {file}")
-  - L541 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
-  - L555 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {dest_path}")
-  - L559 **WARNING**: (f"\[DELETED\] {file}")
-  - L562 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
-  - L597 **WARNING**: (f"\[SECURITY\] Skipping invalid directory: {d} - {e}")
-  - L615 **WARNING**: (f"\[SECURITY\] Skipping file outside allowed directories:
+  - L487 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+  - L501 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {dest_path}")
+  - L505 **WARNING**: (f"\[DELETED\] {file}")
+  - L508 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
+  - L543 **WARNING**: (f"\[SECURITY\] Skipping invalid directory: {d} - {e}")
+  - L561 **WARNING**: (f"\[SECURITY\] Skipping file outside allowed directories:
     {f} - {e}")
-  - L624 **WARNING**: (f"\[FIND-LOGS\] Skipped {d}: {e}")
-  - L649 **WARNING**: (f"\[CORRUPT\] {path} line {line_num}: {e}")
-  - L808 **WARNING**: (f"Invalid JSON, skipping edit: {e}")
-  - L851 **WARNING**: (
-  - L1105 **WARNING**: (
-  - L1211 **WARN**: if schema version mismatches.
-  - L1232 **WARNING**: (f"Schema version mismatch: found
+  - L570 **WARNING**: (f"\[FIND-LOGS\] Skipped {d}: {e}")
+  - L595 **WARNING**: (f"\[CORRUPT\] {path} line {line_num}: {e}")
+  - L734 **WARNING**: (f"Invalid JSON, skipping edit: {e}")
+  - L777 **WARNING**: (
+  - L1031 **WARNING**: (
+  - L1137 **WARN**: if schema version mismatches.
+  - L1158 **WARNING**: (f"Schema version mismatch: found
     {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider
     migrating.")
-  - L1256 **WARNING**: (f"\[SECURITY\] Skipping invalid log file: {log_file} -
+  - L1182 **WARNING**: (f"\[SECURITY\] Skipping invalid log file: {log_file} -
     {e}")
-  - L1288 **WARNING**: (f"\[AUTO\] Could not delete log file {log_file}: {e}")
-  - L1416 **WARNING**: (f"\[SKIP\] Could not load {log_file}: {e}")
-  - L1432 **WARNING**: ("No log files matched any of the specified fields. Will
+  - L1214 **WARNING**: (f"\[AUTO\] Could not delete log file {log_file}: {e}")
+  - L1337 **WARNING**: (f"\[SKIP\] Could not load {log_file}: {e}")
+  - L1353 **WARNING**: ("No log files matched any of the specified fields. Will
     attempt to process all log files for all fields.")
-  - L1518 **WARNING**: (f"\[SECURITY\] Cannot delete file outside allowed
+  - L1434 **WARNING**: (f"\[SECURITY\] Cannot delete file outside allowed
     directories: {log_file} - {e}")
-  - L1520 **WARNING**: (f"Could not delete log file {log_file}: {e}")
-  - L1540 **WARNING**: ("\[WARNING\] No entries were processed. Check your log
+  - L1436 **WARNING**: (f"Could not delete log file {log_file}: {e}")
+  - L1456 **WARNING**: ("\[WARNING\] No entries were processed. Check your log
     file naming, field configuration, or use --dry-run for debugging.")
 - Outgoing cross-module calls (sample):
-  - pathlib.Path (line 60)
-  - pathlib.Path (line 61)
-  - pathlib.Path (line 62)
-  - pathlib.Path (line 63)
-  - pathlib.Path (line 64)
-  - config.LOG\_DIR.mkdir (line 70)
-  - pathlib.Path (line 93)
-  - pathlib.Path (line 95)
-  - path.relative\_to (line 98)
-  - shelve.open (line 108)
-  - datetime.datetime.now (line 110)
-  - cache.items (line 112)
-  - v.get (line 113)
-  - datetime.datetime.fromisoformat (line 114)
-  - datetime.timedelta (line 114)
-  - expired.append (line 115)
-  - cache.close (line 121)
-  - datetime.datetime.now (line 128)
-  - orjson.dumps (line 130)
-  - f.write (line 137)
+  - pathlib.Path (line 54)
+  - pathlib.Path (line 55)
+  - pathlib.Path (line 56)
+  - pathlib.Path (line 57)
+  - pathlib.Path (line 58)
+  - config.LOG\_DIR.mkdir (line 64)
+  - pathlib.Path (line 87)
+  - pathlib.Path (line 89)
+  - path.relative\_to (line 92)
+  - shelve.open (line 102)
+  - datetime.datetime.now (line 104)
+  - cache.items (line 106)
+  - v.get (line 107)
+  - datetime.datetime.fromisoformat (line 108)
+  - datetime.timedelta (line 108)
+  - expired.append (line 109)
+  - cache.close (line 115)
+  - datetime.datetime.now (line 122)
+  - orjson.dumps (line 124)
+  - f.write (line 131)
+  - orjson.dumps (line 131)
   - orjson.dumps (line 137)
-  - orjson.dumps (line 143)
-  - cache.sync (line 149)
-  - orjson.dumps (line 156)
-  - batch.append (line 160)
-  - datetime.datetime.now (line 161)
-  - batch.clear (line 166)
-  - cache.sync (line 172)
-  - orjson.loads (line 212)
-  - field\_types.add (line 216)
-  - entry.keys (line 218)
-  - field\_types.add (line 220)
-  - path.with\_suffix (line 239)
-  - path.with\_suffix (line 240)
-  - tmp\_path.exists (line 247)
-  - tmp\_path.unlink (line 249)
-  - backup\_path.exists (line 254)
-  - backup\_path.unlink (line 256)
-  - tf.write (line 262)
-  - orjson.dumps (line 262)
-  - path.exists (line 265)
-  - shutil.copy2 (line 266)
-  - shutil.move (line 271)
-  - os.remove (line 276)
-  - time.sleep (line 279)
-  - tmp\_path.exists (line 284)
-  - tmp\_path.unlink (line 286)
-  - spacy.load (line 293)
-  - entry.get (line 327)
-  - orjson.dumps (line 328)
+  - cache.sync (line 143)
+  - orjson.dumps (line 150)
+  - batch.append (line 154)
+  - datetime.datetime.now (line 155)
+  - batch.clear (line 160)
+  - cache.sync (line 166)
+  - orjson.loads (line 206)
+  - field\_types.add (line 210)
+  - entry.keys (line 212)
+  - field\_types.add (line 214)
+  - path.with\_suffix (line 233)
+  - path.with\_suffix (line 234)
+  - tmp\_path.exists (line 241)
+  - tmp\_path.unlink (line 243)
+  - backup\_path.exists (line 248)
+  - backup\_path.unlink (line 250)
+  - tf.write (line 256)
+  - orjson.dumps (line 256)
+  - path.exists (line 259)
+  - shutil.copy2 (line 260)
+  - shutil.move (line 265)
+  - os.remove (line 270)
+  - time.sleep (line 273)
+  - tmp\_path.exists (line 278)
+  - tmp\_path.unlink (line 280)
+  - spacy.load (line 287)
+  - Context\_Integration.context\_coordinator.ContextCoordinator (line 300)
+  - entry.get (line 301)
 - Inbound references:
-  - load\_cache ← manual_correction_bot.py:1346
-  - load\_cache ← manual_correction_bot.py:1352
-  - close\_cache ← manual_correction_bot.py:1348
-  - write\_audit\_log ← manual_correction_bot.py:1278
-  - discover\_field\_types\_from\_logs ← manual_correction_bot.py:1402
-  - llm\_suggest\_action ← manual_correction_bot.py:789
-  - ml\_score\_entry ← manual_correction_bot.py:785
-  - ml\_suggest\_field ← manual_correction_bot.py:786
-  - load\_jsonl ← manual_correction_bot.py:141
-  - load\_jsonl ← manual_correction_bot.py:154
-  - load\_jsonl ← manual_correction_bot.py:696
-  - load\_jsonl ← manual_correction_bot.py:823
-  - load\_jsonl ← manual_correction_bot.py:1414
-  - check\_and\_fix\_json\_files ← manual_correction_bot.py:1408
-  - find\_log\_files ← manual_correction_bot.py:1396
-  - save\_jsonl ← manual_correction_bot.py:825
-  - deduplicate\_entries ← manual_correction_bot.py:698
-  - deduplicate\_entries ← manual_correction_bot.py:824
-  - entry\_key ← manual_correction_bot.py:777
-  - entry\_key ← manual_correction_bot.py:777
-  - aggregate\_successful\_field\_entries ← manual_correction_bot.py:1262
-  - aggregate\_successful\_field\_entries ← manual_correction_bot.py:1444
-  - feedback\_loop ← manual_correction_bot.py:1482
+  - load\_cache ← manual_correction_bot.py:1267
+  - load\_cache ← manual_correction_bot.py:1273
+  - close\_cache ← manual_correction_bot.py:1269
+  - write\_audit\_log ← manual_correction_bot.py:1204
+  - discover\_field\_types\_from\_logs ← manual_correction_bot.py:1323
+  - ml\_score\_entry ← manual_correction_bot.py:721
+  - ml\_suggest\_field ← manual_correction_bot.py:722
+  - load\_jsonl ← manual_correction_bot.py:135
+  - load\_jsonl ← manual_correction_bot.py:148
+  - load\_jsonl ← manual_correction_bot.py:642
+  - load\_jsonl ← manual_correction_bot.py:749
+  - load\_jsonl ← manual_correction_bot.py:1335
+  - check\_and\_fix\_json\_files ← manual_correction_bot.py:1329
+  - find\_log\_files ← manual_correction_bot.py:1317
+  - save\_jsonl ← manual_correction_bot.py:751
+  - deduplicate\_entries ← manual_correction_bot.py:644
+  - deduplicate\_entries ← manual_correction_bot.py:750
+  - entry\_key ← manual_correction_bot.py:713
+  - entry\_key ← manual_correction_bot.py:713
+  - aggregate\_successful\_field\_entries ← manual_correction_bot.py:1188
+  - aggregate\_successful\_field\_entries ← manual_correction_bot.py:1365
+  - feedback\_loop ← manual_correction_bot.py:1403
+  - update\_context\_with\_new\_entries ← manual_correction_bot.py:157
   - update\_context\_with\_new\_entries ← manual_correction_bot.py:163
-  - update\_context\_with\_new\_entries ← manual_correction_bot.py:169
-  - update\_context\_with\_new\_entries ← manual_correction_bot.py:816
-  - update\_context\_with\_new\_entries ← manual_correction_bot.py:1300
-  - update\_context\_with\_new\_entries ← manual_correction_bot.py:1306
-  - update\_context\_with\_new\_entries ← manual_correction_bot.py:1474
-  - validate\_context\_schema ← manual_correction_bot.py:842
-  - extract\_year ← manual_correction_bot.py:952
-  - extract\_year ← manual_correction_bot.py:953
-  - extract\_state ← manual_correction_bot.py:962
-  - extract\_state ← manual_correction_bot.py:963
-  - extract\_county ← manual_correction_bot.py:972
-  - extract\_county ← manual_correction_bot.py:973
-  - extract\_type ← manual_correction_bot.py:982
-  - extract\_type ← manual_correction_bot.py:983
-  - suggest\_fields\_with\_models ← manual_correction_bot.py:1125
-  - prompt\_for\_missing\_fields ← manual_correction_bot.py:1128
-  - highlight\_anomalies ← manual_correction_bot.py:1503
+  - update\_context\_with\_new\_entries ← manual_correction_bot.py:742
+  - update\_context\_with\_new\_entries ← manual_correction_bot.py:1226
+  - update\_context\_with\_new\_entries ← manual_correction_bot.py:1232
+  - update\_context\_with\_new\_entries ← manual_correction_bot.py:1395
+  - validate\_context\_schema ← manual_correction_bot.py:768
+  - extract\_year ← manual_correction_bot.py:878
+  - extract\_year ← manual_correction_bot.py:879
+  - extract\_state ← manual_correction_bot.py:888
+  - extract\_state ← manual_correction_bot.py:889
+  - extract\_county ← manual_correction_bot.py:898
+  - extract\_county ← manual_correction_bot.py:899
+  - extract\_type ← manual_correction_bot.py:908
+  - extract\_type ← manual_correction_bot.py:909
+  - suggest\_fields\_with\_models ← manual_correction_bot.py:1051
+  - prompt\_for\_missing\_fields ← manual_correction_bot.py:1054
+  - highlight\_anomalies ← manual_correction_bot.py:1419
+  - update\_database\_with\_context ← manual_correction_bot.py:159
   - update\_database\_with\_context ← manual_correction_bot.py:165
-  - update\_database\_with\_context ← manual_correction_bot.py:171
-  - update\_database\_with\_context ← manual_correction_bot.py:1510
-  - field\_matches\_log ← manual_correction_bot.py:1420
-  - ensure\_context\_library ← manual_correction_bot.py:1390
-  - process\_auto\_mode ← manual_correction_bot.py:1465
+  - update\_database\_with\_context ← manual_correction_bot.py:1426
+  - field\_matches\_log ← manual_correction_bot.py:1341
+  - ensure\_context\_library ← manual_correction_bot.py:1311
+  - process\_auto\_mode ← manual_correction_bot.py:1386
 
 ### health/navigation\_feedback\_ingest.py {#webapp-parser-health-navigation-feedback-ingest-py}
 
@@ -5579,90 +6342,89 @@ graph LR
 > Quarantine Queue: Transparent URL quarantine workflow with audit trails.
 
 - Definitions:
-  - class: `QuarantineReason` (line 37)
-  - class: `ReviewStatus` (line 77)
-  - class: `DataCollectionNotice` (line 89)
-  - class: `QuarantineEntry` (line 101)
-  - class: `QuarantineQueue` (line 181)
-  - function: `get\_quarantine\_queue` (line 444)
+  - class: `QuarantineReason` (line 35)
+  - class: `ReviewStatus` (line 75)
+  - class: `DataCollectionNotice` (line 87)
+  - class: `QuarantineEntry` (line 99)
+  - class: `QuarantineQueue` (line 179)
+  - function: `get\_quarantine\_queue` (line 442)
 - Imports:
-  - **Standard Library** (16):
+  - **Standard Library** (15):
     - `import hashlib as hashlib` (line 20)
     - `import json as json` (line 21)
-    - `import os as os` (line 22)
-    - `import threading as threading` (line 23)
-    - `import time as time` (line 24)
-    - `from dataclasses import asdict` (line 25)
-    - `from dataclasses import dataclass` (line 25)
-    - `from dataclasses import field` (line 25)
-    - `from datetime import datetime` (line 26)
-    - `from datetime import timezone` (line 26)
-    - `from enum import Enum` (line 27)
-    - `from pathlib import Path` (line 28)
-    - `from typing import Any` (line 29)
-    - `from typing import Dict` (line 29)
-    - `from typing import List` (line 29)
-    - `from typing import Optional` (line 29)
+    - `import threading as threading` (line 22)
+    - `import time as time` (line 23)
+    - `from dataclasses import asdict` (line 24)
+    - `from dataclasses import dataclass` (line 24)
+    - `from dataclasses import field` (line 24)
+    - `from datetime import datetime` (line 25)
+    - `from datetime import timezone` (line 25)
+    - `from enum import Enum` (line 26)
+    - `from pathlib import Path` (line 27)
+    - `from typing import Any` (line 28)
+    - `from typing import Dict` (line 28)
+    - `from typing import List` (line 28)
+    - `from typing import Optional` (line 28)
   - **Local/Project** (3):
     - `from __future__ import annotations` (line 18)
-    - `from config import LOG_DIR` (line 31)
-    - `from utils.logger_singleton import logger` (line 32)
+    - `from config import LOG_DIR` (line 30)
+    - `from utils.logger_singleton import logger` (line 31)
 - Task markers:
-  - L295 **WARNING**: ({
-  - L296 **WARNING**: ",
+  - L293 **WARNING**: ({
+  - L294 **WARNING**: ",
 - Outgoing cross-module calls (sample):
-  - explanations.get (line 60)
-  - impacts.get (line 74)
-  - dataclasses.asdict (line 97)
-  - dataclasses.field (line 119)
-  - dataclasses.field (line 123)
-  - dataclasses.field (line 127)
-  - datetime.datetime.now (line 154)
-  - dataclasses.asdict (line 165)
-  - json.dumps (line 166)
-  - json.loads (line 171)
-  - data.get (line 174)
-  - pathlib.Path (line 191)
-  - threading.RLock (line 196)
-  - hashlib.sha256 (line 225)
-  - time.time (line 226)
-  - datetime.datetime.now (line 247)
-  - f.write (line 260)
-  - entry.to\_json (line 260)
-  - utils.logger\_singleton.logger.info (line 262)
-  - line.strip (line 285)
-  - QuarantineEntry.from\_json (line 289)
-  - entries.append (line 291)
-  - utils.logger\_singleton.logger.warning (line 295)
-  - utils.logger\_singleton.logger.error (line 301)
-  - line.strip (line 316)
-  - QuarantineEntry.from\_json (line 320)
-  - line.strip (line 338)
-  - QuarantineEntry.from\_json (line 342)
-  - line.strip (line 383)
-  - QuarantineEntry.from\_json (line 386)
-  - entry.add\_review (line 388)
-  - entries.append (line 395)
-  - f.write (line 405)
-  - approved\_entry.to\_json (line 405)
-  - f.write (line 411)
-  - entry.to\_json (line 411)
-  - utils.logger\_singleton.logger.info (line 413)
-  - self.get\_pending (line 427)
-  - pending\_by\_reason.get (line 431)
+  - explanations.get (line 58)
+  - impacts.get (line 72)
+  - dataclasses.asdict (line 95)
+  - dataclasses.field (line 117)
+  - dataclasses.field (line 121)
+  - dataclasses.field (line 125)
+  - datetime.datetime.now (line 152)
+  - dataclasses.asdict (line 163)
+  - json.dumps (line 164)
+  - json.loads (line 169)
+  - data.get (line 172)
+  - pathlib.Path (line 189)
+  - threading.RLock (line 194)
+  - hashlib.sha256 (line 223)
+  - time.time (line 224)
+  - datetime.datetime.now (line 245)
+  - f.write (line 258)
+  - entry.to\_json (line 258)
+  - utils.logger\_singleton.logger.info (line 260)
+  - line.strip (line 283)
+  - QuarantineEntry.from\_json (line 287)
+  - entries.append (line 289)
+  - utils.logger\_singleton.logger.warning (line 293)
+  - utils.logger\_singleton.logger.error (line 299)
+  - line.strip (line 314)
+  - QuarantineEntry.from\_json (line 318)
+  - line.strip (line 336)
+  - QuarantineEntry.from\_json (line 340)
+  - line.strip (line 381)
+  - QuarantineEntry.from\_json (line 384)
+  - entry.add\_review (line 386)
+  - entries.append (line 393)
+  - f.write (line 403)
+  - approved\_entry.to\_json (line 403)
+  - f.write (line 409)
+  - entry.to\_json (line 409)
+  - utils.logger\_singleton.logger.info (line 411)
+  - self.get\_pending (line 425)
+  - pending\_by\_reason.get (line 429)
 - Inbound references:
-  - QuarantineReason ← quarantine_queue.py:133
-  - QuarantineReason ← quarantine_queue.py:141
-  - DataCollectionNotice ← html_election_parser.py:1366
-  - DataCollectionNotice ← html_election_parser.py:1372
-  - DataCollectionNotice ← quarantine_queue.py:173
-  - DataCollectionNotice ← quarantine_queue.py:232
-  - DataCollectionNotice ← quarantine_queue.py:237
-  - QuarantineEntry ← quarantine_queue.py:176
-  - QuarantineEntry ← quarantine_queue.py:244
-  - QuarantineQueue ← quarantine_queue.py:448
-  - get\_quarantine\_queue ← html_election_parser.py:1263
-  - get\_quarantine\_queue ← html_election_parser.py:1363
+  - QuarantineReason ← quarantine_queue.py:131
+  - QuarantineReason ← quarantine_queue.py:139
+  - DataCollectionNotice ← html_election_parser.py:1503
+  - DataCollectionNotice ← html_election_parser.py:1509
+  - DataCollectionNotice ← quarantine_queue.py:171
+  - DataCollectionNotice ← quarantine_queue.py:230
+  - DataCollectionNotice ← quarantine_queue.py:235
+  - QuarantineEntry ← quarantine_queue.py:174
+  - QuarantineEntry ← quarantine_queue.py:242
+  - QuarantineQueue ← quarantine_queue.py:446
+  - get\_quarantine\_queue ← html_election_parser.py:1400
+  - get\_quarantine\_queue ← html_election_parser.py:1500
 
 ### health/retrain\_table\_structure\_models.py {#webapp-parser-health-retrain-table-structure-models-py}
 
@@ -5894,11 +6656,181 @@ graph LR
   - run\_manual\_correction ← retrain_table_structure_models.py:949
   - retrain\_sentence\_transformer ← retrain_table_structure_models.py:954
   - segment\_hash ← retrain_table_structure_models.py:885
-  - segment\_hash ← html_scanner.py:1583
-  - segment\_hash ← html_scanner.py:2884
+  - segment\_hash ← html_scanner.py:1608
+  - segment\_hash ← html_scanner.py:2909
   - load\_cached\_segment\_hashes ← retrain_table_structure_models.py:882
   - scan\_in\_memory\_ner\_examples ← retrain_table_structure_models.py:936
   - ensure\_table\_structures\_exists ← retrain_table_structure_models.py:851
+
+### health/risk\_gates.py {#webapp-parser-health-risk-gates-py}
+
+> risk_gates.py
+
+- Definitions:
+  - class: `RiskGateScores` (line 38)
+  - class: `RiskGateConfig` (line 49)
+  - class: `RiskGateEvaluator` (line 67)
+  - function: `evaluate\_risk` (line 390)
+- Imports:
+  - **Standard Library** (4):
+    - `from dataclasses import dataclass` (line 33)
+    - `from typing import List` (line 34)
+    - `from typing import Optional` (line 34)
+    - `from typing import Tuple` (line 34)
+- Task markers:
+  - L11 **WARN**: /log tiers (⅓-proportioned boundaries).
+  - L24 **WARN**: 0.45 ≤ suspicion &lt; 0.72  (middle third → confirm/verify)
+  - L44 **WARN**: ", or "log"
+  - L274 **WARN**: 0.45 ≤ suspicion &lt; 0.72  (middle ⅓, 45–72%)
+  - L278 **WARN**: tier (~27% width) is middle third
+  - L287 **WARN**: " | "log"
+  - L306 **WARN**: tier
+  - L315 **WARN**: ", confidence)
+  - L319 **WARN**: threshold
+- Outgoing cross-module calls (sample):
+  - self.\_validate\_config (line 73)
+  - self.compute\_confidence\_gate (line 356)
+  - self.compute\_verification\_gate (line 357)
+  - self.compute\_anomaly\_gate (line 362)
+  - self.compute\_composite\_suspicion (line 370)
+  - self.classify\_risk\_tier (line 373)
+  - \_default\_evaluator.evaluate (line 408)
+- Inbound references:
+  - RiskGateScores ← risk_gates.py:375
+  - RiskGateConfig ← risk_gates.py:72
+  - RiskGateEvaluator ← risk_gates.py:387
+
+### health/risk\_gates\_calculus.py {#webapp-parser-health-risk-gates-calculus-py}
+
+> risk_gates_calculus.py
+
+- Definitions:
+  - class: `DerivativeGates` (line 43)
+  - class: `SubTierClassification` (line 60)
+  - class: `CalculusRiskEvaluator` (line 71)
+  - function: `evaluate\_risk\_with\_calculus` (line 363)
+  - function: `visualize\_sub\_tier\_classification` (line 435)
+- Imports:
+  - **Standard Library** (5):
+    - `import math as math` (line 35)
+    - `from dataclasses import dataclass` (line 36)
+    - `from typing import List` (line 37)
+    - `from typing import Optional` (line 37)
+    - `from typing import Tuple` (line 37)
+  - **Third-party** (3):
+    - `from webapp.parser.health.risk_gates import RiskGateConfig` (line 39)
+    - `from webapp.parser.health.risk_gates import RiskGateEvaluator` (line 39)
+    - `from webapp.parser.health.risk_gates import RiskGateScores` (line 39)
+- Task markers:
+  - L15 **WARN**: boundary (approaching 0.45)
+  - L16 **WARN**: →BLOCK boundary (approaching 0.72)
+  - L63 **WARN**: ", or "block"
+  - L78 **WARN**: /BLOCK
+  - L156 **WARN**: boundary (0.45)
+  - L246 **WARN**: /BLOCK) from base classifier
+  - L270 **WARN**: ":
+  - L271 **WARN**: tier has two boundaries; pick nearest
+  - L402 **WARN**: WARN→BLOCK
+  - L410 **WARN**: TIER (0.45 – 0.72)
+- Outgoing cross-module calls (sample):
+  - webapp.parser.health.risk\_gates.RiskGateEvaluator (line 101)
+  - webapp.parser.health.risk\_gates.RiskGateConfig (line 102)
+  - self.\_compute\_boundary\_slope (line 157)
+  - self.\_compute\_boundary\_slope (line 164)
+  - math.sqrt (line 173)
+  - self.compute\_derivative\_gates (line 350)
+  - self.classify\_sub\_tier (line 353)
+  - \_default\_calculus\_evaluator.evaluate\_with\_derivatives (line 381)
+  - emoji\_map.get (line 451)
+- Inbound references:
+  - DerivativeGates ← risk_gates_calculus.py:176
+  - SubTierClassification ← risk_gates_calculus.py:304
+  - CalculusRiskEvaluator ← risk_gates_calculus.py:360
+
+### health/risk\_gates\_integration\_examples.py {#webapp-parser-health-risk-gates-integration-examples-py}
+
+> risk_gates_integration_examples.py
+
+- Definitions:
+  - function: `evaluate\_parser\_extraction` (line 22)
+  - function: `evaluate\_data\_framework\_upload` (line 90)
+  - function: `evaluate\_ballot\_lens\_display` (line 156)
+  - function: `evaluate\_guarded\_action` (line 228)
+  - function: `summarize\_risk\_distribution` (line 299)
+- Imports:
+  - **Standard Library** (3):
+    - `from typing import Any` (line 14)
+    - `from typing import Dict` (line 14)
+    - `from typing import Optional` (line 14)
+  - **Third-party** (1):
+    - `from webapp.parser.health.risk_gates import RiskGateEvaluator` (line 16)
+- Task markers:
+  - L8 **WARN**: /log extraction
+  - L45 **WARN**: (0.45 ≤ tier &lt; 0.72): Import with explicit confirmation
+    prompt
+  - L65 **WARN**: " else action
+  - L130 **NOTE**: = "Data quality acceptable; direct upload approved."
+  - L131 **WARN**: ":
+  - L134 **NOTE**: = "Medium-risk data; requires user confirmation before
+    upload."
+  - L138 **NOTE**: = "High-risk data; escalated to admin review. Do not expose
+    to Data Framework."
+  - L149 **NOTE**:         "audit_note": note
+  - L173 **WARN**: tier: Yellow badge, normal display with "⚠️ verify" tooltip
+  - L191 **WARN**: ": "#ffc107",   # Yellow
+  - L197 **WARN**: ": "visible",
+  - L213 **WARN**: "
+  - L219 **WARN**: "),
+  - L282 **WARN**: " if profile\["suspicion"\] &gt;= 0.45 else "log")
+  - L308 **WARN**: /BLOCK items)
+  - L322 **WARN**: ": 0, "block": 0}
+  - L337 **WARN**: ": 0, "block": 0}
+  - L347 **WARN**: ": round(100_tier_counts\["warn"\] / total, 1) if total &gt;
+    0 else 0,
+  - L355 **WARN**: '\]} items awaiting user confirmation (WARN tier)"
+  - L406 **WARN**: tier (0=near LOG, 1=near BLOCK)
+  - L423 **WARN**: to LOG if other gates favorable
+  - L427 **WARN**: tier
+  - L429 **WARN**: tier
+- Outgoing cross-module calls (sample):
+  - webapp.parser.health.risk\_gates.RiskGateEvaluator (line 51)
+  - evaluator.evaluate (line 54)
+  - webapp.parser.health.risk\_gates.RiskGateEvaluator (line 110)
+  - evaluator.evaluate (line 112)
+  - webapp.parser.health.risk\_gates.RiskGateEvaluator (line 179)
+  - evaluator.evaluate (line 181)
+  - risk\_profiles.get (line 265)
+  - webapp.parser.health.risk\_gates.RiskGateEvaluator (line 320)
+  - evaluator.evaluate (line 326)
+  - contest.get (line 327)
+  - contest.get (line 328)
+  - contest.get (line 328)
+  - contest.get (line 329)
+  - contest.get (line 330)
+  - contest.get (line 330)
+  - contest.get (line 335)
+  - tier\_counts.values (line 340)
+
+### health/risk\_gates\_spec.py {#webapp-parser-health-risk-gates-spec-py}
+
+> TECHNICAL SPECIFICATION: Three-Dimensional Risk Assessment Model
+
+- Task markers:
+  - L24 **WARN**: (0.45 – 0.72): User confirmation required
+  - L72 **WARN**:   • TOTAL SUSPICION ≈ 0.60 → TIER: WARN
+  - L86 **WARN**: ) is narrower: user confirmation gates
+  - L94 **WARN**: tier
+  - L130 **WARN**: (center of warn, tier_conf ≈ 0.76)
+  - L137 **WARN**: (near BLOCK boundary, tier_conf ≈ 0.99)
+  - L173 **WARN**: tier → IMPORT_CONFIRM
+  - L194 **WARN**: If tier == WARN:
+  - L220 **WARN**:   tier == WARN:
+  - L239 **WARN**: If tier &gt;= WARN:
+  - L280 **WARN**: tier narrower
+  - L287 **WARN**: tier broader (0.55–0.85), BLOCK narrower (0.85–1.0)
+  - L289 **WARN**: tier is broader and more forgiving.
+  - L327 **WARN**: , BLOCK)
+  - L394 **WARN**: "
 
 ### health/scan\_misaligned\_ner.py {#webapp-parser-health-scan-misaligned-ner-py}
 
@@ -6047,16 +6979,16 @@ graph LR
   - utils.logger\_singleton.logger.info (line 303)
 - Inbound references:
   - SessionBranch ← session_branching.py:167
-  - get\_isolated\_branch ← web_pipeline.py:159
+  - get\_isolated\_branch ← web_pipeline.py:176
   - get\_isolated\_branch ← session_branching.py:190
   - get\_isolated\_branch ← session_branching.py:240
   - get\_isolated\_branch ← session_branching.py:272
-  - validate\_url\_access ← web_pipeline.py:318
-  - validate\_url\_access ← web_pipeline.py:383
+  - validate\_url\_access ← web_pipeline.py:344
+  - validate\_url\_access ← web_pipeline.py:418
   - validate\_url\_access ← session_manager.py:653
   - add\_url\_to\_isolation ← session_manager.py:682
   - get\_isolation\_summary ← session_manager.py:704
-  - cleanup\_principal\_isolation ← web_pipeline.py:694
+  - cleanup\_principal\_isolation ← web_pipeline.py:729
   - cleanup\_principal\_isolation ← session_manager.py:726
 
 ### health/session\_manager.py {#webapp-parser-health-session-manager-py}
@@ -6138,238 +7070,251 @@ graph LR
 ### html\_election\_parser.py {#webapp-parser-html-election-parser-py}
 
 - Definitions:
-  - function: `\_close\_browser\_quietly` (line 83)
-  - function: `\_count\_dom\_table\_rows` (line 105)
-  - function: `load\_urls` (line 136)
-  - function: `mark\_url\_processed` (line 196)
-  - function: `prompt\_url\_selection` (line 257)
-  - function: `process\_format\_override` (line 425)
-  - function: `ai\_analyze\_results` (line 621)
-  - function: `stream\_results` (line 721)
-  - function: `\_read\_text\_file\_with\_fallback` (line 768)
-  - function: `\_extract\_text\_blocks` (line 784)
-  - function: `generate\_generic\_html\_result` (line 972)
-  - function: `orchestrate\_url` (line 1198)
-  - function: `\_orchestrate\_url\_worker` (line 2098)
-  - function: `main` (line 2115)
+  - function: `\_close\_browser\_quietly` (line 92)
+  - function: `\_captcha\_detection\_key` (line 114)
+  - function: `\_register\_cloudflare\_detection` (line 118)
+  - function: `\_prompt\_for\_captcha\_assist` (line 134)
+  - function: `\_sanitize\_error\_metadata` (line 192)
+  - function: `\_log\_session\_exception\_metadata` (line 215)
+  - function: `\_count\_dom\_table\_rows` (line 227)
+  - function: `load\_urls` (line 258)
+  - function: `mark\_url\_processed` (line 318)
+  - function: `prompt\_url\_selection` (line 379)
+  - function: `process\_format\_override` (line 547)
+  - function: `ai\_analyze\_results` (line 743)
+  - function: `stream\_results` (line 843)
+  - function: `\_read\_text\_file\_with\_fallback` (line 890)
+  - function: `\_extract\_text\_blocks` (line 906)
+  - function: `generate\_generic\_html\_result` (line 1094)
+  - function: `orchestrate\_url` (line 1320)
+  - function: `\_orchestrate\_url\_worker` (line 2381)
+  - function: `main` (line 2398)
+  - function: `\_capture\_selenium\_ner\_training` (line 2632)
 - Imports:
-  - **Standard Library** (10):
+  - **Standard Library** (11):
     - `import os as os` (line 6)
     - `import re as re` (line 7)
     - `import threading as threading` (line 8)
-    - `from collections import Counter` (line 9)
-    - `from collections import defaultdict` (line 9)
-    - `from datetime import datetime` (line 10)
-    - `from multiprocessing import Pool` (line 11)
-    - `from typing import Any` (line 12)
-    - `from typing import Dict` (line 12)
-    - `from typing import List` (line 12)
+    - `import time as time` (line 9)
+    - `from collections import Counter` (line 10)
+    - `from collections import defaultdict` (line 10)
+    - `from datetime import datetime` (line 11)
+    - `from multiprocessing import Pool` (line 12)
+    - `from typing import Any` (line 13)
+    - `from typing import Dict` (line 13)
+    - `from typing import List` (line 13)
   - **Third-party** (4):
-    - `import orjson as orjson` (line 14)
-    - `import psycopg2 as psycopg2` (line 15)
-    - `from playwright.sync_api import sync_playwright` (line 16)
-    - `from sqlalchemy.exc import OperationalError` (line 17)
-  - **Local/Project** (56):
+    - `import orjson as orjson` (line 15)
+    - `import psycopg2 as psycopg2` (line 16)
+    - `from playwright.sync_api import sync_playwright` (line 17)
+    - `from sqlalchemy.exc import OperationalError` (line 18)
+  - **Local/Project** (59):
     - `from __future__ import annotations` (line 1)
-    - `from config import CACHE_LOCK` (line 19)
-    - `from config import CACHE_RESET` (line 19)
-    - `from config import ENABLE_AI_ANALYSIS` (line 19)
-    - `from config import ENABLE_PARALLEL` (line 19)
-    - `from config import ENABLE_REALTIME_STREAM` (line 19)
-    - `from config import ENABLE_SELENIUM_FALLBACK` (line 19)
-    - `from config import INPUT_DIR` (line 19)
-    - `from config import MAX_URLS_DISPLAYED` (line 19)
-    - `from config import NAV_MAX_ATTEMPTS` (line 19)
-    - `from config import NAV_TIMEOUT_PLAYWRIGHT_MS` (line 19)
-    - `from config import NAV_TIMEOUT_SELENIUM_MS` (line 19)
-    - `from config import OUTPUT_DIR` (line 19)
-    - `from config import PROCESSED_URLS_FILE` (line 19)
-    - `from config import UPLOADS_DIR` (line 19)
-    - `from config import URL_LIST_FILE` (line 19)
-    - `from navigator import NavigationInstructionRunner` (line 36)
-    - `from navigator import NavigationRecipeStore` (line 36)
-    - `from navigator.dom_snapshot import snapshot_mode_pipeline` (line 37)
-    - `from state_router import get_handler` (line 38)
-    - `from state_router import preload_handler_map` (line 38)
-    - `from utils.browser_utils import SCROLL_METRIC_KEYS` (line 39)
-    - `from utils.browser_utils import TABLE_DISCOVERY_SELECTOR` (line 39)
-    - `from utils.browser_utils import autoscroll_until_stable` (line 39)
-    - `from utils.browser_utils import safe_content` (line 39)
-    - `from utils.browser_utils import safe_count` (line 39)
-    - `from utils.browser_utils import safe_locator` (line 39)
-    - `from utils.browser_utils import safe_query_selector_all` (line 39)
-    - `from utils.browser_utils import sync_browser_pipeline` (line 39)
-    - `from utils.browser_utils import sync_safe_browser_close` (line 39)
-    - `from utils.captcha_tools import detect_cloudflare_challenge` (line 50)
-    - `from utils.download_utils import ensure_input_directory` (line 51)
-    - `from utils.download_utils import ensure_output_directory` (line 51)
+    - `from config import CACHE_LOCK` (line 20)
+    - `from config import CACHE_RESET` (line 20)
+    - `from config import DEFAULT_CAPTCHA_TIMEOUT` (line 20)
+    - `from config import ENABLE_AI_ANALYSIS` (line 20)
+    - `from config import ENABLE_PARALLEL` (line 20)
+    - `from config import ENABLE_REALTIME_STREAM` (line 20)
+    - `from config import ENABLE_SELENIUM_FALLBACK` (line 20)
+    - `from config import INPUT_DIR` (line 20)
+    - `from config import MAX_URLS_DISPLAYED` (line 20)
+    - `from config import NAV_MAX_ATTEMPTS` (line 20)
+    - `from config import NAV_TIMEOUT_PLAYWRIGHT_MS` (line 20)
+    - `from config import NAV_TIMEOUT_SELENIUM_MS` (line 20)
+    - `from config import OUTPUT_DIR` (line 20)
+    - `from config import PROCESSED_URLS_FILE` (line 20)
+    - `from config import UPLOADS_DIR` (line 20)
+    - `from config import URL_LIST_FILE` (line 20)
+    - `from Context_Integration.librarian import get_safe_log_path` (line 38)
+    - `from navigator import NavigationInstructionRunner` (line 39)
+    - `from navigator import NavigationRecipeStore` (line 39)
+    - `from navigator.dom_snapshot import snapshot_mode_pipeline` (line 40)
+    - `from state_router import get_handler` (line 41)
+    - `from state_router import preload_handler_map` (line 41)
+    - `from utils.browser_utils import SCROLL_METRIC_KEYS` (line 42)
+    - `from utils.browser_utils import TABLE_DISCOVERY_SELECTOR` (line 42)
+    - `from utils.browser_utils import autoscroll_until_stable` (line 42)
+    - `from utils.browser_utils import safe_content` (line 42)
+    - `from utils.browser_utils import safe_count` (line 42)
+    - `from utils.browser_utils import safe_locator` (line 42)
+    - `from utils.browser_utils import safe_query_selector_all` (line 42)
+    - `from utils.browser_utils import sync_browser_pipeline` (line 42)
+    - `from utils.browser_utils import sync_safe_browser_close` (line 42)
+    - `from utils.captcha_tools import detect_cloudflare_challenge` (line 53)
+    - `from utils.download_utils import ensure_input_directory` (line 54)
+    - `from utils.download_utils import ensure_output_directory` (line 54)
     - `from utils.dynamic_table_extractor import dynamic_table_extractor` (line
-      52)
-    - `from utils.format_router import prompt_and_handle_download` (line 53)
-    - `from utils.format_router import route_format_handler` (line 53)
-    - `from utils.logger_singleton import logger` (line 54)
-    - `from utils.logger_singleton import prompt` (line 54)
-    - `from utils.misc_utils import extract_url_and_label` (line 55)
-    - `from utils.misc_utils import load_processed_urls` (line 55)
-    - `from utils.output_utils import finalize_election_output` (line 56)
-    - `from utils.seleniumbase_launcher import SELENIUMBASE_AVAILABLE` (line 57)
-    - `from utils.seleniumbase_launcher import close_driver` (line 57)
-    - `from utils.seleniumbase_launcher import launch_browser` (line 57)
-    - `from utils.shared_logic import infer_state_county_from_url` (line 58)
-    - `from utils.shared_logic import safe_is_set` (line 58)
-    - `from utils.shared_logic import safe_parse` (line 58)
-    - `from utils.shared_logic import safe_slug` (line 58)
-    - `from utils.shared_logic import safe_strip` (line 58)
-    - `from utils.table_builder import build_table_noninteractive` (line 65)
+      55)
+    - `from utils.format_router import prompt_and_handle_download` (line 56)
+    - `from utils.format_router import route_format_handler` (line 56)
+    - `from utils.logger_singleton import logger` (line 57)
+    - `from utils.logger_singleton import prompt` (line 57)
+    - `from utils.misc_utils import extract_url_and_label` (line 58)
+    - `from utils.misc_utils import load_processed_urls` (line 58)
+    - `from utils.output_utils import finalize_election_output` (line 59)
+    - `from utils.seleniumbase_launcher import SELENIUMBASE_AVAILABLE` (line 60)
+    - `from utils.seleniumbase_launcher import close_driver` (line 60)
+    - `from utils.seleniumbase_launcher import launch_browser` (line 60)
+    - `from utils.seleniumbase_launcher import
+      relaunch_browser_fullscreen_if_needed` (line 60)
+    - `from utils.shared_logic import infer_state_county_from_url` (line 66)
+    - `from utils.shared_logic import safe_is_set` (line 66)
+    - `from utils.shared_logic import safe_parse` (line 66)
 - Task markers:
-  - L76 **WARNING**: ("Deleting .processed_urls cache for fresh start...")
-  - L94 **WARNING**: ({
-  - L95 **WARNING**: ",
-  - L520 **WARNING**: ({
-  - L521 **WARNING**: ",
-  - L535 **WARNING**: ({
-  - L536 **WARNING**: ",
-  - L598 **WARNING**: ({
-  - L599 **WARNING**: ",
-  - L698 **WARNING**: (payload_2)
-  - L1026 **WARNING**: ({
-  - L1027 **WARNING**: ",
-  - L1073 **WARNING**: ({
-  - L1074 **WARNING**: ",
-  - L1127 **WARNING**: ({
-  - L1128 **WARNING**: ",
-  - L1288 **WARNING**: ({
-  - L1289 **WARNING**: ",
-  - L1344 **WARNING**: ({
-  - L1345 **WARNING**: ",
-  - L1595 **WARNING**: ({
-  - L1596 **WARNING**: ",
-  - L1631 **WARNING**: ({
-  - L1632 **WARNING**: ",
-  - L1728 **WARNING**: ({
-  - L1729 **WARNING**: ",
-  - L1823 **WARNING**: ({
-  - L1824 **WARNING**: ",
-  - L1889 **WARNING**: ",
-  - L1894 **WARNING**: (payload)
-  - L2008 **WARNING**: ({
-  - L2009 **WARNING**: ",
-  - L2026 **WARNING**: ",
-  - L2031 **WARNING**: (payload)
-  - L2042 **WARNING**: ",
-  - L2047 **WARNING**: (payload)
-  - L2049 **WARN**: \] No output file path returned from parser and no output
+  - L84 **WARNING**: ("Deleting .processed_urls cache for fresh start...")
+  - L103 **WARNING**: ({
+  - L104 **WARNING**: ",
+  - L176 **WARNING**: ({
+  - L177 **WARNING**: ",
+  - L642 **WARNING**: ({
+  - L643 **WARNING**: ",
+  - L657 **WARNING**: ({
+  - L658 **WARNING**: ",
+  - L720 **WARNING**: ({
+  - L721 **WARNING**: ",
+  - L820 **WARNING**: (payload_2)
+  - L1148 **WARNING**: ({
+  - L1149 **WARNING**: ",
+  - L1195 **WARNING**: ({
+  - L1196 **WARNING**: ",
+  - L1249 **WARNING**: ({
+  - L1250 **WARNING**: ",
+  - L1425 **WARNING**: ({
+  - L1426 **WARNING**: ",
+  - L1481 **WARNING**: ({
+  - L1482 **WARNING**: ",
+  - L1769 **WARNING**: ({
+  - L1770 **WARNING**: ",
+  - L1789 **WARNING**: ({
+  - L1790 **WARNING**: ",
+  - L1796 **WARNING**: ({
+  - L1797 **WARNING**: ",
+  - L1844 **WARNING**: ({
+  - L1845 **WARNING**: ",
+  - L1873 **WARNING**: ({
+  - L1874 **WARNING**: ",
+  - L1977 **WARNING**: ({
+  - L1978 **WARNING**: ",
+  - L2072 **WARNING**: ({
+  - L2073 **WARNING**: ",
+  - L2138 **WARNING**: ",
+  - L2143 **WARNING**: (payload)
+  - L2272 **WARNING**: ({
+  - L2273 **WARNING**: ",
+  - L2290 **WARNING**: ",
+  - L2295 **WARNING**: (payload)
+  - L2306 **WARNING**: ",
+  - L2311 **WARNING**: (payload)
+  - L2313 **WARN**: \] No output file path returned from parser and no output
     files found."
-  - L2051 **WARNING**: ",
-  - L2056 **WARNING**: (payload)
-  - L2061 **WARNING**: ",
-  - L2066 **WARNING**: (payload)
-  - L2191 **WARNING**: ({
-  - L2192 **WARNING**: ",
-  - L2252 **WARNING**: ({
-  - L2253 **WARNING**: ",
+  - L2315 **WARNING**: ",
+  - L2320 **WARNING**: (payload)
+  - L2339 **WARNING**: ",
+  - L2344 **WARNING**: (payload)
+  - L2474 **WARNING**: ({
 - Outgoing cross-module calls (sample):
-  - config.PROCESSED\_URLS\_FILE.exists (line 75)
-  - utils.logger\_singleton.logger.warning (line 76)
-  - config.PROCESSED\_URLS\_FILE.unlink (line 77)
-  - navigator.NavigationRecipeStore (line 79)
-  - navigator.NavigationInstructionRunner (line 80)
-  - utils.browser\_utils.sync\_safe\_browser\_close (line 91)
-  - utils.logger\_singleton.logger.warning (line 94)
-  - page.query\_selector\_all (line 114)
-  - utils.browser\_utils.safe\_query\_selector\_all (line 116)
-  - utils.browser\_utils.safe\_query\_selector\_all (line 118)
-  - tbl.query\_selector\_all (line 123)
-  - utils.browser\_utils.safe\_locator (line 127)
-  - utils.browser\_utils.safe\_count (line 128)
-  - config.URL\_LIST\_FILE.exists (line 137)
-  - utils.logger\_singleton.logger.error (line 144)
-  - utils.shared\_logic.safe\_strip (line 145)
-  - utils.logger\_singleton.prompt.prompt\_input (line 145)
-  - utils.misc\_utils.extract\_url\_and\_label (line 147)
-  - config.URL\_LIST\_FILE.write\_text (line 149)
-  - utils.logger\_singleton.logger.info (line 156)
-  - config.URL\_LIST\_FILE.open (line 159)
-  - utils.shared\_logic.safe\_strip (line 162)
-  - line\_stripped.startswith (line 163)
-  - utils.misc\_utils.extract\_url\_and\_label (line 165)
-  - lines.append (line 167)
-  - lines.append (line 170)
-  - utils.logger\_singleton.logger.error (line 179)
-  - utils.shared\_logic.safe\_strip (line 180)
-  - utils.logger\_singleton.prompt.prompt\_input (line 180)
-  - utils.misc\_utils.extract\_url\_and\_label (line 182)
-  - config.URL\_LIST\_FILE.open (line 184)
-  - f\_append.write (line 185)
-  - utils.logger\_singleton.logger.info (line 192)
-  - datetime.datetime.now (line 197)
-  - config.PROCESSED\_URLS\_FILE.exists (line 205)
-  - orjson.loads (line 208)
-  - f.read (line 208)
-  - e.get (line 217)
-  - entries.append (line 223)
-  - f.write (line 225)
-  - orjson.dumps (line 225)
-  - utils.telemetry.emit\_telemetry\_event (line 228)
-  - utils.telemetry\_agg.increment\_counter (line 233)
-  - status.lower (line 235)
-  - utils.telemetry\_agg.increment\_counter (line 237)
-  - utils.telemetry\_agg.increment\_counter (line 239)
-  - utils.telemetry\_agg.increment\_counter (line 241)
-  - utils.telemetry\_agg.increment\_counter (line 243)
-  - metadata.get (line 245)
-  - utils.telemetry\_agg.increment\_counter (line 246)
+  - config.PROCESSED\_URLS\_FILE.exists (line 83)
+  - utils.logger\_singleton.logger.warning (line 84)
+  - config.PROCESSED\_URLS\_FILE.unlink (line 85)
+  - navigator.NavigationRecipeStore (line 87)
+  - navigator.NavigationInstructionRunner (line 88)
+  - collections.defaultdict (line 89)
+  - utils.browser\_utils.sync\_safe\_browser\_close (line 100)
+  - utils.logger\_singleton.logger.warning (line 103)
+  - \_CAPTCHA\_DETECTION\_COUNTS.get (line 120)
+  - utils.logger\_singleton.logger.info (line 122)
+  - utils.logger\_singleton.prompt.prompt\_input (line 169)
+  - utils.logger\_singleton.logger.warning (line 176)
+  - utils.shared\_logic.safe\_strip (line 184)
+  - metadata.get (line 208)
+  - session\_id.startswith (line 219)
+  - Context\_Integration.librarian.get\_safe\_log\_path (line 220)
+  - handle.write (line 222)
+  - orjson.dumps (line 222)
+  - page.query\_selector\_all (line 236)
+  - utils.browser\_utils.safe\_query\_selector\_all (line 238)
+  - utils.browser\_utils.safe\_query\_selector\_all (line 240)
+  - tbl.query\_selector\_all (line 245)
+  - utils.browser\_utils.safe\_locator (line 249)
+  - utils.browser\_utils.safe\_count (line 250)
+  - config.URL\_LIST\_FILE.exists (line 259)
+  - utils.logger\_singleton.logger.error (line 266)
+  - utils.shared\_logic.safe\_strip (line 267)
+  - utils.logger\_singleton.prompt.prompt\_input (line 267)
+  - utils.misc\_utils.extract\_url\_and\_label (line 269)
+  - config.URL\_LIST\_FILE.write\_text (line 271)
+  - utils.logger\_singleton.logger.info (line 278)
+  - config.URL\_LIST\_FILE.open (line 281)
+  - utils.shared\_logic.safe\_strip (line 284)
+  - line\_stripped.startswith (line 285)
+  - utils.misc\_utils.extract\_url\_and\_label (line 287)
+  - lines.append (line 289)
+  - lines.append (line 292)
+  - utils.logger\_singleton.logger.error (line 301)
+  - utils.shared\_logic.safe\_strip (line 302)
+  - utils.logger\_singleton.prompt.prompt\_input (line 302)
+  - utils.misc\_utils.extract\_url\_and\_label (line 304)
+  - config.URL\_LIST\_FILE.open (line 306)
+  - f\_append.write (line 307)
+  - utils.logger\_singleton.logger.info (line 314)
+  - datetime.datetime.now (line 319)
+  - config.PROCESSED\_URLS\_FILE.exists (line 327)
+  - orjson.loads (line 330)
+  - f.read (line 330)
+  - e.get (line 339)
+  - entries.append (line 345)
 - Inbound references:
-  - \_close\_browser\_quietly ← html_election_parser.py:1462
-  - \_close\_browser\_quietly ← html_election_parser.py:1472
-  - \_close\_browser\_quietly ← html_election_parser.py:1535
-  - \_close\_browser\_quietly ← html_election_parser.py:1583
-  - \_close\_browser\_quietly ← html_election_parser.py:1592
-  - \_close\_browser\_quietly ← html_election_parser.py:1605
-  - \_close\_browser\_quietly ← html_election_parser.py:1625
-  - \_close\_browser\_quietly ← html_election_parser.py:1919
-  - \_close\_browser\_quietly ← html_election_parser.py:1945
-  - \_close\_browser\_quietly ← html_election_parser.py:1957
-  - \_close\_browser\_quietly ← html_election_parser.py:1987
-  - \_close\_browser\_quietly ← html_election_parser.py:2097
-  - \_count\_dom\_table\_rows ← html_election_parser.py:1789
-  - mark\_url\_processed ← html_election_parser.py:526
-  - mark\_url\_processed ← html_election_parser.py:610
-  - mark\_url\_processed ← html_election_parser.py:1285
-  - mark\_url\_processed ← html_election_parser.py:1311
-  - mark\_url\_processed ← html_election_parser.py:1328
-  - mark\_url\_processed ← html_election_parser.py:1415
-  - mark\_url\_processed ← html_election_parser.py:1473
-  - mark\_url\_processed ← html_election_parser.py:1517
-  - mark\_url\_processed ← html_election_parser.py:1525
-  - mark\_url\_processed ← html_election_parser.py:1533
-  - mark\_url\_processed ← html_election_parser.py:1697
-  - mark\_url\_processed ← html_election_parser.py:1699
-  - mark\_url\_processed ← html_election_parser.py:1709
-  - mark\_url\_processed ← html_election_parser.py:1918
-  - mark\_url\_processed ← html_election_parser.py:1944
-  - mark\_url\_processed ← html_election_parser.py:1956
-  - mark\_url\_processed ← html_election_parser.py:1986
-  - mark\_url\_processed ← html_election_parser.py:2057
-  - mark\_url\_processed ← html_election_parser.py:2067
-  - mark\_url\_processed ← html_election_parser.py:2095
-  - mark\_url\_processed ← html_election_parser.py:2182
-  - prompt\_url\_selection ← html_election_parser.py:2269
-  - process\_format\_override ← html_election_parser.py:2147
-  - ai\_analyze\_results ← html_election_parser.py:1515
-  - ai\_analyze\_results ← html_election_parser.py:1695
-  - ai\_analyze\_results ← html_election_parser.py:1991
-  - stream\_results ← html_election_parser.py:1516
-  - stream\_results ← html_election_parser.py:1696
-  - stream\_results ← html_election_parser.py:1992
-  - stream\_results ← html_election_parser.py:2181
-  - \_read\_text\_file\_with\_fallback ← html_election_parser.py:1014
-  - \_extract\_text\_blocks ← html_election_parser.py:1060
-  - generate\_generic\_html\_result ← html_election_parser.py:1657
-  - generate\_generic\_html\_result ← html_election_parser.py:1900
-  - generate\_generic\_html\_result ← html_election_parser.py:2172
-  - generate\_generic\_html\_result ← html_handler.py:56
-  - orchestrate\_url ← html_election_parser.py:2087
+  - \_close\_browser\_quietly ← html_election_parser.py:1600
+  - \_close\_browser\_quietly ← html_election_parser.py:1610
+  - \_close\_browser\_quietly ← html_election_parser.py:1693
+  - \_close\_browser\_quietly ← html_election_parser.py:1742
+  - \_close\_browser\_quietly ← html_election_parser.py:1751
+  - \_close\_browser\_quietly ← html_election_parser.py:1777
+  - \_close\_browser\_quietly ← html_election_parser.py:1806
+  - \_close\_browser\_quietly ← html_election_parser.py:1832
+  - \_close\_browser\_quietly ← html_election_parser.py:2168
+  - \_close\_browser\_quietly ← html_election_parser.py:2209
+  - \_close\_browser\_quietly ← html_election_parser.py:2221
+  - \_close\_browser\_quietly ← html_election_parser.py:2251
+  - \_close\_browser\_quietly ← html_election_parser.py:2375
+  - \_captcha\_detection\_key ← html_election_parser.py:119
+  - \_register\_cloudflare\_detection ← html_election_parser.py:1760
+  - \_register\_cloudflare\_detection ← html_election_parser.py:1871
+  - \_prompt\_for\_captcha\_assist ← html_election_parser.py:1762
+  - \_sanitize\_error\_metadata ← html_election_parser.py:2179
+  - \_log\_session\_exception\_metadata ← html_election_parser.py:2190
+  - \_count\_dom\_table\_rows ← html_election_parser.py:2038
+  - mark\_url\_processed ← html_election_parser.py:648
+  - mark\_url\_processed ← html_election_parser.py:732
+  - mark\_url\_processed ← html_election_parser.py:1422
+  - mark\_url\_processed ← html_election_parser.py:1448
+  - mark\_url\_processed ← html_election_parser.py:1465
+  - mark\_url\_processed ← html_election_parser.py:1552
+  - mark\_url\_processed ← html_election_parser.py:1611
+  - mark\_url\_processed ← html_election_parser.py:1669
+  - mark\_url\_processed ← html_election_parser.py:1683
+  - mark\_url\_processed ← html_election_parser.py:1691
+  - mark\_url\_processed ← html_election_parser.py:1776
+  - mark\_url\_processed ← html_election_parser.py:1946
+  - mark\_url\_processed ← html_election_parser.py:1948
+  - mark\_url\_processed ← html_election_parser.py:1958
+  - mark\_url\_processed ← html_election_parser.py:2167
+  - mark\_url\_processed ← html_election_parser.py:2208
+  - mark\_url\_processed ← html_election_parser.py:2220
+  - mark\_url\_processed ← html_election_parser.py:2250
+  - mark\_url\_processed ← html_election_parser.py:2335
+  - mark\_url\_processed ← html_election_parser.py:2345
+  - mark\_url\_processed ← html_election_parser.py:2373
+  - mark\_url\_processed ← html_election_parser.py:2465
+  - prompt\_url\_selection ← html_election_parser.py:2552
+  - process\_format\_override ← html_election_parser.py:2430
+  - ai\_analyze\_results ← html_election_parser.py:1653
+  - ai\_analyze\_results ← html_election_parser.py:1944
+  - ai\_analyze\_results ← html_election_parser.py:2255
+  - stream\_results ← html_election_parser.py:1654
+  - stream\_results ← html_election_parser.py:1945
+  - stream\_results ← html_election_parser.py:2256
 
 ### navigator/\_\_init\_\_.py {#webapp-parser-navigator-init-py}
 
@@ -6501,9 +7446,9 @@ graph LR
 ### navigator/navigation\_recipes.py {#webapp-parser-navigator-navigation-recipes-py}
 
 - Definitions:
-  - class: `NavigationRecipeStore` (line 12)
+  - class: `NavigationRecipeStore` (line 16)
 - Imports:
-  - **Standard Library** (7):
+  - **Standard Library** (8):
     - `import threading as threading` (line 3)
     - `from pathlib import Path` (line 4)
     - `from typing import Any` (line 5)
@@ -6511,42 +7456,63 @@ graph LR
     - `from typing import Iterable` (line 5)
     - `from typing import List` (line 5)
     - `from typing import Sequence` (line 5)
+    - `from urllib.parse import urlparse` (line 6)
   - **Third-party** (1):
-    - `import orjson as orjson` (line 7)
-  - **Local/Project** (1):
+    - `import orjson as orjson` (line 8)
+  - **Local/Project** (2):
     - `from __future__ import annotations` (line 1)
+    - `from config import LOG_DIR` (line 10)
 - Outgoing cross-module calls (sample):
-  - pathlib.Path (line 9)
-  - pathlib.Path (line 21)
-  - threading.RLock (line 25)
-  - orjson.loads (line 40)
-  - self.\_maybe\_reload\_locked (line 52)
-  - self.load (line 56)
-  - value.strip (line 62)
-  - normalized.lower (line 63)
-  - normalized.upper (line 63)
-  - value.lower (line 70)
-  - value.upper (line 70)
-  - normalized\_candidate.lower (line 73)
-  - normalized\_candidate.upper (line 73)
-  - self.\_normalize (line 82)
-  - context.get (line 82)
-  - self.\_normalize (line 83)
-  - context.get (line 83)
-  - self.iter\_recipes (line 85)
-  - recipe.get (line 86)
-  - self.\_match\_list (line 89)
-  - match.get (line 89)
-  - match.get (line 89)
-  - self.\_match\_list (line 90)
-  - match.get (line 90)
-  - match.get (line 90)
-  - selected.append (line 92)
-  - recipe.get (line 100)
-  - self.\_maybe\_reload\_locked (line 102)
-  - existing.get (line 106)
-  - self.\_write\_locked (line 112)
-  - orjson.dumps (line 116)
+  - pathlib.Path (line 12)
+  - pathlib.Path (line 13)
+  - pathlib.Path (line 30)
+  - pathlib.Path (line 32)
+  - threading.RLock (line 41)
+  - orjson.loads (line 56)
+  - self.\_maybe\_reload\_locked (line 68)
+  - self.\_maybe\_reload\_learned\_locked (line 75)
+  - self.load (line 79)
+  - value.strip (line 85)
+  - normalized.lower (line 86)
+  - normalized.upper (line 86)
+  - value.lower (line 93)
+  - value.upper (line 93)
+  - normalized\_candidate.lower (line 96)
+  - normalized\_candidate.upper (line 96)
+  - self.\_normalize (line 105)
+  - context.get (line 105)
+  - self.\_normalize (line 106)
+  - context.get (line 106)
+  - self.iter\_recipes (line 108)
+  - recipe.get (line 109)
+  - self.\_match\_list (line 112)
+  - match.get (line 112)
+  - match.get (line 112)
+  - self.\_match\_list (line 113)
+  - match.get (line 113)
+  - match.get (line 113)
+  - selected.append (line 115)
+  - self.load\_learned (line 116)
+  - recipe.get (line 117)
+  - self.\_match\_list (line 120)
+  - match.get (line 120)
+  - match.get (line 120)
+  - self.\_match\_list (line 121)
+  - match.get (line 121)
+  - match.get (line 121)
+  - selected.append (line 123)
+  - recipe.get (line 131)
+  - self.\_maybe\_reload\_locked (line 133)
+  - existing.get (line 137)
+  - self.\_write\_locked (line 143)
+  - orjson.dumps (line 147)
+  - self.\_build\_learned\_recipes (line 162)
+  - self.\_parse\_log\_line (line 174)
+  - self.\_entry\_to\_recipe (line 177)
+  - recipes.append (line 179)
+  - line.strip (line 186)
+  - orjson.loads (line 189)
+  - entry.get (line 195)
 
 ### navigator/navigation\_runner.py {#webapp-parser-navigator-navigation-runner-py}
 
@@ -6704,20 +7670,20 @@ graph LR
 > Data Classifier: DL1/DL2 Quality Assurance Pipeline
 
 - Definitions:
-  - class: `DLStatus` (line 30)
-  - class: `QAIssueType` (line 38)
-  - class: `IssureSeverity` (line 50)
-  - class: `ActionType` (line 58)
-  - class: `QAIssue` (line 72)
-  - class: `ClassificationResult` (line 86)
-  - class: `DatasetMetadata` (line 97)
-  - function: `get\_db\_connection` (line 115)
-  - function: `classify\_as\_dl1` (line 137)
-  - function: `detect\_quality\_issues` (line 253)
-  - function: `promote\_to\_dl2` (line 367)
-  - function: `get\_pending\_dl2\_reviews` (line 457)
-  - function: `get\_dl2\_inventory` (line 490)
-  - function: `get\_dataset\_lineage` (line 537)
+  - class: `DLStatus` (line 35)
+  - class: `QAIssueType` (line 43)
+  - class: `IssureSeverity` (line 55)
+  - class: `ActionType` (line 63)
+  - class: `QAIssue` (line 77)
+  - class: `ClassificationResult` (line 91)
+  - class: `DatasetMetadata` (line 102)
+  - function: `get\_db\_connection` (line 120)
+  - function: `classify\_as\_dl1` (line 142)
+  - function: `detect\_quality\_issues` (line 258)
+  - function: `promote\_to\_dl2` (line 372)
+  - function: `get\_pending\_dl2\_reviews` (line 462)
+  - function: `get\_dl2\_inventory` (line 495)
+  - function: `get\_dataset\_lineage` (line 542)
 - Imports:
   - **Standard Library** (12):
     - `import json as json` (line 14)
@@ -6742,174 +7708,171 @@ graph LR
     - `from config import VERIFIED_DATA_DB_PASSWORD` (line 24)
     - `from config import VERIFIED_DATA_DB_PORT` (line 24)
     - `from config import VERIFIED_DATA_DB_USER` (line 24)
-    - `from utils.logger_singleton import logger` (line 25)
+    - `from utils.logger_singleton import logger` (line 31)
 - Task markers:
-  - L53 **WARNING**: = "WARNING"
-  - L285 **WARNING**: .value,
-  - L328 **WARNING**: .value,
-  - L356 **WARNING**: .value,
+  - L58 **WARNING**: = "WARNING"
+  - L290 **WARNING**: .value,
+  - L333 **WARNING**: .value,
+  - L361 **WARNING**: .value,
 - Outgoing cross-module calls (sample):
-  - dataclasses.asdict (line 82)
-  - dataclasses.field (line 91)
-  - dataclasses.field (line 109)
-  - dataclasses.field (line 110)
-  - psycopg2.connect (line 118)
-  - utils.logger\_singleton.logger.error (line 127)
-  - uuid.uuid4 (line 147)
-  - conn.cursor (line 166)
-  - cursor.execute (line 169)
-  - cursor.execute (line 190)
-  - json.dumps (line 200)
-  - cursor.execute (line 204)
-  - json.dumps (line 212)
-  - conn.commit (line 219)
-  - cursor.close (line 220)
-  - conn.close (line 221)
-  - utils.logger\_singleton.logger.info (line 223)
-  - utils.logger\_singleton.logger.error (line 233)
-  - issues.append (line 270)
-  - row.items (line 281)
-  - issues.append (line 283)
-  - seen\_rows.add (line 290)
-  - issues.append (line 300)
-  - vote\_counts.append (line 308)
-  - issues.append (line 310)
-  - issues.append (line 326)
-  - issues.append (line 340)
-  - issues.append (line 354)
-  - conn.cursor (line 390)
-  - cursor.execute (line 393)
-  - cursor.fetchone (line 398)
-  - cursor.execute (line 403)
-  - resolve\_issues.items (line 411)
-  - cursor.execute (line 412)
-  - cursor.execute (line 420)
-  - json.dumps (line 428)
-  - datetime.datetime.now (line 428)
-  - conn.commit (line 431)
-  - cursor.close (line 432)
-  - conn.close (line 433)
-  - utils.logger\_singleton.logger.info (line 435)
-  - utils.logger\_singleton.logger.error (line 446)
-  - conn.cursor (line 464)
-  - cursor.execute (line 465)
-  - cursor.fetchall (line 475)
-  - cursor.close (line 476)
-  - conn.close (line 477)
-  - utils.logger\_singleton.logger.error (line 482)
-  - conn.cursor (line 497)
-  - params.append (line 509)
+  - dataclasses.asdict (line 87)
+  - dataclasses.field (line 96)
+  - dataclasses.field (line 114)
+  - dataclasses.field (line 115)
+  - psycopg2.connect (line 123)
+  - utils.logger\_singleton.logger.error (line 132)
+  - uuid.uuid4 (line 152)
+  - conn.cursor (line 171)
+  - cursor.execute (line 174)
+  - cursor.execute (line 195)
+  - json.dumps (line 205)
+  - cursor.execute (line 209)
+  - json.dumps (line 217)
+  - conn.commit (line 224)
+  - cursor.close (line 225)
+  - conn.close (line 226)
+  - utils.logger\_singleton.logger.info (line 228)
+  - utils.logger\_singleton.logger.error (line 238)
+  - issues.append (line 275)
+  - row.items (line 286)
+  - issues.append (line 288)
+  - seen\_rows.add (line 295)
+  - issues.append (line 305)
+  - vote\_counts.append (line 313)
+  - issues.append (line 315)
+  - issues.append (line 331)
+  - issues.append (line 345)
+  - issues.append (line 359)
+  - conn.cursor (line 395)
+  - cursor.execute (line 398)
+  - cursor.fetchone (line 403)
+  - cursor.execute (line 408)
+  - resolve\_issues.items (line 416)
+  - cursor.execute (line 417)
+  - cursor.execute (line 425)
+  - json.dumps (line 433)
+  - datetime.datetime.now (line 433)
+  - conn.commit (line 436)
+  - cursor.close (line 437)
+  - conn.close (line 438)
+  - utils.logger\_singleton.logger.info (line 440)
+  - utils.logger\_singleton.logger.error (line 451)
+  - conn.cursor (line 469)
+  - cursor.execute (line 470)
+  - cursor.fetchall (line 480)
+  - cursor.close (line 481)
+  - conn.close (line 482)
+  - utils.logger\_singleton.logger.error (line 487)
+  - conn.cursor (line 502)
+  - params.append (line 514)
 - Inbound references:
-  - QAIssue ← data_classifier.py:270
-  - QAIssue ← data_classifier.py:283
-  - QAIssue ← data_classifier.py:300
-  - QAIssue ← data_classifier.py:310
-  - QAIssue ← data_classifier.py:326
-  - QAIssue ← data_classifier.py:340
-  - QAIssue ← data_classifier.py:354
-  - ClassificationResult ← data_classifier.py:241
-  - get\_db\_connection ← data_classifier.py:162
-  - get\_db\_connection ← data_classifier.py:386
-  - get\_db\_connection ← data_classifier.py:460
-  - get\_db\_connection ← data_classifier.py:493
-  - get\_db\_connection ← data_classifier.py:540
-  - detect\_quality\_issues ← data_classifier.py:150
+  - QAIssue ← data_classifier.py:275
+  - QAIssue ← data_classifier.py:288
+  - QAIssue ← data_classifier.py:305
+  - QAIssue ← data_classifier.py:315
+  - QAIssue ← data_classifier.py:331
+  - QAIssue ← data_classifier.py:345
+  - QAIssue ← data_classifier.py:359
+  - ClassificationResult ← data_classifier.py:246
+  - get\_db\_connection ← data_classifier.py:167
+  - get\_db\_connection ← data_classifier.py:391
+  - get\_db\_connection ← data_classifier.py:465
+  - get\_db\_connection ← data_classifier.py:498
+  - get\_db\_connection ← data_classifier.py:545
+  - detect\_quality\_issues ← data_classifier.py:155
 
 ### quality\_assurance/qa\_endpoints.py {#webapp-parser-quality-assurance-qa-endpoints-py}
 
 > Data Assurance Endpoints: REST API for DL1/DL2 Classification & Review
 
 - Definitions:
-  - function: `\_require\_qa\_enabled` (line 39)
-  - function: `\_get\_reviewer\_principal` (line 50)
-  - function: `\_require\_reviewer` (line 56)
-  - function: `parse\_and\_classify` (line 90)
-  - function: `get\_pending\_reviews` (line 185)
-  - function: `verify\_and\_promote` (line 227)
-  - function: `get\_inventory` (line 291)
-  - function: `get\_lineage` (line 345)
-  - function: `export\_dl2\_data` (line 394)
-  - function: `get\_stats` (line 462)
+  - function: `\_require\_qa\_enabled` (line 37)
+  - function: `\_get\_reviewer\_principal` (line 48)
+  - function: `\_require\_reviewer` (line 54)
+  - function: `parse\_and\_classify` (line 88)
+  - function: `get\_pending\_reviews` (line 181)
+  - function: `verify\_and\_promote` (line 223)
+  - function: `get\_inventory` (line 287)
+  - function: `get\_lineage` (line 341)
+  - function: `export\_dl2\_data` (line 390)
+  - function: `get\_stats` (line 458)
 - Imports:
-  - **Standard Library** (7):
+  - **Standard Library** (4):
     - `import csv as csv` (line 15)
     - `import io as io` (line 16)
-    - `import json as json` (line 17)
-    - `from datetime import datetime` (line 18)
-    - `from datetime import timezone` (line 18)
-    - `from io import StringIO` (line 19)
-    - `from functools import wraps` (line 20)
+    - `from functools import wraps` (line 17)
+    - `from io import StringIO` (line 18)
   - **Third-party** (4):
-    - `from flask import Blueprint` (line 22)
-    - `from flask import jsonify` (line 22)
-    - `from flask import request` (line 22)
-    - `from flask import send_file` (line 22)
+    - `from flask import Blueprint` (line 20)
+    - `from flask import jsonify` (line 20)
+    - `from flask import request` (line 20)
+    - `from flask import send_file` (line 20)
   - **Local/Project** (12):
     - `from __future__ import annotations` (line 13)
-    - `from config import ENABLE_VERIFICATION_FRAMEWORK` (line 24)
-    - `from config import QA_REQUIRE_CERT_AUTH` (line 24)
-    - `from utils.cert_utils import extract_client_principal` (line 25)
-    - `from utils.shared_logic import safe_get` (line 26)
-    - `from utils.shared_logic import safe_strip` (line 26)
-    - `from data_classifier import classify_as_dl1` (line 27)
-    - `from data_classifier import DatasetMetadata` (line 27)
-    - `from data_classifier import get_dataset_lineage` (line 27)
-    - `from data_classifier import get_dl2_inventory` (line 27)
-    - `from data_classifier import get_pending_dl2_reviews` (line 27)
-    - `from data_classifier import promote_to_dl2` (line 27)
+    - `from config import ENABLE_VERIFICATION_FRAMEWORK` (line 22)
+    - `from config import QA_REQUIRE_CERT_AUTH` (line 22)
+    - `from utils.cert_utils import extract_client_principal` (line 23)
+    - `from utils.shared_logic import safe_get` (line 24)
+    - `from utils.shared_logic import safe_strip` (line 24)
+    - `from data_classifier import DatasetMetadata` (line 25)
+    - `from data_classifier import classify_as_dl1` (line 25)
+    - `from data_classifier import get_dataset_lineage` (line 25)
+    - `from data_classifier import get_dl2_inventory` (line 25)
+    - `from data_classifier import get_pending_dl2_reviews` (line 25)
+    - `from data_classifier import promote_to_dl2` (line 25)
 - Task markers:
-  - L485 **TODO**: Query for rejected count
+  - L481 **TODO**: Query for rejected count
 - Outgoing cross-module calls (sample):
-  - flask.Blueprint (line 36)
-  - flask.jsonify (line 44)
-  - functools.wraps (line 41)
-  - utils.cert\_utils.extract\_client\_principal (line 52)
-  - flask.jsonify (line 64)
-  - functools.wraps (line 58)
-  - flask.request.get\_json (line 129)
-  - utils.shared\_logic.safe\_strip (line 132)
+  - flask.Blueprint (line 34)
+  - flask.jsonify (line 42)
+  - functools.wraps (line 39)
+  - utils.cert\_utils.extract\_client\_principal (line 50)
+  - flask.jsonify (line 62)
+  - functools.wraps (line 56)
+  - flask.request.get\_json (line 125)
+  - utils.shared\_logic.safe\_strip (line 128)
+  - utils.shared\_logic.safe\_get (line 128)
+  - utils.shared\_logic.safe\_strip (line 129)
+  - utils.shared\_logic.safe\_get (line 129)
+  - utils.shared\_logic.safe\_strip (line 130)
+  - utils.shared\_logic.safe\_get (line 130)
+  - utils.shared\_logic.safe\_get (line 131)
   - utils.shared\_logic.safe\_get (line 132)
   - utils.shared\_logic.safe\_strip (line 133)
   - utils.shared\_logic.safe\_get (line 133)
-  - utils.shared\_logic.safe\_strip (line 134)
   - utils.shared\_logic.safe\_get (line 134)
   - utils.shared\_logic.safe\_get (line 135)
   - utils.shared\_logic.safe\_get (line 136)
-  - utils.shared\_logic.safe\_strip (line 137)
   - utils.shared\_logic.safe\_get (line 137)
   - utils.shared\_logic.safe\_get (line 138)
   - utils.shared\_logic.safe\_get (line 139)
-  - utils.shared\_logic.safe\_get (line 140)
-  - utils.shared\_logic.safe\_get (line 141)
-  - utils.shared\_logic.safe\_get (line 142)
-  - utils.shared\_logic.safe\_get (line 143)
-  - flask.jsonify (line 147)
-  - data\_classifier.DatasetMetadata (line 151)
-  - data\_classifier.classify\_as\_dl1 (line 167)
-  - flask.jsonify (line 169)
-  - issue.to\_dict (line 173)
-  - flask.jsonify (line 179)
-  - qa\_bp.route (line 87)
-  - data\_classifier.get\_pending\_dl2\_reviews (line 212)
-  - flask.jsonify (line 215)
-  - flask.jsonify (line 221)
-  - qa\_bp.route (line 182)
-  - flask.request.get\_json (line 255)
-  - utils.shared\_logic.safe\_strip (line 256)
-  - utils.shared\_logic.safe\_get (line 256)
-  - utils.shared\_logic.safe\_strip (line 257)
-  - utils.shared\_logic.safe\_get (line 257)
-  - utils.shared\_logic.safe\_get (line 258)
-  - flask.jsonify (line 261)
-  - data\_classifier.promote\_to\_dl2 (line 264)
+  - flask.jsonify (line 143)
+  - data\_classifier.DatasetMetadata (line 147)
+  - data\_classifier.classify\_as\_dl1 (line 163)
+  - flask.jsonify (line 165)
+  - issue.to\_dict (line 169)
+  - flask.jsonify (line 175)
+  - qa\_bp.route (line 85)
+  - data\_classifier.get\_pending\_dl2\_reviews (line 208)
+  - flask.jsonify (line 211)
+  - flask.jsonify (line 217)
+  - qa\_bp.route (line 178)
+  - flask.request.get\_json (line 251)
+  - utils.shared\_logic.safe\_strip (line 252)
+  - utils.shared\_logic.safe\_get (line 252)
+  - utils.shared\_logic.safe\_strip (line 253)
+  - utils.shared\_logic.safe\_get (line 253)
+  - utils.shared\_logic.safe\_get (line 254)
+  - flask.jsonify (line 257)
+  - data\_classifier.promote\_to\_dl2 (line 260)
+  - flask.jsonify (line 268)
   - flask.jsonify (line 272)
-  - flask.jsonify (line 276)
-  - datetime.datetime.now (line 281)
-  - flask.jsonify (line 285)
-  - qa\_bp.route (line 224)
-  - utils.shared\_logic.safe\_strip (line 319)
-  - utils.shared\_logic.safe\_get (line 319)
-  - utils.shared\_logic.safe\_strip (line 320)
+  - datetime.now (line 277)
+  - flask.jsonify (line 281)
+  - qa\_bp.route (line 220)
+  - utils.shared\_logic.safe\_strip (line 315)
+  - utils.shared\_logic.safe\_get (line 315)
+  - utils.shared\_logic.safe\_strip (line 316)
 
 ### quarantine\_endpoints.py {#webapp-parser-quarantine-endpoints-py}
 
@@ -6982,7 +7945,7 @@ graph LR
 - Inbound references:
   - \_get\_reviewer\_principal ← quarantine_endpoints.py:48
   - \_get\_reviewer\_principal ← quarantine_endpoints.py:185
-  - \_get\_reviewer\_principal ← qa_endpoints.py:60
+  - \_get\_reviewer\_principal ← qa_endpoints.py:58
 
 ### services/context\_service.py {#webapp-parser-services-context-service-py}
 
@@ -7258,17 +8221,18 @@ graph LR
 ```
 
 - Definitions:
-  - function: `list\_available\_states` (line 45)
-  - function: `list\_available\_counties` (line 57)
-  - function: `import\_handler` (line 76)
-  - function: `prompt\_for\_handler\_fallback` (line 120)
-  - function: `preload\_handler\_map` (line 192)
-  - function: `reload\_handler\_map` (line 219)
-  - function: `scan\_url\_for\_state\_county` (line 226)
-  - function: `fuzzy\_match\_handler` (line 263)
-  - function: `list\_available\_handlers` (line 277)
-  - function: `get\_handler` (line 322)
-  - function: `cli` (line 482)
+  - function: `\_guard\_context\_for\_db` (line 67)
+  - function: `list\_available\_states` (line 84)
+  - function: `list\_available\_counties` (line 96)
+  - function: `import\_handler` (line 115)
+  - function: `prompt\_for\_handler\_fallback` (line 159)
+  - function: `preload\_handler\_map` (line 231)
+  - function: `reload\_handler\_map` (line 258)
+  - function: `scan\_url\_for\_state\_county` (line 265)
+  - function: `fuzzy\_match\_handler` (line 302)
+  - function: `list\_available\_handlers` (line 316)
+  - function: `get\_handler` (line 361)
+  - function: `cli` (line 535)
 - Imports:
   - **Standard Library** (8):
     - `import os as os` (line 10)
@@ -7281,7 +8245,7 @@ graph LR
     - `from typing import Tuple` (line 13)
   - **Third-party** (1):
     - `import orjson as orjson` (line 15)
-  - **Local/Project** (14):
+  - **Local/Project** (19):
     - `import difflib as difflib` (line 8)
     - `import importlib as importlib` (line 9)
     - `from config import BASE_DIR` (line 17)
@@ -7289,115 +8253,124 @@ graph LR
       KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 18)
     - `from Context_Integration.Context_Library.constants import
       STATE_MODULE_MAP` (line 18)
-    - `from utils.logger_singleton import console` (line 22)
-    - `from utils.logger_singleton import logger` (line 22)
-    - `from utils.logger_singleton import prompt` (line 22)
-    - `from utils.shared_logic import normalize_county_name` (line 23)
-    - `from utils.shared_logic import normalize_state_name` (line 23)
-    - `from utils.shared_logic import safe_append` (line 23)
-    - `from utils.shared_logic import safe_get_first` (line 23)
-    - `from utils.shared_logic import safe_lower` (line 23)
-    - `from utils.user_prompt import PromptCancelled` (line 30)
+    - `from handlers.registry import apply_vendor_overrides` (line 22)
+    - `from handlers.registry import get_county_handler_module_path` (line 22)
+    - `from handlers.registry import get_state_handler_module_path` (line 22)
+    - `from handlers.shared.parity_hooks import attach_router_parity_note` (line
+      27)
+    - `from handlers.shared.parity_hooks import safe_parity_note` (line 27)
+    - `from utils.logger_singleton import console` (line 28)
+    - `from utils.logger_singleton import logger` (line 28)
+    - `from utils.logger_singleton import prompt` (line 28)
+    - `from utils.shared_logic import normalize_county_name` (line 29)
+    - `from utils.shared_logic import normalize_state_name` (line 29)
+    - `from utils.shared_logic import safe_append` (line 29)
+    - `from utils.shared_logic import safe_get_first` (line 29)
+    - `from utils.shared_logic import safe_lower` (line 29)
+    - `from utils.user_prompt import PromptCancelled` (line 36)
 - Task markers:
-  - L49 **WARNING**: ("\[Router\] handlers/states directory not found.")
-  - L66 **WARNING**: (f"\[Router\] counties directory not found for state:
+  - L88 **WARNING**: ("\[Router\] handlers/states directory not found.")
+  - L105 **WARNING**: (f"\[Router\] counties directory not found for state:
     {state_key}")
-  - L137 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] No handler states
+  - L176 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] No handler states
     available for manual selection.")
-  - L154 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
-  - L157 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
-  - L160 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] State '{state}'
+  - L193 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
+  - L196 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
+  - L199 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] State '{state}'
     not found. Please try again.")
-  - L179 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
-  - L182 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] County '{county}'
+  - L218 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
+  - L221 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] County '{county}'
     not found for state '{state}'. Please try again.")
-  - L189 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Too many failed
+  - L228 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Too many failed
     attempts. Exiting fallback.")
-  - L205 **WARNING**: (f"\[Router\] Requested state '{state_name}' not found on
+  - L244 **WARNING**: (f"\[Router\] Requested state '{state_name}' not found on
     disk. Skipping restrict filter.")
-  - L512 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for
+  - L565 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for
     fuzzy matching.")
-  - L523 **WARNING**: (f"Failed to load context from file: {e}")
-  - L533 **WARNING**: ("No suitable handler found.")
-  - L540 **WARNING**: ("No handler selected. Exiting.")
-  - L547 **WARNING**: ("Still could not import a suitable handler.")
+  - L576 **WARNING**: (f"Failed to load context from file: {e}")
+  - L586 **WARNING**: ("No suitable handler found.")
+  - L593 **WARNING**: ("No handler selected. Exiting.")
+  - L600 **WARNING**: ("Still could not import a suitable handler.")
 - Outgoing cross-module calls (sample):
-  - utils.logger\_singleton.logger.warning (line 49)
-  - utils.shared\_logic.normalize\_state\_name (line 52)
-  - os.listdir (line 53)
-  - utils.shared\_logic.normalize\_state\_name (line 62)
-  - utils.logger\_singleton.logger.warning (line 66)
-  - os.listdir (line 69)
-  - fname.endswith (line 70)
-  - fname.startswith (line 70)
-  - counties.append (line 71)
-  - utils.shared\_logic.normalize\_county\_name (line 71)
-  - counties.append (line 73)
-  - utils.shared\_logic.normalize\_county\_name (line 73)
-  - module\_or\_file\_path.endswith (line 88)
-  - utils.logger\_singleton.logger.error (line 94)
-  - utils.logger\_singleton.logger.info (line 95)
-  - rel\_path.replace (line 99)
-  - module\_path.endswith (line 100)
-  - utils.logger\_singleton.logger.info (line 102)
-  - importlib.import\_module (line 107)
-  - utils.logger\_singleton.logger.error (line 111)
-  - utils.logger\_singleton.logger.debug (line 112)
-  - traceback.format\_exc (line 112)
-  - utils.logger\_singleton.logger.info (line 113)
-  - utils.logger\_singleton.logger.info (line 114)
-  - utils.logger\_singleton.logger.error (line 117)
-  - traceback.format\_exc (line 117)
-  - utils.logger\_singleton.logger.warning (line 137)
-  - utils.logger\_singleton.logger.error (line 142)
-  - utils.logger\_singleton.prompt.prompt\_choice (line 145)
-  - utils.logger\_singleton.logger.warning (line 154)
-  - utils.logger\_singleton.logger.warning (line 157)
-  - utils.logger\_singleton.logger.warning (line 160)
-  - available\_counties\_dict.get (line 165)
-  - utils.logger\_singleton.prompt.prompt\_choice (line 170)
-  - utils.logger\_singleton.logger.warning (line 179)
-  - utils.logger\_singleton.logger.warning (line 182)
-  - utils.logger\_singleton.logger.info (line 186)
-  - utils.logger\_singleton.logger.warning (line 189)
-  - utils.shared\_logic.normalize\_state\_name (line 200)
-  - states.append (line 203)
-  - utils.logger\_singleton.logger.warning (line 205)
-  - utils.shared\_logic.normalize\_state\_name (line 211)
-  - utils.shared\_logic.normalize\_state\_name (line 214)
-  - time.time (line 216)
-  - utils.logger\_singleton.logger.info (line 217)
-  - counties\_by\_state.values (line 217)
-  - utils.logger\_singleton.logger.info (line 224)
-  - log\_entries.append (line 233)
-  - utils.shared\_logic.safe\_lower (line 235)
-  - log\_entries.append (line 240)
+  - handlers.registry.apply\_vendor\_overrides (line 51)
+  - context.get (line 72)
+  - utils.logger\_singleton.logger.warning (line 88)
+  - utils.shared\_logic.normalize\_state\_name (line 89)
+  - Context\_Integration.Context\_Library.constants.STATE\_MODULE\_MAP.keys
+    (line 89)
+  - utils.shared\_logic.normalize\_state\_name (line 91)
+  - os.listdir (line 92)
+  - utils.shared\_logic.normalize\_state\_name (line 101)
+  - utils.logger\_singleton.logger.warning (line 105)
+  - os.listdir (line 108)
+  - fname.endswith (line 109)
+  - fname.startswith (line 109)
+  - counties.append (line 110)
+  - utils.shared\_logic.normalize\_county\_name (line 110)
+  - counties.append (line 112)
+  - utils.shared\_logic.normalize\_county\_name (line 112)
+  - module\_or\_file\_path.endswith (line 127)
+  - utils.logger\_singleton.logger.error (line 133)
+  - utils.logger\_singleton.logger.info (line 134)
+  - rel\_path.replace (line 138)
+  - module\_path.endswith (line 139)
+  - utils.logger\_singleton.logger.info (line 141)
+  - importlib.import\_module (line 146)
+  - utils.logger\_singleton.logger.error (line 150)
+  - utils.logger\_singleton.logger.debug (line 151)
+  - traceback.format\_exc (line 151)
+  - utils.logger\_singleton.logger.info (line 152)
+  - utils.logger\_singleton.logger.info (line 153)
+  - utils.logger\_singleton.logger.error (line 156)
+  - traceback.format\_exc (line 156)
+  - utils.logger\_singleton.logger.warning (line 176)
+  - utils.logger\_singleton.logger.error (line 181)
+  - utils.logger\_singleton.prompt.prompt\_choice (line 184)
+  - utils.logger\_singleton.logger.warning (line 193)
+  - utils.logger\_singleton.logger.warning (line 196)
+  - utils.logger\_singleton.logger.warning (line 199)
+  - available\_counties\_dict.get (line 204)
+  - utils.logger\_singleton.prompt.prompt\_choice (line 209)
+  - utils.logger\_singleton.logger.warning (line 218)
+  - utils.logger\_singleton.logger.warning (line 221)
+  - utils.logger\_singleton.logger.info (line 225)
+  - utils.logger\_singleton.logger.warning (line 228)
+  - utils.shared\_logic.normalize\_state\_name (line 239)
+  - states.append (line 242)
+  - utils.logger\_singleton.logger.warning (line 244)
+  - utils.shared\_logic.normalize\_state\_name (line 250)
+  - utils.shared\_logic.normalize\_state\_name (line 253)
+  - time.time (line 255)
+  - utils.logger\_singleton.logger.info (line 256)
+  - counties\_by\_state.values (line 256)
 - Inbound references:
-  - list\_available\_states ← state_router.py:207
-  - list\_available\_states ← state_router.py:209
-  - list\_available\_states ← state_router.py:293
-  - list\_available\_states ← state_router.py:535
-  - list\_available\_counties ← state_router.py:211
-  - list\_available\_counties ← state_router.py:294
-  - list\_available\_counties ← state_router.py:536
-  - import\_handler ← state_router.py:429
-  - import\_handler ← state_router.py:440
-  - import\_handler ← state_router.py:469
-  - import\_handler ← state_router.py:543
-  - prompt\_for\_handler\_fallback ← state_router.py:459
-  - prompt\_for\_handler\_fallback ← state_router.py:538
-  - preload\_handler\_map ← state_router.py:223
-  - preload\_handler\_map ← state_router.py:291
-  - preload\_handler\_map ← state_router.py:339
-  - reload\_handler\_map ← state_router.py:499
-  - scan\_url\_for\_state\_county ← state_router.py:355
-  - fuzzy\_match\_handler ← state_router.py:251
-  - fuzzy\_match\_handler ← state_router.py:257
-  - fuzzy\_match\_handler ← state_router.py:388
-  - fuzzy\_match\_handler ← state_router.py:409
-  - list\_available\_handlers ← state_router.py:502
-  - list\_available\_handlers ← state_router.py:506
-  - get\_handler ← state_router.py:527
+  - \_guard\_context\_for\_db ← state_router.py:461
+  - list\_available\_states ← state_router.py:246
+  - list\_available\_states ← state_router.py:248
+  - list\_available\_states ← state_router.py:332
+  - list\_available\_states ← state_router.py:588
+  - list\_available\_counties ← state_router.py:250
+  - list\_available\_counties ← state_router.py:333
+  - list\_available\_counties ← state_router.py:589
+  - import\_handler ← state_router.py:472
+  - import\_handler ← state_router.py:482
+  - import\_handler ← state_router.py:493
+  - import\_handler ← state_router.py:522
+  - import\_handler ← state_router.py:596
+  - prompt\_for\_handler\_fallback ← state_router.py:512
+  - prompt\_for\_handler\_fallback ← state_router.py:591
+  - preload\_handler\_map ← state_router.py:262
+  - preload\_handler\_map ← state_router.py:330
+  - preload\_handler\_map ← state_router.py:378
+  - reload\_handler\_map ← state_router.py:552
+  - scan\_url\_for\_state\_county ← state_router.py:394
+  - fuzzy\_match\_handler ← state_router.py:290
+  - fuzzy\_match\_handler ← state_router.py:296
+  - fuzzy\_match\_handler ← state_router.py:427
+  - fuzzy\_match\_handler ← state_router.py:448
+  - list\_available\_handlers ← state_router.py:555
+  - list\_available\_handlers ← state_router.py:559
+  - get\_handler ← state_router.py:580
 
 ### tests/test\_extract\_url.py {#webapp-parser-tests-test-extract-url-py}
 
@@ -7837,6 +8810,8 @@ graph LR
   - function: `bring\_to\_front` (line 80)
   - function: `is\_cloudflare\_captcha\_present` (line 120)
   - function: `wait\_for\_user\_to\_solve\_captcha` (line 131)
+  - function: `\_capture\_captcha\_dom\_state` (line 179)
+  - function: `\_log\_captcha\_transition` (line 212)
 - Imports:
   - **Standard Library** (6):
     - `import os as os` (line 4)
@@ -7857,7 +8832,7 @@ graph LR
     - `from shared_logic import safe_lower` (line 18)
 - Task markers:
   - L118 **WARNING**: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
-  - L154 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
+  - L175 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
 - Outgoing cross-module calls (sample):
   - orjson.loads (line 49)
   - f.read (line 49)
@@ -7879,19 +8854,45 @@ graph LR
   - shared\_logic.safe\_lower (line 125)
   - shared\_logic.safe\_lower (line 126)
   - logger\_singleton.logger.error (line 128)
-  - logger\_singleton.logger.info (line 136)
-  - time.time (line 137)
+  - logger\_singleton.logger.info (line 138)
   - time.time (line 139)
-  - logger\_singleton.logger.info (line 142)
-  - logger\_singleton.logger.debug (line 148)
-  - time.sleep (line 149)
-  - logger\_singleton.logger.error (line 152)
-  - logger\_singleton.logger.warning (line 154)
+  - time.time (line 143)
+  - logger\_singleton.logger.debug (line 150)
+  - logger\_singleton.logger.info (line 153)
+  - time.time (line 160)
+  - logger\_singleton.logger.debug (line 163)
+  - logger\_singleton.logger.debug (line 169)
+  - time.sleep (line 170)
+  - logger\_singleton.logger.error (line 173)
+  - logger\_singleton.logger.warning (line 175)
+  - kw.lower (line 197)
+  - html\_content.lower (line 197)
+  - time.time (line 205)
+  - logger\_singleton.logger.debug (line 208)
+  - initial\_state.get (line 238)
+  - cleared\_state.get (line 239)
+  - cleared\_state.get (line 241)
+  - initial\_state.get (line 241)
+  - initial\_state.get (line 242)
+  - cleared\_state.get (line 243)
+  - time.time (line 244)
+  - os.makedirs (line 248)
+  - f.write (line 251)
+  - orjson.dumps (line 251)
+  - f.write (line 252)
+  - logger\_singleton.logger.debug (line 254)
+  - initial\_state.get (line 254)
+  - cleared\_state.get (line 255)
+  - logger\_singleton.logger.debug (line 258)
 - Inbound references:
   - get\_page\_content ← captcha_tools.py:64
   - get\_page\_content ← captcha_tools.py:125
-  - bring\_to\_front ← captcha_tools.py:146
-  - is\_cloudflare\_captcha\_present ← captcha_tools.py:141
+  - get\_page\_content ← captcha_tools.py:191
+  - bring\_to\_front ← captcha_tools.py:167
+  - is\_cloudflare\_captcha\_present ← captcha_tools.py:152
+  - \_capture\_captcha\_dom\_state ← captcha_tools.py:148
+  - \_capture\_captcha\_dom\_state ← captcha_tools.py:156
+  - \_log\_captcha\_transition ← captcha_tools.py:157
 
 ### utils/cert\_utils.py {#webapp-parser-utils-cert-utils-py}
 
@@ -8152,49 +9153,49 @@ graph LR
 ### utils/contest\_selector.py {#webapp-parser-utils-contest-selector-py}
 
 - Definitions:
-  - function: `\_env\_truthy` (line 59)
-  - class: `ContestRecord` (line 74)
-  - function: `\_bundle\_key` (line 88)
-  - function: `\_collect\_bundle\_members` (line 101)
-  - function: `\_should\_bundle` (line 181)
-  - function: `\_inject\_bundle\_records` (line 217)
-  - function: `\_merge\_contest\_metadata` (line 272)
-  - function: `\_extract\_first\_int` (line 371)
-  - function: `\_contest\_sort\_key` (line 383)
-  - function: `\_extract\_display\_details` (line 410)
-  - function: `\_extract\_year\_tokens` (line 448)
-  - function: `\_strip\_years` (line 451)
-  - function: `\_base\_canonical\_key` (line 454)
-  - function: `\_expand\_contests\_from\_context` (line 464)
-  - function: `\_merge\_expanded\_contests` (line 521)
-  - function: `\_cluster\_titles\_by\_base` (line 540)
-  - function: `\_pick\_rep\_title` (line 557)
-  - function: `\_score\_title` (line 569)
-  - function: `\_chunk\_log\_options` (line 580)
-  - function: `\_render\_paginated\_contest\_menu` (line 594)
-  - function: `\_log` (line 631)
-  - function: `\_norm\_key` (line 656)
-  - function: `\_tokens` (line 662)
-  - function: `\_jaccard` (line 665)
-  - function: `\_cluster\_titles` (line 670)
-  - function: `\_pick\_rep` (line 686)
-  - function: `\_build\_effective\_list` (line 693)
-  - function: `is\_markup\_like` (line 713)
-  - function: `sanitize\_title` (line 723)
-  - function: `\_remove\_boilerplate` (line 737)
-  - function: `\_remove\_keywords` (line 756)
-  - function: `\_stem\_and\_remove\_stopwords` (line 761)
-  - function: `normalize\_contest` (line 768)
-  - function: `extract\_year\_from\_title` (line 782)
-  - function: `infer\_election\_type` (line 812)
-  - function: `ensure\_contest` (line 869)
-  - function: `ml\_verify\_contest` (line 886)
-  - function: `feedback\_loop\_verify\_contests` (line 1024)
-  - function: `resolve\_selection\_context` (line 1072)
-  - function: `select\_contest\_auto\_first` (line 1127)
-  - function: `select\_contest\_noninteractive` (line 1234)
-  - function: `\_emit\_contest\_options\_to\_webapp` (line 1336)
-  - function: `select\_contest` (line 1409)
+  - function: `\_env\_truthy` (line 66)
+  - class: `ContestRecord` (line 81)
+  - function: `\_bundle\_key` (line 95)
+  - function: `\_collect\_bundle\_members` (line 108)
+  - function: `\_should\_bundle` (line 188)
+  - function: `\_inject\_bundle\_records` (line 224)
+  - function: `\_merge\_contest\_metadata` (line 279)
+  - function: `\_extract\_first\_int` (line 378)
+  - function: `\_contest\_sort\_key` (line 390)
+  - function: `\_extract\_display\_details` (line 417)
+  - function: `\_extract\_year\_tokens` (line 455)
+  - function: `\_strip\_years` (line 458)
+  - function: `\_base\_canonical\_key` (line 461)
+  - function: `\_expand\_contests\_from\_context` (line 471)
+  - function: `\_merge\_expanded\_contests` (line 528)
+  - function: `\_cluster\_titles\_by\_base` (line 547)
+  - function: `\_pick\_rep\_title` (line 564)
+  - function: `\_score\_title` (line 576)
+  - function: `\_chunk\_log\_options` (line 587)
+  - function: `\_render\_paginated\_contest\_menu` (line 601)
+  - function: `\_log` (line 638)
+  - function: `\_norm\_key` (line 663)
+  - function: `\_tokens` (line 669)
+  - function: `\_jaccard` (line 672)
+  - function: `\_cluster\_titles` (line 677)
+  - function: `\_pick\_rep` (line 693)
+  - function: `\_build\_effective\_list` (line 700)
+  - function: `is\_markup\_like` (line 720)
+  - function: `sanitize\_title` (line 730)
+  - function: `\_remove\_boilerplate` (line 744)
+  - function: `\_remove\_keywords` (line 763)
+  - function: `\_stem\_and\_remove\_stopwords` (line 768)
+  - function: `normalize\_contest` (line 775)
+  - function: `extract\_year\_from\_title` (line 789)
+  - function: `infer\_election\_type` (line 819)
+  - function: `ensure\_contest` (line 876)
+  - function: `ml\_verify\_contest` (line 893)
+  - function: `feedback\_loop\_verify\_contests` (line 1045)
+  - function: `resolve\_selection\_context` (line 1093)
+  - function: `select\_contest\_auto\_first` (line 1148)
+  - function: `select\_contest\_noninteractive` (line 1255)
+  - function: `\_emit\_contest\_options\_to\_webapp` (line 1357)
+  - function: `select\_contest` (line 1430)
 - Imports:
   - **Standard Library** (13):
     - `import json as json` (line 3)
@@ -8212,139 +9213,144 @@ graph LR
     - `from typing import Tuple` (line 12)
   - **Third-party** (1):
     - `import numpy as np` (line 14)
-  - **Local/Project** (17):
+  - **Local/Project** (22):
     - `from __future__ import annotations` (line 1)
     - `from difflib import get_close_matches` (line 11)
+    - `from config import CONTEST_AUTO_CONFIDENCE_THRESHOLD` (line 16)
+    - `from config import CONTEST_FEEDBACK_MIN_THRESHOLD` (line 16)
+    - `from config import CONTEST_FEEDBACK_THRESHOLD` (line 16)
+    - `from config import CONTEST_VERIFY_FLOOR_NO_MODEL` (line 16)
+    - `from config import CONTEST_VERIFY_THRESHOLD` (line 16)
     - `from Context_Integration.Context_Library.constants import
-      CONTEST_KEYWORDS` (line 16)
+      CONTEST_KEYWORDS` (line 23)
     - `from Context_Integration.Context_Library.constants import
-      CONTEST_TITLE_KEYWORDS` (line 16)
+      CONTEST_TITLE_KEYWORDS` (line 23)
     - `from Context_Integration.Context_Library.constants import
-      ELECTION_TYPE_REGEX_MAP` (line 16)
+      ELECTION_TYPE_REGEX_MAP` (line 23)
     - `from Context_Integration.Context_Library.constants import ELECTION_TYPES`
-      (line 16)
+      (line 23)
     - `from Context_Integration.Context_Library.constants import
-      OFFICE_KEYWORDS` (line 16)
-    - `from logger_singleton import logger` (line 23)
-    - `from logger_singleton import prompt` (line 23)
-    - `from shared_logic import normalize_county_name` (line 24)
-    - `from shared_logic import normalize_state_name` (line 24)
-    - `from shared_logic import safe_capitalize` (line 24)
-    - `from shared_logic import safe_get` (line 24)
-    - `from shared_logic import safe_lower` (line 24)
-    - `from shared_logic import safe_model_encode` (line 24)
-    - `from shared_logic import safe_strip` (line 24)
-    - `from user_prompt import PromptCancelled` (line 33)
+      OFFICE_KEYWORDS` (line 23)
+    - `from logger_singleton import logger` (line 30)
+    - `from logger_singleton import prompt` (line 30)
+    - `from shared_logic import normalize_county_name` (line 31)
+    - `from shared_logic import normalize_state_name` (line 31)
+    - `from shared_logic import safe_capitalize` (line 31)
+    - `from shared_logic import safe_get` (line 31)
+    - `from shared_logic import safe_lower` (line 31)
+    - `from shared_logic import safe_model_encode` (line 31)
+    - `from shared_logic import safe_strip` (line 31)
+    - `from user_prompt import PromptCancelled` (line 40)
 - Task markers:
-  - L645 **WARNING**: ":
-  - L646 **WARNING**: (entry)
-  - L1039 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
+  - L652 **WARNING**: ":
+  - L653 **WARNING**: (entry)
+  - L1060 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
     contests", session_id=session_id,
-  - L1709 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
+  - L1730 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
     "Empty search term", "session_id": session_id})
-  - L1714 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
+  - L1735 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
     matches for '{term}'", "session_id": session_id})
-  - L1786 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
+  - L1807 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
     match; try again.", "session_id": session_id})
 - Outgoing cross-module calls (sample):
-  - stopwords.words (line 47)
-  - nltk.download (line 49)
-  - stopwords.words (line 50)
-  - value.strip (line 62)
-  - os.getenv (line 65)
-  - meta.get (line 91)
-  - meta.get (line 91)
-  - meta.get (line 93)
-  - shared\_logic.safe\_lower (line 94)
-  - meta.get (line 94)
-  - meta.get (line 94)
-  - shared\_logic.safe\_lower (line 95)
-  - meta.get (line 95)
-  - text\_s.lower (line 117)
-  - existing.lower (line 119)
-  - summary\_list.append (line 121)
-  - meta.get (line 125)
-  - meta.get (line 125)
-  - union\_ids.update (line 126)
-  - meta.get (line 127)
-  - union\_counties.add (line 129)
-  - meta.get (line 130)
-  - union\_scopes.add (line 132)
-  - meta.get (line 133)
-  - union\_variants.add (line 135)
-  - meta.get (line 136)
-  - union\_vote\_for.add (line 138)
-  - meta.get (line 139)
-  - members\_serialized.append (line 145)
-  - dataclasses.asdict (line 145)
-  - bundle\_confidences.append (line 148)
-  - bundle\_meta.setdefault (line 170)
-  - meta.get (line 192)
-  - meta.get (line 192)
-  - union\_ids.add (line 195)
-  - meta.get (line 196)
-  - union\_counties.update (line 198)
-  - meta.get (line 200)
-  - union\_variants.add (line 202)
+  - stopwords.words (line 54)
+  - nltk.download (line 56)
+  - stopwords.words (line 57)
+  - value.strip (line 69)
+  - os.getenv (line 72)
+  - meta.get (line 98)
+  - meta.get (line 98)
+  - meta.get (line 100)
+  - shared\_logic.safe\_lower (line 101)
+  - meta.get (line 101)
+  - meta.get (line 101)
+  - shared\_logic.safe\_lower (line 102)
+  - meta.get (line 102)
+  - text\_s.lower (line 124)
+  - existing.lower (line 126)
+  - summary\_list.append (line 128)
+  - meta.get (line 132)
+  - meta.get (line 132)
+  - union\_ids.update (line 133)
+  - meta.get (line 134)
+  - union\_counties.add (line 136)
+  - meta.get (line 137)
+  - union\_scopes.add (line 139)
+  - meta.get (line 140)
+  - union\_variants.add (line 142)
+  - meta.get (line 143)
+  - union\_vote\_for.add (line 145)
+  - meta.get (line 146)
+  - members\_serialized.append (line 152)
+  - dataclasses.asdict (line 152)
+  - bundle\_confidences.append (line 155)
+  - bundle\_meta.setdefault (line 177)
+  - meta.get (line 199)
+  - meta.get (line 199)
+  - union\_ids.add (line 202)
   - meta.get (line 203)
-  - collections.defaultdict (line 219)
-  - grouped.items (line 225)
-  - output.extend (line 227)
-  - primary\_meta.get (line 234)
-  - primary\_meta.get (line 234)
-  - bundle\_meta.get (line 236)
-  - aggregate\_metadata.setdefault (line 241)
-  - bundle\_meta.get (line 252)
-  - output.append (line 256)
-  - member\_meta.setdefault (line 263)
+  - union\_counties.update (line 205)
+  - meta.get (line 207)
+  - union\_variants.add (line 209)
+  - meta.get (line 210)
+  - collections.defaultdict (line 226)
+  - grouped.items (line 232)
+  - output.extend (line 234)
+  - primary\_meta.get (line 241)
+  - primary\_meta.get (line 241)
+  - bundle\_meta.get (line 243)
+  - aggregate\_metadata.setdefault (line 248)
+  - bundle\_meta.get (line 259)
+  - output.append (line 263)
+  - member\_meta.setdefault (line 270)
 - Inbound references:
-  - ContestRecord ← contest_selector.py:243
-  - ContestRecord ← contest_selector.py:1289
-  - ContestRecord ← contest_selector.py:1470
-  - \_bundle\_key ← contest_selector.py:221
-  - \_collect\_bundle\_members ← contest_selector.py:231
-  - \_should\_bundle ← contest_selector.py:226
-  - \_inject\_bundle\_records ← contest_selector.py:1324
-  - \_inject\_bundle\_records ← contest_selector.py:1488
-  - \_merge\_contest\_metadata ← contest_selector.py:1280
-  - \_merge\_contest\_metadata ← contest_selector.py:1461
-  - \_extract\_first\_int ← contest_selector.py:388
-  - \_extract\_display\_details ← contest_selector.py:1360
-  - \_extract\_display\_details ← contest_selector.py:1527
-  - \_extract\_display\_details ← contest_selector.py:1614
-  - \_extract\_year\_tokens ← contest_selector.py:561
-  - \_extract\_year\_tokens ← contest_selector.py:1274
-  - \_extract\_year\_tokens ← contest_selector.py:1455
-  - \_strip\_years ← contest_selector.py:458
-  - \_strip\_years ← contest_selector.py:566
-  - \_strip\_years ← contest_selector.py:567
-  - \_base\_canonical\_key ← contest_selector.py:92
-  - \_base\_canonical\_key ← contest_selector.py:544
-  - \_base\_canonical\_key ← contest_selector.py:548
-  - \_base\_canonical\_key ← contest_selector.py:1295
-  - \_base\_canonical\_key ← contest_selector.py:1474
-  - \_expand\_contests\_from\_context ← contest_selector.py:1261
-  - \_expand\_contests\_from\_context ← contest_selector.py:1436
-  - \_merge\_expanded\_contests ← contest_selector.py:1263
-  - \_merge\_expanded\_contests ← contest_selector.py:1438
-  - \_cluster\_titles\_by\_base ← contest_selector.py:1270
-  - \_cluster\_titles\_by\_base ← contest_selector.py:1451
-  - \_pick\_rep\_title ← contest_selector.py:1273
-  - \_pick\_rep\_title ← contest_selector.py:1454
-  - \_score\_title ← contest_selector.py:1276
-  - \_score\_title ← contest_selector.py:1457
-  - \_log ← contest_selector.py:900
-  - \_log ← contest_selector.py:1039
-  - \_log ← contest_selector.py:1043
-  - \_log ← contest_selector.py:1066
-  - \_norm\_key ← contest_selector.py:459
-  - \_norm\_key ← contest_selector.py:476
-  - \_norm\_key ← contest_selector.py:514
-  - \_norm\_key ← contest_selector.py:529
-  - \_norm\_key ← contest_selector.py:531
-  - \_norm\_key ← contest_selector.py:704
-  - \_norm\_key ← contest_selector.py:1305
-  - \_norm\_key ← contest_selector.py:1309
+  - ContestRecord ← contest_selector.py:250
+  - ContestRecord ← contest_selector.py:1310
+  - ContestRecord ← contest_selector.py:1491
+  - \_bundle\_key ← contest_selector.py:228
+  - \_collect\_bundle\_members ← contest_selector.py:238
+  - \_should\_bundle ← contest_selector.py:233
+  - \_inject\_bundle\_records ← contest_selector.py:1345
+  - \_inject\_bundle\_records ← contest_selector.py:1509
+  - \_merge\_contest\_metadata ← contest_selector.py:1301
+  - \_merge\_contest\_metadata ← contest_selector.py:1482
+  - \_extract\_first\_int ← contest_selector.py:395
+  - \_extract\_display\_details ← contest_selector.py:1381
+  - \_extract\_display\_details ← contest_selector.py:1548
+  - \_extract\_display\_details ← contest_selector.py:1635
+  - \_extract\_year\_tokens ← contest_selector.py:568
+  - \_extract\_year\_tokens ← contest_selector.py:1295
+  - \_extract\_year\_tokens ← contest_selector.py:1476
+  - \_strip\_years ← contest_selector.py:465
+  - \_strip\_years ← contest_selector.py:573
+  - \_strip\_years ← contest_selector.py:574
+  - \_base\_canonical\_key ← contest_selector.py:99
+  - \_base\_canonical\_key ← contest_selector.py:551
+  - \_base\_canonical\_key ← contest_selector.py:555
+  - \_base\_canonical\_key ← contest_selector.py:1316
+  - \_base\_canonical\_key ← contest_selector.py:1495
+  - \_expand\_contests\_from\_context ← contest_selector.py:1282
+  - \_expand\_contests\_from\_context ← contest_selector.py:1457
+  - \_merge\_expanded\_contests ← contest_selector.py:1284
+  - \_merge\_expanded\_contests ← contest_selector.py:1459
+  - \_cluster\_titles\_by\_base ← contest_selector.py:1291
+  - \_cluster\_titles\_by\_base ← contest_selector.py:1472
+  - \_pick\_rep\_title ← contest_selector.py:1294
+  - \_pick\_rep\_title ← contest_selector.py:1475
+  - \_score\_title ← contest_selector.py:1297
+  - \_score\_title ← contest_selector.py:1478
+  - \_log ← contest_selector.py:907
+  - \_log ← contest_selector.py:1060
+  - \_log ← contest_selector.py:1064
+  - \_log ← contest_selector.py:1087
+  - \_norm\_key ← contest_selector.py:466
+  - \_norm\_key ← contest_selector.py:483
+  - \_norm\_key ← contest_selector.py:521
+  - \_norm\_key ← contest_selector.py:536
+  - \_norm\_key ← contest_selector.py:538
+  - \_norm\_key ← contest_selector.py:711
+  - \_norm\_key ← contest_selector.py:1326
+  - \_norm\_key ← contest_selector.py:1330
   - \_norm\_key ← pivot.py:1724
   - \_norm\_key ← pivot.py:1831
   - \_norm\_key ← pivot.py:1832
@@ -8499,7 +9505,7 @@ graph LR
   - session.query (line 207)
   - filters.items (line 209)
 - Inbound references:
-  - get\_session ← dataset_promotion.py:289
+  - get\_session ← dataset_promotion.py:288
   - get\_session ← db_utils.py:136
   - get\_session ← db_utils.py:143
   - get\_session ← db_utils.py:152
@@ -8517,9 +9523,9 @@ graph LR
   - get\_session ← db_utils.py:263
   - get\_session ← db_utils.py:291
   - get\_engine ← db_utils.py:421
-  - get\_engine ← models.py:464
-  - save\_table\_structure\_to\_db ← context_organizer.py:2144
-  - get\_table\_structure\_from\_db ← context_organizer.py:2155
+  - get\_engine ← models.py:485
+  - save\_table\_structure\_to\_db ← context_organizer.py:2208
+  - get\_table\_structure\_from\_db ← context_organizer.py:2219
   - get\_or\_create\_state ← db_utils.py:318
   - get\_or\_create\_county ← db_utils.py:319
 
@@ -8650,7 +9656,7 @@ graph LR
   - normalize\_text ← detect.py:145
   - normalize\_text ← detect.py:151
   - normalize\_text ← detect.py:161
-  - normalize\_text ← shared_logic.py:2185
+  - normalize\_text ← shared_logic.py:2282
   - normalize\_for\_matching ← detect.py:116
   - \_is\_percent\_header ← detect.py:110
   - \_is\_percent\_header ← detect.py:139
@@ -8841,10 +9847,10 @@ graph LR
   - function: `update\_download\_manifest` (line 45)
   - function: `is\_already\_downloaded` (line 50)
   - function: `download\_file` (line 70)
-  - function: `download\_multiple\_files` (line 153)
-  - function: `download\_confirmed\_file` (line 169)
-  - function: `summarize\_downloads` (line 179)
-  - function: `get\_downloaded\_files\_by\_status` (line 190)
+  - function: `download\_multiple\_files` (line 161)
+  - function: `download\_confirmed\_file` (line 192)
+  - function: `summarize\_downloads` (line 217)
+  - function: `get\_downloaded\_files\_by\_status` (line 228)
 - Imports:
   - **Standard Library** (4):
     - `import os as os` (line 7)
@@ -8882,80 +9888,80 @@ graph LR
   - utils.shared\_logic.safe\_get (line 62)
   - utils.shared\_logic.safe\_get (line 63)
   - utils.misc\_utils.file\_hash (line 64)
-  - urllib.parse.urljoin (line 77)
-  - utils.logger\_singleton.logger.info (line 78)
-  - utils.logger\_singleton.logger.info (line 80)
-  - utils.shared\_logic.safe\_validate\_external\_url (line 84)
-  - requests.get (line 88)
-  - response.raise\_for\_status (line 89)
-  - urllib.parse.urlparse (line 94)
-  - urllib.parse.urlparse (line 99)
-  - utils.shared\_logic.safe\_validate\_external\_url (line 102)
+  - urllib.parse.urljoin (line 85)
+  - utils.logger\_singleton.logger.info (line 86)
+  - utils.logger\_singleton.logger.info (line 88)
+  - utils.shared\_logic.safe\_validate\_external\_url (line 92)
+  - requests.get (line 96)
+  - response.raise\_for\_status (line 97)
+  - urllib.parse.urlparse (line 102)
   - urllib.parse.urlparse (line 107)
-  - response.iter\_content (line 120)
-  - f.write (line 126)
-  - utils.misc\_utils.file\_hash (line 127)
-  - utils.logger\_singleton.logger.info (line 128)
-  - datetime.datetime.now (line 132)
-  - Context\_Integration.context\_organizer.ContextOrganizer (line 138)
-  - organizer.append\_to\_context\_library (line 139)
-  - utils.logger\_singleton.logger.error (line 142)
-  - datetime.datetime.now (line 146)
-  - utils.logger\_singleton.logger.info (line 159)
-  - downloaded\_files.append (line 166)
+  - utils.shared\_logic.safe\_validate\_external\_url (line 110)
+  - urllib.parse.urlparse (line 115)
+  - response.iter\_content (line 128)
+  - f.write (line 134)
+  - utils.misc\_utils.file\_hash (line 135)
+  - utils.logger\_singleton.logger.info (line 136)
+  - datetime.datetime.now (line 140)
+  - Context\_Integration.context\_organizer.ContextOrganizer (line 146)
+  - organizer.append\_to\_context\_library (line 147)
+  - utils.logger\_singleton.logger.error (line 150)
+  - datetime.datetime.now (line 154)
   - utils.logger\_singleton.logger.info (line 175)
-  - utils.logger\_singleton.logger.info (line 182)
-  - manifest.values (line 183)
-  - utils.shared\_logic.safe\_get (line 184)
-  - utils.shared\_logic.safe\_get (line 185)
-  - utils.shared\_logic.safe\_get (line 186)
-  - utils.shared\_logic.safe\_get (line 187)
-  - utils.logger\_singleton.logger.info (line 188)
-  - utils.shared\_logic.safe\_get (line 194)
-  - manifest.values (line 195)
-  - utils.shared\_logic.safe\_get (line 196)
-  - utils.shared\_logic.safe\_get (line 196)
+  - downloaded\_files.append (line 189)
+  - utils.logger\_singleton.logger.info (line 206)
+  - utils.logger\_singleton.logger.info (line 220)
+  - manifest.values (line 221)
+  - utils.shared\_logic.safe\_get (line 222)
+  - utils.shared\_logic.safe\_get (line 223)
+  - utils.shared\_logic.safe\_get (line 224)
+  - utils.shared\_logic.safe\_get (line 225)
+  - utils.logger\_singleton.logger.info (line 226)
+  - utils.shared\_logic.safe\_get (line 232)
+  - manifest.values (line 233)
+  - utils.shared\_logic.safe\_get (line 234)
+  - utils.shared\_logic.safe\_get (line 234)
 - Inbound references:
-  - ensure\_input\_directory ← download_utils.py:74
-  - ensure\_input\_directory ← download_utils.py:161
+  - ensure\_input\_directory ← download_utils.py:82
+  - ensure\_input\_directory ← download_utils.py:177
   - load\_download\_manifest ← download_utils.py:52
-  - load\_download\_manifest ← download_utils.py:181
-  - load\_download\_manifest ← download_utils.py:192
-  - update\_download\_manifest ← download_utils.py:136
-  - update\_download\_manifest ← download_utils.py:150
-  - is\_already\_downloaded ← download_utils.py:79
-  - download\_file ← download_utils.py:164
-  - download\_file ← download_utils.py:177
-  - summarize\_downloads ← format_router.py:873
+  - load\_download\_manifest ← download_utils.py:219
+  - load\_download\_manifest ← download_utils.py:230
+  - update\_download\_manifest ← download_utils.py:144
+  - update\_download\_manifest ← download_utils.py:158
+  - is\_already\_downloaded ← download_utils.py:87
+  - download\_file ← download_utils.py:180
+  - download\_file ← download_utils.py:208
+  - summarize\_downloads ← format_router.py:906
 
 ### utils/dynamic\_table\_extractor.py {#webapp-parser-utils-dynamic-table-extractor-py}
 
 - Definitions:
-  - function: `\_emit` (line 85)
-  - function: `dynamic\_table\_extractor` (line 108)
-  - function: `find\_tabular\_candidates` (line 192)
-  - function: `analyze\_candidate\_nlp` (line 277)
-  - function: `score\_candidate` (line 303)
-  - function: `remove\_low\_signal\_columns` (line 391)
-  - function: `infer\_column\_types` (line 406)
-  - function: `advanced\_party\_candidate\_detection` (line 472)
-  - function: `extract\_candidates\_and\_parties` (line 491)
-  - function: `entity\_linking` (line 542)
-  - function: `find\_tables\_with\_headings` (line 589)
-  - function: `discover\_container\_selectors` (line 706)
-  - function: `log\_new\_dom\_pattern` (line 753)
-  - function: `review\_dom\_patterns` (line 768)
-  - function: `auto\_approve\_dom\_pattern` (line 814)
-  - function: `find\_tables\_with\_panel\_headings` (line 832)
-  - function: `find\_tables\_with\_section\_headings` (line 902)
-  - function: `is\_candidate\_major\_row` (line 978)
-  - function: `is\_candidate\_major\_col` (line 1022)
-  - function: `is\_precinct\_major` (line 1052)
-  - function: `is\_flat\_candidate\_table` (line 1070)
-  - function: `is\_single\_row\_summary` (line 1096)
-  - function: `is\_candidate\_footer` (line 1102)
-  - function: `detect\_wide\_vs\_long` (line 1121)
-  - function: `classify\_ambiguous\_tables` (line 1132)
+  - function: `\_emit` (line 86)
+  - function: `dynamic\_table\_extractor` (line 109)
+  - function: `find\_tabular\_candidates` (line 193)
+  - function: `analyze\_candidate\_nlp` (line 278)
+  - function: `score\_candidate` (line 304)
+  - function: `remove\_low\_signal\_columns` (line 392)
+  - function: `infer\_column\_types` (line 407)
+  - function: `advanced\_party\_candidate\_detection` (line 473)
+  - function: `extract\_candidates\_and\_parties` (line 492)
+  - function: `entity\_linking` (line 543)
+  - function: `find\_tables\_with\_headings` (line 597)
+  - function: `discover\_container\_selectors` (line 714)
+  - function: `log\_new\_dom\_pattern` (line 761)
+  - function: `review\_dom\_patterns` (line 776)
+  - function: `auto\_approve\_dom\_pattern` (line 822)
+  - function: `find\_tables\_with\_panel\_headings` (line 840)
+  - function: `find\_tables\_with\_section\_headings` (line 910)
+  - function: `is\_candidate\_major\_row` (line 986)
+  - function: `is\_candidate\_major\_col` (line 1030)
+  - function: `is\_precinct\_major` (line 1060)
+  - function: `is\_flat\_candidate\_table` (line 1078)
+  - function: `is\_single\_row\_summary` (line 1104)
+  - function: `is\_candidate\_footer` (line 1110)
+  - function: `detect\_wide\_vs\_long` (line 1129)
+  - function: `classify\_ambiguous\_tables` (line 1140)
 - Imports:
   - **Standard Library** (8):
     - `import os as os` (line 19)
@@ -8969,191 +9975,192 @@ graph LR
   - **Third-party** (2):
     - `import numpy as np` (line 24)
     - `import orjson as orjson` (line 25)
-  - **Local/Project** (48):
+  - **Local/Project** (49):
     - `from __future__ import annotations` (line 1)
     - `import difflib as difflib` (line 18)
     - `import dateutil.parser as dateutil` (line 23)
     - `from selectolax.parser import HTMLParser` (line 26)
+    - `from config import ENTITY_LINKING_THRESHOLD` (line 28)
     - `from Context_Integration.Context_Library.constants import BALLOT_TYPES`
-      (line 28)
+      (line 29)
     - `from Context_Integration.Context_Library.constants import
-      BALLOT_TYPES_SORT_ORDER` (line 28)
+      BALLOT_TYPES_SORT_ORDER` (line 29)
     - `from Context_Integration.Context_Library.constants import
-      CANDIDATE_KEYWORDS` (line 28)
+      CANDIDATE_KEYWORDS` (line 29)
     - `from Context_Integration.Context_Library.constants import
-      CONTAINER_EXTRA_KEYWORDS` (line 28)
+      CONTAINER_EXTRA_KEYWORDS` (line 29)
     - `from Context_Integration.Context_Library.constants import
-      CONTAINER_FALLBACK_SELECTORS` (line 28)
+      CONTAINER_FALLBACK_SELECTORS` (line 29)
     - `from Context_Integration.Context_Library.constants import
-      CONTEST_KEYWORDS` (line 28)
+      CONTEST_KEYWORDS` (line 29)
     - `from Context_Integration.Context_Library.constants import
-      EXTRA_HEADING_TAGS` (line 28)
+      EXTRA_HEADING_TAGS` (line 29)
     - `from Context_Integration.Context_Library.constants import HEADING_TAGS`
-      (line 28)
+      (line 29)
     - `from Context_Integration.Context_Library.constants import
-      LOCATION_ABBREVIATIONS` (line 28)
+      LOCATION_ABBREVIATIONS` (line 29)
     - `from Context_Integration.Context_Library.constants import
-      LOCATION_KEYWORDS` (line 28)
+      LOCATION_KEYWORDS` (line 29)
     - `from Context_Integration.Context_Library.constants import
-      MISC_FOOTER_KEYWORDS` (line 28)
+      MISC_FOOTER_KEYWORDS` (line 29)
     - `from Context_Integration.Context_Library.constants import
-      NLP_SKIP_PHRASES` (line 28)
+      NLP_SKIP_PHRASES` (line 29)
     - `from Context_Integration.Context_Library.constants import PANEL_TAGS`
-      (line 28)
+      (line 29)
     - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS`
-      (line 28)
+      (line 29)
     - `from Context_Integration.Context_Library.constants import TOTAL_KEYWORDS`
-      (line 28)
-    - `from Context_Integration.librarian import extend_heading_tags` (line 45)
-    - `from Context_Integration.librarian import extend_panel_tags` (line 45)
-    - `from Context_Integration.librarian import get_safe_log_path` (line 45)
-    - `from Context_Integration.librarian import log_unknown_tag` (line 45)
-    - `from browser_utils import safe_count` (line 51)
-    - `from browser_utils import safe_evaluate` (line 51)
-    - `from browser_utils import safe_get_attribute` (line 51)
-    - `from browser_utils import safe_inner_text` (line 51)
-    - `from browser_utils import safe_locator` (line 51)
-    - `from browser_utils import safe_nth` (line 51)
-    - `from date_utils import is_date_like` (line 59)
-    - `from detect import extract_table_data` (line 60)
-    - `from detect import is_location_header` (line 60)
-    - `from detect import normalize_header` (line 60)
-    - `from detect import normalize_text` (line 60)
-    - `from dom_extractor import extract_rows_and_headers_from_dom` (line 61)
-    - `from dom_extractor import guess_headers_from_row` (line 61)
-    - `from logger_singleton import logger` (line 62)
-    - `from pattern_extractor import extract_with_patterns` (line 63)
-    - `from pattern_extractor import load_dom_patterns` (line 63)
-    - `from shared_logic import safe_append` (line 64)
-    - `from shared_logic import safe_copy` (line 64)
-    - `from shared_logic import safe_get` (line 64)
-    - `from shared_logic import safe_lower` (line 64)
-    - `from shared_logic import safe_replace` (line 64)
-    - `from shared_logic import safe_split` (line 64)
-    - `from shared_logic import safe_strip` (line 64)
-    - `from shared_logic import safe_values` (line 64)
-    - `from table_core import robust_table_extraction` (line 74)
+      (line 29)
+    - `from Context_Integration.librarian import extend_heading_tags` (line 46)
+    - `from Context_Integration.librarian import extend_panel_tags` (line 46)
+    - `from Context_Integration.librarian import get_safe_log_path` (line 46)
+    - `from Context_Integration.librarian import log_unknown_tag` (line 46)
+    - `from browser_utils import safe_count` (line 52)
+    - `from browser_utils import safe_evaluate` (line 52)
+    - `from browser_utils import safe_get_attribute` (line 52)
+    - `from browser_utils import safe_inner_text` (line 52)
+    - `from browser_utils import safe_locator` (line 52)
+    - `from browser_utils import safe_nth` (line 52)
+    - `from date_utils import is_date_like` (line 60)
+    - `from detect import extract_table_data` (line 61)
+    - `from detect import is_location_header` (line 61)
+    - `from detect import normalize_header` (line 61)
+    - `from detect import normalize_text` (line 61)
+    - `from dom_extractor import extract_rows_and_headers_from_dom` (line 62)
+    - `from dom_extractor import guess_headers_from_row` (line 62)
+    - `from logger_singleton import logger` (line 63)
+    - `from pattern_extractor import extract_with_patterns` (line 64)
+    - `from pattern_extractor import load_dom_patterns` (line 64)
+    - `from shared_logic import safe_append` (line 65)
+    - `from shared_logic import safe_copy` (line 65)
+    - `from shared_logic import safe_get` (line 65)
+    - `from shared_logic import safe_lower` (line 65)
+    - `from shared_logic import safe_replace` (line 65)
+    - `from shared_logic import safe_split` (line 65)
+    - `from shared_logic import safe_strip` (line 65)
+    - `from shared_logic import safe_values` (line 65)
+    - `from table_core import robust_table_extraction` (line 75)
 - Task markers:
-  - L124 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
+  - L125 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
     provided table_html.", session_id)
-  - L129 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in
+  - L130 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in
     table_html.", session_id)
-  - L171 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step
+  - L172 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step
     failed", session_id, error=str(e))
-  - L187 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table
+  - L188 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table
     candidates found.", session_id)
-  - L217 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning
+  - L218 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning
     &lt;table&gt; elements", session_id, error=str(e))
-  - L229 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed",
+  - L230 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed",
     session_id, error=str(e))
-  - L272 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed",
+  - L273 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed",
     session_id, error=str(e))
-  - L776 **WARNING**: ", "extractor", "No learned DOM patterns found.")
-  - L800 **WARNING**: ", "extractor", "Entry deleted.")
-  - L805 **WARNING**: ", "extractor", "Unknown action.")
-  - L807 **WARNING**: ", "extractor", "Invalid entry number.")
+  - L784 **WARNING**: ", "extractor", "No learned DOM patterns found.")
+  - L808 **WARNING**: ", "extractor", "Entry deleted.")
+  - L813 **WARNING**: ", "extractor", "Unknown action.")
+  - L815 **WARNING**: ", "extractor", "Invalid entry number.")
 - Outgoing cross-module calls (sample):
-  - level.upper (line 95)
-  - fields.items (line 100)
-  - level.lower (line 104)
-  - shared\_logic.safe\_get (line 114)
-  - selectolax.parser.HTMLParser (line 121)
-  - soup.css\_first (line 122)
-  - table.css (line 127)
-  - cell.text (line 133)
-  - row.css (line 136)
-  - row.css (line 136)
-  - data.append (line 141)
-  - shared\_logic.safe\_get (line 143)
-  - shared\_logic.safe\_get (line 143)
-  - enriched\_candidates.append (line 169)
-  - enriched\_candidates.sort (line 173)
-  - c.get (line 173)
-  - shared\_logic.safe\_get (line 177)
-  - shared\_logic.safe\_get (line 177)
+  - level.upper (line 96)
+  - fields.items (line 101)
+  - level.lower (line 105)
+  - shared\_logic.safe\_get (line 115)
+  - selectolax.parser.HTMLParser (line 122)
+  - soup.css\_first (line 123)
+  - table.css (line 128)
+  - cell.text (line 134)
+  - row.css (line 137)
+  - row.css (line 137)
+  - data.append (line 142)
+  - shared\_logic.safe\_get (line 144)
+  - shared\_logic.safe\_get (line 144)
+  - enriched\_candidates.append (line 170)
+  - enriched\_candidates.sort (line 174)
+  - c.get (line 174)
   - shared\_logic.safe\_get (line 178)
   - shared\_logic.safe\_get (line 178)
-  - shared\_logic.safe\_get (line 180)
-  - shared\_logic.safe\_get (line 180)
+  - shared\_logic.safe\_get (line 179)
+  - shared\_logic.safe\_get (line 179)
   - shared\_logic.safe\_get (line 181)
-  - browser\_utils.safe\_locator (line 201)
-  - browser\_utils.safe\_count (line 202)
-  - browser\_utils.safe\_nth (line 205)
-  - detect.extract\_table\_data (line 209)
-  - shared\_logic.safe\_copy (line 213)
-  - candidates.append (line 214)
-  - dom\_extractor.extract\_rows\_and\_headers\_from\_dom (line 221)
-  - shared\_logic.safe\_copy (line 225)
-  - candidates.append (line 226)
-  - pattern\_extractor.extract\_with\_patterns (line 233)
-  - browser\_utils.safe\_locator (line 240)
-  - browser\_utils.safe\_count (line 241)
-  - dom\_extractor.guess\_headers\_from\_row (line 242)
-  - browser\_utils.safe\_locator (line 249)
-  - browser\_utils.safe\_count (line 250)
-  - browser\_utils.safe\_count (line 253)
-  - browser\_utils.safe\_nth (line 254)
-  - cell.inner\_text (line 255)
-  - data.append (line 264)
-  - shared\_logic.safe\_copy (line 268)
-  - candidates.append (line 269)
-  - shared\_logic.safe\_get (line 285)
-  - coordinator.extract\_entities (line 290)
-  - header\_entities.append (line 293)
-  - coordinator.score\_header (line 295)
-  - header\_scores.append (line 298)
-  - shared\_logic.safe\_get (line 313)
+  - shared\_logic.safe\_get (line 181)
+  - shared\_logic.safe\_get (line 182)
+  - browser\_utils.safe\_locator (line 202)
+  - browser\_utils.safe\_count (line 203)
+  - browser\_utils.safe\_nth (line 206)
+  - detect.extract\_table\_data (line 210)
+  - shared\_logic.safe\_copy (line 214)
+  - candidates.append (line 215)
+  - dom\_extractor.extract\_rows\_and\_headers\_from\_dom (line 222)
+  - shared\_logic.safe\_copy (line 226)
+  - candidates.append (line 227)
+  - pattern\_extractor.extract\_with\_patterns (line 234)
+  - browser\_utils.safe\_locator (line 241)
+  - browser\_utils.safe\_count (line 242)
+  - dom\_extractor.guess\_headers\_from\_row (line 243)
+  - browser\_utils.safe\_locator (line 250)
+  - browser\_utils.safe\_count (line 251)
+  - browser\_utils.safe\_count (line 254)
+  - browser\_utils.safe\_nth (line 255)
+  - cell.inner\_text (line 256)
+  - data.append (line 265)
+  - shared\_logic.safe\_copy (line 269)
+  - candidates.append (line 270)
+  - shared\_logic.safe\_get (line 286)
+  - coordinator.extract\_entities (line 291)
+  - header\_entities.append (line 294)
+  - coordinator.score\_header (line 296)
+  - header\_scores.append (line 299)
+  - shared\_logic.safe\_get (line 314)
 - Inbound references:
-  - \_emit ← dynamic_table_extractor.py:115
-  - \_emit ← dynamic_table_extractor.py:124
-  - \_emit ← dynamic_table_extractor.py:129
-  - \_emit ← dynamic_table_extractor.py:149
-  - \_emit ← dynamic_table_extractor.py:153
-  - \_emit ← dynamic_table_extractor.py:160
-  - \_emit ← dynamic_table_extractor.py:171
-  - \_emit ← dynamic_table_extractor.py:176
-  - \_emit ← dynamic_table_extractor.py:187
-  - \_emit ← dynamic_table_extractor.py:203
-  - \_emit ← dynamic_table_extractor.py:215
-  - \_emit ← dynamic_table_extractor.py:217
-  - \_emit ← dynamic_table_extractor.py:227
-  - \_emit ← dynamic_table_extractor.py:229
-  - \_emit ← dynamic_table_extractor.py:270
-  - \_emit ← dynamic_table_extractor.py:272
-  - \_emit ← dynamic_table_extractor.py:274
-  - \_emit ← dynamic_table_extractor.py:776
-  - \_emit ← dynamic_table_extractor.py:783
-  - \_emit ← dynamic_table_extractor.py:785
-  - \_emit ← dynamic_table_extractor.py:786
-  - \_emit ← dynamic_table_extractor.py:787
-  - \_emit ← dynamic_table_extractor.py:800
-  - \_emit ← dynamic_table_extractor.py:803
-  - \_emit ← dynamic_table_extractor.py:805
-  - \_emit ← dynamic_table_extractor.py:807
-  - \_emit ← dynamic_table_extractor.py:812
-  - \_emit ← table_builder.py:737
-  - \_emit ← table_builder.py:802
-  - \_emit ← table_builder.py:816
-  - \_emit ← table_builder.py:820
-  - \_emit ← table_builder.py:823
+  - \_emit ← dynamic_table_extractor.py:116
+  - \_emit ← dynamic_table_extractor.py:125
+  - \_emit ← dynamic_table_extractor.py:130
+  - \_emit ← dynamic_table_extractor.py:150
+  - \_emit ← dynamic_table_extractor.py:154
+  - \_emit ← dynamic_table_extractor.py:161
+  - \_emit ← dynamic_table_extractor.py:172
+  - \_emit ← dynamic_table_extractor.py:177
+  - \_emit ← dynamic_table_extractor.py:188
+  - \_emit ← dynamic_table_extractor.py:204
+  - \_emit ← dynamic_table_extractor.py:216
+  - \_emit ← dynamic_table_extractor.py:218
+  - \_emit ← dynamic_table_extractor.py:228
+  - \_emit ← dynamic_table_extractor.py:230
+  - \_emit ← dynamic_table_extractor.py:271
+  - \_emit ← dynamic_table_extractor.py:273
+  - \_emit ← dynamic_table_extractor.py:275
+  - \_emit ← dynamic_table_extractor.py:784
+  - \_emit ← dynamic_table_extractor.py:791
+  - \_emit ← dynamic_table_extractor.py:793
+  - \_emit ← dynamic_table_extractor.py:794
+  - \_emit ← dynamic_table_extractor.py:795
+  - \_emit ← dynamic_table_extractor.py:808
+  - \_emit ← dynamic_table_extractor.py:811
+  - \_emit ← dynamic_table_extractor.py:813
+  - \_emit ← dynamic_table_extractor.py:815
+  - \_emit ← dynamic_table_extractor.py:820
+  - \_emit ← table_builder.py:742
+  - \_emit ← table_builder.py:807
+  - \_emit ← table_builder.py:821
+  - \_emit ← table_builder.py:825
   - \_emit ← table_builder.py:828
-  - \_emit ← table_builder.py:832
-  - \_emit ← table_builder.py:836
-  - \_emit ← table_builder.py:845
-  - \_emit ← table_builder.py:862
+  - \_emit ← table_builder.py:833
+  - \_emit ← table_builder.py:837
+  - \_emit ← table_builder.py:841
+  - \_emit ← table_builder.py:850
   - \_emit ← table_builder.py:867
-  - \_emit ← table_builder.py:873
-  - \_emit ← table_builder.py:924
-  - \_emit ← table_builder.py:950
+  - \_emit ← table_builder.py:872
+  - \_emit ← table_builder.py:878
+  - \_emit ← table_builder.py:929
   - \_emit ← table_builder.py:955
-  - \_emit ← table_builder.py:975
-  - \_emit ← table_builder.py:995
-  - \_emit ← table_builder.py:1005
-  - \_emit ← table_builder.py:1032
-  - \_emit ← table_builder.py:1053
-  - \_emit ← table_builder.py:1202
-  - \_emit ← table_builder.py:1237
-  - \_emit ← table_builder.py:1252
+  - \_emit ← table_builder.py:960
+  - \_emit ← table_builder.py:980
+  - \_emit ← table_builder.py:1000
+  - \_emit ← table_builder.py:1010
+  - \_emit ← table_builder.py:1037
+  - \_emit ← table_builder.py:1058
+  - \_emit ← table_builder.py:1207
+  - \_emit ← table_builder.py:1242
+  - \_emit ← table_builder.py:1257
 
 ### utils/embedding\_cache.py {#webapp-parser-utils-embedding-cache-py}
 
@@ -9500,26 +10507,29 @@ graph LR
 ### utils/format\_router.py {#webapp-parser-utils-format-router-py}
 
 - Definitions:
-  - function: `\_normalize\_text` (line 58)
-  - function: `\_infer\_format\_from\_text` (line 62)
-  - function: `\_infer\_format\_from\_attr\_value` (line 73)
-  - function: `\_extract\_candidate\_urls` (line 84)
-  - function: `\_clean\_filename` (line 111)
-  - function: `\_guess\_filename\_from\_url` (line 117)
-  - function: `\_extract\_filename\_from\_disposition` (line 136)
-  - function: `\_extract\_google\_sheet\_metadata` (line 146)
-  - function: `\_probe\_remote\_format` (line 191)
-  - function: `\_browser\_headers` (line 242)
-  - function: `\_build\_download\_url` (line 263)
-  - function: `\_cookies\_header\_from\_page` (line 270)
-  - function: `extract\_contest\_from\_filename` (line 284)
-  - function: `summarize\_downloads` (line 323)
-  - function: `\_infer\_format\_from\_url` (line 333)
-  - function: `\_expose\_download\_interfaces` (line 341)
-  - function: `detect\_format\_from\_links` (line 390)
-  - function: `route\_format\_handler` (line 441)
-  - function: `extract\_download\_links\_from\_html` (line 468)
-  - function: `prompt\_and\_handle\_download` (line 488)
+  - function: `\_guard\_text` (line 63)
+  - function: `\_guard\_download\_links` (line 72)
+  - function: `\_guard\_google\_sheet\_meta` (line 85)
+  - function: `\_normalize\_text` (line 91)
+  - function: `\_infer\_format\_from\_text` (line 95)
+  - function: `\_infer\_format\_from\_attr\_value` (line 106)
+  - function: `\_extract\_candidate\_urls` (line 117)
+  - function: `\_clean\_filename` (line 144)
+  - function: `\_guess\_filename\_from\_url` (line 150)
+  - function: `\_extract\_filename\_from\_disposition` (line 169)
+  - function: `\_extract\_google\_sheet\_metadata` (line 179)
+  - function: `\_probe\_remote\_format` (line 224)
+  - function: `\_browser\_headers` (line 275)
+  - function: `\_build\_download\_url` (line 296)
+  - function: `\_cookies\_header\_from\_page` (line 303)
+  - function: `extract\_contest\_from\_filename` (line 317)
+  - function: `summarize\_downloads` (line 356)
+  - function: `\_infer\_format\_from\_url` (line 366)
+  - function: `\_expose\_download\_interfaces` (line 374)
+  - function: `detect\_format\_from\_links` (line 423)
+  - function: `route\_format\_handler` (line 474)
+  - function: `extract\_download\_links\_from\_html` (line 501)
+  - function: `prompt\_and\_handle\_download` (line 521)
 - Imports:
   - **Standard Library** (12):
     - `import os as os` (line 1)
@@ -9568,140 +10578,146 @@ graph LR
     - `from shared_logic import safe_lower` (line 29)
     - `from shared_logic import safe_parse` (line 29)
 - Task markers:
-  - L426 **WARNING**: ({
-  - L427 **WARNING**: ",
-  - L429 **WARN**: \] No supported file formats found on the page.",
-  - L454 **WARNING**: ({
-  - L455 **WARNING**: ",
-  - L457 **WARN**: \] Unsupported format requested: {format_str}",
-  - L461 **WARNING**: ({
-  - L462 **WARNING**: ",
-  - L756 **WARNING**: ({
-  - L757 **WARNING**: ",
-  - L979 **WARNING**: ({
-  - L980 **WARNING**: ",
-  - L1085 **WARNING**: ({
-  - L1086 **WARNING**: ",
+  - L459 **WARNING**: ({
+  - L460 **WARNING**: ",
+  - L462 **WARN**: \] No supported file formats found on the page.",
+  - L487 **WARNING**: ({
+  - L488 **WARNING**: ",
+  - L490 **WARN**: \] Unsupported format requested: {format_str}",
+  - L494 **WARNING**: ({
+  - L495 **WARNING**: ",
+  - L789 **WARNING**: ({
+  - L790 **WARNING**: ",
+  - L1012 **WARNING**: ({
+  - L1013 **WARNING**: ",
+  - L1119 **WARNING**: ({
+  - L1120 **WARNING**: ",
 - Outgoing cross-module calls (sample):
   - re.compile (line 52)
-  - raw\_value.strip (line 87)
-  - urls.extend (line 90)
-  - re.findall (line 90)
-  - urls.extend (line 91)
-  - re.findall (line 91)
-  - urls.extend (line 92)
-  - re.findall (line 94)
-  - url.lower (line 100)
-  - deduped.append (line 104)
-  - raw\_value.lower (line 106)
-  - urllib.parse.unquote (line 112)
-  - name.strip (line 113)
-  - urllib.parse.urlparse (line 119)
-  - segment.split (line 127)
-  - val.lower (line 129)
-  - url.split (line 131)
-  - FILENAME\_FROM\_DISPOSITION.search (line 139)
-  - match.group (line 142)
-  - match.group (line 142)
-  - urllib.parse.urlparse (line 150)
-  - path\_parts.index (line 162)
-  - urllib.parse.parse\_qs (line 167)
-  - qs.get (line 168)
-  - urllib.parse.parse\_qs (line 172)
-  - qs.get (line 173)
-  - urllib.parse.parse\_qs (line 175)
-  - frag\_qs.get (line 176)
-  - requests.head (line 207)
-  - headers\_map.get (line 222)
-  - headers\_map.get (line 222)
-  - headers\_map.get (line 223)
-  - headers\_map.get (line 223)
-  - logger\_singleton.logger.debug (line 226)
-  - content\_type.split (line 234)
-  - CONTENT\_TYPE\_FORMAT\_MAP.get (line 235)
-  - page.evaluate (line 244)
-  - urllib.parse.urlparse (line 250)
-  - urllib.parse.urljoin (line 266)
-  - ctx.cookies (line 276)
-  - c.get (line 279)
-  - c.get (line 279)
-  - c.get (line 279)
-  - filename.lower (line 291)
-  - kw.lower (line 295)
-  - best\_kw.title (line 298)
-  - re.escape (line 300)
-  - re.search (line 301)
-  - m.group (line 303)
-  - name.split (line 305)
+  - link.get (line 79)
+  - link.get (line 79)
+  - cleaned.get (line 80)
+  - cleaned.get (line 80)
+  - guarded.append (line 81)
+  - meta.get (line 88)
+  - meta.get (line 88)
+  - raw\_value.strip (line 120)
+  - urls.extend (line 123)
+  - re.findall (line 123)
+  - urls.extend (line 124)
+  - re.findall (line 124)
+  - urls.extend (line 125)
+  - re.findall (line 127)
+  - url.lower (line 133)
+  - deduped.append (line 137)
+  - raw\_value.lower (line 139)
+  - urllib.parse.unquote (line 145)
+  - name.strip (line 146)
+  - urllib.parse.urlparse (line 152)
+  - segment.split (line 160)
+  - val.lower (line 162)
+  - url.split (line 164)
+  - FILENAME\_FROM\_DISPOSITION.search (line 172)
+  - match.group (line 175)
+  - match.group (line 175)
+  - urllib.parse.urlparse (line 183)
+  - path\_parts.index (line 195)
+  - urllib.parse.parse\_qs (line 200)
+  - qs.get (line 201)
+  - urllib.parse.parse\_qs (line 205)
+  - qs.get (line 206)
+  - urllib.parse.parse\_qs (line 208)
+  - frag\_qs.get (line 209)
+  - requests.head (line 240)
+  - headers\_map.get (line 255)
+  - headers\_map.get (line 255)
+  - headers\_map.get (line 256)
+  - headers\_map.get (line 256)
+  - logger\_singleton.logger.debug (line 259)
+  - content\_type.split (line 267)
+  - CONTENT\_TYPE\_FORMAT\_MAP.get (line 268)
+  - page.evaluate (line 277)
+  - urllib.parse.urlparse (line 283)
+  - urllib.parse.urljoin (line 299)
+  - ctx.cookies (line 309)
+  - c.get (line 312)
+  - c.get (line 312)
+  - c.get (line 312)
 - Inbound references:
-  - \_normalize\_text ← format_router.py:63
-  - \_normalize\_text ← format_router.py:74
-  - \_normalize\_text ← shared_logic.py:1317
-  - \_normalize\_text ← shared_logic.py:1323
-  - \_normalize\_text ← shared_logic.py:1331
-  - \_infer\_format\_from\_text ← format_router.py:78
-  - \_infer\_format\_from\_text ← format_router.py:80
-  - \_infer\_format\_from\_text ← format_router.py:237
-  - \_infer\_format\_from\_text ← format_router.py:720
-  - \_infer\_format\_from\_attr\_value ← format_router.py:726
-  - \_infer\_format\_from\_attr\_value ← format_router.py:730
-  - \_extract\_candidate\_urls ← format_router.py:721
-  - \_clean\_filename ← format_router.py:123
-  - \_clean\_filename ← format_router.py:128
-  - \_clean\_filename ← format_router.py:131
-  - \_clean\_filename ← format_router.py:143
-  - \_guess\_filename\_from\_url ← format_router.py:753
-  - \_guess\_filename\_from\_url ← format_router.py:855
-  - \_extract\_filename\_from\_disposition ← format_router.py:224
-  - \_extract\_google\_sheet\_metadata ← format_router.py:629
-  - \_extract\_google\_sheet\_metadata ← format_router.py:629
-  - \_probe\_remote\_format ← format_router.py:668
-  - \_browser\_headers ← format_router.py:193
-  - \_browser\_headers ← format_router.py:954
-  - \_build\_download\_url ← format_router.py:722
-  - \_build\_download\_url ← format_router.py:950
-  - \_cookies\_header\_from\_page ← format_router.py:193
-  - \_cookies\_header\_from\_page ← format_router.py:953
-  - extract\_contest\_from\_filename ← format_router.py:856
-  - \_infer\_format\_from\_url ← format_router.py:239
-  - \_infer\_format\_from\_url ← format_router.py:725
-  - \_expose\_download\_interfaces ← format_router.py:619
-  - route\_format\_handler ← format_router.py:573
-  - route\_format\_handler ← format_router.py:1054
-  - extract\_download\_links\_from\_html ← format_router.py:764
+  - \_guard\_text ← format_router.py:79
+  - \_guard\_text ← format_router.py:88
+  - \_guard\_download\_links ← format_router.py:834
+  - \_guard\_google\_sheet\_meta ← format_router.py:836
+  - \_normalize\_text ← format_router.py:96
+  - \_normalize\_text ← format_router.py:107
+  - \_normalize\_text ← shared_logic.py:1327
+  - \_normalize\_text ← shared_logic.py:1333
+  - \_normalize\_text ← shared_logic.py:1341
+  - \_infer\_format\_from\_text ← format_router.py:111
+  - \_infer\_format\_from\_text ← format_router.py:113
+  - \_infer\_format\_from\_text ← format_router.py:270
+  - \_infer\_format\_from\_text ← format_router.py:753
+  - \_infer\_format\_from\_attr\_value ← format_router.py:759
+  - \_infer\_format\_from\_attr\_value ← format_router.py:763
+  - \_extract\_candidate\_urls ← format_router.py:754
+  - \_clean\_filename ← format_router.py:156
+  - \_clean\_filename ← format_router.py:161
+  - \_clean\_filename ← format_router.py:164
+  - \_clean\_filename ← format_router.py:176
+  - \_guess\_filename\_from\_url ← format_router.py:786
+  - \_guess\_filename\_from\_url ← format_router.py:888
+  - \_extract\_filename\_from\_disposition ← format_router.py:257
+  - \_extract\_google\_sheet\_metadata ← format_router.py:662
+  - \_extract\_google\_sheet\_metadata ← format_router.py:662
+  - \_probe\_remote\_format ← format_router.py:701
+  - \_browser\_headers ← format_router.py:226
+  - \_browser\_headers ← format_router.py:987
+  - \_build\_download\_url ← format_router.py:755
+  - \_build\_download\_url ← format_router.py:983
+  - \_cookies\_header\_from\_page ← format_router.py:226
+  - \_cookies\_header\_from\_page ← format_router.py:986
+  - extract\_contest\_from\_filename ← format_router.py:889
+  - \_infer\_format\_from\_url ← format_router.py:272
+  - \_infer\_format\_from\_url ← format_router.py:758
+  - \_expose\_download\_interfaces ← format_router.py:652
+  - route\_format\_handler ← format_router.py:606
+  - route\_format\_handler ← format_router.py:1088
+  - extract\_download\_links\_from\_html ← format_router.py:797
 
 ### utils/header\_confidence.py {#webapp-parser-utils-header-confidence-py}
 
 > Header mapping confidence scoring and validation.
 
 - Definitions:
-  - function: `get\_header\_confidence` (line 34)
-  - function: `validate\_row\_headers` (line 89)
-  - function: `should\_insert\_row` (line 126)
+  - function: `get\_header\_confidence` (line 35)
+  - function: `validate\_row\_headers` (line 88)
+  - function: `should\_insert\_row` (line 128)
 - Imports:
   - **Standard Library** (4):
-    - `from typing import Dict` (line 6)
-    - `from typing import Optional` (line 6)
-    - `from typing import Tuple` (line 6)
-    - `import logging as logging` (line 8)
+    - `import logging as logging` (line 6)
+    - `from typing import Dict` (line 7)
+    - `from typing import Optional` (line 7)
+    - `from typing import Tuple` (line 7)
+  - **Local/Project** (2):
+    - `from config import HEADER_CONFIDENCE_THRESHOLD` (line 9)
+    - `from config import HEADER_INSERT_CONFIDENCE_THRESHOLD` (line 9)
 - Outgoing cross-module calls (sample):
-  - logging.getLogger (line 10)
-  - header.strip (line 55)
-  - target\_column.strip (line 56)
-  - a.replace (line 64)
-  - aliases.get (line 64)
-  - aliases.get (line 68)
-  - exact\_alias.replace (line 69)
-  - aliases.get (line 73)
-  - exact\_alias.replace (line 74)
-  - aliases.get (line 80)
-  - fuzzy\_alias.replace (line 81)
-  - flagged.append (line 118)
-  - confidence\_scores.get (line 120)
-  - confidence\_scores.get (line 135)
-  - mapped\_row.get (line 140)
+  - logging.getLogger (line 11)
+  - header.strip (line 56)
+  - a.replace (line 63)
+  - aliases.get (line 63)
+  - aliases.get (line 67)
+  - exact\_alias.replace (line 68)
+  - aliases.get (line 72)
+  - exact\_alias.replace (line 73)
+  - aliases.get (line 79)
+  - fuzzy\_alias.replace (line 80)
+  - flagged.append (line 120)
+  - confidence\_scores.get (line 122)
+  - confidence\_scores.get (line 140)
+  - mapped\_row.get (line 145)
 - Inbound references:
-  - get\_header\_confidence ← header_confidence.py:110
+  - get\_header\_confidence ← header_confidence.py:112
 
 ### utils/header\_utils.py {#webapp-parser-utils-header-utils-py}
 
@@ -9793,55 +10809,55 @@ graph LR
   - \_register\_header\_mapping ← header_utils.py:197
   - \_register\_header\_mapping ← header_utils.py:199
   - \_register\_header\_mapping ← header_utils.py:200
-  - normalize\_table\_headers ← html_election_parser.py:1098
+  - normalize\_table\_headers ← html_election_parser.py:1220
 
 ### utils/html\_scanner.py {#webapp-parser-utils-html-scanner-py}
 
 - Definitions:
-  - function: `robust\_orjson\_loads` (line 126)
-  - function: `\_get\_label\_cache\_path` (line 146)
-  - function: `\_load\_label\_cache` (line 199)
-  - function: `\_save\_label\_cache` (line 219)
-  - function: `cache\_segment\_label` (line 230)
-  - function: `get\_cached\_segment\_label` (line 239)
-  - function: `safe\_cache\_path` (line 267)
-  - function: `safe\_log\_path` (line 328)
-  - function: `is\_trivial\_segment` (line 393)
-  - function: `segment\_identity\_hash` (line 470)
-  - function: `embedding\_cache\_hash` (line 496)
-  - function: `get\_segment\_embedding` (line 515)
-  - function: `batch\_get\_segment\_embeddings` (line 617)
-  - function: `deduplicate\_pattern\_kb` (line 689)
-  - function: `prune\_embedding\_cache` (line 699)
-  - function: `submit\_segment\_correction` (line 711)
-  - function: `auto\_label\_segment` (line 720)
-  - function: `\_extract\_clean\_text` (line 928)
-  - function: `\_label\_in` (line 943)
-  - function: `\_extract\_segments\_by\_label` (line 951)
-  - function: `extract\_year\_and\_type` (line 1053)
-  - function: `is\_update\_panel` (line 1130)
-  - function: `split\_possible\_contests` (line 1147)
-  - function: `extract\_tagged\_segments\_with\_attrs` (line 1171)
-  - function: `get\_page\_hash` (line 1730)
-  - function: `load\_context\_cache\_from\_disk` (line 1777)
-  - function: `save\_context\_cache\_to\_disk` (line 1813)
-  - function: `add\_context\_entry` (line 1849)
-  - function: `get\_context\_entry` (line 1861)
-  - function: `export\_context\_cache\_for\_db` (line 1868)
-  - function: `load\_pattern\_kb` (line 1881)
-  - function: `append\_pattern\_kb` (line 1912)
-  - function: `append\_feedback\_log` (line 1937)
-  - function: `label\_validator` (line 1966)
-  - function: `prompt\_for\_segment\_label` (line 1969)
-  - function: `segment\_hash` (line 2022)
-  - function: `canonicalize\_segment` (line 2026)
-  - function: `validate\_dom\_parts` (line 2086)
-  - function: `scan\_html\_for\_context` (line 2564)
-  - function: `\_load\_context\_resources` (line 2773)
-  - function: `\_prepare\_html\_and\_cache` (line 2860)
-  - function: `\_fast\_path\_cache\_hit` (line 2879)
-  - function: `\_organize\_segments\_and\_sections` (line 2914)
-  - function: `\_enrich\_and\_validate\_context` (line 3147)
+  - function: `robust\_orjson\_loads` (line 129)
+  - function: `\_get\_label\_cache\_path` (line 149)
+  - function: `\_load\_label\_cache` (line 202)
+  - function: `\_save\_label\_cache` (line 222)
+  - function: `cache\_segment\_label` (line 233)
+  - function: `get\_cached\_segment\_label` (line 242)
+  - function: `safe\_cache\_path` (line 270)
+  - function: `safe\_log\_path` (line 331)
+  - function: `is\_trivial\_segment` (line 396)
+  - function: `segment\_identity\_hash` (line 473)
+  - function: `embedding\_cache\_hash` (line 499)
+  - function: `get\_segment\_embedding` (line 518)
+  - function: `batch\_get\_segment\_embeddings` (line 620)
+  - function: `deduplicate\_pattern\_kb` (line 692)
+  - function: `prune\_embedding\_cache` (line 702)
+  - function: `submit\_segment\_correction` (line 714)
+  - function: `auto\_label\_segment` (line 723)
+  - function: `\_extract\_clean\_text` (line 953)
+  - function: `\_label\_in` (line 968)
+  - function: `\_extract\_segments\_by\_label` (line 976)
+  - function: `extract\_year\_and\_type` (line 1078)
+  - function: `is\_update\_panel` (line 1155)
+  - function: `split\_possible\_contests` (line 1172)
+  - function: `extract\_tagged\_segments\_with\_attrs` (line 1196)
+  - function: `get\_page\_hash` (line 1755)
+  - function: `load\_context\_cache\_from\_disk` (line 1802)
+  - function: `save\_context\_cache\_to\_disk` (line 1838)
+  - function: `add\_context\_entry` (line 1874)
+  - function: `get\_context\_entry` (line 1886)
+  - function: `export\_context\_cache\_for\_db` (line 1893)
+  - function: `load\_pattern\_kb` (line 1906)
+  - function: `append\_pattern\_kb` (line 1937)
+  - function: `append\_feedback\_log` (line 1962)
+  - function: `label\_validator` (line 1991)
+  - function: `prompt\_for\_segment\_label` (line 1994)
+  - function: `segment\_hash` (line 2047)
+  - function: `canonicalize\_segment` (line 2051)
+  - function: `validate\_dom\_parts` (line 2111)
+  - function: `scan\_html\_for\_context` (line 2589)
+  - function: `\_load\_context\_resources` (line 2798)
+  - function: `\_prepare\_html\_and\_cache` (line 2885)
+  - function: `\_fast\_path\_cache\_hit` (line 2904)
+  - function: `\_organize\_segments\_and\_sections` (line 2939)
+  - function: `\_enrich\_and\_validate\_context` (line 3172)
 - Imports:
   - **Standard Library** (15):
     - `import datetime as datetime` (line 4)
@@ -9862,7 +10878,7 @@ graph LR
   - **Third-party** (2):
     - `import numpy as np` (line 21)
     - `import orjson as orjson` (line 22)
-  - **Local/Project** (86):
+  - **Local/Project** (89):
     - `from __future__ import annotations` (line 1)
     - `import concurrent.futures as concurrent` (line 3)
     - `from difflib import get_close_matches` (line 18)
@@ -9872,248 +10888,246 @@ graph LR
     - `from config import CONTEXT_LIBRARY_PATH` (line 25)
     - `from config import ENABLE_SEGMENT_LABEL_PROMPT` (line 25)
     - `from config import LOG_DIR` (line 25)
+    - `from config import SEGMENT_ML_LABEL_THRESHOLD` (line 25)
+    - `from config import SEGMENT_ML_LABEL_THRESHOLD_STRICT` (line 25)
     - `from Context_Integration.Context_Library.constants import ALLOWED_LABELS`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import
-      ALWAYS_IGNORE_CLASSES` (line 32)
+      ALWAYS_IGNORE_CLASSES` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      ALWAYS_IGNORE_IDS` (line 32)
+      ALWAYS_IGNORE_IDS` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      ALWAYS_IGNORE_TAGS` (line 32)
+      ALWAYS_IGNORE_TAGS` (line 34)
     - `from Context_Integration.Context_Library.constants import BALLOT_TYPES`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import
-      BALLOT_TYPES_SORT_ORDER` (line 32)
+      BALLOT_TYPES_SORT_ORDER` (line 34)
     - `from Context_Integration.Context_Library.constants import BUTTON_CLASSES`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import BUTTON_TAGS`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import
-      CANDIDATE_KEYWORDS` (line 32)
+      CANDIDATE_KEYWORDS` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      CANONICAL_SEGMENT_LABELS` (line 32)
+      CANONICAL_SEGMENT_LABELS` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      CONTEST_KEYWORDS` (line 32)
+      CONTEST_KEYWORDS` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      CONTEST_PANEL_TAGS` (line 32)
+      CONTEST_PANEL_TAGS` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      CUSTOM_ATTR_PATTERNS` (line 32)
+      CUSTOM_ATTR_PATTERNS` (line 34)
     - `from Context_Integration.Context_Library.constants import DISTRICT_REGEX`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import ELECTION_TYPES`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import
-      EXTRA_HEADING_TAGS` (line 32)
+      EXTRA_HEADING_TAGS` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      HEADING_CLASSES` (line 32)
+      HEADING_CLASSES` (line 34)
     - `from Context_Integration.Context_Library.constants import HEADING_TAGS`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import HTML_TAGS`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import ICON_CLASSES`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import ICON_TAGS`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import
-      KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 32)
+      KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      KNOWN_STATE_TO_COUNTY_MAP` (line 32)
+      KNOWN_STATE_TO_COUNTY_MAP` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      LOCATION_ABBREVIATIONS` (line 32)
+      LOCATION_ABBREVIATIONS` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      LOCATION_KEYWORDS` (line 32)
+      LOCATION_KEYWORDS` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      MISC_FOOTER_KEYWORDS` (line 32)
+      MISC_FOOTER_KEYWORDS` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      NOISY_LABEL_PATTERNS` (line 32)
+      NOISY_LABEL_PATTERNS` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      OFFICE_KEYWORDS` (line 32)
+      OFFICE_KEYWORDS` (line 34)
     - `from Context_Integration.Context_Library.constants import PANEL_CLASSES`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import PANEL_TAGS`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import
-      PERCENT_KEYWORDS` (line 32)
+      PERCENT_KEYWORDS` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      PRECINCT_HEADER_PATTERNS` (line 32)
+      PRECINCT_HEADER_PATTERNS` (line 34)
     - `from Context_Integration.Context_Library.constants import
-      ROOT_CONTAINER_TAGS` (line 32)
+      ROOT_CONTAINER_TAGS` (line 34)
     - `from Context_Integration.Context_Library.constants import SELECTORS`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import STATE_ABBR`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import STATE_TAGS`
-      (line 32)
+      (line 34)
     - `from Context_Integration.Context_Library.constants import
-      STRUCTURAL_TAGS` (line 32)
+      STRUCTURAL_TAGS` (line 34)
     - `from Context_Integration.Context_Library.constants import TABLE_TAGS`
-      (line 32)
-    - `from Context_Integration.Context_Library.constants import
-      TIMESTAMP_ATTRS` (line 32)
-    - `from Context_Integration.Context_Library.constants import
-      TIMESTAMP_CLASSES` (line 32)
+      (line 34)
 - Task markers:
-  - L163 **WARNING**: ",
-  - L167 **WARNING**: (payload)
-  - L189 **WARNING**: ",
-  - L193 **WARNING**: (payload)
-  - L288 **WARNING**: ",
-  - L292 **WARNING**: (payload)
-  - L315 **WARNING**: ",
-  - L319 **WARNING**: (payload)
-  - L353 **WARNING**: ",
-  - L357 **WARNING**: (payload)
-  - L380 **WARNING**: ",
-  - L384 **WARNING**: (payload)
-  - L579 **WARNING**: ",
-  - L583 **WARNING**: (payload)
-  - L784 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+  - L166 **WARNING**: ",
+  - L170 **WARNING**: (payload)
+  - L192 **WARNING**: ",
+  - L196 **WARNING**: (payload)
+  - L291 **WARNING**: ",
+  - L295 **WARNING**: (payload)
+  - L318 **WARNING**: ",
+  - L322 **WARNING**: (payload)
+  - L356 **WARNING**: ",
+  - L360 **WARNING**: (payload)
+  - L383 **WARNING**: ",
+  - L387 **WARNING**: (payload)
+  - L582 **WARNING**: ",
+  - L586 **WARNING**: (payload)
+  - L798 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
     {safe_get(segment, 'segment_hash', None)}")
-  - L807 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+  - L832 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
     {safe_get(segment, 'segment_hash', None)}")
-  - L1034 **WARNING**: ",
-  - L1038 **WARNING**: (payload)
-  - L1045 **WARNING**: ",
-  - L1049 **WARNING**: (payload)
-  - L1376 **WARNING**: ",
-  - L1380 **WARNING**: (payload)
-  - L1438 **WARNING**: ",
-  - L1442 **WARNING**: (payload)
-  - L1691 **WARNING**: ({"level": "WARNING", "type": "dom_segments", "message":
+  - L1059 **WARNING**: ",
+  - L1063 **WARNING**: (payload)
+  - L1070 **WARNING**: ",
+  - L1074 **WARNING**: (payload)
+  - L1401 **WARNING**: ",
+  - L1405 **WARNING**: (payload)
+  - L1463 **WARNING**: ",
+  - L1467 **WARNING**: (payload)
+  - L1716 **WARNING**: ({"level": "WARNING", "type": "dom_segments", "message":
     msg_warn})
-  - L1747 **WARNING**: ({"level": "WARNING", "type": "page_hash", "message":
+  - L1772 **WARNING**: ({"level": "WARNING", "type": "page_hash", "message":
     msg})
-  - L1754 **WARNING**: ({"level": "WARNING", "type": "page_hash", "message":
+  - L1779 **WARNING**: ({"level": "WARNING", "type": "page_hash", "message":
     msg})
-  - L1766 **WARNING**: ({"level": "WARNING", "type": "page_hash", "message":
+  - L1791 **WARNING**: ({"level": "WARNING", "type": "page_hash", "message":
     msg})
-  - L1789 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
-  - L1824 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
-  - L2003 **WARNING**: ({"level": "WARNING", "type": "segment_review",
+  - L1814 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
+  - L1849 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
+  - L2028 **WARNING**: ({"level": "WARNING", "type": "segment_review",
     "message": msg})
-  - L2012 **WARNING**: ({
-  - L2013 **WARNING**: ",
-  - L2129 **WARNING**: ",
-  - L2133 **WARNING**: (payload)
-  - L2145 **WARNING**: ",
-  - L2149 **WARNING**: (payload)
-  - L2158 **WARNING**: ",
-  - L2162 **WARNING**: (payload)
-  - L2177 **WARNING**: ",
-  - L2181 **WARNING**: (payload)
-  - L2193 **WARNING**: ",
-  - L2197 **WARNING**: (payload)
-  - L2206 **WARNING**: ",
-  - L2210 **WARNING**: (payload)
-  - L2219 **WARNING**: ",
-  - L2223 **WARNING**: (payload)
-  - L2233 **WARNING**: ",
-  - L2237 **WARNING**: (payload)
-  - L2248 **WARNING**: ",
+  - L2037 **WARNING**: ({
+  - L2038 **WARNING**: ",
+  - L2154 **WARNING**: ",
+  - L2158 **WARNING**: (payload)
+  - L2170 **WARNING**: ",
+  - L2174 **WARNING**: (payload)
+  - L2183 **WARNING**: ",
+  - L2187 **WARNING**: (payload)
+  - L2202 **WARNING**: ",
+  - L2206 **WARNING**: (payload)
+  - L2218 **WARNING**: ",
+  - L2222 **WARNING**: (payload)
+  - L2231 **WARNING**: ",
+  - L2235 **WARNING**: (payload)
+  - L2244 **WARNING**: ",
+  - L2248 **WARNING**: (payload)
+  - L2258 **WARNING**: ",
+  - L2262 **WARNING**: (payload)
+  - L2273 **WARNING**: ",
 - Outgoing cross-module calls (sample):
-  - threading.Lock (line 118)
-  - val.isascii (line 134)
-  - val.encode (line 136)
-  - orjson.loads (line 140)
-  - orjson.loads (line 142)
-  - shared\_logic.safe\_encode (line 142)
-  - tempfile.gettempdir (line 157)
-  - logger\_singleton.console.print (line 160)
-  - logger\_singleton.logger.warning (line 167)
-  - os.remove (line 172)
-  - logger\_singleton.console.print (line 175)
-  - logger\_singleton.logger.info (line 182)
-  - logger\_singleton.console.print (line 186)
-  - logger\_singleton.logger.warning (line 193)
-  - \_TEMP\_FILES\_TRACKER.discard (line 194)
-  - \_TEMP\_FILES\_TRACKER.add (line 195)
-  - os.makedirs (line 205)
-  - f.read (line 212)
-  - f.write (line 228)
-  - orjson.dumps (line 228)
-  - time.time (line 236)
-  - re.match (line 248)
-  - shared\_logic.safe\_get (line 253)
-  - cache.get (line 262)
-  - shared\_logic.safe\_get (line 264)
-  - re.match (line 275)
-  - shared\_logic.safe\_filename (line 277)
-  - tempfile.gettempdir (line 282)
-  - logger\_singleton.console.print (line 285)
-  - logger\_singleton.logger.warning (line 292)
-  - os.makedirs (line 293)
-  - os.remove (line 298)
-  - logger\_singleton.console.print (line 301)
-  - logger\_singleton.logger.info (line 308)
-  - logger\_singleton.console.print (line 312)
-  - logger\_singleton.logger.warning (line 319)
-  - \_TEMP\_FILES\_TRACKER.discard (line 320)
-  - \_TEMP\_FILES\_TRACKER.add (line 321)
-  - os.makedirs (line 323)
-  - abs\_path.startswith (line 324)
-  - re.match (line 338)
-  - shared\_logic.safe\_filename (line 340)
-  - filename.endswith (line 341)
-  - re.sub (line 342)
-  - tempfile.gettempdir (line 347)
-  - logger\_singleton.console.print (line 350)
-  - logger\_singleton.logger.warning (line 357)
-  - os.makedirs (line 358)
-  - os.remove (line 363)
-  - logger\_singleton.console.print (line 366)
+  - threading.Lock (line 121)
+  - val.isascii (line 137)
+  - val.encode (line 139)
+  - orjson.loads (line 143)
+  - orjson.loads (line 145)
+  - shared\_logic.safe\_encode (line 145)
+  - tempfile.gettempdir (line 160)
+  - logger\_singleton.console.print (line 163)
+  - logger\_singleton.logger.warning (line 170)
+  - os.remove (line 175)
+  - logger\_singleton.console.print (line 178)
+  - logger\_singleton.logger.info (line 185)
+  - logger\_singleton.console.print (line 189)
+  - logger\_singleton.logger.warning (line 196)
+  - \_TEMP\_FILES\_TRACKER.discard (line 197)
+  - \_TEMP\_FILES\_TRACKER.add (line 198)
+  - os.makedirs (line 208)
+  - f.read (line 215)
+  - f.write (line 231)
+  - orjson.dumps (line 231)
+  - time.time (line 239)
+  - re.match (line 251)
+  - shared\_logic.safe\_get (line 256)
+  - cache.get (line 265)
+  - shared\_logic.safe\_get (line 267)
+  - re.match (line 278)
+  - shared\_logic.safe\_filename (line 280)
+  - tempfile.gettempdir (line 285)
+  - logger\_singleton.console.print (line 288)
+  - logger\_singleton.logger.warning (line 295)
+  - os.makedirs (line 296)
+  - os.remove (line 301)
+  - logger\_singleton.console.print (line 304)
+  - logger\_singleton.logger.info (line 311)
+  - logger\_singleton.console.print (line 315)
+  - logger\_singleton.logger.warning (line 322)
+  - \_TEMP\_FILES\_TRACKER.discard (line 323)
+  - \_TEMP\_FILES\_TRACKER.add (line 324)
+  - os.makedirs (line 326)
+  - abs\_path.startswith (line 327)
+  - re.match (line 341)
+  - shared\_logic.safe\_filename (line 343)
+  - filename.endswith (line 344)
+  - re.sub (line 345)
+  - tempfile.gettempdir (line 350)
+  - logger\_singleton.console.print (line 353)
+  - logger\_singleton.logger.warning (line 360)
+  - os.makedirs (line 361)
+  - os.remove (line 366)
+  - logger\_singleton.console.print (line 369)
 - Inbound references:
-  - \_get\_label\_cache\_path ← html_scanner.py:208
-  - \_get\_label\_cache\_path ← html_scanner.py:226
-  - \_get\_label\_cache\_path ← html_scanner.py:255
-  - \_load\_label\_cache ← html_scanner.py:223
-  - \_load\_label\_cache ← html_scanner.py:234
-  - \_load\_label\_cache ← html_scanner.py:243
-  - \_load\_label\_cache ← html_scanner.py:261
-  - \_save\_label\_cache ← html_scanner.py:237
-  - safe\_cache\_path ← html_scanner.py:154
-  - safe\_log\_path ← html_scanner.py:1891
-  - safe\_log\_path ← html_scanner.py:1933
-  - safe\_log\_path ← html_scanner.py:1945
-  - is\_trivial\_segment ← html_scanner.py:535
-  - is\_trivial\_segment ← html_scanner.py:630
-  - segment\_identity\_hash ← html_scanner.py:731
-  - segment\_identity\_hash ← html_scanner.py:1454
-  - segment\_identity\_hash ← html_scanner.py:1950
-  - segment\_identity\_hash ← html_scanner.py:1974
-  - embedding\_cache\_hash ← html_scanner.py:532
-  - embedding\_cache\_hash ← html_scanner.py:630
-  - get\_segment\_embedding ← html_scanner.py:763
-  - get\_segment\_embedding ← html_scanner.py:791
-  - get\_segment\_embedding ← html_scanner.py:2650
-  - deduplicate\_pattern\_kb ← html_scanner.py:2852
-  - prune\_embedding\_cache ← html_scanner.py:2680
-  - prune\_embedding\_cache ← html_scanner.py:2762
-  - auto\_label\_segment ← html_scanner.py:1983
-  - \_extract\_clean\_text ← html_scanner.py:819
-  - \_extract\_clean\_text ← html_scanner.py:985
-  - \_extract\_clean\_text ← html_scanner.py:1457
-  - \_extract\_clean\_text ← html_scanner.py:1674
-  - \_extract\_clean\_text ← html_scanner.py:2619
-  - \_extract\_clean\_text ← html_scanner.py:2967
-  - \_extract\_clean\_text ← html_scanner.py:2979
-  - \_extract\_clean\_text ← html_scanner.py:2993
-  - \_extract\_clean\_text ← html_scanner.py:3007
-  - \_extract\_clean\_text ← html_scanner.py:3022
-  - \_extract\_clean\_text ← html_scanner.py:3035
-  - \_extract\_clean\_text ← html_scanner.py:3049
-  - \_extract\_clean\_text ← html_scanner.py:3061
-  - \_extract\_clean\_text ← html_scanner.py:3073
-  - \_label\_in ← html_scanner.py:983
-  - \_extract\_segments\_by\_label ← html_scanner.py:2618
-  - \_extract\_segments\_by\_label ← html_scanner.py:2948
-  - \_extract\_segments\_by\_label ← html_scanner.py:2966
-  - \_extract\_segments\_by\_label ← html_scanner.py:2978
-  - \_extract\_segments\_by\_label ← html_scanner.py:2992
-  - \_extract\_segments\_by\_label ← html_scanner.py:3006
-  - \_extract\_segments\_by\_label ← html_scanner.py:3021
-  - \_extract\_segments\_by\_label ← html_scanner.py:3034
+  - \_get\_label\_cache\_path ← html_scanner.py:211
+  - \_get\_label\_cache\_path ← html_scanner.py:229
+  - \_get\_label\_cache\_path ← html_scanner.py:258
+  - \_load\_label\_cache ← html_scanner.py:226
+  - \_load\_label\_cache ← html_scanner.py:237
+  - \_load\_label\_cache ← html_scanner.py:246
+  - \_load\_label\_cache ← html_scanner.py:264
+  - \_save\_label\_cache ← html_scanner.py:240
+  - safe\_cache\_path ← html_scanner.py:157
+  - safe\_log\_path ← html_scanner.py:1916
+  - safe\_log\_path ← html_scanner.py:1958
+  - safe\_log\_path ← html_scanner.py:1970
+  - is\_trivial\_segment ← html_scanner.py:538
+  - is\_trivial\_segment ← html_scanner.py:633
+  - segment\_identity\_hash ← html_scanner.py:734
+  - segment\_identity\_hash ← html_scanner.py:1479
+  - segment\_identity\_hash ← html_scanner.py:1975
+  - segment\_identity\_hash ← html_scanner.py:1999
+  - embedding\_cache\_hash ← html_scanner.py:535
+  - embedding\_cache\_hash ← html_scanner.py:633
+  - get\_segment\_embedding ← html_scanner.py:766
+  - get\_segment\_embedding ← html_scanner.py:805
+  - get\_segment\_embedding ← html_scanner.py:2675
+  - deduplicate\_pattern\_kb ← html_scanner.py:2877
+  - prune\_embedding\_cache ← html_scanner.py:2705
+  - prune\_embedding\_cache ← html_scanner.py:2787
+  - auto\_label\_segment ← html_scanner.py:2008
+  - \_extract\_clean\_text ← html_scanner.py:844
+  - \_extract\_clean\_text ← html_scanner.py:1010
+  - \_extract\_clean\_text ← html_scanner.py:1482
+  - \_extract\_clean\_text ← html_scanner.py:1699
+  - \_extract\_clean\_text ← html_scanner.py:2644
+  - \_extract\_clean\_text ← html_scanner.py:2992
+  - \_extract\_clean\_text ← html_scanner.py:3004
+  - \_extract\_clean\_text ← html_scanner.py:3018
+  - \_extract\_clean\_text ← html_scanner.py:3032
+  - \_extract\_clean\_text ← html_scanner.py:3047
+  - \_extract\_clean\_text ← html_scanner.py:3060
+  - \_extract\_clean\_text ← html_scanner.py:3074
+  - \_extract\_clean\_text ← html_scanner.py:3086
+  - \_extract\_clean\_text ← html_scanner.py:3098
+  - \_label\_in ← html_scanner.py:1008
+  - \_extract\_segments\_by\_label ← html_scanner.py:2643
+  - \_extract\_segments\_by\_label ← html_scanner.py:2973
+  - \_extract\_segments\_by\_label ← html_scanner.py:2991
+  - \_extract\_segments\_by\_label ← html_scanner.py:3003
+  - \_extract\_segments\_by\_label ← html_scanner.py:3017
+  - \_extract\_segments\_by\_label ← html_scanner.py:3031
+  - \_extract\_segments\_by\_label ← html_scanner.py:3046
+  - \_extract\_segments\_by\_label ← html_scanner.py:3059
 
 ### utils/json\_export\_loader.py {#webapp-parser-utils-json-export-loader-py}
 
@@ -10386,7 +11400,7 @@ graph LR
   - \_counters.get (line 89)
   - c.inc (line 92)
 - Inbound references:
-  - increment\_test\_counter ← Smart_Elections_Parser_Webapp.py:298
+  - increment\_test\_counter ← Smart_Elections_Parser_Webapp.py:366
   - \_push\_registry\_async ← metrics_prom.py:62
   - \_push\_registry\_async ← metrics_prom.py:95
   - increment\_prom\_counter ← telemetry_agg.py:57
@@ -10424,8 +11438,8 @@ graph LR
     - `from shared_logic import safe_get` (line 25)
     - `from shared_logic import safe_validate_external_url` (line 25)
 - Task markers:
-  - L126 **WARNING**: ({
-  - L127 **WARNING**: ",
+  - L127 **WARNING**: ({
+  - L128 **WARNING**: ",
 - Outgoing cross-module calls (sample):
   - pathlib.Path (line 30)
   - cache\_path.exists (line 31)
@@ -10451,28 +11465,27 @@ graph LR
   - re.search (line 112)
   - m.group (line 117)
   - shared\_logic.safe\_validate\_external\_url (line 118)
-  - logger\_singleton.logger.warning (line 126)
-  - s.replace (line 134)
-  - m.group (line 134)
-  - re.sub (line 136)
+  - logger\_singleton.logger.warning (line 127)
+  - s.replace (line 135)
+  - m.group (line 135)
   - re.sub (line 137)
+  - re.sub (line 138)
 - Inbound references:
   - safe\_db\_path ← misc_utils.py:54
 
 ### utils/ml\_table\_detector.py {#webapp-parser-utils-ml-table-detector-py}
 
 - Definitions:
-  - function: `\_llm\_detect\_tables` (line 53)
-  - function: `detect\_tables\_ml` (line 119)
-  - function: `\_ml\_detect\_tables` (line 192)
-  - function: `\_vision\_detect\_tables` (line 211)
-  - function: `\_extract\_table\_from\_selectolax` (line 222)
-  - function: `\_looks\_like\_table\_selectolax` (line 265)
-  - function: `\_extract\_table\_from\_selectolax` (line 290)
-  - function: `\_looks\_like\_table\_selectolax` (line 331)
-  - function: `\_extract\_table\_like\_structure\_selectolax` (line 361)
-  - function: `\_regex\_table\_detection` (line 404)
-  - function: `\_normalize\_header` (line 443)
+  - function: `detect\_tables\_ml` (line 47)
+  - function: `\_ml\_detect\_tables` (line 115)
+  - function: `\_vision\_detect\_tables` (line 134)
+  - function: `\_extract\_table\_from\_selectolax` (line 145)
+  - function: `\_looks\_like\_table\_selectolax` (line 188)
+  - function: `\_extract\_table\_from\_selectolax` (line 213)
+  - function: `\_looks\_like\_table\_selectolax` (line 254)
+  - function: `\_extract\_table\_like\_structure\_selectolax` (line 284)
+  - function: `\_regex\_table\_detection` (line 327)
+  - function: `\_normalize\_header` (line 366)
 - Imports:
   - **Standard Library** (7):
     - `import re as re` (line 26)
@@ -10482,83 +11495,75 @@ graph LR
     - `from typing import List` (line 28)
     - `from typing import Optional` (line 28)
     - `from typing import Tuple` (line 28)
-  - **Third-party** (1):
-    - `import orjson as orjson` (line 30)
-  - **Local/Project** (12):
+  - **Local/Project** (7):
     - `from __future__ import annotations` (line 1)
-    - `from selectolax.parser import HTMLParser` (line 31)
-    - `from config import LLM_API_KEY` (line 33)
-    - `from config import LLM_EXTRA_INSTRUCTIONS` (line 33)
-    - `from config import LLM_MODEL` (line 33)
-    - `from config import LLM_PROVIDER` (line 33)
-    - `from config import LLM_SYSTEM_PROMPT` (line 33)
-    - `from config import TABLE_MODEL_PATH` (line 33)
-    - `from browser_utils import safe_attributes` (line 41)
-    - `from browser_utils import safe_content` (line 41)
-    - `from logger_singleton import logger` (line 42)
-    - `from model_registry import TableDetectionModel` (line 43)
+    - `from selectolax.parser import HTMLParser` (line 30)
+    - `from config import TABLE_MODEL_PATH` (line 32)
+    - `from browser_utils import safe_attributes` (line 35)
+    - `from browser_utils import safe_content` (line 35)
+    - `from logger_singleton import logger` (line 36)
+    - `from model_registry import TableDetectionModel` (line 37)
 - Outgoing cross-module calls (sample):
-  - re.compile (line 46)
-  - re.compile (line 47)
-  - options.get (line 58)
-  - options.get (line 59)
-  - options.get (line 60)
-  - options.get (line 61)
-  - options.get (line 62)
-  - orjson.loads (line 92)
-  - re.findall (line 100)
-  - tables.append (line 104)
-  - \_JSON\_OBJECT\_RE.findall (line 109)
-  - tables.append (line 112)
-  - logger\_singleton.logger.error (line 116)
-  - options.get (line 125)
-  - options.get (line 126)
-  - options.get (line 127)
-  - options.get (line 128)
-  - options.get (line 129)
-  - options.get (line 136)
-  - model\_registry.TableDetectionModel.load\_from\_checkpoint (line 138)
-  - table\_model.predict\_tables (line 140)
-  - tables.extend (line 142)
-  - logger\_singleton.logger.error (line 144)
-  - tables.extend (line 150)
-  - selectolax.parser.HTMLParser (line 153)
+  - re.compile (line 40)
+  - re.compile (line 41)
+  - options.get (line 53)
+  - options.get (line 54)
+  - options.get (line 55)
+  - options.get (line 56)
+  - options.get (line 63)
+  - model\_registry.TableDetectionModel.load\_from\_checkpoint (line 65)
+  - table\_model.predict\_tables (line 67)
+  - tables.extend (line 69)
+  - logger\_singleton.logger.error (line 71)
+  - selectolax.parser.HTMLParser (line 76)
+  - html\_tree.css (line 79)
+  - tables.append (line 82)
+  - html\_tree.css (line 85)
+  - tables.append (line 89)
+  - tables.extend (line 95)
+  - tables.extend (line 101)
+  - t.get (line 107)
+  - unique\_tables.append (line 110)
+  - seen.add (line 111)
+  - browser\_utils.safe\_content (line 150)
+  - selectolax.parser.HTMLParser (line 151)
   - html\_tree.css (line 156)
-  - tables.append (line 159)
-  - html\_tree.css (line 162)
-  - tables.append (line 166)
-  - tables.extend (line 172)
-  - tables.extend (line 178)
-  - t.get (line 184)
-  - unique\_tables.append (line 187)
-  - seen.add (line 188)
-  - browser\_utils.safe\_content (line 227)
-  - selectolax.parser.HTMLParser (line 228)
-  - html\_tree.css (line 233)
-  - cell.text (line 243)
-  - row.css (line 249)
-  - row.css (line 251)
-  - row\_data.values (line 253)
-  - data.append (line 254)
-  - browser\_utils.safe\_content (line 269)
-  - selectolax.parser.HTMLParser (line 270)
-  - browser\_utils.safe\_attributes (line 273)
-  - attrs.get (line 274)
-  - html\_tree.css (line 277)
-  - child.css (line 279)
-  - html\_tree.css (line 285)
-  - table\_node.css (line 298)
+  - cell.text (line 166)
+  - row.css (line 172)
+  - row.css (line 174)
+  - row\_data.values (line 176)
+  - data.append (line 177)
+  - browser\_utils.safe\_content (line 192)
+  - selectolax.parser.HTMLParser (line 193)
+  - browser\_utils.safe\_attributes (line 196)
+  - attrs.get (line 197)
+  - html\_tree.css (line 200)
+  - child.css (line 202)
+  - html\_tree.css (line 208)
+  - table\_node.css (line 221)
+  - c.text (line 230)
+  - row.css (line 239)
+  - row.css (line 239)
+  - row\_map.values (line 241)
+  - data.append (line 242)
+  - tag.lower (line 261)
+  - browser\_utils.safe\_attributes (line 264)
+  - attrs.get (line 265)
+  - node.css (line 268)
+  - ch.css (line 272)
+  - node.css (line 278)
+  - tag.lower (line 293)
+  - node.css (line 296)
 - Inbound references:
-  - \_llm\_detect\_tables ← ml_table_detector.py:148
   - detect\_tables\_ml ← extraction_strategies.py:164
-  - \_vision\_detect\_tables ← ml_table_detector.py:170
-  - \_extract\_table\_from\_selectolax ← ml_table_detector.py:157
-  - \_looks\_like\_table\_selectolax ← ml_table_detector.py:163
-  - \_extract\_table\_like\_structure\_selectolax ← ml_table_detector.py:164
-  - \_regex\_table\_detection ← ml_table_detector.py:176
+  - \_vision\_detect\_tables ← ml_table_detector.py:93
+  - \_extract\_table\_from\_selectolax ← ml_table_detector.py:80
+  - \_looks\_like\_table\_selectolax ← ml_table_detector.py:86
+  - \_extract\_table\_like\_structure\_selectolax ← ml_table_detector.py:87
+  - \_regex\_table\_detection ← ml_table_detector.py:99
   - \_normalize\_header ← location_helpers.py:299
   - \_normalize\_header ← location_helpers.py:307
-  - \_normalize\_header ← ml_table_detector.py:185
+  - \_normalize\_header ← ml_table_detector.py:108
 
 ### utils/model\_registry.py {#webapp-parser-utils-model-registry-py}
 
@@ -10691,9 +11696,10 @@ graph LR
   - class: `BatchMetadata` (line 369)
   - class: `StagingElectionResult` (line 384)
   - class: `WarehouseElectionResult` (line 402)
-  - class: `EmbeddingCache` (line 429)
-  - class: `Alert` (line 441)
-  - function: `main` (line 455)
+  - class: `DataFrameworkPreviewCache` (line 429)
+  - class: `EmbeddingCache` (line 450)
+  - class: `Alert` (line 462)
+  - function: `main` (line 476)
 - Imports:
   - **Standard Library** (6):
     - `import enum as enum` (line 3)
@@ -10846,7 +11852,7 @@ graph LR
   - L139 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified.
     Using 'unknown_contests'.\[/yellow\]")
   - L610 **WARNING**: (f"\[OUTPUT_UTILS\] Enrichment build failed: {e}")
-  - L688 **WARNING**: (f"\[OUTPUT_UTILS\] XLSX export failed: {e}")
+  - L689 **WARNING**: (f"\[OUTPUT_UTILS\] XLSX export failed: {e}")
 - Outgoing cross-module calls (sample):
   - re.compile (line 40)
   - row.items (line 43)
@@ -11329,10 +12335,10 @@ graph LR
   - \_division\_type\_for ← pivot.py:979
   - \_division\_type\_for ← pivot.py:1144
   - \_s ← pivot.py:578
-  - \_s ← table_builder.py:632
-  - \_s ← table_builder.py:634
-  - \_s ← table_builder.py:634
-  - \_s ← table_builder.py:636
+  - \_s ← table_builder.py:637
+  - \_s ← table_builder.py:639
+  - \_s ← table_builder.py:639
+  - \_s ← table_builder.py:641
   - \_safe\_col\_name ← pivot.py:1195
   - \_safe\_col\_name ← pivot.py:1197
   - \_safe\_col\_name ← pivot.py:1198
@@ -11395,9 +12401,9 @@ graph LR
 - Inbound references:
   - PrivilegeTier ← privilege_tiers.py:260
   - PrivilegeTier ← privilege_tiers.py:261
-  - get\_principal\_tier ← Smart_Elections_Parser_Webapp.py:3401
-  - get\_principal\_tier ← html_election_parser.py:1236
-  - get\_principal\_tier ← web_pipeline.py:161
+  - get\_principal\_tier ← Smart_Elections_Parser_Webapp.py:4856
+  - get\_principal\_tier ← html_election_parser.py:1359
+  - get\_principal\_tier ← web_pipeline.py:178
   - is\_domain\_in\_allowlist ← privilege_tiers.py:222
   - \_parse\_env\_list ← privilege_tiers.py:90
   - \_parse\_env\_list ← privilege_tiers.py:102
@@ -11465,6 +12471,86 @@ graph LR
   - \_rj\_as\_dict ← rawjson_utils.py:69
   - \_rj\_as\_dict ← rawjson_utils.py:212
   - \_infer\_party\_from\_name ← rawjson_utils.py:100
+
+### utils/retry\_utils.py {#webapp-parser-utils-retry-utils-py}
+
+> Retry Utilities with Snapshot Mode
+
+- Definitions:
+  - function: `retry\_with\_snapshot` (line 30)
+  - function: `\_get\_html\_context` (line 115)
+  - function: `\_save\_failure\_snapshot` (line 139)
+  - function: `\_log\_extraction\_failure` (line 208)
+  - function: `\_get\_traceback\_str` (line 246)
+  - function: `example\_handler\_with\_retry` (line 260)
+- Imports:
+  - **Standard Library** (7):
+    - `import functools as functools` (line 21)
+    - `import time as time` (line 22)
+    - `from datetime import datetime` (line 23)
+    - `from pathlib import Path` (line 24)
+    - `from typing import Callable` (line 25)
+    - `from typing import Optional` (line 25)
+    - `from typing import Tuple` (line 25)
+  - **Local/Project** (1):
+    - `from logger_singleton import logger` (line 27)
+- Task markers:
+  - L84 **WARNING**: (f"\[yellow\]\[retry\] Attempt {attempt}/{max_attempts}
+    failed: {e}\[/yellow\]")
+  - L173 **WARNING**: (f"\[snapshot\] Could not save HTML: {e}")
+  - L184 **WARNING**: (f"\[snapshot\] Could not save context: {e}")
+  - L243 **WARNING**: (f"\[retry\] Could not log failure: {e}")
+- Outgoing cross-module calls (sample):
+  - logger\_singleton.logger.info (line 65)
+  - logger\_singleton.logger.info (line 71)
+  - logger\_singleton.logger.info (line 78)
+  - logger\_singleton.logger.warning (line 84)
+  - logger\_singleton.logger.info (line 89)
+  - time.sleep (line 90)
+  - logger\_singleton.logger.error (line 93)
+  - functools.wraps (line 57)
+  - pathlib.Path (line 152)
+  - snapshot\_dir.mkdir (line 153)
+  - kwargs.get (line 156)
+  - datetime.datetime.now (line 161)
+  - kwargs.get (line 165)
+  - page.content (line 168)
+  - html\_file.write\_text (line 170)
+  - logger\_singleton.logger.info (line 171)
+  - logger\_singleton.logger.warning (line 173)
+  - context\_file.write\_bytes (line 181)
+  - orjson.dumps (line 181)
+  - logger\_singleton.logger.info (line 182)
+  - logger\_singleton.logger.warning (line 184)
+  - datetime.datetime.now (line 189)
+  - html\_context.get (line 194)
+  - html\_context.get (line 195)
+  - html\_context.get (line 196)
+  - error\_file.write\_text (line 201)
+  - logger\_singleton.logger.info (line 202)
+  - logger\_singleton.logger.error (line 205)
+  - pathlib.Path (line 217)
+  - kwargs.get (line 221)
+  - datetime.datetime.now (line 224)
+  - html\_context.get (line 229)
+  - html\_context.get (line 230)
+  - html\_context.get (line 231)
+  - html\_context.get (line 232)
+  - f.write (line 237)
+  - orjson.dumps (line 237)
+  - f.write (line 238)
+  - logger\_singleton.logger.debug (line 240)
+  - logger\_singleton.logger.warning (line 243)
+  - traceback.format\_exc (line 250)
+- Inbound references:
+  - retry\_with\_snapshot ← retry_utils.py:256
+  - retry\_with\_snapshot ← retry_utils.py:264
+  - \_get\_html\_context ← retry_utils.py:67
+  - \_get\_html\_context ← retry_utils.py:176
+  - \_get\_html\_context ← retry_utils.py:220
+  - \_save\_failure\_snapshot ← retry_utils.py:97
+  - \_log\_extraction\_failure ← retry_utils.py:100
+  - \_get\_traceback\_str ← retry_utils.py:199
 
 ### utils/root\_admin\_session.py {#webapp-parser-utils-root-admin-session-py}
 
@@ -11536,80 +12622,73 @@ graph LR
 > Safe Decision Helpers: Confidence/Caution Gates for Election Entities
 
 - Definitions:
-  - function: `\_emit\_decision\_log` (line 30)
-  - function: `safe\_decide\_jurisdiction` (line 79)
-  - function: `safe\_decide\_office` (line 127)
-  - function: `safe\_decide\_party` (line 162)
-  - function: `safe\_decide\_source` (line 196)
-  - function: `should\_proceed` (line 230)
-  - function: `should\_caution` (line 235)
-  - function: `should\_stop` (line 240)
+  - function: `\_emit\_decision\_log` (line 27)
+  - function: `safe\_decide\_jurisdiction` (line 76)
+  - function: `safe\_decide\_office` (line 124)
+  - function: `safe\_decide\_party` (line 159)
+  - function: `safe\_decide\_source` (line 193)
+  - function: `should\_proceed` (line 227)
+  - function: `should\_caution` (line 232)
+  - function: `should\_stop` (line 237)
 - Imports:
-  - **Standard Library** (8):
-    - `import time as time` (line 14)
-    - `from datetime import datetime` (line 15)
-    - `from datetime import timezone` (line 15)
-    - `from typing import Any` (line 16)
-    - `from typing import Dict` (line 16)
-    - `from typing import List` (line 16)
-    - `from typing import Optional` (line 16)
-    - `from typing import Tuple` (line 16)
-  - **Third-party** (8):
+  - **Standard Library** (5):
+    - `from datetime import datetime` (line 14)
+    - `from datetime import timezone` (line 14)
+    - `from typing import List` (line 15)
+    - `from typing import Optional` (line 15)
+    - `from typing import Tuple` (line 15)
+  - **Third-party** (6):
     - `from webapp.parser.Context_Integration.library.entity_confidence_map
-      import AnomalyType` (line 18)
+      import AnomalyType` (line 17)
     - `from webapp.parser.Context_Integration.library.entity_confidence_map
-      import DecisionCode` (line 18)
+      import OverrideTrigger` (line 17)
     - `from webapp.parser.Context_Integration.library.entity_confidence_map
-      import EntityConfidenceMap` (line 18)
+      import SignalType` (line 17)
     - `from webapp.parser.Context_Integration.library.entity_confidence_map
-      import OverrideTrigger` (line 18)
-    - `from webapp.parser.Context_Integration.library.entity_confidence_map
-      import SignalType` (line 18)
-    - `from webapp.parser.Context_Integration.library.entity_confidence_map
-      import get_confidence_map` (line 18)
-    - `from webapp.parser.utils.logger_singleton import logger` (line 26)
-    - `from webapp.parser.utils.shared_logic import DecisionTuple` (line 27)
+      import get_confidence_map` (line 17)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 23)
+    - `from webapp.parser.utils.shared_logic import DecisionTuple` (line 24)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 12)
 - Task markers:
-  - L69 **WARNING**: ({
-  - L70 **WARNING**: ",
+  - L66 **WARNING**: ({
+  - L67 **WARNING**: ",
 - Outgoing cross-module calls (sample):
+  - decision\_tuple.get (line 52)
+  - decision\_tuple.get (line 54)
   - decision\_tuple.get (line 55)
+  - decision\_tuple.get (line 56)
   - decision\_tuple.get (line 57)
   - decision\_tuple.get (line 58)
   - decision\_tuple.get (line 59)
   - decision\_tuple.get (line 60)
-  - decision\_tuple.get (line 61)
-  - decision\_tuple.get (line 62)
-  - decision\_tuple.get (line 63)
-  - datetime.datetime.now (line 63)
-  - webapp.parser.utils.logger\_singleton.logger.info (line 66)
-  - webapp.parser.utils.logger\_singleton.logger.warning (line 69)
+  - datetime.datetime.now (line 60)
+  - webapp.parser.utils.logger\_singleton.logger.info (line 63)
+  - webapp.parser.utils.logger\_singleton.logger.warning (line 66)
   - webapp.parser.Context\_Integration.library.entity\_confidence\_map.get\_confidence\_map
-    (line 101)
-  - confidence\_map.calculate\_confidence\_caution (line 102)
-  - datetime.datetime.now (line 119)
+    (line 98)
+  - confidence\_map.calculate\_confidence\_caution (line 99)
+  - datetime.datetime.now (line 116)
   - webapp.parser.Context\_Integration.library.entity\_confidence\_map.get\_confidence\_map
-    (line 136)
-  - confidence\_map.calculate\_confidence\_caution (line 137)
-  - datetime.datetime.now (line 154)
+    (line 133)
+  - confidence\_map.calculate\_confidence\_caution (line 134)
+  - datetime.datetime.now (line 151)
   - webapp.parser.Context\_Integration.library.entity\_confidence\_map.get\_confidence\_map
-    (line 170)
-  - confidence\_map.calculate\_confidence\_caution (line 171)
-  - datetime.datetime.now (line 188)
+    (line 167)
+  - confidence\_map.calculate\_confidence\_caution (line 168)
+  - datetime.datetime.now (line 185)
   - webapp.parser.Context\_Integration.library.entity\_confidence\_map.get\_confidence\_map
-    (line 204)
-  - confidence\_map.calculate\_confidence\_caution (line 205)
-  - datetime.datetime.now (line 222)
-  - decision\_tuple.get (line 232)
-  - decision\_tuple.get (line 237)
-  - decision\_tuple.get (line 242)
+    (line 201)
+  - confidence\_map.calculate\_confidence\_caution (line 202)
+  - datetime.datetime.now (line 219)
+  - decision\_tuple.get (line 229)
+  - decision\_tuple.get (line 234)
+  - decision\_tuple.get (line 239)
 - Inbound references:
-  - \_emit\_decision\_log ← safe_decide.py:123
-  - \_emit\_decision\_log ← safe_decide.py:158
-  - \_emit\_decision\_log ← safe_decide.py:192
-  - \_emit\_decision\_log ← safe_decide.py:226
+  - \_emit\_decision\_log ← safe_decide.py:120
+  - \_emit\_decision\_log ← safe_decide.py:155
+  - \_emit\_decision\_log ← safe_decide.py:189
+  - \_emit\_decision\_log ← safe_decide.py:223
 
 ### utils/salvage.py {#webapp-parser-utils-salvage-py}
 
@@ -11699,8 +12778,10 @@ graph LR
   - class: `\_MissingDriver` (line 20)
   - function: `launch\_browser` (line 38)
   - function: `relaunch\_browser\_fullscreen\_if\_needed` (line 55)
-  - function: `relaunch\_browser\_stealth` (line 95)
-  - function: `close\_driver` (line 112)
+  - function: `relaunch\_browser\_stealth` (line 102)
+  - function: `close\_driver` (line 119)
+  - function: `\_capture\_post\_captcha\_dom\_metadata` (line 129)
+  - function: `\_log\_captcha\_resolution\_data` (line 163)
 - Imports:
   - **Standard Library** (2):
     - `import time as time` (line 3)
@@ -11717,9 +12798,25 @@ graph LR
   - time.time (line 77)
   - time.time (line 78)
   - logger\_singleton.logger.info (line 90)
-  - time.sleep (line 92)
-  - driver.get (line 109)
-  - driver.quit (line 117)
+  - logger\_singleton.logger.debug (line 97)
+  - time.sleep (line 99)
+  - driver.get (line 116)
+  - driver.quit (line 124)
+  - driver.execute\_script (line 143)
+  - logger\_singleton.logger.debug (line 159)
+  - time.time (line 189)
+  - time.time (line 191)
+  - os.makedirs (line 195)
+  - f.write (line 198)
+  - orjson.dumps (line 198)
+  - f.write (line 199)
+  - logger\_singleton.logger.info (line 201)
+  - dom\_metadata.get (line 201)
+  - dom\_metadata.get (line 202)
+  - logger\_singleton.logger.debug (line 205)
+- Inbound references:
+  - \_capture\_post\_captcha\_dom\_metadata ← seleniumbase_launcher.py:93
+  - \_log\_captcha\_resolution\_data ← seleniumbase_launcher.py:95
 
 ### utils/session\_state.py {#webapp-parser-utils-session-state-py}
 
@@ -11849,139 +12946,141 @@ graph LR
 ### utils/shared\_logic.py {#webapp-parser-utils-shared-logic-py}
 
 - Definitions:
-  - class: `DecisionTuple` (line 76)
-  - class: `ExtractPlugin` (line 107)
-  - class: `Saveable` (line 110)
-  - class: `GCModule` (line 113)
-  - class: `ShutilModule` (line 116)
-  - class: `TimeModule` (line 120)
-  - class: `HasItem` (line 124)
-  - class: `HasAllMethod` (line 129)
-  - class: `PredictionResult` (line 136)
-  - class: `EventLike` (line 158)
-  - class: `Predictable` (line 167)
-  - function: `safe\_filename` (line 193)
-  - function: `is\_path\_safe` (line 279)
-  - function: `safe\_resolve\_path` (line 312)
-  - function: `safe\_join\_path` (line 343)
-  - function: `validate\_directory\_path` (line 371)
-  - function: `safe\_slug` (line 387)
-  - function: `safe\_query` (line 403)
-  - function: `safe\_key` (line 414)
-  - function: `\_filter\_valid\_kwargs` (line 425)
-  - function: `safe\_filter\_by` (line 443)
-  - function: `safe\_first` (line 457)
-  - function: `get\_or\_create` (line 470)
-  - function: `safe\_translate` (line 493)
-  - function: `safe\_scheme` (line 505)
-  - function: `safe\_netloc` (line 513)
-  - function: `safe\_geturl` (line 521)
-  - function: `\_resolve\_host\_ips` (line 529)
-  - function: `safe\_validate\_external\_url` (line 541)
-  - function: `safe\_extract` (line 638)
-  - function: `safe\_isalpha` (line 652)
-  - function: `safe\_pop` (line 662)
-  - function: `safe\_merge\_defaults` (line 670)
-  - function: `safe\_strip` (line 686)
-  - function: `safe\_setdefault` (line 692)
-  - function: `safe\_tolist` (line 703)
-  - function: `safe\_execute` (line 725)
-  - function: `safe\_commit` (line 737)
-  - function: `safe\_scalar\_one\_or\_none` (line 746)
-  - function: `safe\_model\_save` (line 757)
-  - function: `safe\_all` (line 802)
-  - function: `safe\_copy` (line 814)
-  - function: `safe\_isalnum` (line 837)
-  - function: `safe\_keys` (line 847)
-  - function: `safe\_attr\_keys` (line 860)
-  - function: `safe\_replace` (line 874)
-  - function: `safe\_isdigit` (line 887)
-  - function: `safe\_get` (line 894)
-  - function: `safe\_values` (line 903)
-  - function: `safe\_is\_set` (line 915)
-  - function: `safe\_set` (line 927)
-  - function: `safe\_clear` (line 937)
-  - function: `safe\_append\_cached\_segment` (line 947)
-  - function: `safe\_db\_call` (line 965)
-  - function: `safe\_append` (line 986)
-  - function: `safe\_update` (line 1007)
-  - function: `safe\_extend` (line 1032)
-  - function: `convert\_ndarrays` (line 1053)
-  - function: `normalize\_html\_for\_hash` (line 1063)
-  - function: `clean\_cache\_inplace` (line 1071)
-  - function: `\_to\_json\_safe` (line 1083)
-  - function: `sync\_type\_and\_election\_types` (line 1092)
-  - function: `keyword\_in\_text` (line 1118)
-  - function: `safe\_lower` (line 1126)
-  - function: `safe\_encode` (line 1132)
-  - function: `safe\_startswith` (line 1140)
-  - function: `safe\_add` (line 1155)
-  - function: `safe\_predict` (line 1171)
-  - function: `safe\_split` (line 1182)
-  - function: `safe\_capitalize` (line 1202)
-  - function: `safe\_item` (line 1206)
-  - function: `safe\_items` (line 1220)
-  - function: `safe\_similarity` (line 1239)
-  - function: `safe\_model\_encode` (line 1265)
-  - function: `safe\_get\_first` (line 1359)
-  - function: `validate\_handler\_result` (line 1385)
-  - function: `safe\_parse` (line 1417)
-  - function: `safe\_endswith` (line 1490)
-  - function: `safe\_isupper` (line 1501)
-  - function: `resolve\_county\_alias` (line 1512)
-  - function: `safe\_sid` (line 1541)
-  - function: `safe\_rsplit` (line 1563)
-  - function: `normalize\_county\_name` (line 1577)
-  - function: `flatten\_raw\_field` (line 1599)
-  - function: `normalize\_state\_name` (line 1614)
-  - function: `infer\_state\_county\_from\_url` (line 1650)
-  - function: `resolve\_state\_county\_from\_context` (line 1733)
-  - function: `format\_state\_label` (line 1759)
-  - function: `canonicalize\_county\_label` (line 1774)
-  - function: `format\_county\_label` (line 1786)
-  - function: `\_table\_sample\_text` (line 1816)
-  - function: `derive\_state\_county\_from\_table` (line 1847)
-  - function: `derive\_candidate\_party\_metadata` (line 1973)
-  - function: `build\_camelot\_row\_filter\_for\_context` (line 2081)
-  - function: `record\_noise\_suggestion` (line 2089)
-  - function: `get\_county\_precincts` (line 2120)
-  - function: `normalize\_county\_key` (line 2125)
-  - function: `lookup\_precinct\_aliases\_for\_county` (line 2137)
-  - function: `get\_state\_counties` (line 2147)
-  - function: `scan\_environment` (line 2151)
-  - function: `get\_title\_embedding\_features` (line 2159)
-  - function: `show\_progress\_bar` (line 2168)
-  - function: `coordinator\_feedback` (line 2178)
-  - function: `normalize\_text` (line 2181)
-  - function: `match\_any` (line 2184)
-  - function: `build\_csv\_headers` (line 2188)
-  - function: `keyphrase\_match` (line 2195)
-  - function: `normalize\_label` (line 2216)
-  - function: `infer\_contest\_fields` (line 2221)
-  - function: `\_infer\_category` (line 2358)
-  - function: `\_read\_module\_summary` (line 2383)
-  - function: `\_is\_ignored\_dir` (line 2406)
-  - function: `generate\_project\_inventory` (line 2410)
-  - function: `\_render\_inventory\_md` (line 2445)
-  - function: `\_finalize\_markdown\_lines` (line 2475)
-  - function: `update\_architecture\_md` (line 2562)
-  - function: `generate\_project\_map` (line 2585)
-  - function: `\_posix` (line 2595)
-  - function: `\_read\_file\_text` (line 2598)
-  - function: `\_extract\_top\_comment\_block` (line 2604)
-  - function: `\_harvest\_todos` (line 2634)
-  - function: `\_module\_info\_from\_ast` (line 2651)
-  - function: `\_scan\_webapp\_modules` (line 2745)
-  - function: `\_index\_defs` (line 2764)
-  - function: `\_resolve\_targets` (line 2784)
-  - function: `\_render\_audit\_md` (line 2820)
-  - function: `generate\_project\_audit` (line 3368)
-  - function: `generate\_todos\_index` (line 3391)
-  - function: `generate\_noise\_override\_suggestions` (line 3517)
-  - function: `generate\_pipeline\_map` (line 3641)
-  - function: `generate\_docs\_artifacts` (line 3971)
+  - class: `DecisionTuple` (line 80)
+  - class: `ExtractPlugin` (line 111)
+  - class: `Saveable` (line 114)
+  - class: `GCModule` (line 117)
+  - class: `ShutilModule` (line 120)
+  - class: `TimeModule` (line 124)
+  - class: `HasItem` (line 128)
+  - class: `HasAllMethod` (line 133)
+  - class: `PredictionResult` (line 140)
+  - class: `EventLike` (line 162)
+  - class: `Predictable` (line 171)
+  - function: `safe\_filename` (line 197)
+  - function: `is\_path\_safe` (line 283)
+  - function: `safe\_resolve\_path` (line 316)
+  - function: `safe\_join\_path` (line 347)
+  - function: `validate\_directory\_path` (line 375)
+  - function: `safe\_slug` (line 391)
+  - function: `safe\_query` (line 407)
+  - function: `safe\_key` (line 418)
+  - function: `\_filter\_valid\_kwargs` (line 429)
+  - function: `safe\_filter\_by` (line 447)
+  - function: `safe\_first` (line 461)
+  - function: `get\_or\_create` (line 474)
+  - function: `safe\_translate` (line 497)
+  - function: `safe\_scheme` (line 509)
+  - function: `safe\_netloc` (line 517)
+  - function: `safe\_geturl` (line 525)
+  - function: `\_resolve\_host\_ips` (line 533)
+  - function: `safe\_validate\_external\_url` (line 545)
+  - function: `safe\_extract` (line 648)
+  - function: `safe\_isalpha` (line 662)
+  - function: `safe\_pop` (line 672)
+  - function: `safe\_merge\_defaults` (line 680)
+  - function: `safe\_strip` (line 696)
+  - function: `safe\_setdefault` (line 702)
+  - function: `safe\_tolist` (line 713)
+  - function: `safe\_execute` (line 735)
+  - function: `safe\_commit` (line 747)
+  - function: `safe\_scalar\_one\_or\_none` (line 756)
+  - function: `safe\_model\_save` (line 767)
+  - function: `safe\_all` (line 812)
+  - function: `safe\_copy` (line 824)
+  - function: `safe\_isalnum` (line 847)
+  - function: `safe\_keys` (line 857)
+  - function: `safe\_attr\_keys` (line 870)
+  - function: `safe\_replace` (line 884)
+  - function: `safe\_isdigit` (line 897)
+  - function: `safe\_get` (line 904)
+  - function: `safe\_values` (line 913)
+  - function: `safe\_is\_set` (line 925)
+  - function: `safe\_set` (line 937)
+  - function: `safe\_clear` (line 947)
+  - function: `safe\_append\_cached\_segment` (line 957)
+  - function: `safe\_db\_call` (line 975)
+  - function: `safe\_append` (line 996)
+  - function: `safe\_update` (line 1017)
+  - function: `safe\_extend` (line 1042)
+  - function: `convert\_ndarrays` (line 1063)
+  - function: `normalize\_html\_for\_hash` (line 1073)
+  - function: `clean\_cache\_inplace` (line 1081)
+  - function: `\_to\_json\_safe` (line 1093)
+  - function: `sync\_type\_and\_election\_types` (line 1102)
+  - function: `keyword\_in\_text` (line 1128)
+  - function: `safe\_lower` (line 1136)
+  - function: `safe\_encode` (line 1142)
+  - function: `safe\_startswith` (line 1150)
+  - function: `safe\_add` (line 1165)
+  - function: `safe\_predict` (line 1181)
+  - function: `safe\_split` (line 1192)
+  - function: `safe\_capitalize` (line 1212)
+  - function: `safe\_item` (line 1216)
+  - function: `safe\_items` (line 1230)
+  - function: `safe\_similarity` (line 1249)
+  - function: `safe\_model\_encode` (line 1275)
+  - function: `safe\_get\_first` (line 1369)
+  - function: `validate\_handler\_result` (line 1395)
+  - function: `safe\_parse` (line 1427)
+  - function: `safe\_endswith` (line 1587)
+  - function: `safe\_isupper` (line 1598)
+  - function: `resolve\_county\_alias` (line 1609)
+  - function: `safe\_sid` (line 1638)
+  - function: `safe\_rsplit` (line 1660)
+  - function: `normalize\_county\_name` (line 1674)
+  - function: `flatten\_raw\_field` (line 1696)
+  - function: `normalize\_state\_name` (line 1711)
+  - function: `infer\_state\_county\_from\_url` (line 1747)
+  - function: `resolve\_state\_county\_from\_context` (line 1830)
+  - function: `format\_state\_label` (line 1856)
+  - function: `canonicalize\_county\_label` (line 1871)
+  - function: `format\_county\_label` (line 1883)
+  - function: `\_table\_sample\_text` (line 1913)
+  - function: `derive\_state\_county\_from\_table` (line 1944)
+  - function: `derive\_candidate\_party\_metadata` (line 2070)
+  - function: `build\_camelot\_row\_filter\_for\_context` (line 2178)
+  - function: `record\_noise\_suggestion` (line 2186)
+  - function: `get\_county\_precincts` (line 2217)
+  - function: `normalize\_county\_key` (line 2222)
+  - function: `lookup\_precinct\_aliases\_for\_county` (line 2234)
+  - function: `get\_state\_counties` (line 2244)
+  - function: `scan\_environment` (line 2248)
+  - function: `get\_title\_embedding\_features` (line 2256)
+  - function: `show\_progress\_bar` (line 2265)
+  - function: `coordinator\_feedback` (line 2275)
+  - function: `normalize\_text` (line 2278)
+  - function: `match\_any` (line 2281)
+  - function: `build\_csv\_headers` (line 2285)
+  - function: `keyphrase\_match` (line 2292)
+  - function: `normalize\_label` (line 2313)
+  - function: `infer\_contest\_fields` (line 2318)
+  - function: `\_infer\_category` (line 2455)
+  - function: `\_read\_module\_summary` (line 2480)
+  - function: `\_is\_ignored\_dir` (line 2503)
+  - function: `generate\_project\_inventory` (line 2507)
+  - function: `\_render\_inventory\_md` (line 2542)
+  - function: `\_finalize\_markdown\_lines` (line 2572)
+  - function: `update\_architecture\_md` (line 2659)
+  - function: `generate\_project\_map` (line 2682)
+  - function: `\_posix` (line 2692)
+  - function: `\_read\_file\_text` (line 2695)
+  - function: `\_extract\_top\_comment\_block` (line 2701)
+  - function: `\_harvest\_todos` (line 2731)
+  - function: `\_module\_info\_from\_ast` (line 2748)
+  - function: `\_scan\_webapp\_modules` (line 2842)
+  - function: `\_index\_defs` (line 2861)
+  - function: `\_resolve\_targets` (line 2881)
+  - function: `\_render\_audit\_md` (line 2917)
+  - function: `generate\_project\_audit` (line 3465)
+  - function: `generate\_todos\_index` (line 3488)
+  - function: `generate\_noise\_override\_suggestions` (line 3614)
+  - function: `generate\_pipeline\_map` (line 3738)
+  - function: `generate\_docs\_artifacts` (line 4068)
+  - function: `log\_rejection\_reason` (line 4088)
+  - function: `batch\_log\_rejections` (line 4171)
 - Imports:
-  - **Standard Library** (30):
+  - **Standard Library** (31):
     - `import copy as copy` (line 3)
     - `import inspect as inspect` (line 11)
     - `import os as os` (line 13)
@@ -11990,36 +13089,37 @@ graph LR
     - `import shutil as shutil` (line 16)
     - `import socket as socket` (line 17)
     - `import time as time` (line 19)
-    - `from pathlib import Path` (line 20)
-    - `from typing import TYPE_CHECKING` (line 21)
-    - `from typing import Any` (line 21)
-    - `from typing import Awaitable` (line 21)
-    - `from typing import Callable` (line 21)
-    - `from typing import Dict` (line 21)
-    - `from typing import Generator` (line 21)
-    - `from typing import Iterable` (line 21)
-    - `from typing import List` (line 21)
-    - `from typing import Mapping` (line 21)
-    - `from typing import Optional` (line 21)
-    - `from typing import Protocol` (line 21)
-    - `from typing import Sequence` (line 21)
-    - `from typing import Set` (line 21)
-    - `from typing import Type` (line 21)
-    - `from typing import TypedDict` (line 21)
-    - `from typing import TypeVar` (line 21)
-    - `from typing import Union` (line 21)
-    - `from typing import runtime_checkable` (line 21)
-    - `from urllib.parse import ParseResult` (line 41)
-    - `from urllib.parse import SplitResult` (line 41)
-    - `from urllib.parse import urlparse` (line 41)
+    - `import traceback as traceback` (line 20)
+    - `from pathlib import Path` (line 21)
+    - `from typing import TYPE_CHECKING` (line 22)
+    - `from typing import Any` (line 22)
+    - `from typing import Awaitable` (line 22)
+    - `from typing import Callable` (line 22)
+    - `from typing import Dict` (line 22)
+    - `from typing import Generator` (line 22)
+    - `from typing import Iterable` (line 22)
+    - `from typing import List` (line 22)
+    - `from typing import Mapping` (line 22)
+    - `from typing import Optional` (line 22)
+    - `from typing import Protocol` (line 22)
+    - `from typing import Sequence` (line 22)
+    - `from typing import Set` (line 22)
+    - `from typing import Type` (line 22)
+    - `from typing import TypedDict` (line 22)
+    - `from typing import TypeVar` (line 22)
+    - `from typing import Union` (line 22)
+    - `from typing import runtime_checkable` (line 22)
+    - `from urllib.parse import ParseResult` (line 42)
+    - `from urllib.parse import SplitResult` (line 42)
+    - `from urllib.parse import urlparse` (line 42)
   - **Third-party** (7):
-    - `import numpy as np` (line 43)
-    - `import orjson as orjson` (line 44)
-    - `from flask import request` (line 45)
-    - `from flask import session` (line 45)
-    - `from sqlalchemy.engine import ScalarResult` (line 52)
-    - `from sqlalchemy.orm import Query` (line 53)
-    - `from sqlalchemy.orm import Session` (line 53)
+    - `import numpy as np` (line 44)
+    - `import orjson as orjson` (line 45)
+    - `from flask import request` (line 46)
+    - `from flask import session` (line 46)
+    - `from sqlalchemy.engine import ScalarResult` (line 56)
+    - `from sqlalchemy.orm import Query` (line 57)
+    - `from sqlalchemy.orm import Session` (line 57)
   - **Local/Project** (12):
     - `from __future__ import annotations` (line 1)
     - `import difflib as difflib` (line 9)
@@ -12027,155 +13127,156 @@ graph LR
     - `import ipaddress as ipaddress` (line 12)
     - `import textwrap as textwrap` (line 18)
     - `from Context_Integration.Context_Library.constants import
-      KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 55)
+      KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 59)
     - `from Context_Integration.Context_Library.constants import
-      KNOWN_STATE_TO_COUNTY_MAP` (line 55)
+      KNOWN_STATE_TO_COUNTY_MAP` (line 59)
     - `from Context_Integration.Context_Library.constants import STATE_ABBR`
-      (line 55)
+      (line 59)
     - `from Context_Integration.Context_Library.constants import
-      STATE_MODULE_MAP` (line 55)
+      STATE_MODULE_MAP` (line 59)
     - `from Context_Integration.Context_Library.constants import
-      build_camelot_row_filter` (line 55)
+      build_camelot_row_filter` (line 59)
     - `from Context_Integration.Context_Library.constants import
-      normalize_party_label` (line 55)
-    - `from utils.logger_singleton import logger` (line 63)
+      normalize_party_label` (line 59)
+    - `from utils.logger_singleton import logger` (line 67)
 - Task markers:
-  - L411 **WARNING**: (f"\[safe_query\] session.query({model}) failed: {e}")
-  - L434 **WARNING**: (f"\[safe_filter_by\] No mapper found for model {model}")
-  - L440 **WARNING**: (f"\[safe_filter_by\] Could not inspect model {model}:
+  - L415 **WARNING**: (f"\[safe_query\] session.query({model}) failed: {e}")
+  - L438 **WARNING**: (f"\[safe_filter_by\] No mapper found for model {model}")
+  - L444 **WARNING**: (f"\[safe_filter_by\] Could not inspect model {model}:
     {e}")
-  - L454 **WARNING**: (f"\[safe_filter_by\] filter_by failed: {e}")
-  - L467 **WARNING**: (f"\[safe_first\] query.first() failed: {e}")
-  - L619 **WARNING**: ({
-  - L620 **WARNING**: ",
-  - L646 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
+  - L458 **WARNING**: (f"\[safe_filter_by\] filter_by failed: {e}")
+  - L471 **WARNING**: (f"\[safe_first\] query.first() failed: {e}")
+  - L629 **WARNING**: ({
+  - L630 **WARNING**: ",
+  - L656 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
     'extract' method.")
-  - L780 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
-  - L994 **WARNING**: (f"\[safe_append\] Target is not a list: {type(lst)};
+  - L790 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
+  - L1004 **WARNING**: (f"\[safe_append\] Target is not a list: {type(lst)};
     coercing to list.")
-  - L1016 **WARNING**: (f"\[safe_update\] Target is not a dict: {type(dct)}")
-  - L1020 **WARNING**: (f"\[safe_update\] Updates is not a dict:
+  - L1026 **WARNING**: (f"\[safe_update\] Target is not a dict: {type(dct)}")
+  - L1030 **WARNING**: (f"\[safe_update\] Updates is not a dict:
     {type(updates)}")
-  - L1040 **WARNING**: (f"\[safe_extend\] Target is not a list: {type(lst)};
+  - L1050 **WARNING**: (f"\[safe_extend\] Target is not a list: {type(lst)};
     coercing to list.")
-  - L1380 **WARNING**: (f"\[DOM_PARTS\] '{label}' is not a list for URL: {url}
+  - L1390 **WARNING**: (f"\[DOM_PARTS\] '{label}' is not a list for URL: {url}
     (type: {type(lst).\_\_name\_\_})")
-  - L1702 **WARNING**: (f"State '{state_norm}' not found in county map")
-  - L2568 **WARNING**: (f"\[inventory\] architecture.md not found at {md_file}")
-  - L2574 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+  - L1799 **WARNING**: (f"State '{state_norm}' not found in county map")
+  - L2665 **WARNING**: (f"\[inventory\] architecture.md not found at {md_file}")
+  - L2671 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
     aborting replace.")
-  - L2589 **WARNING**: ("\[inventory\] generate_project_map completed with
+  - L2686 **WARNING**: ("\[inventory\] generate_project_map completed with
     warnings; check markers and path.")
-  - L2635 **WARN**: ) and return their metadata."""
-  - L2637 **WARN**: ", "WARNING", "NOTE", "HA" + "CK", "X"_3, "BUG")
-  - L3405 **BUG**: '\]
-  - L3407 **WARN**: ', 'WARNING', 'NOTE'\]
-  - L3536 **WARNING**: (f"\[noise\] No suggestions file found at {path}")
-  - L3976 **TODO**: index."""
+  - L2732 **WARN**: ) and return their metadata."""
+  - L2734 **WARN**: ", "WARNING", "NOTE", "HA" + "CK", "X"_3, "BUG")
+  - L3502 **BUG**: '\]
+  - L3504 **WARN**: ', 'WARNING', 'NOTE'\]
+  - L3633 **WARNING**: (f"\[noise\] No suggestions file found at {path}")
+  - L4073 **TODO**: index."""
+  - L4165 **WARNING**: (f"Failed to log rejection reason: {e}")
 - Outgoing cross-module calls (sample):
+  - os.getenv (line 49)
   - Context\_Integration.Context\_Library.constants.STATE\_MODULE\_MAP.keys
-    (line 68)
+    (line 72)
   - Context\_Integration.Context\_Library.constants.KNOWN\_STATE\_TO\_COUNTY\_MAP.keys
-    (line 68)
-  - name.encode (line 218)
-  - name.replace (line 221)
-  - re.sub (line 224)
-  - re.sub (line 227)
-  - name.replace (line 230)
-  - re.sub (line 233)
-  - re.sub (line 234)
-  - name.strip (line 237)
-  - name.rsplit (line 240)
-  - base.endswith (line 243)
-  - base.rstrip (line 244)
-  - re.sub (line 253)
-  - re.sub (line 254)
-  - name.strip (line 255)
-  - name.upper (line 263)
-  - pathlib.Path (line 272)
-  - pathlib.Path (line 282)
-  - pathlib.Path (line 289)
-  - pathlib.Path (line 292)
-  - target.is\_relative\_to (line 297)
-  - base.resolve (line 297)
+    (line 72)
+  - name.encode (line 222)
+  - name.replace (line 225)
+  - re.sub (line 228)
+  - re.sub (line 231)
+  - name.replace (line 234)
+  - re.sub (line 237)
+  - re.sub (line 238)
+  - name.strip (line 241)
+  - name.rsplit (line 244)
+  - base.endswith (line 247)
+  - base.rstrip (line 248)
+  - re.sub (line 257)
+  - re.sub (line 258)
+  - name.strip (line 259)
+  - name.upper (line 267)
+  - pathlib.Path (line 276)
+  - pathlib.Path (line 286)
+  - pathlib.Path (line 293)
+  - pathlib.Path (line 296)
+  - target.is\_relative\_to (line 301)
   - base.resolve (line 301)
-  - pathlib.Path (line 320)
-  - pathlib.Path (line 321)
-  - raw\_path.is\_absolute (line 322)
-  - pathlib.Path.cwd (line 322)
-  - target.resolve (line 324)
-  - target.resolve (line 329)
-  - resolved.exists (line 334)
-  - resolved.mkdir (line 338)
-  - pathlib.Path (line 345)
-  - re.split (line 352)
-  - sanitized\_parts.append (line 357)
-  - base\_path.joinpath (line 359)
-  - candidate.resolve (line 361)
-  - pathlib.Path (line 373)
-  - candidate.exists (line 375)
-  - candidate.is\_dir (line 375)
-  - candidate.exists (line 378)
-  - candidate.mkdir (line 381)
-  - typing.TypeVar (line 385)
-  - c.isalnum (line 397)
-  - re.sub (line 398)
-  - s.replace (line 399)
-  - re.sub (line 400)
-  - flask.session.query (line 409)
-  - utils.logger\_singleton.logger.warning (line 411)
-  - utils.logger\_singleton.logger.warning (line 434)
+  - base.resolve (line 305)
+  - pathlib.Path (line 324)
+  - pathlib.Path (line 325)
+  - raw\_path.is\_absolute (line 326)
+  - pathlib.Path.cwd (line 326)
+  - target.resolve (line 328)
+  - target.resolve (line 333)
+  - resolved.exists (line 338)
+  - resolved.mkdir (line 342)
+  - pathlib.Path (line 349)
+  - re.split (line 356)
+  - sanitized\_parts.append (line 361)
+  - base\_path.joinpath (line 363)
+  - candidate.resolve (line 365)
+  - pathlib.Path (line 377)
+  - candidate.exists (line 379)
+  - candidate.is\_dir (line 379)
+  - candidate.exists (line 382)
+  - candidate.mkdir (line 385)
+  - typing.TypeVar (line 389)
+  - c.isalnum (line 401)
+  - re.sub (line 402)
+  - s.replace (line 403)
+  - re.sub (line 404)
+  - flask.session.query (line 413)
+  - utils.logger\_singleton.logger.warning (line 415)
 - Inbound references:
-  - safe\_filename ← shared_logic.py:355
-  - is\_path\_safe ← shared_logic.py:331
-  - is\_path\_safe ← shared_logic.py:365
-  - safe\_slug ← shared_logic.py:2067
-  - safe\_query ← shared_logic.py:481
-  - safe\_key ← shared_logic.py:437
-  - \_filter\_valid\_kwargs ← shared_logic.py:450
-  - \_filter\_valid\_kwargs ← shared_logic.py:486
-  - safe\_filter\_by ← shared_logic.py:482
-  - safe\_first ← shared_logic.py:483
-  - \_resolve\_host\_ips ← shared_logic.py:615
-  - safe\_merge\_defaults ← shared_logic.py:682
-  - safe\_strip ← shared_logic.py:1520
-  - safe\_strip ← shared_logic.py:1585
-  - safe\_strip ← shared_logic.py:1622
-  - safe\_strip ← shared_logic.py:2182
-  - safe\_strip ← shared_logic.py:2200
-  - safe\_strip ← shared_logic.py:2201
+  - safe\_filename ← shared_logic.py:359
+  - is\_path\_safe ← shared_logic.py:335
+  - is\_path\_safe ← shared_logic.py:369
+  - safe\_slug ← shared_logic.py:2164
+  - safe\_query ← shared_logic.py:485
+  - safe\_key ← shared_logic.py:441
+  - \_filter\_valid\_kwargs ← shared_logic.py:454
+  - \_filter\_valid\_kwargs ← shared_logic.py:490
+  - safe\_filter\_by ← shared_logic.py:486
+  - safe\_first ← shared_logic.py:487
+  - \_resolve\_host\_ips ← shared_logic.py:625
+  - safe\_merge\_defaults ← shared_logic.py:692
+  - safe\_strip ← shared_logic.py:1617
+  - safe\_strip ← shared_logic.py:1682
+  - safe\_strip ← shared_logic.py:1719
+  - safe\_strip ← shared_logic.py:2279
+  - safe\_strip ← shared_logic.py:2297
+  - safe\_strip ← shared_logic.py:2298
   - safe\_strip ← user_prompt.py:581
   - safe\_strip ← user_prompt.py:651
   - safe\_strip ← user_prompt.py:687
   - safe\_strip ← user_prompt.py:689
-  - safe\_commit ← shared_logic.py:490
-  - safe\_replace ← shared_logic.py:1520
-  - safe\_replace ← shared_logic.py:1586
-  - safe\_replace ← shared_logic.py:1587
-  - safe\_replace ← shared_logic.py:1622
-  - safe\_replace ← shared_logic.py:1656
-  - safe\_replace ← shared_logic.py:1656
-  - safe\_get ← shared_logic.py:678
-  - safe\_get ← shared_logic.py:697
-  - safe\_append ← shared_logic.py:2298
-  - safe\_append ← shared_logic.py:2324
-  - safe\_append ← shared_logic.py:2339
-  - safe\_append ← shared_logic.py:2343
-  - safe\_update ← shared_logic.py:1025
-  - convert\_ndarrays ← shared_logic.py:1055
-  - convert\_ndarrays ← shared_logic.py:1057
-  - \_to\_json\_safe ← shared_logic.py:1087
-  - \_to\_json\_safe ← shared_logic.py:1089
-  - sync\_type\_and\_election\_types ← shared_logic.py:2350
+  - safe\_commit ← shared_logic.py:494
+  - safe\_replace ← shared_logic.py:1617
+  - safe\_replace ← shared_logic.py:1683
+  - safe\_replace ← shared_logic.py:1684
+  - safe\_replace ← shared_logic.py:1719
+  - safe\_replace ← shared_logic.py:1753
+  - safe\_replace ← shared_logic.py:1753
+  - safe\_get ← shared_logic.py:688
+  - safe\_get ← shared_logic.py:707
+  - safe\_append ← shared_logic.py:2395
+  - safe\_append ← shared_logic.py:2421
+  - safe\_append ← shared_logic.py:2436
+  - safe\_append ← shared_logic.py:2440
+  - safe\_update ← shared_logic.py:1035
+  - convert\_ndarrays ← shared_logic.py:1065
+  - convert\_ndarrays ← shared_logic.py:1067
+  - \_to\_json\_safe ← shared_logic.py:1097
+  - \_to\_json\_safe ← shared_logic.py:1099
+  - sync\_type\_and\_election\_types ← shared_logic.py:2447
   - safe\_lower ← shared_logger.py:481
-  - safe\_lower ← shared_logic.py:868
-  - safe\_lower ← shared_logic.py:870
-  - safe\_lower ← shared_logic.py:1120
-  - safe\_lower ← shared_logic.py:1122
-  - safe\_lower ← shared_logic.py:1520
-  - safe\_lower ← shared_logic.py:1585
-  - safe\_lower ← shared_logic.py:1622
-  - safe\_lower ← shared_logic.py:1655
+  - safe\_lower ← shared_logic.py:878
+  - safe\_lower ← shared_logic.py:880
+  - safe\_lower ← shared_logic.py:1130
+  - safe\_lower ← shared_logic.py:1132
+  - safe\_lower ← shared_logic.py:1617
+  - safe\_lower ← shared_logic.py:1682
+  - safe\_lower ← shared_logic.py:1719
+  - safe\_lower ← shared_logic.py:1752
 
 ### utils/spacy\_utils.py {#webapp-parser-utils-spacy-utils-py}
 
@@ -12297,6 +13398,7 @@ graph LR
   - \_get\_nlp ← spacy_utils.py:178
   - \_get\_nlp ← spacy_utils.py:185
   - \_get\_nlp ← spacy_utils.py:234
+  - extract\_entities ← html_election_parser.py:2669
   - extract\_entities ← spacy_utils.py:105
   - extract\_entities ← spacy_utils.py:258
   - extract\_entities ← spacy_utils.py:332
@@ -12408,35 +13510,35 @@ graph LR
 ### utils/table\_builder.py {#webapp-parser-utils-table-builder-py}
 
 - Definitions:
-  - function: `\_normalize\_header\_cached` (line 71)
-  - function: `\_norm\_header` (line 76)
-  - function: `\_percent\_norms` (line 86)
-  - function: `\_percent\_reported\_norm` (line 100)
-  - function: `\_looks\_like\_location\_header` (line 170)
-  - function: `\_location\_priority\_score` (line 178)
-  - function: `\_candidate\_header\_info` (line 189)
-  - function: `\_extract\_candidate\_blocks` (line 208)
-  - function: `\_coerce\_int\_for\_total` (line 219)
-  - function: `\_ensure\_division\_totals` (line 242)
-  - function: `\_apply\_canonical\_order` (line 319)
-  - function: `\_emit` (line 401)
-  - function: `\_salvage\_promote\_best\_row\_as\_header` (line 420)
-  - function: `\_salvage\_promote\_first\_row\_as\_header` (line 475)
-  - function: `\_sanitize\_headers\_and\_rows` (line 504)
-  - function: `\_stringify\_for\_pivot` (line 595)
-  - function: `\_stringify\_entity\_info` (line 618)
-  - function: `\_drop\_title\_noise\_rows` (line 643)
-  - function: `build\_dynamic\_table` (line 746)
-  - function: `build\_table\_noninteractive` (line 1037)
-  - function: `\_get\_table\_builder\_cache\_dir` (line 1071)
-  - function: `\_save\_table\_builder\_cache` (line 1079)
-  - function: `\_list\_table\_builder\_cache` (line 1103)
-  - function: `\_load\_table\_builder\_cache` (line 1116)
-  - function: `prompt\_user\_to\_confirm\_table\_structure` (line 1138)
-  - function: `interactive\_batch\_operations` (line 1398)
-  - function: `auto\_suggest\_corrections` (line 1455)
-  - function: `dynamic\_confidence\_threshold` (line 1512)
-  - function: `\_unify\_percent\_columns` (line 1550)
+  - function: `\_normalize\_header\_cached` (line 76)
+  - function: `\_norm\_header` (line 81)
+  - function: `\_percent\_norms` (line 91)
+  - function: `\_percent\_reported\_norm` (line 105)
+  - function: `\_looks\_like\_location\_header` (line 175)
+  - function: `\_location\_priority\_score` (line 183)
+  - function: `\_candidate\_header\_info` (line 194)
+  - function: `\_extract\_candidate\_blocks` (line 213)
+  - function: `\_coerce\_int\_for\_total` (line 224)
+  - function: `\_ensure\_division\_totals` (line 247)
+  - function: `\_apply\_canonical\_order` (line 324)
+  - function: `\_emit` (line 406)
+  - function: `\_salvage\_promote\_best\_row\_as\_header` (line 425)
+  - function: `\_salvage\_promote\_first\_row\_as\_header` (line 480)
+  - function: `\_sanitize\_headers\_and\_rows` (line 509)
+  - function: `\_stringify\_for\_pivot` (line 600)
+  - function: `\_stringify\_entity\_info` (line 623)
+  - function: `\_drop\_title\_noise\_rows` (line 648)
+  - function: `build\_dynamic\_table` (line 751)
+  - function: `build\_table\_noninteractive` (line 1042)
+  - function: `\_get\_table\_builder\_cache\_dir` (line 1076)
+  - function: `\_save\_table\_builder\_cache` (line 1084)
+  - function: `\_list\_table\_builder\_cache` (line 1108)
+  - function: `\_load\_table\_builder\_cache` (line 1121)
+  - function: `prompt\_user\_to\_confirm\_table\_structure` (line 1143)
+  - function: `interactive\_batch\_operations` (line 1426)
+  - function: `auto\_suggest\_corrections` (line 1483)
+  - function: `dynamic\_confidence\_threshold` (line 1540)
+  - function: `\_unify\_percent\_columns` (line 1582)
 - Imports:
   - **Standard Library** (12):
     - `import copy as copy` (line 3)
@@ -12453,186 +13555,189 @@ graph LR
     - `from typing import Tuple` (line 9)
   - **Third-party** (1):
     - `import orjson as orjson` (line 16)
-  - **Local/Project** (36):
+  - **Local/Project** (39):
     - `from __future__ import annotations` (line 1)
     - `from rich.table import Table` (line 17)
     - `from config import CACHE_DIR` (line 19)
+    - `from config import TABLE_BUILDER_AUTO_ACCEPT_THRESHOLD` (line 19)
+    - `from config import TABLE_BUILDER_LOW_CONFIDENCE_THRESHOLD` (line 19)
     - `from Context_Integration.Context_Library.constants import
-      BALLOT_TYPES_SORT_ORDER` (line 20)
+      BALLOT_TYPES_SORT_ORDER` (line 24)
     - `from Context_Integration.Context_Library.constants import
-      LOCATION_KEYWORDS` (line 20)
+      LOCATION_KEYWORDS` (line 24)
     - `from Context_Integration.Context_Library.constants import
-      PERCENT_KEYWORDS` (line 20)
+      PERCENT_KEYWORDS` (line 24)
     - `from Context_Integration.Context_Library.constants import
-      TABLE_BUILDER_CANDIDATE_SUFFIXES` (line 20)
+      TABLE_BUILDER_CANDIDATE_SUFFIXES` (line 24)
     - `from Context_Integration.Context_Library.constants import
-      TABLE_BUILDER_LOCATION_PRIORITY` (line 20)
+      TABLE_BUILDER_LOCATION_PRIORITY` (line 24)
     - `from Context_Integration.Context_Library.constants import
-      TABLE_BUILDER_LOCATION_TOKENS` (line 20)
+      TABLE_BUILDER_LOCATION_TOKENS` (line 24)
     - `from Context_Integration.Context_Library.constants import TOTAL_KEYWORDS`
-      (line 20)
+      (line 24)
     - `from Context_Integration.Context_Library.constants import
-      get_camelot_row_regex` (line 20)
+      get_camelot_row_regex` (line 24)
     - `from Context_Integration.Context_Library.constants import
-      get_camelot_title_regex` (line 20)
+      get_camelot_title_regex` (line 24)
     - `from Context_Integration.Context_Library.constants import
-      is_pseudo_result_party` (line 20)
-    - `from coordinator_protocol import CoordinatorProtocol` (line 32)
-    - `from detect import emit_metric` (line 33)
-    - `from detect import harmonize_headers_and_data` (line 33)
-    - `from detect import nlp_entity_annotate_table` (line 33)
-    - `from detect import normalize_header` (line 33)
-    - `from logger_singleton import logger` (line 39)
-    - `from merge_utils import merge_table_data` (line 40)
-    - `from pivot import pivot_candidate_groups_from_rawjson` (line 41)
-    - `from pivot import pivot_to_wide as pivot_to_wide_format` (line 42)
-    - `from salvage import collapse_ballot_synonym_columns` (line 43)
-    - `from shared_logic import build_camelot_row_filter_for_context` (line 44)
-    - `from shared_logic import record_noise_suggestion` (line 44)
-    - `from shared_logic import resolve_state_county_from_context` (line 44)
-    - `from shared_logic import safe_append` (line 44)
-    - `from shared_logic import safe_copy` (line 44)
-    - `from shared_logic import safe_get` (line 44)
-    - `from shared_logic import safe_isalnum` (line 44)
-    - `from shared_logic import safe_lower` (line 44)
-    - `from shared_logic import safe_replace` (line 44)
-    - `from shared_logic import safe_strip` (line 44)
-    - `from shared_logic import safe_values` (line 44)
-    - `from structure_cache import cache_table_structure` (line 57)
-    - `from structure_cache import table_signature` (line 57)
+      is_pseudo_result_party` (line 24)
+    - `from coordinator_protocol import CoordinatorProtocol` (line 36)
+    - `from detect import emit_metric` (line 37)
+    - `from detect import harmonize_headers_and_data` (line 37)
+    - `from detect import nlp_entity_annotate_table` (line 37)
+    - `from detect import normalize_header` (line 37)
+    - `from logger_singleton import logger` (line 43)
+    - `from merge_utils import merge_table_data` (line 44)
+    - `from pivot import pivot_candidate_groups_from_rawjson` (line 45)
+    - `from pivot import pivot_to_wide as pivot_to_wide_format` (line 46)
+    - `from salvage import collapse_ballot_synonym_columns` (line 47)
+    - `from shared_logic import build_camelot_row_filter_for_context` (line 48)
+    - `from shared_logic import log_rejection_reason` (line 48)
+    - `from shared_logic import record_noise_suggestion` (line 48)
+    - `from shared_logic import resolve_state_county_from_context` (line 48)
+    - `from shared_logic import safe_append` (line 48)
+    - `from shared_logic import safe_copy` (line 48)
+    - `from shared_logic import safe_get` (line 48)
+    - `from shared_logic import safe_isalnum` (line 48)
+    - `from shared_logic import safe_lower` (line 48)
+    - `from shared_logic import safe_replace` (line 48)
+    - `from shared_logic import safe_strip` (line 48)
+    - `from shared_logic import safe_values` (line 48)
+    - `from structure_cache import cache_table_structure` (line 62)
+    - `from structure_cache import table_signature` (line 62)
 - Task markers:
-  - L816 **WARNING**: ", "builder", "\[TABLE_BUILDER\] dynamic_table_extractor
+  - L821 **WARNING**: ", "builder", "\[TABLE_BUILDER\] dynamic_table_extractor
     failed for panel table", session_id, error=str(e))
-  - L828 **WARNING**: ", "builder", "\[TABLE_BUILDER\] dynamic_table_extractor
+  - L833 **WARNING**: ", "builder", "\[TABLE_BUILDER\] dynamic_table_extractor
     failed (no panels path)", session_id, error=str(e))
-  - L836 **WARNING**: ", "builder", "\[TABLE_BUILDER\] all_panel_tables was not
+  - L841 **WARNING**: ", "builder", "\[TABLE_BUILDER\] all_panel_tables was not
     a list; coercing to empty list", session_id,
     got_type=str(type(all_panel_tables)))
-  - L845 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Dropping invalid table
+  - L850 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Dropping invalid table
     entry", session_id, entry_type=str(type(item)))
-  - L862 **WARNING**: ", "builder", "\[TABLE_BUILDER\] sanitize failed",
+  - L867 **WARNING**: ", "builder", "\[TABLE_BUILDER\] sanitize failed",
     session_id, error=str(e))
-  - L867 **WARNING**: ", "builder", "\[TABLE_BUILDER\] harmonize failed",
+  - L872 **WARNING**: ", "builder", "\[TABLE_BUILDER\] harmonize failed",
     session_id, error=str(e))
-  - L873 **WARNING**: ", "builder", "\[TABLE_BUILDER\]
+  - L878 **WARNING**: ", "builder", "\[TABLE_BUILDER\]
     collapse_ballot_synonym_columns failed", session_id, error=str(e))
-  - L925 **WARNING**: ",
-  - L950 **WARNING**: ", "builder", "\[TABLE_BUILDER\] entity annotate failed",
+  - L930 **WARNING**: ",
+  - L955 **WARNING**: ", "builder", "\[TABLE_BUILDER\] entity annotate failed",
     session_id, error=str(e))
-  - L955 **WARNING**: ", "builder", "\[TABLE_BUILDER\] stringify entity_info
+  - L960 **WARNING**: ", "builder", "\[TABLE_BUILDER\] stringify entity_info
     failed", session_id, error=str(e))
-  - L975 **WARNING**: ", "builder", "\[TABLE_BUILDER\] pivot_to_wide failed",
+  - L980 **WARNING**: ", "builder", "\[TABLE_BUILDER\] pivot_to_wide failed",
     session_id, error=str(e))
-  - L995 **WARNING**: ", "builder", "\[TABLE_BUILDER\] ensure division totals
+  - L1000 **WARNING**: ", "builder", "\[TABLE_BUILDER\] ensure division totals
     failed", session_id, error=str(e))
-  - L1298 **WARNING**: ", "builder", f"\[TABLE_BUILDER\] Column marked
+  - L1326 **WARNING**: ", "builder", f"\[TABLE_BUILDER\] Column marked
     incorrect: {col_name}", session_id, contest=contest)
-  - L1371 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Failed to persist table
+  - L1399 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Failed to persist table
     structure logs", session_id, error=str(e))
-  - L1386 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Failed to persist
+  - L1414 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Failed to persist
     coordinator DB log", session_id, error=str(e))
 - Outgoing cross-module calls (sample):
-  - detect.normalize\_header (line 73)
-  - functools.lru\_cache (line 70)
-  - norms.update (line 94)
-  - norms.add (line 95)
-  - functools.lru\_cache (line 85)
-  - functools.lru\_cache (line 99)
-  - dict.fromkeys (line 118)
-  - tok.lower (line 118)
-  - dict.fromkeys (line 122)
-  - tok.lower (line 122)
-  - dict.fromkeys (line 150)
-  - term.lower (line 157)
-  - \_TOTAL\_KEYWORD\_NORMS.update (line 159)
-  - \_CANDIDATE\_SUFFIX\_NORMS.update (line 165)
-  - header.lower (line 174)
-  - \_LOCATION\_PRIORITY\_NORMS.index (line 181)
-  - header.lower (line 182)
-  - header.split (line 192)
-  - left.strip (line 193)
-  - right.strip (line 194)
-  - bt.lower (line 203)
-  - right.lower (line 203)
-  - collections.OrderedDict (line 209)
-  - blocks.setdefault (line 215)
-  - val.is\_integer (line 227)
-  - val.replace (line 229)
-  - s.endswith (line 230)
-  - s.lstrip (line 234)
-  - row.get (line 253)
-  - candidate\_blocks.values (line 260)
-  - candidate\_total\_cols.append (line 268)
-  - ballot\_value\_cols.append (line 270)
-  - bt.lower (line 273)
-  - suffix.lower (line 273)
-  - ballot\_value\_cols.append (line 274)
-  - row.get (line 284)
-  - row.get (line 291)
-  - row.get (line 293)
-  - row.items (line 297)
-  - row.setdefault (line 314)
-  - headers.index (line 331)
-  - ordered.append (line 332)
-  - seen.add (line 333)
+  - detect.normalize\_header (line 78)
+  - functools.lru\_cache (line 75)
+  - norms.update (line 99)
+  - norms.add (line 100)
+  - functools.lru\_cache (line 90)
+  - functools.lru\_cache (line 104)
+  - dict.fromkeys (line 123)
+  - tok.lower (line 123)
+  - dict.fromkeys (line 127)
+  - tok.lower (line 127)
+  - dict.fromkeys (line 155)
+  - term.lower (line 162)
+  - \_TOTAL\_KEYWORD\_NORMS.update (line 164)
+  - \_CANDIDATE\_SUFFIX\_NORMS.update (line 170)
+  - header.lower (line 179)
+  - \_LOCATION\_PRIORITY\_NORMS.index (line 186)
+  - header.lower (line 187)
+  - header.split (line 197)
+  - left.strip (line 198)
+  - right.strip (line 199)
+  - bt.lower (line 208)
+  - right.lower (line 208)
+  - collections.OrderedDict (line 214)
+  - blocks.setdefault (line 220)
+  - val.is\_integer (line 232)
+  - val.replace (line 234)
+  - s.endswith (line 235)
+  - s.lstrip (line 239)
+  - row.get (line 258)
+  - candidate\_blocks.values (line 265)
+  - candidate\_total\_cols.append (line 273)
+  - ballot\_value\_cols.append (line 275)
+  - bt.lower (line 278)
+  - suffix.lower (line 278)
+  - ballot\_value\_cols.append (line 279)
+  - row.get (line 289)
+  - row.get (line 296)
+  - row.get (line 298)
+  - row.items (line 302)
+  - row.setdefault (line 319)
+  - headers.index (line 336)
   - ordered.append (line 337)
   - seen.add (line 338)
-  - ordered.append (line 344)
-  - seen.add (line 345)
-  - headers.index (line 348)
-  - ordered.append (line 351)
-  - seen.add (line 352)
+  - ordered.append (line 342)
+  - seen.add (line 343)
+  - ordered.append (line 349)
+  - seen.add (line 350)
+  - headers.index (line 353)
+  - ordered.append (line 356)
+  - seen.add (line 357)
 - Inbound references:
-  - \_normalize\_header\_cached ← table_builder.py:79
-  - \_normalize\_header\_cached ← table_builder.py:81
-  - \_normalize\_header\_cached ← table_builder.py:82
-  - \_norm\_header ← table_builder.py:93
-  - \_norm\_header ← table_builder.py:94
-  - \_norm\_header ← table_builder.py:95
-  - \_norm\_header ← table_builder.py:101
-  - \_norm\_header ← table_builder.py:115
-  - \_norm\_header ← table_builder.py:136
-  - \_norm\_header ← table_builder.py:151
-  - \_norm\_header ← table_builder.py:154
-  - \_norm\_header ← table_builder.py:160
-  - \_norm\_header ← table_builder.py:161
-  - \_norm\_header ← table_builder.py:162
-  - \_norm\_header ← table_builder.py:163
+  - \_normalize\_header\_cached ← table_builder.py:84
+  - \_normalize\_header\_cached ← table_builder.py:86
+  - \_normalize\_header\_cached ← table_builder.py:87
+  - \_norm\_header ← table_builder.py:98
+  - \_norm\_header ← table_builder.py:99
+  - \_norm\_header ← table_builder.py:100
+  - \_norm\_header ← table_builder.py:106
+  - \_norm\_header ← table_builder.py:120
+  - \_norm\_header ← table_builder.py:141
+  - \_norm\_header ← table_builder.py:156
+  - \_norm\_header ← table_builder.py:159
+  - \_norm\_header ← table_builder.py:165
+  - \_norm\_header ← table_builder.py:166
   - \_norm\_header ← table_builder.py:167
-  - \_norm\_header ← table_builder.py:171
-  - \_norm\_header ← table_builder.py:179
-  - \_norm\_header ← table_builder.py:197
-  - \_norm\_header ← table_builder.py:245
-  - \_norm\_header ← table_builder.py:246
-  - \_norm\_header ← table_builder.py:266
-  - \_norm\_header ← table_builder.py:298
-  - \_norm\_header ← table_builder.py:343
-  - \_norm\_header ← table_builder.py:366
-  - \_norm\_header ← table_builder.py:376
-  - \_norm\_header ← table_builder.py:377
-  - \_norm\_header ← table_builder.py:385
-  - \_norm\_header ← table_builder.py:386
-  - \_norm\_header ← table_builder.py:387
-  - \_norm\_header ← table_builder.py:388
-  - \_norm\_header ← table_builder.py:436
-  - \_norm\_header ← table_builder.py:452
-  - \_norm\_header ← table_builder.py:456
-  - \_norm\_header ← table_builder.py:486
-  - \_norm\_header ← table_builder.py:490
-  - \_norm\_header ← table_builder.py:672
-  - \_norm\_header ← table_builder.py:673
-  - \_norm\_header ← table_builder.py:674
-  - \_norm\_header ← table_builder.py:675
-  - \_norm\_header ← table_builder.py:676
-  - \_norm\_header ← table_builder.py:706
-  - \_norm\_header ← table_builder.py:887
-  - \_norm\_header ← table_builder.py:888
-  - \_norm\_header ← table_builder.py:889
-  - \_norm\_header ← table_builder.py:890
-  - \_norm\_header ← table_builder.py:891
-  - \_norm\_header ← table_builder.py:940
-  - \_norm\_header ← table_builder.py:941
-  - \_norm\_header ← table_builder.py:943
+  - \_norm\_header ← table_builder.py:168
+  - \_norm\_header ← table_builder.py:172
+  - \_norm\_header ← table_builder.py:176
+  - \_norm\_header ← table_builder.py:184
+  - \_norm\_header ← table_builder.py:202
+  - \_norm\_header ← table_builder.py:250
+  - \_norm\_header ← table_builder.py:251
+  - \_norm\_header ← table_builder.py:271
+  - \_norm\_header ← table_builder.py:303
+  - \_norm\_header ← table_builder.py:348
+  - \_norm\_header ← table_builder.py:371
+  - \_norm\_header ← table_builder.py:381
+  - \_norm\_header ← table_builder.py:382
+  - \_norm\_header ← table_builder.py:390
+  - \_norm\_header ← table_builder.py:391
+  - \_norm\_header ← table_builder.py:392
+  - \_norm\_header ← table_builder.py:393
+  - \_norm\_header ← table_builder.py:441
+  - \_norm\_header ← table_builder.py:457
+  - \_norm\_header ← table_builder.py:461
+  - \_norm\_header ← table_builder.py:491
+  - \_norm\_header ← table_builder.py:495
+  - \_norm\_header ← table_builder.py:677
+  - \_norm\_header ← table_builder.py:678
+  - \_norm\_header ← table_builder.py:679
+  - \_norm\_header ← table_builder.py:680
+  - \_norm\_header ← table_builder.py:681
+  - \_norm\_header ← table_builder.py:711
+  - \_norm\_header ← table_builder.py:892
+  - \_norm\_header ← table_builder.py:893
+  - \_norm\_header ← table_builder.py:894
+  - \_norm\_header ← table_builder.py:895
+  - \_norm\_header ← table_builder.py:896
+  - \_norm\_header ← table_builder.py:945
+  - \_norm\_header ← table_builder.py:946
+  - \_norm\_header ← table_builder.py:948
 
 ### utils/table\_core.py {#webapp-parser-utils-table-core-py}
 
@@ -12841,6 +13946,24 @@ graph LR
   - \_write ← telemetry_agg.py:51
   - \_write ← telemetry_agg.py:67
   - \_write ← telemetry_agg.py:70
+
+### utils/url\_ingestion.py {#webapp-parser-utils-url-ingestion-py}
+
+- Definitions:
+  - function: `url\_already\_listed` (line 9)
+- Imports:
+  - **Standard Library** (1):
+    - `import os as os` (line 3)
+  - **Third-party** (2):
+    - `from webapp.parser.utils.misc_utils import extract_url_and_label` (line
+      5)
+    - `from webapp.parser.utils.shared_logic import safe_strip` (line 6)
+  - **Local/Project** (1):
+    - `from __future__ import annotations` (line 1)
+- Outgoing cross-module calls (sample):
+  - webapp.parser.utils.shared\_logic.safe\_strip (line 15)
+  - s.startswith (line 16)
+  - webapp.parser.utils.misc\_utils.extract\_url\_and\_label (line 18)
 
 ### utils/url\_trust\_scorer.py {#webapp-parser-utils-url-trust-scorer-py}
 
@@ -13207,7 +14330,7 @@ graph LR
 - Inbound references:
   - \_auto\_width ← xlsx_exporter.py:215
   - \_apply\_styles ← xlsx_exporter.py:214
-  - export\_candidate\_group\_pivot\_xlsx ← output_utils.py:671
+  - export\_candidate\_group\_pivot\_xlsx ← output_utils.py:672
 
 ### verification/local\_dl\_sync.py {#webapp-parser-verification-local-dl-sync-py}
 
@@ -13419,11 +14542,11 @@ graph LR
 ### web\_pipeline.py {#webapp-parser-web-pipeline-py}
 
 - Definitions:
-  - class: `CancellationManager` (line 22)
-  - function: `heartbeat` (line 97)
-  - function: `save\_pipeline\_report` (line 111)
-  - function: `process\_urls\_for\_web` (line 122)
-  - function: `cancel\_processing` (line 713)
+  - class: `CancellationManager` (line 21)
+  - function: `heartbeat` (line 96)
+  - function: `save\_pipeline\_report` (line 110)
+  - function: `process\_urls\_for\_web` (line 121)
+  - function: `cancel\_processing` (line 748)
 - Imports:
   - **Standard Library** (4):
     - `import os as os` (line 1)
@@ -13432,96 +14555,98 @@ graph LR
     - `import traceback as traceback` (line 4)
   - **Third-party** (1):
     - `import orjson as orjson` (line 6)
-  - **Local/Project** (10):
+  - **Local/Project** (12):
     - `from config import PIPELINE_HEARTBEAT_INTERVAL` (line 8)
     - `from config import PIPELINE_MAX_WORKERS` (line 8)
     - `from config import PROCESSED_URLS_FILE` (line 8)
+    - `from config import SLOW_NLP_AUDIT_MIN_HITS` (line 8)
+    - `from config import SLOW_NLP_AUDIT_THRESHOLD` (line 8)
     - `from config import URL_LIST_FILE` (line 8)
-    - `from html_election_parser import main` (line 14)
-    - `from utils.logger_singleton import logger` (line 15)
-    - `from utils.logger_singleton import prompt` (line 15)
-    - `from utils.shared_logic import safe_clear` (line 16)
-    - `from utils.shared_logic import safe_is_set` (line 16)
-    - `from utils.shared_logic import safe_set` (line 16)
+    - `from html_election_parser import main` (line 16)
+    - `from utils.logger_singleton import logger` (line 17)
+    - `from utils.logger_singleton import prompt` (line 17)
+    - `from utils.shared_logic import safe_clear` (line 18)
+    - `from utils.shared_logic import safe_is_set` (line 18)
+    - `from utils.shared_logic import safe_set` (line 18)
 - Task markers:
-  - L53 **WARNING**: ({
-  - L54 **WARNING**: ",
-  - L70 **WARNING**: ({
-  - L71 **WARNING**: ",
-  - L87 **WARNING**: ({
-  - L88 **WARNING**: ",
-  - L172 **WARNING**: ({
-  - L173 **WARNING**: ",
-  - L321 **WARNING**: ({
-  - L322 **WARNING**: ",
-  - L332 **WARNING**: ({
-  - L333 **WARNING**: ",
-  - L386 **WARNING**: ({
-  - L387 **WARNING**: ",
-  - L397 **WARNING**: ({
-  - L398 **WARNING**: ",
-  - L601 **WARNING**: ({
-  - L602 **WARNING**: ",
-  - L619 **WARNING**: ({
-  - L620 **WARNING**: ",
-  - L673 **WARNING**: ({
-  - L674 **WARNING**: ",
-  - L703 **WARNING**: ({
-  - L704 **WARNING**: ",
+  - L52 **WARNING**: ({
+  - L53 **WARNING**: ",
+  - L69 **WARNING**: ({
+  - L70 **WARNING**: ",
+  - L86 **WARNING**: ({
+  - L87 **WARNING**: ",
+  - L189 **WARNING**: ({
+  - L190 **WARNING**: ",
+  - L347 **WARNING**: ({
+  - L348 **WARNING**: ",
+  - L358 **WARNING**: ({
+  - L359 **WARNING**: ",
+  - L421 **WARNING**: ({
+  - L422 **WARNING**: ",
+  - L432 **WARNING**: ({
+  - L433 **WARNING**: ",
+  - L636 **WARNING**: ({
+  - L637 **WARNING**: ",
+  - L654 **WARNING**: ({
+  - L655 **WARNING**: ",
+  - L708 **WARNING**: ({
+  - L709 **WARNING**: ",
+  - L738 **WARNING**: ({
+  - L739 **WARNING**: ",
 - Outgoing cross-module calls (sample):
-  - threading.Lock (line 29)
-  - threading.Event (line 35)
-  - utils.shared\_logic.safe\_set (line 45)
-  - utils.logger\_singleton.logger.info (line 46)
-  - utils.logger\_singleton.logger.warning (line 53)
-  - ev.is\_set (line 64)
-  - utils.shared\_logic.safe\_clear (line 65)
-  - utils.logger\_singleton.logger.warning (line 70)
-  - utils.logger\_singleton.logger.warning (line 87)
-  - time.sleep (line 99)
-  - time.time (line 106)
-  - utils.shared\_logic.safe\_is\_set (line 108)
-  - os.makedirs (line 113)
-  - f.write (line 116)
-  - orjson.dumps (line 116)
+  - threading.Lock (line 28)
+  - threading.Event (line 34)
+  - utils.shared\_logic.safe\_set (line 44)
+  - utils.logger\_singleton.logger.info (line 45)
+  - utils.logger\_singleton.logger.warning (line 52)
+  - ev.is\_set (line 63)
+  - utils.shared\_logic.safe\_clear (line 64)
+  - utils.logger\_singleton.logger.warning (line 69)
+  - utils.logger\_singleton.logger.warning (line 86)
+  - time.sleep (line 98)
+  - time.time (line 105)
+  - utils.shared\_logic.safe\_is\_set (line 107)
+  - os.makedirs (line 112)
+  - f.write (line 115)
+  - orjson.dumps (line 115)
   - cancellation\_manager.reset (line 145)
   - utils.logger\_singleton.logger.set\_mode (line 147)
   - utils.logger\_singleton.logger.set\_format (line 148)
   - utils.logger\_singleton.prompt.set\_mode (line 150)
   - utils.logger\_singleton.prompt.set\_socketio\_emit\_func (line 151)
-  - utils.logger\_singleton.logger.info (line 162)
-  - utils.logger\_singleton.logger.warning (line 172)
-  - threading.Thread (line 181)
-  - time.time (line 195)
-  - utils.logger\_singleton.logger.info (line 200)
-  - kwargs.pop (line 208)
-  - threading.Event (line 211)
-  - progress\_stop.is\_set (line 214)
-  - time.sleep (line 215)
-  - config.PROCESSED\_URLS\_FILE.exists (line 218)
-  - config.PROCESSED\_URLS\_FILE.stat (line 218)
-  - orjson.loads (line 220)
-  - f.read (line 220)
-  - e.get (line 226)
-  - ln.strip (line 235)
-  - ln.strip (line 235)
-  - time.time (line 246)
-  - threading.Thread (line 254)
-  - watcher\_thread.start (line 255)
-  - ln.strip (line 280)
-  - ln.strip (line 281)
-  - ln.strip (line 281)
-  - utils.logger\_singleton.logger.error (line 286)
-  - utils.logger\_singleton.logger.info (line 292)
-  - cancellation\_manager.remove (line 298)
-  - utils.logger\_singleton.logger.error (line 301)
-  - traceback.format\_exc (line 307)
-  - cancellation\_manager.remove (line 309)
-  - blocked\_urls.append (line 320)
-  - utils.logger\_singleton.logger.warning (line 321)
+  - utils.logger\_singleton.logger.info (line 157)
+  - kwargs.setdefault (line 164)
+  - kwargs.setdefault (line 165)
+  - utils.logger\_singleton.logger.info (line 179)
+  - utils.logger\_singleton.logger.warning (line 189)
+  - threading.Thread (line 198)
+  - time.time (line 212)
+  - utils.logger\_singleton.logger.info (line 217)
+  - kwargs.pop (line 225)
+  - threading.Event (line 228)
+  - progress\_stop.is\_set (line 231)
+  - time.sleep (line 232)
+  - config.PROCESSED\_URLS\_FILE.exists (line 235)
+  - config.PROCESSED\_URLS\_FILE.stat (line 235)
+  - orjson.loads (line 237)
+  - f.read (line 237)
+  - e.get (line 243)
+  - ln.strip (line 252)
+  - ln.strip (line 252)
+  - time.time (line 263)
+  - threading.Thread (line 271)
+  - watcher\_thread.start (line 272)
+  - ln.strip (line 297)
+  - ln.strip (line 298)
+  - ln.strip (line 298)
+  - utils.logger\_singleton.logger.error (line 303)
+  - utils.logger\_singleton.logger.info (line 309)
+  - cancellation\_manager.remove (line 315)
+  - utils.logger\_singleton.logger.error (line 318)
+  - traceback.format\_exc (line 324)
 - Inbound references:
-  - CancellationManager ← web_pipeline.py:95
-  - save\_pipeline\_report ← web_pipeline.py:660
+  - CancellationManager ← web_pipeline.py:94
+  - save\_pipeline\_report ← web_pipeline.py:695
 
 ### webapp/tests/\_\_init\_\_.py {#webapp-tests-init-py}
 
@@ -13532,51 +14657,59 @@ graph LR
 > Pytest configuration and shared fixtures for all tests.
 
 - Definitions:
-  - function: `test\_db\_engine` (line 34)
-  - function: `db\_session` (line 43)
-  - function: `temp\_output\_dir` (line 59)
-  - function: `sample\_html\_content` (line 66)
-  - function: `sample\_csv\_data` (line 87)
-  - function: `sample\_contest\_data` (line 96)
-  - function: `mock\_coordinator` (line 108)
-  - function: `mock\_page` (line 117)
+  - function: `test\_db\_engine` (line 47)
+  - function: `db\_session` (line 56)
+  - function: `temp\_output\_dir` (line 72)
+  - function: `sample\_html\_content` (line 79)
+  - function: `sample\_csv\_data` (line 100)
+  - function: `sample\_contest\_data` (line 109)
+  - function: `mock\_coordinator` (line 121)
+  - function: `mock\_page` (line 130)
 - Imports:
-  - **Standard Library** (7):
+  - **Standard Library** (8):
     - `import os as os` (line 2)
     - `import sys as sys` (line 3)
     - `import tempfile as tempfile` (line 4)
-    - `from pathlib import Path` (line 5)
-    - `from typing import Generator` (line 6)
-    - `from unittest.mock import Mock` (line 7)
-    - `from unittest.mock import patch` (line 7)
+    - `import warnings as warnings` (line 5)
+    - `from pathlib import Path` (line 6)
+    - `from typing import Generator` (line 7)
+    - `from unittest.mock import Mock` (line 8)
+    - `from unittest.mock import patch` (line 8)
   - **Third-party** (3):
-    - `import pytest as pytest` (line 11)
-    - `from sqlalchemy import create_engine` (line 12)
-    - `from sqlalchemy.orm import Session` (line 13)
+    - `import pytest as pytest` (line 12)
+    - `from sqlalchemy import create_engine` (line 13)
+    - `from sqlalchemy.orm import Session` (line 14)
   - **Local/Project** (2):
-    - `import importlib.machinery as importlib` (line 8)
-    - `import types as types` (line 9)
+    - `import importlib.machinery as importlib` (line 9)
+    - `import types as types` (line 10)
+- Task markers:
+  - L20 **WARNING**: suppression
 - Outgoing cross-module calls (sample):
-  - pathlib.Path (line 16)
-  - types.SimpleNamespace (line 23)
-  - unittest.mock.patch (line 28)
-  - unittest.mock.Mock (line 28)
-  - sqlalchemy.create\_engine (line 36)
-  - engine.dispose (line 39)
-  - pytest.fixture (line 33)
-  - test\_db\_engine.connect (line 47)
-  - connection.begin (line 48)
-  - session.close (line 53)
-  - transaction.rollback (line 54)
-  - connection.close (line 55)
-  - tempfile.TemporaryDirectory (line 61)
-  - pathlib.Path (line 62)
-  - unittest.mock.Mock (line 110)
-  - unittest.mock.Mock (line 111)
-  - unittest.mock.Mock (line 112)
-  - unittest.mock.Mock (line 119)
-  - unittest.mock.Mock (line 121)
-  - unittest.mock.Mock (line 122)
+  - pathlib.Path (line 17)
+  - warnings.filterwarnings (line 26)
+  - warnings.filterwarnings (line 27)
+  - warnings.filterwarnings (line 28)
+  - warnings.filterwarnings (line 29)
+  - warnings.filterwarnings (line 30)
+  - types.SimpleNamespace (line 36)
+  - unittest.mock.patch (line 41)
+  - unittest.mock.Mock (line 41)
+  - sqlalchemy.create\_engine (line 49)
+  - engine.dispose (line 52)
+  - pytest.fixture (line 46)
+  - test\_db\_engine.connect (line 60)
+  - connection.begin (line 61)
+  - session.close (line 66)
+  - transaction.rollback (line 67)
+  - connection.close (line 68)
+  - tempfile.TemporaryDirectory (line 74)
+  - pathlib.Path (line 75)
+  - unittest.mock.Mock (line 123)
+  - unittest.mock.Mock (line 124)
+  - unittest.mock.Mock (line 125)
+  - unittest.mock.Mock (line 132)
+  - unittest.mock.Mock (line 134)
+  - unittest.mock.Mock (line 135)
 
 ### webapp/tests/test\_batch\_processor.py {#webapp-tests-test-batch-processor-py}
 
@@ -14083,11 +15216,11 @@ graph LR
   - function: `mock\_logger` (line 113)
   - function: `mock\_metrics` (line 120)
   - class: `TestEntityConfidenceMap` (line 130)
-  - class: `TestSafeDecideAPI` (line 235)
-  - class: `TestVocabLoader` (line 324)
-  - class: `TestLoggerDecisionFiltering` (line 386)
-  - class: `TestPrometheusMetrics` (line 468)
-  - class: `TestPhaseAIntegration` (line 508)
+  - class: `TestSafeDecideAPI` (line 244)
+  - class: `TestVocabLoader` (line 331)
+  - class: `TestLoggerDecisionFiltering` (line 393)
+  - class: `TestPrometheusMetrics` (line 475)
+  - class: `TestPhaseAIntegration` (line 518)
 - Imports:
   - **Standard Library** (9):
     - `import os as os` (line 26)
@@ -14143,54 +15276,54 @@ graph LR
     (line 135)
   - webapp.parser.Context\_Integration.library.entity\_confidence\_map.get\_confidence\_map
     (line 136)
-  - confidence\_map.calculate (line 166)
-  - confidence\_map.calculate (line 183)
-  - confidence\_map.calculate (line 204)
-  - confidence\_map.calculate (line 220)
-  - webapp.parser.utils.safe\_decide.safe\_decide\_jurisdiction (line 242)
-  - result.get (line 250)
-  - result.get (line 252)
-  - webapp.parser.utils.safe\_decide.safe\_decide\_office (line 258)
-  - result.get (line 267)
-  - webapp.parser.utils.safe\_decide.safe\_decide\_party (line 274)
-  - result.get (line 283)
-  - webapp.parser.utils.safe\_decide.safe\_decide\_source (line 290)
-  - result.get (line 298)
-  - time.time (line 311)
-  - vocab\_loader.load\_canonical (line 329)
-  - vocab\_loader.load\_mapping (line 338)
-  - aliases.get (line 341)
-  - aliases.get (line 342)
-  - vocab\_loader.get\_load\_count (line 347)
-  - vocab\_loader.load\_canonical (line 348)
-  - vocab\_loader.get\_load\_count (line 349)
-  - vocab\_loader.load\_canonical (line 352)
-  - vocab\_loader.get\_load\_count (line 353)
-  - vocab\_loader.load\_canonical (line 360)
-  - vocab\_loader.load\_canonical (line 361)
-  - pytest.raises (line 368)
-  - vocab\_loader.load\_canonical (line 369)
-  - pytest.raises (line 373)
-  - vocab\_loader.load\_canonical (line 374)
-  - pytest.raises (line 378)
-  - vocab\_loader.load\_canonical (line 379)
+  - confidence\_map.calculate\_confidence\_caution (line 168)
+  - confidence\_map.calculate\_confidence\_caution (line 189)
+  - confidence\_map.calculate\_confidence\_caution (line 211)
+  - confidence\_map.calculate\_confidence\_caution (line 228)
+  - webapp.parser.utils.safe\_decide.safe\_decide\_jurisdiction (line 251)
+  - result.get (line 259)
+  - result.get (line 261)
+  - webapp.parser.utils.safe\_decide.safe\_decide\_office (line 267)
+  - result.get (line 276)
+  - webapp.parser.utils.safe\_decide.safe\_decide\_party (line 283)
+  - result.get (line 291)
+  - webapp.parser.utils.safe\_decide.safe\_decide\_source (line 298)
+  - result.get (line 305)
+  - vocab\_loader.load\_canonical (line 336)
+  - vocab\_loader.load\_mapping (line 345)
+  - aliases.get (line 348)
+  - aliases.get (line 349)
+  - vocab\_loader.get\_load\_count (line 354)
+  - vocab\_loader.load\_canonical (line 355)
+  - vocab\_loader.get\_load\_count (line 356)
+  - vocab\_loader.load\_canonical (line 359)
+  - vocab\_loader.get\_load\_count (line 360)
+  - vocab\_loader.load\_canonical (line 367)
+  - vocab\_loader.load\_canonical (line 368)
+  - pytest.raises (line 375)
+  - vocab\_loader.load\_canonical (line 376)
+  - pytest.raises (line 380)
+  - vocab\_loader.load\_canonical (line 381)
+  - pytest.raises (line 385)
+  - vocab\_loader.load\_canonical (line 386)
   - webapp.parser.utils.logger\_singleton.logger.\_filter\_decision\_noise (line
-    391)
-  - time.time (line 405)
+    398)
+  - time.time (line 412)
   - webapp.parser.utils.logger\_singleton.logger.\_filter\_decision\_noise (line
-    408)
+    415)
   - webapp.parser.utils.logger\_singleton.logger.\_filter\_decision\_noise (line
-    412)
-  - time.time (line 421)
+    419)
+  - time.time (line 428)
   - webapp.parser.utils.logger\_singleton.logger.\_filter\_decision\_noise (line
-    424)
+    431)
   - webapp.parser.utils.logger\_singleton.logger.\_filter\_decision\_noise (line
-    428)
-  - time.time (line 436)
+    435)
+  - time.time (line 443)
   - webapp.parser.utils.logger\_singleton.logger.\_filter\_decision\_noise (line
-    439)
+    446)
   - webapp.parser.utils.logger\_singleton.logger.\_filter\_decision\_noise (line
-    443)
+    450)
+  - time.time (line 457)
 
 ### webapp/tests/test\_schema\_validation.py {#webapp-tests-test-schema-validation-py}
 
@@ -14263,12 +15396,13 @@ graph LR
 ```
 
 - Definitions:
-  - class: `TestSafeFilename` (line 17)
-  - class: `TestSafeSlug` (line 50)
-  - class: `TestSafeAccessors` (line 70)
-  - class: `TestLocationNormalization` (line 93)
+  - class: `TestSafeFilename` (line 18)
+  - class: `TestSafeSlug` (line 51)
+  - class: `TestSafeAccessors` (line 71)
+  - class: `TestLocationNormalization` (line 94)
+  - class: `TestSafeParse` (line 122)
 - Imports:
-  - **Third-party** (10):
+  - **Third-party** (11):
     - `import pytest as pytest` (line 3)
     - `from webapp.parser.utils.shared_logic import safe_filename` (line 4)
     - `from webapp.parser.utils.shared_logic import safe_slug` (line 4)
@@ -14282,43 +15416,47 @@ graph LR
     - `from webapp.parser.utils.shared_logic import format_county_label` (line
       4)
     - `from webapp.parser.utils.shared_logic import format_state_label` (line 4)
+    - `from webapp.parser.utils.shared_logic import safe_parse` (line 4)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.utils.shared\_logic.safe\_filename (line 22)
   - webapp.parser.utils.shared\_logic.safe\_filename (line 23)
-  - webapp.parser.utils.shared\_logic.safe\_filename (line 28)
-  - webapp.parser.utils.shared\_logic.safe\_filename (line 33)
+  - webapp.parser.utils.shared\_logic.safe\_filename (line 24)
+  - webapp.parser.utils.shared\_logic.safe\_filename (line 29)
   - webapp.parser.utils.shared\_logic.safe\_filename (line 34)
   - webapp.parser.utils.shared\_logic.safe\_filename (line 35)
-  - webapp.parser.utils.shared\_logic.safe\_filename (line 40)
-  - result.endswith (line 42)
-  - webapp.parser.utils.shared\_logic.safe\_filename (line 46)
+  - webapp.parser.utils.shared\_logic.safe\_filename (line 36)
+  - webapp.parser.utils.shared\_logic.safe\_filename (line 41)
+  - result.endswith (line 43)
   - webapp.parser.utils.shared\_logic.safe\_filename (line 47)
-  - webapp.parser.utils.shared\_logic.safe\_slug (line 55)
+  - webapp.parser.utils.shared\_logic.safe\_filename (line 48)
   - webapp.parser.utils.shared\_logic.safe\_slug (line 56)
-  - webapp.parser.utils.shared\_logic.safe\_slug (line 60)
+  - webapp.parser.utils.shared\_logic.safe\_slug (line 57)
   - webapp.parser.utils.shared\_logic.safe\_slug (line 61)
-  - webapp.parser.utils.shared\_logic.safe\_slug (line 66)
-  - webapp.parser.utils.shared\_logic.safe\_get (line 76)
+  - webapp.parser.utils.shared\_logic.safe\_slug (line 62)
+  - webapp.parser.utils.shared\_logic.safe\_slug (line 67)
   - webapp.parser.utils.shared\_logic.safe\_get (line 77)
   - webapp.parser.utils.shared\_logic.safe\_get (line 78)
-  - webapp.parser.utils.shared\_logic.safe\_strip (line 82)
+  - webapp.parser.utils.shared\_logic.safe\_get (line 79)
   - webapp.parser.utils.shared\_logic.safe\_strip (line 83)
   - webapp.parser.utils.shared\_logic.safe\_strip (line 84)
-  - webapp.parser.utils.shared\_logic.safe\_lower (line 88)
+  - webapp.parser.utils.shared\_logic.safe\_strip (line 85)
   - webapp.parser.utils.shared\_logic.safe\_lower (line 89)
   - webapp.parser.utils.shared\_logic.safe\_lower (line 90)
-  - webapp.parser.utils.shared\_logic.normalize\_county\_name (line 98)
+  - webapp.parser.utils.shared\_logic.safe\_lower (line 91)
   - webapp.parser.utils.shared\_logic.normalize\_county\_name (line 99)
   - webapp.parser.utils.shared\_logic.normalize\_county\_name (line 100)
-  - webapp.parser.utils.shared\_logic.normalize\_state\_name (line 104)
+  - webapp.parser.utils.shared\_logic.normalize\_county\_name (line 101)
   - webapp.parser.utils.shared\_logic.normalize\_state\_name (line 105)
   - webapp.parser.utils.shared\_logic.normalize\_state\_name (line 106)
-  - webapp.parser.utils.shared\_logic.format\_county\_label (line 110)
+  - webapp.parser.utils.shared\_logic.normalize\_state\_name (line 107)
   - webapp.parser.utils.shared\_logic.format\_county\_label (line 111)
   - webapp.parser.utils.shared\_logic.format\_county\_label (line 112)
-  - webapp.parser.utils.shared\_logic.format\_state\_label (line 116)
+  - webapp.parser.utils.shared\_logic.format\_county\_label (line 113)
   - webapp.parser.utils.shared\_logic.format\_state\_label (line 117)
   - webapp.parser.utils.shared\_logic.format\_state\_label (line 118)
+  - webapp.parser.utils.shared\_logic.format\_state\_label (line 119)
+  - webapp.parser.utils.shared\_logic.safe\_parse (line 138)
+  - webapp.parser.utils.shared\_logic.safe\_parse (line 149)
+  - webapp.parser.utils.shared\_logic.safe\_parse (line 158)
 
 ### webapp/tests/test\_table\_builder.py {#webapp-tests-test-table-builder-py}
 

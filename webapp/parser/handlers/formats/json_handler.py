@@ -8,7 +8,7 @@ from typing import Any, DefaultDict, Dict, Iterable, List, Optional, Set, Tuple,
 
 import orjson
 
-from ...config import ENABLE_PARALLEL  # type: ignore[attr-defined]
+from ...config import ENABLE_PARALLEL
 from ...Context_Integration.Context_Library.constants import (
     BALLOT_TYPES,
     BALLOT_TYPES_SORT_ORDER,
@@ -966,7 +966,7 @@ def _fastpath_county_results(
     })
     
     # Add ML quality metrics
-    from ...config import log_extraction_quality  # type: ignore[attr-defined]
+    from ...config import log_extraction_quality
     quality = log_extraction_quality(
         headers_final, data_final, metadata, "json_handler", logger, session_id
     )
@@ -1339,7 +1339,7 @@ def parse_json_election_results(
     })
     
     # Add ML quality metrics
-    from ...config import log_extraction_quality  # type: ignore[attr-defined]
+    from ...config import log_extraction_quality
     quality = log_extraction_quality(
         headers_final, data_final, metadata, "json_handler", logger, session_id
     )
@@ -1426,7 +1426,7 @@ def parse(
         }
         
         # Add ML quality metrics
-        from ...config import log_extraction_quality  # type: ignore[attr-defined]
+        from ...config import log_extraction_quality
         quality = log_extraction_quality(
             headers_final, data_final, metadata, "json_handler", logger, session_id
         )

@@ -9,7 +9,6 @@
 
 All reported Pylance errors have been **fixed** and **enhanced** with a comprehensive local learning system that:
 
-- ✅ Removed OpenAI dependency (no external LLM costs)
 - ✅ Fixed 2 type hint errors in `integrity_monitor.py`
 - ✅ Fixed all undefined variable errors in `health_router.py`
 - ✅ Added 80+ lines of learning logic (LocalLearningEngine)
@@ -54,7 +53,7 @@ All reported Pylance errors have been **fixed** and **enhanced** with a comprehe
 
 ### Purpose
 
-Replaces external LLM (OpenAI) with a **local, persistent learning system** that:
+Replaces external AI services (OpenAI) with a **local, persistent learning system** that:
 
 1. **Records training signals** from each parsing session
    - State, county, contest, handler, success/failure, quality metrics
@@ -107,7 +106,7 @@ learned_score = engine.get_learned_accuracy_score(
 - Lines 1-55: Added imports (`timezone`, `MODEL_DIR`)
 - Lines 53-133: Added `LocalLearningEngine` class (~80 lines)
 - Lines 627-668: Updated `self_improve()` method to use learning engine
-- **Impact**: No external LLM + full learning pipeline
+- **Impact**: No external AI services + full learning pipeline
 
 **3. `webapp/Smart_Elections_Parser_Webapp.py`**
 
@@ -171,7 +170,7 @@ HuggingFace Models:          4 configured
 ```txt
 ┌─────────────────────────────────────────────────────────────────┐
 │ BEFORE: OpenAI Dependency                                        │
-│ - External API calls for LLM services                            │
+│ - External API calls for AI services                             │
 │ - Cost per request ($0.01-0.10)                                  │
 │ - Privacy concerns with election data                            │
 │ - Undefined variables & broken imports                          │
@@ -238,7 +237,7 @@ PARSING SESSION
 
 ### 1. Cost Savings
 
-- **Before**: $0.01-0.10 per LLM call
+- **Before**: $0.01-0.10 per external model call
 - **After**: $0 (fully local)
 - **Yearly savings**: Hundreds to thousands of dollars
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 # ---------------------------------------------------------------
 # Advanced ML-based Table Detection for HTML Table Extraction
 # ---------------------------------------------------------------
-"""
+""" 
 ml_table_detector.py
 
 Advanced ML-based Table Detection for HTML Table Extraction
@@ -13,12 +13,12 @@ This module provides a robust, extensible interface for detecting and extracting
 machine learning, heuristics, and hybrid approaches. It is designed to be used by table_core.py and similar utilities.
 
 Features:
-- Uses ML models (if available) to detect table regions in HTML, including non-standard and visually-styled tables.
-- Optionally uses LLMs (e.g., OpenAI, local LLMs) for table region and header inference.
-- Falls back to advanced heuristics and rule-based detection if ML/LLM is unavailable.
+- Uses internal ML models to detect table regions in HTML, including non-standard and visually-styled tables.
+- Uses spaCy NER and sentence-transformers for entity recognition and semantic analysis.
+- Falls back to advanced heuristics and rule-based detection if ML is unavailable.
 - Supports both standard <table> elements and "table-like" structures (div grids, repeated blocks, etc.).
 - Optionally annotates detected tables with confidence scores, bounding boxes, and structure metadata.
-- Can be extended to use external services, vision models, or LLMs for table detection.
+- Can be extended to use vision models or additional ML frameworks for table detection.
 
 Exports:
     - detect_tables_ml(html: str, options: dict = None) -> List[dict]
@@ -27,15 +27,9 @@ import re
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
 
-import orjson
 from selectolax.parser import HTMLParser
 
 from ..config import (
-    LLM_API_KEY,
-    LLM_EXTRA_INSTRUCTIONS,
-    LLM_MODEL,
-    LLM_PROVIDER,
-    LLM_SYSTEM_PROMPT,
     TABLE_MODEL_PATH,
 )
 from .browser_utils import safe_attributes, safe_content
@@ -45,92 +39,25 @@ from .model_registry import TableDetectionModel
 # Precompiled patterns to avoid recompilation hot spots
 _JSON_OBJECT_RE = re.compile(r"\{[\s\S]+?\}")
 _SPLIT_COLS_RE = re.compile(r"\s{2,}|\t|\|")
-# Truncation guard for LLM prompt
-_LLM_HTML_TRUNCATE = 8000
 
-# --- Optional LLM integration (OpenAI, local LLM, etc.) ---
-
-def _llm_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
-    """
-    Use an LLM to extract tables from HTML.
-    Returns a list of {headers, data, meta}.
-    """
-    llm_provider = (options.get("llm_provider") or LLM_PROVIDER or "openai")
-    llm_model = options.get("llm_model") or LLM_MODEL or "gpt-4-turbo"
-    llm_api_key = options.get("llm_api_key") or LLM_API_KEY
-    system_prompt = options.get("llm_system_prompt") or LLM_SYSTEM_PROMPT or "You are an expert at extracting tabular data from HTML."
-    extra_instructions = options.get("llm_extra_instructions") or LLM_EXTRA_INSTRUCTIONS
-
-    prompt = (
-        system_prompt
-        + " Given the following HTML, extract all tables (including non-standard, visually-styled, or grid-like tables). "
-        + "For each table, return a JSON object with 'headers' (list of strings), 'data' (list of dicts), "
-        + "and 'meta' (with any structure info you can infer). "
-        + (f"Extra instructions: {extra_instructions}\n" if extra_instructions else "")
-        + "HTML:\n" + html[:_LLM_HTML_TRUNCATE]
-    )
-
-    try:
-        if llm_provider == "openai":
-            import openai
-            openai.api_key = llm_api_key
-            response = openai.ChatCompletion.create(
-                model=llm_model,
-                messages=[{"role": "system", "content": prompt}],
-                max_tokens=2048,
-                temperature=0.0,
-            )
-            content = response["choices"][0]["message"]["content"]
-        else:
-            return []
-
-        # Prefer fenced JSON blocks if present
-        tables: List[Dict[str, Any]] = []
-
-        def _try_parse(block: str) -> Optional[Dict[str, Any]]:
-            try:
-                obj = orjson.loads(block)
-                if isinstance(obj, dict) and "headers" in obj and "data" in obj:
-                    return obj
-            except Exception:
-                return None
-            return None
-
-        # ```json ... ```
-        fenced = re.findall(r"```json\s+([\s\S]+?)```", content, flags=re.IGNORECASE)
-        for blk in fenced:
-            obj = _try_parse(blk)
-            if obj:
-                tables.append(obj)
-        if tables:
-            return tables
-
-        # Fallback: any JSON-looking object
-        for blk in _JSON_OBJECT_RE.findall(content):
-            obj = _try_parse(blk)
-            if obj:
-                tables.append(obj)
-
-        return tables
-    except Exception as e:
-        logger.error(f"[LLM TABLE DETECTION] Error ({llm_provider}): {e}")
-        return []
+# REMOVED: external-model table detection hook
+# System now uses internal NLP/ML only (spaCy, sentence-transformers, scikit-learn)
+# No external API calls for table detection
 
 def detect_tables_ml(html: str, options: Optional[dict] = None) -> List[Dict[str, Any]]:
     """
-    Detect tables in HTML using ML, LLM, vision, and heuristics.
+    Detect tables in HTML using ML, vision, and heuristics (internal NLP/ML only).
     Returns a list of dicts: {headers: [...], data: [...], meta: {...}}
     """
     options = options or {}
     use_ml = options.get("use_ml", True)
-    use_llm = options.get("use_llm", False)
     use_vision = options.get("use_vision", False)
     use_heuristics = options.get("use_heuristics", True)
     use_regex = options.get("use_regex", True)
 
     tables: List[Dict[str, Any]] = []
 
-    # 1) ML-based detection
+    # 1) ML-based detection (internal models only)
     if use_ml:
         try:
             model_path = options.get("table_model_path") or TABLE_MODEL_PATH
@@ -143,11 +70,7 @@ def detect_tables_ml(html: str, options: Optional[dict] = None) -> List[Dict[str
         except Exception as e:
             logger.error(f"[ML TABLE DETECTION] Error loading/predicting TableDetectionModel: {e}")
 
-    # 2) LLM-based detection
-    if use_llm:
-        llm_results = _llm_detect_tables(html, options)
-        if llm_results:
-            tables.extend(llm_results)
+    # REMOVED: external-model detection - system uses internal NLP/ML only
 
     # 3) Heuristics using selectolax
     html_tree = HTMLParser(html)
@@ -192,9 +115,9 @@ def detect_tables_ml(html: str, options: Optional[dict] = None) -> List[Dict[str
 def _ml_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
     """
     Placeholder for ML-based table detection.
-    Replace with actual model inference (vision transformer, LLM, etc.).
+    Replace with actual model inference (vision transformer, etc.).
     """
-    # Example: Use a vision model or LLM to predict table regions and extract cells
+    # Example: Use a vision model to predict table regions and extract cells
     # For now, just return empty (simulate no ML model)
     # If you have a model, run inference here and parse the output into headers/data/meta
     # Example:

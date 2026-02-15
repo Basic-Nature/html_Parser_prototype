@@ -45,8 +45,8 @@ SOCKETIO_MESSAGE_QUEUE = os.environ.get("SOCKETIO_MESSAGE_QUEUE")
 SOCKETIO_MESSAGE_CHANNEL = os.environ.get("SOCKETIO_MESSAGE_CHANNEL", "socketio")
 
 import csv
-import io
 import gzip
+import io
 import json
 import re
 import secrets
@@ -59,7 +59,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Event, Thread
 from typing import Callable, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import orjson
 import psycopg2
@@ -162,6 +162,7 @@ from webapp.parser.config import (
 from webapp.parser.utils.cert_utils import extract_client_principal
 from webapp.parser.utils.db_utils import SessionLocal, get_engine
 from webapp.parser.utils.misc_utils import extract_url_and_label, load_processed_urls
+from webapp.parser.utils.models import DataFrameworkPreviewCache
 from webapp.parser.utils.shared_logic import (
     safe_filename,
     safe_get,
@@ -173,7 +174,7 @@ from webapp.parser.utils.shared_logic import (
     safe_strip,
     safe_validate_external_url,
 )
-from webapp.parser.utils.models import DataFrameworkPreviewCache
+from webapp.parser.utils.url_ingestion import url_already_listed
 from webapp.parser.web_pipeline import (
     cancel_processing,
     cancellation_manager,
@@ -194,6 +195,7 @@ except Exception:
 # Flagged URL audit log (rotated daily, small caps)
 FLAGGED_URL_SIZE_CAP = 5 * 1024 * 1024  # ~5MB per daily file
 FLAGGED_URL_RETENTION_DAYS = 30
+ENABLE_URL_INGESTION_AUDIT = os.environ.get("ENABLE_URL_INGESTION_AUDIT", "false").lower() in {"1", "true", "yes"}
 
 
 def _flagged_url_log_dir() -> Path:
@@ -272,6 +274,22 @@ def _guarded_ingestion_allowed(action: str) -> tuple[bool, str]:
         except Exception:
             pass
     return False, "guard_key_invalid"
+
+
+def _ingestion_audit_context(session_id: str | None = None) -> dict:
+    try:
+        forwarded_for = (request.headers.get("X-Forwarded-For") or "").split(",", 1)[0].strip()
+        remote_addr = forwarded_for or (request.remote_addr or "")
+        return {
+            "path": request.path,
+            "method": request.method,
+            "host": request.host,
+            "remote_addr": remote_addr,
+            "user_agent": request.headers.get("User-Agent"),
+            "session_id": session_id,
+        }
+    except Exception:
+        return {"session_id": session_id}
 
 
 def log_flagged_url(event: dict) -> None:
@@ -2058,15 +2076,121 @@ def _handle_global_exception(e):
 
 # Data Management Utilities
 def add_url() -> None:
-    url = input("Enter new URL to add: ").strip()
-    if url:
-        with open(URL_LIST_FILE, "a", encoding="utf-8") as f:
-            f.write(url + "\n")
-        logger.info({
-            "level": "INFO",
-            "type": "status",
-            "message": f"[ADDED] {url}",
-            "session_id": None
+    raw_url = input("Enter new URL to add: ").strip()
+    if not raw_url:
+        return
+    if len(raw_url) > 2048 or any(ord(ch) < 32 for ch in raw_url):
+        log_flagged_url({
+            "event": "url_invalid",
+            "url": raw_url,
+            "reason": "invalid_chars_or_length",
+            "source": "cli",
+        })
+        logger.warning({"level": "WARNING", "type": "status", "message": "URL too long or invalid.", "session_id": None})
+        return
+    url, lbl = extract_url_and_label(raw_url)
+    if not url:
+        logger.warning({"level": "WARNING", "type": "status", "message": "No valid http(s) URL found.", "session_id": None})
+        return
+    if len(url) > 2048:
+        log_flagged_url({
+            "event": "url_invalid",
+            "url": url,
+            "reason": "url_too_long",
+            "source": "cli",
+        })
+        logger.warning({"level": "WARNING", "type": "status", "message": "URL too long.", "session_id": None})
+        return
+    parsed = urlparse(url)
+    if parsed.username or parsed.password:
+        log_flagged_url({
+            "event": "url_invalid",
+            "url": url,
+            "reason": "credentials_in_url",
+            "source": "cli",
+        })
+        logger.warning({"level": "WARNING", "type": "status", "message": "URLs with credentials are not allowed.", "session_id": None})
+        return
+    if parsed.fragment:
+        url = urlunparse(parsed._replace(fragment=""))
+        parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    allowed, reason = safe_validate_external_url(
+        url,
+        allowlist_suffixes=URL_ALLOWLIST_SUFFIXES,
+        allowlist_hosts=URL_ALLOWLIST_HOSTS,
+        enforce_allowlist=URL_ENFORCE_ALLOWLIST,
+        block_private_ips=URL_BLOCK_PRIVATE_IPS,
+    )
+    if not allowed:
+        log_flagged_url({
+            "event": "url_blocked",
+            "url": url,
+            "reason": reason,
+            "source": "cli",
+        })
+        logger.warning({"level": "WARNING", "type": "status", "message": f"URL blocked: {reason}", "session_id": None})
+        return
+    suspicious_tokens = (
+        "dropbox.com",
+        "drive.google",
+        "docs.google",
+        "googleusercontent.com",
+        "storage.googleapis",
+        "amazonaws.com",
+        "s3.amazonaws.com",
+        "digitaloceanspaces.com",
+        "box.com",
+        "onedrive",
+        "sharepoint",
+        "github.com",
+        "raw.githubusercontent",
+        "gitlab",
+        "pastebin",
+        "notion.so",
+        "cloudfront.net",
+    )
+    if ALLOW_GOOGLE_DOCS:
+        suspicious_tokens = tuple(
+            tok for tok in suspicious_tokens
+            if tok not in {"drive.google", "docs.google", "googleusercontent.com"}
+        )
+    if parsed.scheme not in {"http", "https"} or not host:
+        log_flagged_url({
+            "event": "url_invalid",
+            "url": url,
+            "reason": "invalid_url",
+            "source": "cli",
+        })
+        logger.warning({"level": "WARNING", "type": "status", "message": "Only http/https URLs with a host are accepted.", "session_id": None})
+        return
+    if any(tok in host for tok in suspicious_tokens):
+        log_flagged_url({
+            "event": "url_blocked",
+            "url": url,
+            "reason": "suspicious_host",
+            "host": host,
+            "source": "cli",
+        })
+        logger.warning({"level": "WARNING", "type": "status", "message": "Host requires manual review; URL logged for safety.", "session_id": None})
+        return
+    if url_already_listed(str(URL_LIST_FILE), url):
+        logger.info({"level": "INFO", "type": "status", "message": f"[ALREADY PRESENT] {url}", "session_id": None})
+        return
+    with open(URL_LIST_FILE, "a", encoding="utf-8") as f:
+        f.write(url + "\n")
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": f"[ADDED] {url}",
+        "session_id": None,
+    })
+    if ENABLE_URL_INGESTION_AUDIT:
+        log_flagged_url({
+            "event": "url_ingested",
+            "url": url,
+            "label": lbl,
+            "source": "cli",
         })
 
 def allowed_file(filename) -> bool:
@@ -2077,6 +2201,7 @@ def allowed_file(filename) -> bool:
         return False
     ext = "." + safe_lower(parts[1])
     return ext in SUPPORTED_EXTENSION_SET
+
 
 def get_url_list() -> list[str]:
     if not os.path.exists(URL_LIST_FILE):
@@ -2206,11 +2331,39 @@ def api_urls():
             raw_url = safe_strip(safe_get(data, "url", ""))
             if not raw_url:
                 return jsonify({"success": False, "error": "URL required."}), 400
+            if len(raw_url) > 2048 or any(ord(ch) < 32 for ch in raw_url):
+                log_flagged_url({
+                    "event": "url_invalid",
+                    "url": raw_url,
+                    "reason": "invalid_chars_or_length",
+                    **_ingestion_audit_context(safe_strip(safe_get(data, "session_id"))),
+                })
+                return jsonify({"success": False, "error": "URL too long or contains invalid characters."}), 400
             url, lbl = extract_url_and_label(raw_url)
             if not url:
                 return jsonify({"success": False, "error": "No valid http(s) URL found."}), 400
 
+            if len(url) > 2048:
+                log_flagged_url({
+                    "event": "url_invalid",
+                    "url": url,
+                    "reason": "url_too_long",
+                    **_ingestion_audit_context(safe_strip(safe_get(data, "session_id"))),
+                })
+                return jsonify({"success": False, "error": "URL too long."}), 400
+
             parsed = urlparse(url)
+            if parsed.username or parsed.password:
+                log_flagged_url({
+                    "event": "url_invalid",
+                    "url": url,
+                    "reason": "credentials_in_url",
+                    **_ingestion_audit_context(safe_strip(safe_get(data, "session_id"))),
+                })
+                return jsonify({"success": False, "error": "URLs with credentials are not allowed."}), 400
+            if parsed.fragment:
+                url = urlunparse(parsed._replace(fragment=""))
+                parsed = urlparse(url)
             host = (parsed.hostname or "").lower()
             session_id = safe_strip(safe_get(data, "session_id"))
             allowed, reason = safe_validate_external_url(
@@ -2222,9 +2375,10 @@ def api_urls():
             )
             if not allowed:
                 log_flagged_url({
+                    "event": "url_blocked",
                     "url": url,
                     "reason": reason,
-                    "session_id": session_id,
+                    **_ingestion_audit_context(session_id),
                 })
                 return jsonify({"success": False, "error": f"URL blocked: {reason}"}), 400
             suspicious_tokens = (
@@ -2253,23 +2407,36 @@ def api_urls():
                 )
             if parsed.scheme not in {"http", "https"} or not host:
                 log_flagged_url({
+                    "event": "url_invalid",
                     "url": url,
                     "reason": "invalid_url",
-                    "session_id": session_id,
+                    **_ingestion_audit_context(session_id),
                 })
                 return jsonify({"success": False, "error": "Only http/https URLs with a host are accepted."}), 400
 
             if any(tok in host for tok in suspicious_tokens):
                 log_flagged_url({
+                    "event": "url_blocked",
                     "url": url,
                     "reason": "suspicious_host",
                     "host": host,
-                    "session_id": session_id,
+                    **_ingestion_audit_context(session_id),
                 })
                 return jsonify({"success": False, "error": "Host requires manual review; URL logged for safety."}), 400
 
+            if url_already_listed(urls_file, url):
+                return jsonify({"success": True, "already_present": True})
+
             with open(urls_file, "a", encoding="utf-8") as f:
                 f.write(url + "\n")
+            if ENABLE_URL_INGESTION_AUDIT:
+                log_flagged_url({
+                    "event": "url_ingested",
+                    "url": url,
+                    "label": lbl,
+                    "source": "api",
+                    **_ingestion_audit_context(session_id),
+                })
             return jsonify({"success": True})
     except Exception as exc:
         logger.error({"level": "ERROR", "type": "api", "message": f"api_urls GET/POST failed: {exc}", "session_id": None})
@@ -3221,8 +3388,8 @@ def api_data_framework_exports():
     return jsonify({"date": date_str, "count": len(items), "generated_at": generated_at, "items": items})
 
 
-@app.route("/azure_health", methods=["GET"])
-def azure_health_page():
+@app.route("/health_dashboard", methods=["GET"])
+def health_dashboard_page():
     auth_error = _health_auth_response()
     if auth_error:
         return auth_error
@@ -3234,7 +3401,7 @@ def azure_health_page():
         "deploy_env": DEPLOY_ENV or "local",
     }
     return render_template(
-        "azure_health.html",
+        "health_dashboard.html",
         task_definitions=_public_health_task_definitions(),
         runtime_hints=runtime_hints,
         socketio_client_config=SOCKETIO_CLIENT_CONFIG,
@@ -5212,7 +5379,6 @@ def handle_connect(auth=None):
         # --- Certificate validation (Step 4: Check for expiry/changes) ---
         cert_fingerprint = None
         cert_expired = False
-        cert_changed = False
         if cert_metadata and isinstance(cert_metadata, dict):
             # Extract fingerprint from cert principal or headers (SHA256)
             try:
@@ -6308,6 +6474,240 @@ def api_fec_save_mapping():
         except Exception:
             pass
         return jsonify({'success': False, 'error': str(exc)}), 500
+
+# ============================================
+# Data Assurance API Endpoints (QA Panel Integration)
+# ============================================
+
+@app.route("/api/data-assurance/parse-and-classify", methods=["POST"])
+def api_data_assurance_classify():
+    """
+    Classify parsed election data as DL1 (Data Level 1) with auto QA checks.
+    Stores results in PostgreSQL and optionally writes to ner_training_data for ML.
+    """
+    try:
+        data = request.get_json()
+        metadata = data.get("metadata", {})
+        parsed_data = data.get("parsed_data", {})
+        
+        # Generate unique dataset ID
+        import hashlib
+        from datetime import datetime
+        dataset_id = hashlib.sha256(
+            f"{metadata.get('state', '')}{metadata.get('county', '')}{metadata.get('contest', '')}{datetime.utcnow().isoformat()}".encode()
+        ).hexdigest()[:16]
+        
+        # Run auto QA checks
+        headers = parsed_data.get("headers", [])
+        rows = parsed_data.get("rows", [])
+        
+        detected_issues = []
+        confidence_score = 100.0
+        
+        # Check: Missing headers
+        if not headers:
+            detected_issues.append({
+                "issue_type": "missing_headers",
+                "severity": "ERROR",
+                "description": "No column headers detected",
+            })
+            confidence_score -= 30
+        
+        # Check: Empty data
+        if not rows or len(rows) == 0:
+            detected_issues.append({
+                "issue_type": "empty_data",
+                "severity": "CRITICAL",
+                "description": "No data rows found",
+            })
+            confidence_score -= 40
+        
+        # Check: Mismatched column counts
+        if headers and rows:
+            expected_cols = len(headers)
+            mismatched_rows = sum(1 for row in rows if len(row) != expected_cols)
+            if mismatched_rows > 0:
+                detected_issues.append({
+                    "issue_type": "column_mismatch",
+                    "severity": "WARNING",
+                    "description": f"{mismatched_rows} rows have mismatched column counts",
+                    "affected_rows": mismatched_rows,
+                })
+                confidence_score -= min(20, mismatched_rows * 0.5)
+        
+        # Determine DL status
+        dl_status = "DL1"  # Always start at DL1; manual review promotes to DL2
+        if confidence_score < 50:
+            dl_status = "REJECTED"
+        
+        # Store in PostgreSQL (data_assurance_classifications table)
+        from webapp.parser.utils.db_utils import SessionLocal
+        with SessionLocal() as db_session:
+            from datetime import datetime
+            db_session.execute(
+                text("""
+                    INSERT INTO data_assurance_classifications 
+                    (dataset_id, dl_status, confidence_score, detected_issues, metadata, created_at)
+                    VALUES (:dataset_id, :dl_status, :confidence_score, :detected_issues, :metadata, :created_at)
+                """),
+                {
+                    "dataset_id": dataset_id,
+                    "dl_status": dl_status,
+                    "confidence_score": confidence_score,
+                    "detected_issues": orjson.dumps(detected_issues).decode(),
+                    "metadata": orjson.dumps(metadata).decode(),
+                    "created_at": datetime.utcnow(),
+                }
+            )
+            db_session.commit()
+        
+        # Optionally write to NER training data if REVIEW_WITH_MANUAL_BOT is enabled
+        from webapp.parser.config import REVIEW_WITH_MANUAL_BOT
+        if REVIEW_WITH_MANUAL_BOT and dl_status == "DL1" and rows:
+            try:
+                # Extract text samples for NER training
+                text_samples = []
+                for row in rows[:10]:  # Sample first 10 rows
+                    text = " ".join(str(cell) for cell in row if cell)
+                    if text:
+                        text_samples.append(text)
+                
+                # Simple entity detection (placeholder - improve with spaCy)
+                for text in text_samples:
+                    entities = []  # TODO: Use spaCy NER to detect entities
+                    with SessionLocal() as db_session:
+                        db_session.execute(
+                            text("""
+                                INSERT INTO ner_training_data (text, entities, source, verified, created_at)
+                                VALUES (:text, :entities, :source, :verified, :created_at)
+                            """),
+                            {
+                                "text": text,
+                                "entities": orjson.dumps(entities).decode(),
+                                "source": f"qa_panel_{dataset_id}",
+                                "verified": False,  # Will be True after manual review
+                                "created_at": datetime.utcnow(),
+                            }
+                        )
+                        db_session.commit()
+            except Exception as e:
+                logger.warning(f"[QA] Failed to write NER training data: {e}")
+        
+        return jsonify({
+            "dataset_id": dataset_id,
+            "dl_status": dl_status,
+            "confidence_score": confidence_score,
+            "detected_issues": detected_issues,
+            "created_at": datetime.utcnow().isoformat(),
+        })
+    
+    except Exception as e:
+        logger.error(f"[QA] Classification failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/data-assurance/verify-and-promote", methods=["POST"])
+def api_data_assurance_promote():
+    """
+    Promote verified dataset from DL1 to DL2 after manual review.
+    Updates PostgreSQL and marks associated NER training data as verified.
+    """
+    try:
+        from datetime import datetime
+        
+        from webapp.parser.utils.db_utils import SessionLocal
+        
+        data = request.get_json()
+        dataset_id = data.get("dataset_id")
+        
+        if not dataset_id:
+            return jsonify({"error": "dataset_id required"}), 400
+        
+        # Update classification status
+        with SessionLocal() as db_session:
+            result = db_session.execute(
+                text("""
+                    UPDATE data_assurance_classifications
+                    SET dl_status = 'DL2', promoted_at = :promoted_at, reviewer_principal = :reviewer
+                    WHERE dataset_id = :dataset_id
+                    RETURNING dl_status, confidence_score, detected_issues, created_at, promoted_at
+                """),
+                {
+                    "dataset_id": dataset_id,
+                    "promoted_at": datetime.utcnow(),
+                    "reviewer": session.get("username", "system"),
+                }
+            )
+            row = result.fetchone()
+            if not row:
+                return jsonify({"error": "Dataset not found"}), 404
+            
+            db_session.commit()
+            
+            # Mark associated NER training data as verified
+            db_session.execute(
+                text("""
+                    UPDATE ner_training_data
+                    SET verified = TRUE
+                    WHERE source = :source
+                """),
+                {"source": f"qa_panel_{dataset_id}"}
+            )
+            db_session.commit()
+        
+        return jsonify({
+            "dataset_id": dataset_id,
+            "dl_status": "DL2",
+            "confidence_score": row[1],
+            "detected_issues": orjson.loads(row[2]) if row[2] else [],
+            "created_at": row[3].isoformat() if row[3] else None,
+            "promoted_at": row[4].isoformat() if row[4] else None,
+            "reviewer_principal": session.get("username", "system"),
+        })
+    
+    except Exception as e:
+        logger.error(f"[QA] Promotion failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/data-assurance/pending-dl2-reviews", methods=["GET"])
+def api_data_assurance_pending_reviews():
+    """
+    Fetch pending DL2 reviews (DL1 datasets awaiting manual verification).
+    """
+    try:
+        limit = int(request.args.get("limit", 50))
+        
+        from webapp.parser.utils.db_utils import SessionLocal
+        with SessionLocal() as db_session:
+            result = db_session.execute(
+                text("""
+                    SELECT dataset_id, dl_status, confidence_score, detected_issues, metadata, created_at
+                    FROM data_assurance_classifications
+                    WHERE dl_status = 'DL1'
+                    ORDER BY created_at DESC
+                    LIMIT :limit
+                """),
+                {"limit": limit}
+            )
+            
+            pending_reviews = []
+            for row in result:
+                pending_reviews.append({
+                    "dataset_id": row[0],
+                    "dl_status": row[1],
+                    "confidence_score": row[2],
+                    "detected_issues": orjson.loads(row[3]) if row[3] else [],
+                    "metadata": orjson.loads(row[4]) if row[4] else {},
+                    "created_at": row[5].isoformat() if row[5] else None,
+                })
+            
+            return jsonify({"pending_reviews": pending_reviews})
+    
+    except Exception as e:
+        logger.error(f"[QA] Failed to fetch pending reviews: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 # Heartbeat thread startup (idempotent)
 if 'heartbeat_thread' not in globals() or not isinstance(globals().get('heartbeat_thread'), Thread) or not globals()['heartbeat_thread'].is_alive():

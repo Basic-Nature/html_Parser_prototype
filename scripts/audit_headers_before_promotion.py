@@ -8,19 +8,19 @@ Usage:
   python scripts/audit_headers_before_promotion.py [--output-dir OUTPUT] [--threshold SCORE] [--limit ROWS]
 """
 
-import os
-import sys
+import argparse
 import csv
 import json
-import argparse
-from pathlib import Path
+import os
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from webapp.parser.utils.header_confidence import validate_row_headers, get_header_confidence
-from webapp.parser.config import OUTPUT_DIR, LOG_DIR
+from webapp.parser.config import LOG_DIR, OUTPUT_DIR
+from webapp.parser.utils.header_confidence import validate_row_headers
 from webapp.parser.utils.logger_singleton import logger
 
 # Ensure log directory exists

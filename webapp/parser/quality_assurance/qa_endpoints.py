@@ -14,10 +14,8 @@ from __future__ import annotations
 
 import csv
 import io
-import json
-from datetime import datetime, timezone
-from io import StringIO
 from functools import wraps
+from io import StringIO
 
 from flask import Blueprint, jsonify, request, send_file
 
@@ -25,8 +23,8 @@ from ..config import ENABLE_VERIFICATION_FRAMEWORK, QA_REQUIRE_CERT_AUTH
 from ..utils.cert_utils import extract_client_principal
 from ..utils.shared_logic import safe_get, safe_strip
 from .data_classifier import (
-    classify_as_dl1,
     DatasetMetadata,
+    classify_as_dl1,
     get_dataset_lineage,
     get_dl2_inventory,
     get_pending_dl2_reviews,
@@ -124,8 +122,6 @@ def parse_and_classify():
             "summary": "DL1 unverified. 0 issues detected. Trust score: 85.5/100"
         }
     """
-    from flask import g
-    principal = g.reviewer_principal
     data = request.get_json(force=True) or {}
 
     # Extract required fields

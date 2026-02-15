@@ -5,7 +5,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple, cast
 
-from ...config import ENABLE_PARALLEL  # type: ignore[attr-defined]
+from ...config import ENABLE_PARALLEL
 from ...Context_Integration.Context_Library.constants import (
     CONTEST_TITLE_SKIP_PHRASES,
 )

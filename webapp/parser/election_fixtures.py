@@ -9,11 +9,9 @@ Provides O(1) lookups for election result indices while supporting:
 """
 
 import json
-import os
 import threading
-from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional
 
 try:
     from rapidfuzz import fuzz as fuzzy_fuzz

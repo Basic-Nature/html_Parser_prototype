@@ -181,6 +181,12 @@ def _defensive_dom_check(dom_parts, url, logger=logger, log_errors=True) -> dict
 
 class ContextOrganizer(object):
     _MODEL_CACHE: dict[Any, Any] = {}
+    _LOG_ENTRY_LIMITS = {
+        "max_depth": 6,
+        "max_list": 200,
+        "max_dict": 120,
+        "max_string": 2000,
+    }
     def __init__(
         self,
         use_library=True,
@@ -1313,9 +1319,33 @@ class ContextOrganizer(object):
             "context": context,
             "user_feedback": user_feedback
         }
+        log_entry = self._cap_log_value(log_entry)
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(log_entry) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+
+    def _cap_log_value(self, value: Any, *, depth: int = 0) -> Any:
+        limits = self._LOG_ENTRY_LIMITS
+        if depth > limits["max_depth"]:
+            return None
+        if isinstance(value, str):
+            if len(value) > limits["max_string"]:
+                return value[: limits["max_string"]] + "...(truncated)"
+            return value
+        if isinstance(value, (bytes, bytearray)):
+            size = len(value)
+            return f"<bytes:{size}>"
+        if isinstance(value, dict):
+            capped = {}
+            for idx, (key, item) in enumerate(value.items()):
+                if idx >= limits["max_dict"]:
+                    break
+                capped[key] = self._cap_log_value(item, depth=depth + 1)
+            return capped
+        if isinstance(value, (list, tuple, set)):
+            items = list(value)
+            return [self._cap_log_value(item, depth=depth + 1) for item in items[: limits["max_list"]]]
+        return value
 
     def get_for_state_router(self) -> dict:
         """

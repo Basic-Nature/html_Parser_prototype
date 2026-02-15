@@ -112,7 +112,7 @@ def self_heal_loop(jsonl_path, verbose, max_retries=3, cooldown=2):
         logger.warning("[SELF-HEAL] Misalignments found. Launching manual_correction for spacy_ner_misaligned...")
         # Always use the special field for misaligned NER
         result = subprocess.run([
-            sys.executable, "-m", "webapp.parser.bots.manual_correction",
+            sys.executable, "-m", "webapp.parser.health.manual_correction_bot",
             "--fields", "spacy_ner_misaligned", "--enhanced"
         ], cwd=PROJECT_ROOT)
         if result.returncode != 0:
@@ -150,7 +150,7 @@ Scans for misaligned NER examples and optionally runs manual correction."""
         if args.auto_correct and exit_code == 2:
             logger.info("\n[INFO] Launching manual_correction for review of misaligned NER...")
             subprocess.run([
-                sys.executable, "-m", "webapp.parser.bots.manual_correction",
+                sys.executable, "-m", "webapp.parser.health.manual_correction_bot",
                 "--fields", "spacy_ner_misaligned", "--enhanced"
             ], cwd=PROJECT_ROOT)
     sys.exit(exit_code)

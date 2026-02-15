@@ -2224,45 +2224,13 @@ const KeyboardGuide = (() => {
   const shortcuts = [
     { key: 'Escape', description: 'Close modal/prompt' },
     { key: 'Ctrl+Enter', description: 'Submit single option' },
-    { key: 'Ctrl+S', description: 'Save current filter preset' },
-    { key: 'Ctrl+E', description: 'Export logs as JSON' },
-    { key: 'Ctrl+Shift+E', description: 'Export logs as CSV' },
-    { key: 'Ctrl+/', description: 'Show keyboard shortcuts' },
-    { key: 'Ctrl+L', description: 'Clear log output' },
-    { key: 'Ctrl+F', description: 'Focus search input' }
+    { key: 'Ctrl+Home', description: 'Return to dashboard' },
+    { key: 'Ctrl+/', description: 'Open Quick Reference guide' }
   ];
   
   function show() {
-    const modal = document.createElement('div');
-    modal.className = 'modal keyboard-guide-modal';
-    modal.innerHTML = `
-      <div class="modal-content modal-large-max">
-        <div class="modal-header">
-          <h3>⌨️ Keyboard Shortcuts</h3>
-          <button class="modal-close" aria-label="Close shortcuts guide">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="shortcuts-list">
-            ${shortcuts.map(s => `
-              <div class="shortcut-row">
-                <kbd class="shortcut-key">${escapeHtml(s.key)}</kbd>
-                <span class="shortcut-desc">${escapeHtml(s.description)}</span>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-primary" data-action="modal-remove">Got it</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    const closeBtn = modal.querySelector('.modal-close');
-    if (closeBtn instanceof HTMLElement) closeBtn.addEventListener('click', () => modal.remove());
-    modal.addEventListener('click', (e) => {
-      const tgt = (e && e.target && (e.target instanceof Node)) ? e.target : null;
-      if (tgt === modal) modal.remove();
-    });
+    // Open quick reference page instead of showing modal
+    window.location.href = '/quick_reference';
   }
   
   return { show, shortcuts };
@@ -2468,7 +2436,7 @@ socket.on('session_list', /** @param {SessionListPayload} data */ (data) => {
 });
 
 // Auth status events: auth_blocked / auth_unblocked
-socket.on('auth_blocked', /** @param {Object} data */ (data) => {
+socket.on('auth_blocked', /** @param {Object} _data */ (_data) => {
   ErrorBoundary.safeExecute(() => {
     const banner = document.getElementById('authStatusBanner');
     const title = document.getElementById('authStatusTitle');
@@ -2488,7 +2456,7 @@ socket.on('auth_blocked', /** @param {Object} data */ (data) => {
   }, 'socket:auth_blocked');
 });
 
-socket.on('auth_unblocked', /** @param {Object} data */ (data) => {
+socket.on('auth_unblocked', /** @param {Object} _data */ (_data) => {
   ErrorBoundary.safeExecute(() => {
     const banner = document.getElementById('authStatusBanner');
     if (banner) {

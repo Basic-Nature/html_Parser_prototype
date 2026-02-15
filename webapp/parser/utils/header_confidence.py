@@ -3,9 +3,8 @@ Header mapping confidence scoring and validation.
 Ensures only high-quality headers are migrated to the warehouse.
 """
 
-from typing import Dict, Optional, Tuple
-
 import logging
+from typing import Dict, Optional, Tuple
 
 from ..config import HEADER_CONFIDENCE_THRESHOLD, HEADER_INSERT_CONFIDENCE_THRESHOLD
 
@@ -55,8 +54,6 @@ def get_header_confidence(header: str, target_column: str, weights: Optional[Dic
         return 0.0
     
     header_clean = header.strip().lower().replace('_', ' ')
-    target_clean = target_column.strip().lower().replace('_', ' ')
-    
     if target_column not in COLUMN_ALIASES:
         return 0.0
     

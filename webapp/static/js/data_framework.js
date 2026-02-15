@@ -77,6 +77,8 @@ document.addEventListener('DOMContentLoaded', () => {
     dropoffDrawerToggle: document.getElementById('dropoffDrawerToggle'),
     dropoffDrawerOverlay: document.getElementById('dropoffDrawerOverlay'),
     vizYear: document.getElementById('vizYearSelect'),
+    vizState: document.getElementById('vizStateSelect'),
+    vizCounty: document.getElementById('vizCountySelect'),
     vizContest: document.getElementById('vizContestSelect'),
     vizTopRace: document.getElementById('vizTopRaceSelect'),
     vizTopRaceCount: document.getElementById('vizTopRaceCountSelect'),
@@ -126,6 +128,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let curatedCounty = '';
   let vizRows = [];
   let vizYear = '';
+  let vizState = '';
+  let vizCounty = '';
   let vizContest = '';
   let vizParty = '';
   let vizAutoTimer = null;
@@ -497,6 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function setVizFilters(rows) {
     vizTopRaces = [];
+    // Populate Year dropdown
     const years = Array.from(new Set(rows.map(row => String(row.election_date || row.year || '')).filter(Boolean)))
       .map(value => value.slice(0, 4))
       .filter(Boolean)
@@ -512,6 +517,9 @@ document.addEventListener('DOMContentLoaded', () => {
       vizYear = years[0] || '';
       if (vizYear) el.vizYear.value = vizYear;
     }
+
+    // Populate State dropdown based on selected year
+    updateVizStates();
 
     const contests = Array.from(new Set(rows.map(row => row.contest).filter(Boolean))).sort();
     if (el.vizContest instanceof HTMLSelectElement) {
@@ -549,6 +557,52 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function updateVizStates() {
+    const scopeRows = vizYear
+      ? vizRows.filter(row => String(row.election_date || row.year || '').startsWith(vizYear))
+      : vizRows;
+    const states = Array.from(new Set(scopeRows.map(row => row.state).filter(Boolean))).sort();
+    if (el.vizState instanceof HTMLSelectElement) {
+      el.vizState.innerHTML = '';
+      states.forEach(state => {
+        const opt = document.createElement('option');
+        opt.value = state;
+        opt.textContent = state;
+        el.vizState.appendChild(opt);
+      });
+      if (states.length && !states.includes(vizState)) {
+        vizState = states[0];
+      }
+      if (vizState) el.vizState.value = vizState;
+    }
+    updateVizCounties();
+  }
+
+  function updateVizCounties() {
+    const scopeRows = vizYear && vizState
+      ? vizRows.filter(row => 
+          String(row.election_date || row.year || '').startsWith(vizYear) &&
+          row.state === vizState
+        )
+      : vizYear
+        ? vizRows.filter(row => String(row.election_date || row.year || '').startsWith(vizYear))
+        : vizRows;
+    const counties = Array.from(new Set(scopeRows.map(row => row.county).filter(Boolean))).sort();
+    if (el.vizCounty instanceof HTMLSelectElement) {
+      el.vizCounty.innerHTML = '';
+      counties.forEach(county => {
+        const opt = document.createElement('option');
+        opt.value = county;
+        opt.textContent = county;
+        el.vizCounty.appendChild(opt);
+      });
+      if (counties.length && !counties.includes(vizCounty)) {
+        vizCounty = counties[0];
+      }
+      if (vizCounty) el.vizCounty.value = vizCounty;
+    }
+  }
+
   function updateTopRaces() {
     const contestTotals = {};
     const scopeRows = vizYear
@@ -581,6 +635,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (vizYear) {
       filtered = filtered.filter(row => String(row.election_date || row.year || '').startsWith(vizYear));
     }
+    if (vizState) {
+      filtered = filtered.filter(row => row.state === vizState);
+    }
+    if (vizCounty) {
+      filtered = filtered.filter(row => row.county === vizCounty);
+    }
     if (vizContest) {
       filtered = filtered.filter(row => row.contest === vizContest);
     }
@@ -612,6 +672,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (syncTopRace && el.vizTopRace instanceof HTMLSelectElement) {
       el.vizTopRace.value = value;
+    }
+    refreshViz();
+  }
+
+  function setVizYear(value) {
+    if (!value) return;
+    vizYear = value;
+    if (el.vizYear instanceof HTMLSelectElement) {
+      el.vizYear.value = value;
+    }
+    updateVizStates();
+    updateTopRaces();
+    refreshViz();
+  }
+
+  function setVizState(value) {
+    if (!value) return;
+    vizState = value;
+    if (el.vizState instanceof HTMLSelectElement) {
+      el.vizState.value = value;
+    }
+    updateVizCounties();
+    refreshViz();
+  }
+
+  function setVizCounty(value) {
+    if (!value) return;
+    vizCounty = value;
+    if (el.vizCounty instanceof HTMLSelectElement) {
+      el.vizCounty.value = value;
     }
     refreshViz();
   }
@@ -1623,12 +1713,30 @@ document.addEventListener('DOMContentLoaded', () => {
   el.vizYear?.addEventListener('change', e => {
     const tgt = e.target;
     if (tgt instanceof HTMLSelectElement) {
-      vizYear = tgt.value;
       vizAutoLocked = true;
       stopVizAutoRotation();
       hideVizHint();
-      updateTopRaces();
-      refreshViz();
+      setVizYear(tgt.value);
+    }
+  });
+
+  el.vizState?.addEventListener('change', e => {
+    const tgt = e.target;
+    if (tgt instanceof HTMLSelectElement) {
+      vizAutoLocked = true;
+      stopVizAutoRotation();
+      hideVizHint();
+      setVizState(tgt.value);
+    }
+  });
+
+  el.vizCounty?.addEventListener('change', e => {
+    const tgt = e.target;
+    if (tgt instanceof HTMLSelectElement) {
+      vizAutoLocked = true;
+      stopVizAutoRotation();
+      hideVizHint();
+      setVizCounty(tgt.value);
     }
   });
 

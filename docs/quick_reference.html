@@ -3,224 +3,389 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Elections Parser - Quick Reference</title>
+  <title>Ballot Lens - Quick Reference</title>
   <link rel="stylesheet" href="../webapp/static/css/quick_reference.css">
 </head>
 <body>
+  <div class="page-header">
+    <button class="home-btn" id="homeBtn" aria-label="Back to Ballot Lens" title="Back to Ballot Lens (Ctrl+Home)">
+      ⌂
+    </button>
+    <h1 class="page-title">🗳️ Ballot Lens — Quick Reference</h1>
+  </div>
+  
   <div class="container">
-    <h1>🗳️ Smart Elections Parser</h1>
-    <p>Quick Reference Guide - Modern UI</p>
+    <p class="breadcrumb">Reference for Ballot Lens Interface → <strong>Election results parsing & review</strong></p>
 
-    <h2>🎯 Core Features</h2>
-    <div class="grid">
-      <div class="card">
-        <div class="card-title">📁 File Sources</div>
-        <div class="card-content">
-          <strong>Input Folder:</strong> Process files in /input<br>
-          <strong>Manual Upload:</strong> Browse and upload files<br>
-          <strong>Direct URLs:</strong> <span class="badge badge-new">NEW</span> Paste URLs for batch processing
-        </div>
+    <!-- INTERFACE LAYOUT -->
+    <h2>🎨 Interface Layout</h2>
+    <pre style="background: #0f172a; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; color: #93c5fd;">
+┌─ Navigation Bar ─────────────────────────────────────────────────────────┐
+│ 🗳️ Ballot Lens │ Home │ Quality │ Health │ Data Framework │ History │ ⚙️  │
+├────────────────────────────────────────────────────────────────────────────┤
+│┌─ Left Sidebar ──────────────────┐   ┌─ Main Content ────────────────────┐│
+││ 🔗 URLs & Files                 │   │ Results Preview Bar (collapsible) ││
+││                                  │   │ - Pipeline Stages                  ││
+││ • URL Library        [toggle]    │   │ - Search Results Box               ││
+││ • Manual Uploads     [toggle]    │   │ - Refresh Button                   ││
+││                                  │   │                                    ││
+││ 📊 Run Overview                  │   │ ┌─ Results Grid ─────────────────┐││
+││ - Session ID                     │   │ │ Contest 1 Card                  │││
+││ - Source Type                    │   │ │ Contest 2 Card                  │││
+││ - Mode (live/batch/bypass)       │   │ │ ...                             │││
+││                                  │   │ └────────────────────────────────┘││
+││ 🎯 Expected Artifacts            │   │                                    ││
+││ - CSV Output                     │   │ 📝 Pipeline Hints (info bar)       ││
+││ - Quality Metrics                │   │                                    ││
+││                                  │   │ 🔄 Refresh / Search / Export       ││
+│└─────────────────────────────────┘   └────────────────────────────────────┘│
+│                                         [Right Sidebar: Tools & Settings]   │
+└────────────────────────────────────────────────────────────────────────────┘
+    </pre>
+
+    <!-- MAIN SECTIONS -->
+    <h2>📍 Main Content Areas</h2>
+    <div class="nav-grid">
+      <div class="nav-card">
+        <h3>🔗 Left Sidebar: URLs & Files</h3>
+        <p><strong>Purpose:</strong> Manage data sources<br>
+        <strong>Contains:</strong> URL library, upload manager, run overview<br>
+        <strong>Actions:</strong> Toggle sources, track session info</p>
       </div>
-      <div class="card">
-        <div class="card-title">⚡ Processing Modes</div>
-        <div class="card-content">
-          <strong>Normal:</strong> Interactive contest selection<br>
-          <strong>Batch Mode:</strong> <span class="badge badge-new">NEW</span> Auto-process all contests<br>
-          <strong>Output Bypass:</strong> Preview without saving CSV
-        </div>
+      
+      <div class="nav-card">
+        <h3>📊 Results Preview Bar</h3>
+        <p><strong>Status:</strong> Collapsible bar at top<br>
+        <strong>Shows:</strong> Pipeline progress (PREPARE → SOURCE → RUN → REVIEW)<br>
+        <strong>Actions:</strong> Search results, refresh, expand/collapse</p>
       </div>
-      <div class="card">
-        <div class="card-title">🔍 Filters</div>
-        <div class="card-content">
-          <strong>Confidence:</strong> 0-100% quality threshold<br>
-          <strong>State:</strong> Filter by jurisdiction<br>
-          <strong>Log Level:</strong> ERROR/WARNING/INFO<br>
-          <strong>Presets:</strong> <span class="badge badge-new">NEW</span> Save filter combinations
-        </div>
+      
+      <div class="nav-card">
+        <h3>🎯 Results Grid</h3>
+        <p><strong>Content:</strong> Contest cards with parsed data<br>
+        <strong>Shows:</strong> Ballot measure, contests, results<br>
+        <strong>Actions:</strong> Click cards to preview, export individual contests</p>
       </div>
-      <div class="card">
-        <div class="card-title">📊 Session Actions</div>
-        <div class="card-content">
-          <strong>Clone:</strong> <span class="badge badge-new">NEW</span> Duplicate current session<br>
-          <strong>Export:</strong> <span class="badge badge-new">NEW</span> Download results as JSON<br>
-          <strong>Clear:</strong> <span class="badge badge-new">NEW</span> Reset logs
-        </div>
+      
+      <div class="nav-card">
+        <h3>⚙️ Right Sidebar</h3>
+        <p><strong>Location:</strong> Collapsible tools panel (right edge)<br>
+        <strong>Contains:</strong> Export options, settings, advanced controls<br>
+        <strong>Access:</strong> Click ⚙️ button in navbar</p>
+      </div>
+
+      <div class="nav-card">
+        <h3>📡 Source Carousel</h3>
+        <p><strong>Where:</strong> Left sidebar under "URLs & Files"<br>
+        <strong>Options:</strong> URL Library, Manual Uploads<br>
+        <strong>Use:</strong> Switch between data sources (swipe or dot click)</p>
+      </div>
+
+      <div class="nav-card">
+        <h3>🔍 Search & Filter</h3>
+        <p><strong>Location:</strong> Results preview bar<br>
+        <strong>Action:</strong> Type to filter contests by name/state/type<br>
+        <strong>Result:</strong> Real-time filtering of grid below</p>
       </div>
     </div>
 
-    <h2>⌨️ Keyboard Shortcuts <span class="badge badge-advanced">ADVANCED</span></h2>
+    <!-- HOW TO TASKS -->
+    <h2>🎯 How To...</h2>
+    <div class="section-nav">
+      <h3>Switch Between URL Source & Uploads</h3>
+      <ol>
+        <li>Look at <strong>Left Sidebar → URLs & Files</strong></li>
+        <li>Click the dot indicators or swipe carousel cards</li>
+        <li>Current source highlighted (active dot)</li>
+        <li>Available URLs or upload list appears in carousel</li>
+      </ol>
+    </div>
+
+    <div class="section-nav">
+      <h3>View Parsed Results</h3>
+      <ol>
+        <li>After parser run completes, <strong>Results Preview Bar</strong> opens</li>
+        <li>View pipeline stages: PREPARE → SOURCE → RUN → REVIEW</li>
+        <li><strong>Results Grid</strong> shows contest cards below</li>
+        <li>Click any card to expand/preview details</li>
+        <li>Scroll to see all contests</li>
+      </ol>
+    </div>
+
+    <div class="section-nav">
+      <h3>Search Results</h3>
+      <ol>
+        <li>Open <strong>Results Preview Bar</strong> if collapsed (click header)</li>
+        <li>Find search box: <span class="kbd">🔍 Search results...</span></li>
+        <li>Type contest name, state, or ballot type</li>
+        <li>Grid updates in real-time to show matches</li>
+        <li>Clear search to reset grid</li>
+      </ol>
+    </div>
+
+    <div class="section-nav">
+      <h3>Refresh Results</h3>
+      <ol>
+        <li>In <strong>Results Preview Bar</strong>, click <span class="kbd">🔄 Refresh</span></li>
+        <li>Grid reloads latest parsed data</li>
+        <li>Use if data seems stale or after editing source</li>
+      </ol>
+    </div>
+
+    <div class="section-nav">
+      <h3>Check Pipeline Status</h3>
+      <ol>
+        <li>View <strong>Results Preview Bar</strong> progress track</li>
+        <li>Stages: PREPARE (setup) → SOURCE (load data) → RUN (parse) → REVIEW (validate)</li>
+        <li>Current stage highlighted; click to expand details</li>
+        <li>Check <strong>Pipeline Hints</strong> bar below for messages</li>
+      </ol>
+    </div>
+
+    <div class="section-nav">
+      <h3>Export Data</h3>
+      <ol>
+        <li>Click right-sidebar toggle: <span class="kbd">⚙️</span> in navbar</li>
+        <li>Navigate to <strong>Export</strong> section</li>
+        <li>Choose format: CSV, JSON, or filtered view</li>
+        <li>Select contests to include (or export all)</li>
+        <li>Click <span class="kbd">Download</span></li>
+      </ol>
+    </div>
+
+    <!-- KEYBOARD SHORTCUTS -->
+    <h2>⌨️ Keyboard Shortcuts</h2>
     <table>
       <thead>
         <tr>
           <th>Shortcut</th>
           <th>Action</th>
+          <th>Context</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td><kbd>Ctrl</kbd> + <kbd>E</kbd></td>
-          <td>Export session data (JSON)</td>
+          <td><span class="kbd">Escape</span></td>
+          <td>Close Modal / Deselect</td>
+          <td>Any modal or form is open</td>
         </tr>
         <tr>
-          <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd></td>
-          <td>Export as CSV</td>
+          <td><span class="kbd">Ctrl</span> + <span class="kbd">Home</span></td>
+          <td>Back to Dashboard</td>
+          <td>From Ballot Lens page</td>
         </tr>
         <tr>
-          <td><kbd>Ctrl</kbd> + <kbd>L</kbd></td>
-          <td>Clear logs</td>
+          <td><span class="kbd">Ctrl</span> + <span class="kbd">Enter</span></td>
+          <td>Confirm / Submit Prompt</td>
+          <td>Single option prompt is active</td>
         </tr>
         <tr>
-          <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd></td>
-          <td>Clone current session</td>
+          <td><span class="kbd">Tab</span></td>
+          <td>Navigate Between Controls</td>
+          <td>Anywhere (native browser behavior)</td>
         </tr>
         <tr>
-          <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd></td>
-          <td>Open command palette</td>
+          <td><span class="kbd">Enter / Space</span></td>
+          <td>Activate Button/Toggle</td>
+          <td>Button is focused</td>
         </tr>
         <tr>
-          <td><kbd>Ctrl</kbd> + <kbd>/</kbd></td>
-          <td>Show this keyboard shortcuts help</td>
+          <td>Swipe Left/Right</td>
+          <td>Carousel between URL / Upload</td>
+          <td>Left sidebar carousel (mobile)</td>
         </tr>
         <tr>
-          <td><kbd>Escape</kbd></td>
-          <td>Close modals</td>
+          <td>Click Dots</td>
+          <td>Jump to Source</td>
+          <td>Left sidebar carousel</td>
         </tr>
       </tbody>
     </table>
 
-    <h2>🔗 Direct URL Processing <span class="badge badge-new">NEW</span></h2>
-    
-    <h3>How to Use:</h3>
+    <!-- FEATURE FINDER -->
+    <h2>📌 Feature Finder</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Need...</th>
+          <th>Go To...</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>View parsed contests</td>
+          <td><strong>Main Content → Results Grid</strong></td>
+          <td>Scroll cards, click to expand</td>
+        </tr>
+        <tr>
+          <td>Search for specific contest</td>
+          <td><strong>Results Preview Bar → Search Box</strong></td>
+          <td>Type name, state, or ballot type</td>
+        </tr>
+        <tr>
+          <td>Track parsing progress</td>
+          <td><strong>Results Preview Bar → Stages</strong></td>
+          <td>Watch PREPARE → SOURCE → RUN → REVIEW</td>
+        </tr>
+        <tr>
+          <td>Manage URL sources</td>
+          <td><strong>Left Sidebar → Source Carousel</strong></td>
+          <td>Toggle URL Library / Manual Uploads</td>
+        </tr>
+        <tr>
+          <td>See session overview</td>
+          <td><strong>Left Sidebar → Run Overview</strong></td>
+          <td>View session ID, source type, mode</td>
+        </tr>
+        <tr>
+          <td>Check expected outputs</td>
+          <td><strong>Left Sidebar → Expected Artifacts</strong></td>
+          <td>Review CSV, metadata, quality checks</td>
+        </tr>
+        <tr>
+          <td>Download results</td>
+          <td><strong>Right Sidebar → Export</strong></td>
+          <td>Choose format (CSV/JSON) & download</td>
+        </tr>
+        <tr>
+          <td>Access tools & settings</td>
+          <td><strong>Top Navbar → ⚙️ Tools</strong></td>
+          <td>Open right sidebar panel</td>
+        </tr>
+        <tr>
+          <td>Navigate to dashboards</td>
+          <td><strong>Top Navbar Links</strong></td>
+          <td>Quality | Health | Data Framework | History</td>
+        </tr>
+        <tr>
+          <td>Return to home</td>
+          <td><strong>Top Navbar → Home</strong></td>
+          <td>Or press Ctrl+Home</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- TIPS & TRICKS -->
+    <h2>💡 Navigation Tips</h2>
     <ul>
-      <li>Select "Direct URLs" radio button in Controls</li>
-      <li>Paste URLs in textarea (one per line)</li>
-      <li>Maximum 20 URLs per batch</li>
-      <li>Real-time validation with color-coded feedback</li>
-      <li>Enable "Batch Mode" for automatic contest processing</li>
+      <li><strong>Collapse/expand sections:</strong> Click section headers to toggle content visibility</li>
+      <li><strong>Sticky navbar:</strong> Navigation bar stays at top while scrolling results</li>
+      <li><strong>Live stage updates:</strong> Pipeline stages update in real-time as parsing progresses</li>
+      <li><strong>Touch-friendly carousel:</strong> Swipe left/right on mobile to switch URL/upload sources</li>
+      <li><strong>Search persistence:</strong> Search results filter grid dynamically (no page reload)</li>
+      <li><strong>Keyboard accessible:</strong> Use Tab to navigate, Enter/Space to activate buttons</li>
+      <li><strong>Modal focus trap:</strong> When modal opens, focus stays within the modal until closed (Escape or close button)</li>
+      <li><strong>Empty state:</strong> If no results show, check pipeline status and refresh</li>
+      <li><strong>Responsive sidebar:</strong> Left/right sidebars auto-collapse on mobile for more space</li>
+      <li><strong>Hint messages:</strong> Watch pipeline hint bar below main content for helpful guidance</li>
     </ul>
 
-    <div class="tip">
-      <strong>💡 Tip:</strong> Direct URL drafts are saved per session. Switch sessions to work on different URL sets without losing your work!
-    </div>
-
-    <h3>URL Validation Rules:</h3>
-    <ul>
-      <li>Only <code>http://</code> and <code>https://</code> protocols allowed</li>
-      <li>URLs with usernames/passwords are rejected (security)</li>
-      <li>Invalid URLs are highlighted in red</li>
-      <li>Valid URLs show green checkmark with count</li>
-    </ul>
-
-    <div class="warning">
-      <strong>⚠️ Warning:</strong> URLs exceeding the 20-item limit will be truncated. Split large batches into multiple sessions.
-    </div>
-
-    <h2>💾 Filter Presets <span class="badge badge-new">NEW</span></h2>
-    
-    <h3>Save Your Favorite Filters:</h3>
-    <ul>
-      <li>Adjust Confidence, State, and Log Level filters</li>
-      <li>Click "Save" button</li>
-      <li>Enter a descriptive name</li>
-      <li>Preset appears in dropdown</li>
-      <li>Select preset to instantly restore filters</li>
-      <li>Delete unwanted presets anytime</li>
-    </ul>
-
-    <div class="tip">
-      <strong>💡 Tip:</strong> Create presets for common workflows like "High-Confidence Only" (90%+, All states, ERROR only) or "California Full" (0%+, CA, INFO).
-    </div>
-
-    <h2>🔄 Session Management <span class="badge badge-new">NEW</span></h2>
-    
-    <h3>Clone Session:</h3>
-    <p>Creates an exact copy of your current session including all settings, filters, and URL drafts. Perfect for testing different configurations side-by-side.</p>
-
-    <h3>Export Data:</h3>
-    <p>Downloads all session results as a JSON file with timestamp. Useful for archiving, sharing, or post-processing in external tools.</p>
-
-    <h3>Clear Logs:</h3>
-    <p>Removes all log entries for the current session. Helpful when starting a new parse run or debugging specific issues.</p>
-
-    <h2>🎨 UI Tips</h2>
-    <ul>
-      <li><strong>Log Drawer:</strong> Click handle at bottom to expand/minimize</li>
-      <li><strong>Auto-scroll:</strong> Logs automatically scroll during parsing</li>
-      <li><strong>Search:</strong> Filter results by name in top search box</li>
-      <li><strong>File Browser:</strong> Click folder names to expand contents</li>
-      <li><strong>Preview:</strong> Click files to preview in modal</li>
-      <li><strong>Accessibility:</strong> Full keyboard navigation + screen reader support</li>
-    </ul>
-
-    <h2>📚 Common Workflows</h2>
-
-    <h3>Scenario 1: Process Multiple URLs Automatically</h3>
-    <ol class="ol-steps">
-      <li>Select "Direct URLs" radio button</li>
-      <li>Paste 5-10 election results URLs</li>
-      <li>Check "Batch Mode" checkbox</li>
-      <li>Click "Run Parser"</li>
-      <li>Parser processes all URLs and contests without prompts</li>
-    </ol>
-
-    <h3>Scenario 2: Filter and Export High-Quality Results</h3>
-    <ol class="ol-steps">
-      <li>Set Confidence slider to 85%+</li>
-      <li>Select specific State from dropdown</li>
-      <li>Set Log Level to "Errors" only</li>
-      <li>Click "Save" in Filter Presets → name "High Quality"</li>
-      <li>Click "Export Data" to download JSON</li>
-    </ol>
-
-    <h3>Scenario 3: Compare Different Processing Settings</h3>
-    <ol class="ol-steps">
-      <li>Run parser with normal settings</li>
-      <li>Click "Clone Session" (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>)</li>
-      <li>Switch to cloned session in sidebar</li>
-      <li>Change settings (e.g., enable Output Bypass)</li>
-      <li>Run parser again and compare results</li>
-    </ol>
-
-    <h2>🛠️ Troubleshooting</h2>
-
-    <div class="card mt-1">
-      <div class="card-title">Direct URLs not validating?</div>
-      <div class="card-content">
-        <ul>
-          <li>Ensure URLs start with http:// or https://</li>
-          <li>Remove any trailing spaces or special characters</li>
-          <li>Check that URLs don't contain @ symbols (credentials)</li>
-          <li>Verify total count doesn't exceed 20</li>
-        </ul>
+    <!-- COMMON ACTIONS -->
+    <h2>🔧 Common Actions</h2>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+      <div style="padding: 1rem; border: 1px solid #334155; border-radius: 6px;">
+        <h4>📥 View Parse Results</h4>
+        <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9rem;">
+          <li>Run parser (check Left Sidebar)</li>
+          <li>Wait for REVIEW stage</li>
+          <li>Results appear in grid</li>
+          <li>Click cards to expand</li>
+        </ol>
+      </div>
+      <div style="padding: 1rem; border: 1px solid #334155; border-radius: 6px;">
+        <h4>🔍 Filter by Contest Type</h4>
+        <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9rem;">
+          <li>Open Results Preview</li>
+          <li>Type in search: "president", "measure", etc.</li>
+          <li>Grid filters automatically</li>
+          <li>Clear to see all</li>
+        </ol>
+      </div>
+      <div style="padding: 1rem; border: 1px solid #334155; border-radius: 6px;">
+        <h4>📋 Switch Data Source</h4>
+        <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9rem;">
+          <li>Left Sidebar carousel</li>
+          <li>Click dot or swipe</li>
+          <li>New source appears</li>
+          <li>Ready to reparse</li>
+        </ol>
+      </div>
+      <div style="padding: 1rem; border: 1px solid #334155; border-radius: 6px;">
+        <h4>💾 Export Results</h4>
+        <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9rem;">
+          <li>Right Sidebar: ⚙️ button</li>
+          <li>Find Export section</li>
+          <li>Choose CSV or JSON</li>
+          <li>Download file</li>
+        </ol>
       </div>
     </div>
 
-    <div class="card mt-1">
-      <div class="card-title">Filter presets not saving?</div>
-      <div class="card-content">
-        <ul>
-          <li>Check browser localStorage is enabled</li>
-          <li>Try a different preset name (avoid special characters)</li>
-          <li>Refresh page and try again</li>
-        </ul>
-      </div>
+    <!-- INTERFACE ELEMENTS -->
+    <h2>🎛️ Key Controls & Buttons</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Button/Control</th>
+          <th>Location</th>
+          <th>Function</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="kbd">☰</span> (Menu)</td>
+          <td>Navbar (mobile)</td>
+          <td>Toggle left sidebar</td>
+        </tr>
+        <tr>
+          <td><span class="kbd">⚙️</span> (Tools)</td>
+          <td>Navbar (top-right)</td>
+          <td>Open right sidebar (settings/export)</td>
+        </tr>
+        <tr>
+          <td><span class="kbd">🔄</span> (Refresh)</td>
+          <td>Results Preview Bar</td>
+          <td>Reload results grid</td>
+        </tr>
+        <tr>
+          <td><span class="kbd">🔍</span> (Search)</td>
+          <td>Results Preview Bar</td>
+          <td>Filter results by keyword</td>
+        </tr>
+        <tr>
+          <td>Carousel Dots</td>
+          <td>Left Sidebar</td>
+          <td>Switch between URL Library and Uploads</td>
+        </tr>
+        <tr>
+          <td>Contest Cards</td>
+          <td>Results Grid</td>
+          <td>Click to expand/collapse details</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- STATUS INDICATORS -->
+    <h2>📊 Understanding Pipeline Status</h2>
+    <div style="padding: 1rem; background: #0f172a; border-radius: 6px; margin: 1rem 0;">
+      <p style="margin: 0 0 1rem 0; color: #93c5fd;"><strong>Pipeline Stages:</strong></p>
+      <ul style="margin: 0; padding-left: 1.5rem;">
+        <li><span class="kbd">PREPARE</span> — Setting up session, validating inputs</li>
+        <li><span class="kbd">SOURCE</span> — Loading URLs or uploaded files</li>
+        <li><span class="kbd">RUN</span> — Active parsing of election data</li>
+        <li><span class="kbd">REVIEW</span> — Quality validation and results finalization</li>
+      </ul>
+      <p style="margin: 1rem 0 0 0; color: #cbd5e1; font-size: 0.9rem;"><em>Current stage highlights; click stage to see details. Progress shown via visual indicators.</em></p>
     </div>
 
-    <div class="card mt-1">
-      <div class="card-title">Keyboard shortcuts not working?</div>
-      <div class="card-content">
-        <ul>
-          <li>Ensure no modal is open (press <kbd>Escape</kbd> first)</li>
-          <li>Check that no input field has focus</li>
-          <li>Try refreshing the page</li>
-        </ul>
-      </div>
-    </div>
-
-    <hr class="divider">
-    <p class="footnote">
-      Smart Elections Parser v3.0 | Modern UI with Advanced Features | Press <kbd>Ctrl</kbd> + <kbd>/</kbd> for shortcuts
+    <hr style="border: none; border-top: 1px solid #334155; margin: 2rem 0;">
+    <p style="text-align: center; color: #cbd5e1; font-size: 0.9rem;">
+      <strong>Ballot Lens v3.0</strong> | Election Results Parser<br>
+      Press <span class="kbd">Escape</span> to close any modal | Press <span class="kbd">Ctrl</span> + <span class="kbd">Home</span> to return to dashboard
     </p>
   </div>
+
+  <script src="../webapp/static/js/quick_reference.js" defer></script>
 </body>
 </html>

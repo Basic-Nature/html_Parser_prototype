@@ -25,6 +25,7 @@ import numpy as np
 import orjson
 from selectolax.parser import HTMLParser
 
+from ..config import ENTITY_LINKING_THRESHOLD
 from ..Context_Integration.Context_Library.constants import (
     BALLOT_TYPES,
     BALLOT_TYPES_SORT_ORDER,
@@ -60,7 +61,6 @@ from .date_utils import is_date_like
 from .detect import extract_table_data, is_location_header, normalize_header, normalize_text
 from .dom_extractor import extract_rows_and_headers_from_dom, guess_headers_from_row
 from .logger_singleton import logger
-from ..config import ENTITY_LINKING_THRESHOLD
 from .pattern_extractor import extract_with_patterns, load_dom_patterns
 from .shared_logic import (
     safe_append,

@@ -11,10 +11,8 @@
 <body>
     <nav class="navbar">
         <a href="https://smartelections.us/">Home Base</a>
-        <a href="https://discord.gg/your_invite" target="_blank" rel="noreferrer">Community</a>
         <a href="https://github.com/Basic-Nature/html_Parser_prototype/issues" target="_blank" rel="noreferrer">Feedback</a>
         <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank" rel="noreferrer">GitHub</a>
-      <a href="{{ url_for('quick_reference_page') }}">Quick Reference</a>
     </nav>
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -54,8 +52,8 @@
                 <h3>Change History</h3>
                 <p>View the full history of URL hint changes and parser configuration updates for transparency and auditability.</p>
             </a>
-            <a class="feature" href="{{ url_for('azure_health_page') }}" data-bs-toggle="tooltip" title="Queue health scripts and review logs for Azure deployments.">
-              <h3>Azure Health</h3>
+            <a class="feature" href="{{ url_for('health_dashboard_page') }}" data-bs-toggle="tooltip" title="Internal health monitoring: queue maintenance tasks and review system logs.">
+              <h3>Health Dashboard</h3>
               <p>Trigger manual correction, pipeline health runs, and retraining jobs from one console with live log streaming.</p>
             </a>
             <a class="feature" href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer" data-bs-toggle="tooltip" title="Project overview and contribution guide.">
