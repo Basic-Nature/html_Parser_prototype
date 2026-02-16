@@ -318,6 +318,40 @@ def _require_client_cert(reason: str):
     return _cert_required_response(reason)
 
 
+def _require_cert_for_socket_action(action: str, session_id: str | None = None) -> bool:
+    if not REQUIRE_CERT_FOR_MUTATIONS:
+        return True
+    if DEPLOY_ENV == "local" and _is_local_request():
+        return True
+    admin_token = os.environ.get("ADMIN_JWT_TOKEN")
+    auth_hdr = (request.headers.get("Authorization") or "").strip()
+    if admin_token and auth_hdr.lower().startswith("bearer "):
+        try:
+            if hmac.compare_digest(auth_hdr.split(None, 1)[1].strip(), admin_token):
+                return True
+        except Exception:
+            pass
+    principal, _, _ = get_request_principal()
+    if principal and principal.startswith("cert:"):
+        return True
+    if session_id:
+        try:
+            session_manager.update_metadata(session_id, auth_blocked=True)
+        except Exception:
+            pass
+    emit(
+        'parser_output',
+        normalize_log_obj({
+            "level": "WARNING",
+            "type": "auth",
+            "message": f"Certificate required for {action}.",
+            "session_id": session_id,
+        }),
+        room=session_id,
+    )
+    return False
+
+
 def _ingestion_audit_context(session_id: str | None = None) -> dict:
     try:
         forwarded_for = (request.headers.get("X-Forwarded-For") or "").split(",", 1)[0].strip()
@@ -4902,6 +4936,9 @@ def api_auth_certificate_info():
     This endpoint is used by the auth welcome page to display cert info to users.
     """
     principal, principal_source, cert_metadata = get_request_principal()
+    cert_resp = _require_client_cert("certificate_info")
+    if cert_resp:
+        return cert_resp
     if not principal:
         return jsonify({
             "error": "No certificate found",
@@ -6054,6 +6091,27 @@ def handle_ballot_lens(data=None) -> None:
         return
 
     principal, principal_source, cert_metadata = get_request_principal()
+    arr_cert_header = request.headers.get("X-ARR-ClientCert", "") or ""
+    principal_kind = None
+    if isinstance(principal, str):
+        principal_kind = "cert" if principal.startswith("cert:") else "principal"
+    gate_ok = _require_cert_for_socket_action("ballot_lens", session_id=session_id)
+    logger.info({
+        "level": "INFO",
+        "type": "auth",
+        "message": "Socket cert gate decision for ballot_lens.",
+        "session_id": session_id,
+        "cert_gate": "allow" if gate_ok else "deny",
+        "require_cert": REQUIRE_CERT_FOR_MUTATIONS,
+        "arr_client_cert_present": bool(arr_cert_header),
+        "arr_client_cert_len": len(arr_cert_header) if arr_cert_header else 0,
+        "principal_present": bool(principal),
+        "principal_kind": principal_kind,
+        "principal_source": principal_source,
+        "cert_metadata_error": bool(cert_metadata) and isinstance(cert_metadata, dict) and bool(cert_metadata.get("error")),
+    })
+    if not gate_ok:
+        return
 
     # --- Ensure join_room is fully propagated before any log emission ---
     join_room(session_id)
