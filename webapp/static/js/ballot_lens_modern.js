@@ -1188,27 +1188,43 @@ const _TablePreview = (() => {
     }
   }
 
+  let certCheckInFlight = null;
+  let certCheckLastOk = 0;
+  const CERT_CHECK_COOLDOWN_MS = 5000;
+
+  // LEGACY: older cert check via separate fetch (no longer primary path—socket.io TLS now validates)
+  // Kept for reference/fallback to prevent regression
   async function ensureCertForMutation(targetUrl) {
-    try {
-      // Azure App Service optional mTLS reference:
-      // https://learn.microsoft.com/en-us/azure/app-service/app-service-web-configure-tls-mutual-auth
-      const resp = await fetch('/api/auth/certificate_info', {
-        headers: { 'Accept': 'application/json' }
-      });
-      if (resp && resp.status === 401) {
-        showCertRequiredModal(targetUrl || window.location.href);
-        return false;
-      }
-      return resp && resp.ok;
-    } catch (e) {
-      return false;
+    const now = Date.now();
+    if (certCheckLastOk && (now - certCheckLastOk) < CERT_CHECK_COOLDOWN_MS) {
+      return true;
     }
+    if (certCheckInFlight) {
+      return certCheckInFlight;
+    }
+    certCheckInFlight = (async () => {
+      try {
+        const resp = await fetch('/api/auth/certificate_info', {
+          headers: { 'Accept': 'application/json' }
+        });
+        if (resp && resp.status === 401) {
+          showCertRequiredModal(targetUrl || window.location.href);
+          return false;
+        }
+        if (resp && resp.ok) {
+          certCheckLastOk = Date.now();
+        }
+        return resp && resp.ok;
+      } catch (e) {
+        return false;
+      } finally {
+        certCheckInFlight = null;
+      }
+    })();
+    return certCheckInFlight;
   }
 
-  if (typeof window !== 'undefined') {
-    const winAny = /** @type {any} */ (window);
-    winAny.__blEnsureCertForMutation = ensureCertForMutation;
-  }
+  // Do NOT export ensureCertForMutation—socket.io TLS handshake is now primary cert validation
   
   return { renderPreview, showPreviewModal };
 })();
@@ -2373,7 +2389,66 @@ const socket = io({
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
   reconnectionAttempts: 5,
+  autoConnect: false,
 });
+
+let socketJoinRequested = false;
+
+function getJoinPayload() {
+  return {
+    username: localStorage.getItem('username') || 'anonymous',
+  };
+}
+
+async function ensureSocketForMutation(targetUrl) {
+  // Socket.IO will use persistent WebSocket (or polling fallback) for single TLS handshake.
+  // Browser cert prompt happens once at TLS layer, not at application layer.
+  // Just ensure socket is connected and emit join.
+  
+  if (!socket.connected) {
+    // initiate connection (will prompt browser for cert if needed)
+    socket.connect();
+    
+    // wait a brief moment for connect or cert-required error
+    return new Promise(resolve => {
+      const timeoutId = setTimeout(() => resolve(true), 150);
+      
+      const onConnect = () => {
+        clearTimeout(timeoutId);
+        socket.off('connect', onConnect);
+        socket.off('connect_error', onConnectError);
+        resolve(true);
+      };
+      
+      const onConnectError = (error) => {
+        clearTimeout(timeoutId);
+        socket.off('connect', onConnect);
+        socket.off('connect_error', onConnectError);
+        
+        // If cert/auth error, show cert prompt
+        if (error && (error.message?.includes('401') || error.message?.includes('cert'))) {
+          const winAny = (typeof window !== 'undefined') ? /** @type {any} */ (window) : null;
+          if (winAny?.ModalManager?.showCertRequiredModal) {
+            winAny.ModalManager.showCertRequiredModal(targetUrl || window.location.href);
+          }
+          resolve(false);
+        } else {
+          // other error—let reconnection logic handle it
+          resolve(true);
+        }
+      };
+      
+      socket.once('connect', onConnect);
+      socket.once('connect_error', onConnectError);
+    });
+  }
+  
+  if (!socketJoinRequested) {
+    socketJoinRequested = true;
+    socket.emit('join', getJoinPayload());
+  }
+  return true;
+}
 
 let currentSessionId = null;
 let activePromptMessage = null;
@@ -2425,6 +2500,10 @@ window.debugSocketIO = {
 
 socket.on('connect', () => {
   console.log('[Socket.IO] Connected:', socket.id);
+  if (!socketJoinRequested) {
+    socketJoinRequested = true;
+    socket.emit('join', getJoinPayload());
+  }
 });
 
 /**
@@ -3990,7 +4069,9 @@ function setQualityPill(confidence) {
 
 // File Source Toggle
 $$('input[name="fileSource"]').forEach(radio => {
-  radio.addEventListener('change', (e) => {
+  radio.addEventListener('change', async (e) => {
+    const ok = await ensureSocketForMutation('/ballot_lens');
+    if (!ok) return;
     socket.emit('set_manual_source', {
       session_id: currentSessionId,
       file_source: (/** @type {any} */ (window)).__tl_helpers.targetValue(e),
@@ -3999,7 +4080,9 @@ $$('input[name="fileSource"]').forEach(radio => {
 });
 
 // Output Bypass Toggle
-$('#outputBypass').addEventListener('change', () => {
+$('#outputBypass').addEventListener('change', async () => {
+  const ok = await ensureSocketForMutation('/ballot_lens');
+  if (!ok) return;
   socket.emit('toggle_output_bypass', {
     session_id: currentSessionId,
   });
@@ -4023,10 +4106,8 @@ function resolveWarehouseGateUrl(fileSource) {
 // Run Parser Button
 $$('#btnRunParser, #btnRunParser2').forEach(btn => {
   btn.addEventListener('click', async () => {
-    const winAny = (typeof window !== 'undefined') ? /** @type {any} */ (window) : null;
-    const certCheck = winAny ? winAny.__blEnsureCertForMutation : null;
-    const certOk = typeof certCheck === 'function' ? await certCheck('/ballot_lens') : true;
-    if (!certOk) {
+    const socketOk = await ensureSocketForMutation('/ballot_lens');
+    if (!socketOk) {
       showToast('Certificate required to run parser.', 'warning');
       return;
     }
@@ -4078,7 +4159,9 @@ $$('#btnRunParser, #btnRunParser2').forEach(btn => {
 });
 
 // Cancel Button
-$('#btnCancel').addEventListener('click', () => {
+$('#btnCancel').addEventListener('click', async () => {
+  const ok = await ensureSocketForMutation('/ballot_lens');
+  if (!ok) return;
   socket.emit('cancel_parser', {
     session_id: currentSessionId,
   });
@@ -6414,10 +6497,13 @@ const ManualUploadManager = (() => {
     
     // Emit to server
     if (updateSource && currentSessionId) {
-      socket.emit('set_manual_source', {
-        session_id: currentSessionId,
-        file_source: 'uploads',
-        origin: 'user'
+      ensureSocketForMutation('/ballot_lens').then((ok) => {
+        if (!ok) return;
+        socket.emit('set_manual_source', {
+          session_id: currentSessionId,
+          file_source: 'uploads',
+          origin: 'user'
+        });
       });
     }
     
@@ -6594,17 +6680,20 @@ function initSessionActions() {
   const clearBtn = document.getElementById('btnClearSession');
   
   if (cloneBtn) {
-    cloneBtn.addEventListener('click', () => {
+    cloneBtn.addEventListener('click', async () => {
       if (!AdvancedFeatures.currentSessionId) {
         showToast('No active session to clone', 'warning');
         return;
       }
       
-      if (window.socket && window.socket.connected) {
+      const socketOk = await ensureSocketForMutation('/ballot_lens');
+      if (socketOk && window.socket && window.socket.connected) {
         window.socket.emit('clone_session', { 
           session_id: AdvancedFeatures.currentSessionId 
         });
         showToast('Cloning session...', 'info');
+      } else if (!socketOk) {
+        showToast('Certificate authentication required', 'warning');
       } else {
         showToast('Socket not connected', 'error');
       }
@@ -9627,10 +9716,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   
-  // Request initial session ID
-  socket.emit('join', {
-    username: localStorage.getItem('username') || 'anonymous',
-  });
+  // Session join happens when the socket connects (after cert-gated actions).
   
   // Socket.IO handlers for Session Mirror
   socket.on('session_list', (data) => {

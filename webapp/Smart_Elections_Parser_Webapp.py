@@ -8,6 +8,10 @@ import os
 # ============================================
 # Using Python's native threading framework for reliable, maintainable async support.
 # This avoids eventlet (deprecated) and provides stable, predictable behavior.
+# 
+# WebSocket support: Enabled by default to reduce cert prompts in Optional mTLS mode.
+# Socket.IO will try WebSocket first, then fall back to polling if needed.
+# This minimizes TLS handshakes and browser cert prompts (one persistent connection vs multiple polling requests).
 # ============================================
 
 _SOCKETIO_ASYNC_MODE = "threading"
@@ -15,11 +19,11 @@ _SOCKETIO_ASYNC_MODE = "threading"
 _SOCKETIO_ENGINE_OPTIONS = {
     "ping_interval": 10,
     "ping_timeout": 60,
-    "allow_upgrades": False,
-    "transports": ["polling"],
+    "allow_upgrades": True,  # Allow polling→WebSocket upgrade to minimize TLS handshakes
+    "transports": ["polling", "websocket"],  # Try WebSocket first, fall back to polling
 }
 
-_SOCKETIO_CLIENT_TRANSPORTS = ["polling"]
+_SOCKETIO_CLIENT_TRANSPORTS = ["websocket", "polling"]  # Prefer WebSocket for persistent connection
 
 # Env-driven allowlist; avoid wildcard in production. Defaults cover local dev.
 _RAW_SOCKETIO_ORIGINS = os.environ.get(
@@ -793,6 +797,10 @@ CERT_SESSION_BINDING = os.environ.get("CERT_SESSION_BINDING", "false").lower() i
 ALLOW_ANON_NO_PRINCIPAL = os.environ.get("ALLOW_ANON_NO_PRINCIPAL", "true").lower() in {"1", "true", "yes"}
 DEV_ISOLATION_BYPASS_ENABLED = os.environ.get("DEV_ISOLATION_BYPASS_ENABLED", "false").lower() in {"1", "true", "yes"}
 DEV_ISOLATION_BYPASS_IPS_RAW = os.environ.get("DEV_ISOLATION_BYPASS_IPS", "").strip()
+try:
+    CERT_SESSION_CAP = max(0, int(os.environ.get("CERT_SESSION_CAP", "0")))
+except ValueError:
+    CERT_SESSION_CAP = 0
 
 LOG_DEDUPE_WINDOW = float(os.environ.get("LOG_DEDUPE_WINDOW_SEC", "2.0"))
 SECURITY_LOG_DEDUPE_WINDOW = float(os.environ.get("SECURITY_LOG_DEDUPE_WINDOW_SEC", "12.0"))
@@ -1368,6 +1376,17 @@ def resolve_session_id(data=None, create_if_missing=True):
                 _apply_auth_context(fp_sid, principal, principal_source)
                 _log_resolution("reuse_fingerprint", fp_sid, "fingerprint")
                 return fp_sid
+
+    if principal and CERT_SESSION_CAP > 0:
+        active_sessions = session_manager.list_principal_sessions(principal, active_only=True)
+        if len(active_sessions) >= CERT_SESSION_CAP:
+            reuse_sid = session_manager.select_principal_session(principal, active_only=True) or active_sessions[0]
+            session_manager.bind_socket(socket_sid, reuse_sid)
+            session['logical_session_id'] = reuse_sid
+            session_manager.set_principal(reuse_sid, principal, principal_source)
+            _apply_auth_context(reuse_sid, principal, principal_source)
+            _log_resolution("reuse_principal_cap", reuse_sid, f"cap={CERT_SESSION_CAP}")
+            return reuse_sid
 
     if not create_if_missing:
         return None

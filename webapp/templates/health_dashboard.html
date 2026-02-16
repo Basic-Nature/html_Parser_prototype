@@ -139,6 +139,7 @@
          data-runtime='{{ runtime_hints|tojson|safe }}'></div>
 
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/health_dashboard.js') }}" defer></script>
 </body>
 </html>

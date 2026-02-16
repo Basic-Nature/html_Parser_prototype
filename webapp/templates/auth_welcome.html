@@ -584,10 +584,16 @@
         function retryProtected() {
             // Get the original target page (the one that required cert)
             const params = new URLSearchParams(window.location.search);
-            const originalTarget = params.get('target_url') || params.get('next') || '/ballot_lens';
+            let targetUrl = params.get('target_url') || params.get('next');
+            if (!targetUrl) {
+                targetUrl = document.body.getAttribute('data-target-url') || '';
+            }
+            if (!targetUrl || targetUrl === '/') {
+                targetUrl = '/ballot_lens';
+            }
             
             // Reload the original target page; if cert is now available, it will proceed
-            window.location.href = originalTarget;
+            window.location.href = targetUrl;
         }
 
         // Optional: Auto-continue after 3 seconds if cert is valid

@@ -660,6 +660,8 @@
       }catch(e){/* noop */}
     });
     </script>
+    <!-- Shared authentication utilities -->
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>
     <!-- Modern dashboard interface (includes all features) -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot_lens_modern.js') }}?v={{ static_version }}" defer></script>
     <!-- Quality Assurance Panel Integration -->

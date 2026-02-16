@@ -122,11 +122,23 @@
       button.disabled = true;
       button.textContent = "Launching...";
       try {
-          const resp = await fetch("/api/health_tasks", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ task: key })
-          });
+          // Use AuthUtils for de-duplication if available
+          const winAny = (typeof window !== 'undefined') ? /** @type {any} */ (window) : null;
+          const authUtils = winAny ? winAny.AuthUtils : null;
+          
+          const mutationKey = `health_task:${key}`;
+          const execMutation = async () => {
+            return fetch("/api/health_tasks", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ task: key })
+            });
+          };
+          
+          const resp = authUtils && typeof authUtils.executeMutationOnce === 'function'
+            ? await authUtils.executeMutationOnce(mutationKey, execMutation)
+            : await execMutation();
+          
           const data = await resp.json();
           if (!resp.ok) {
               throw new Error(data.error || "Failed to start task.");

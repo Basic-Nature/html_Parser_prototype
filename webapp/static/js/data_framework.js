@@ -1309,7 +1309,27 @@ document.addEventListener('DOMContentLoaded', () => {
             hdrs.append('X-CSRFToken', csrfToken);
             fetchInit.headers = hdrs;
           }
-          const resp = await fetch(uploadUrl, fetchInit);
+          
+          // Use AuthUtils for certificate-aware fetch (upload requires cert)
+          const winAny = (typeof window !== 'undefined') ? /** @type {any} */ (window) : null;
+          const authUtils = winAny ? winAny.AuthUtils : null;
+          
+          let resp;
+          if (authUtils && typeof authUtils.fetchWithCertHandling === 'function') {
+            // Use cert-aware fetch
+            resp = await authUtils.fetchWithCertHandling(
+              uploadUrl,
+              fetchInit,
+              true,  // requiresCert
+              (url) => {
+                setStatus(el.uploadStatus, 'warning', 'Client certificate required for upload');
+              }
+            );
+          } else {
+            // Fallback if AuthUtils not loaded
+            resp = await fetch(uploadUrl, fetchInit);
+          }
+          
           const json = await resp.json().catch(() => ({ success: false, error: 'Upload endpoint did not return JSON' }));
           if (!resp.ok) {
             const errMsg = json && json.error ? json.error : `Server returned ${resp.status}`;

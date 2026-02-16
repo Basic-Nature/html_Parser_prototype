@@ -30,6 +30,7 @@ class SessionManager:
         self._sid_to_session: Dict[str, str] = {}
         self._ip_ua_to_session: Dict[str, str] = {}
         self._principal_to_session: Dict[str, str] = {}
+        self._principal_sessions: Dict[str, set[str]] = {}
         self._session_emitters: Dict[str, EmitterFn] = {}
         self._thread_session_map: Dict[int, str] = {}
         self._last_contest_options: Dict[str, Dict[str, Any]] = {}
@@ -377,14 +378,12 @@ class SessionManager:
 
     # Principal binding (client cert or SSO)
     def set_principal(self, session_id: str, principal: Optional[str], source: Optional[str] = None) -> bool:
-        """Bind a principal to a session; returns False if the principal is bound elsewhere."""
+        """Bind a principal to a session; supports multiple sessions per principal."""
         if not principal:
             return False
         with self._lock:
-            existing = self._principal_to_session.get(principal)
-            if existing and existing != session_id:
-                return False
             self._principal_to_session[principal] = session_id
+            self._principal_sessions.setdefault(principal, set()).add(session_id)
             meta = self._metadata.get(session_id)
             if meta:
                 meta["principal"] = principal
@@ -395,11 +394,60 @@ class SessionManager:
         with self._lock:
             return self._principal_to_session.get(principal)
 
+    def list_principal_sessions(self, principal: str, *, active_only: bool = False) -> list[str]:
+        with self._lock:
+            sessions = list(self._principal_sessions.get(principal, set()))
+            if active_only:
+                sessions = [sid for sid in sessions if sid in self._active_sessions]
+            return sessions
+
+    def select_principal_session(self, principal: str, *, active_only: bool = True) -> Optional[str]:
+        with self._lock:
+            sessions = self._principal_sessions.get(principal)
+            if not sessions:
+                return None
+            candidates = [sid for sid in sessions if (sid in self._active_sessions) or not active_only]
+            if not candidates:
+                return None
+            return self._select_latest_session_locked(candidates)
+
     def unbind_principal_for_session(self, session_id: str) -> None:
         with self._lock:
             stale = [p for p, sid in self._principal_to_session.items() if sid == session_id]
             for p in stale:
                 self._principal_to_session.pop(p, None)
+            self._remove_session_from_principal_sets_locked(session_id)
+
+    def _select_latest_session_locked(self, sessions: list[str] | set[str]) -> Optional[str]:
+        latest_sid = None
+        latest_ts = -1.0
+        for sid in sessions:
+            ts = self._last_active.get(sid)
+            if ts is None:
+                meta = self._metadata.get(sid)
+                ts = meta.get("last_active") if meta else None
+            ts_val = float(ts) if ts is not None else 0.0
+            if ts_val > latest_ts:
+                latest_ts = ts_val
+                latest_sid = sid
+        return latest_sid
+
+    def _remove_session_from_principal_sets_locked(self, session_id: str) -> None:
+        stale_principals = []
+        for principal, sessions in self._principal_sessions.items():
+            if session_id in sessions:
+                sessions.discard(session_id)
+                if not sessions:
+                    stale_principals.append(principal)
+        for principal in stale_principals:
+            self._principal_sessions.pop(principal, None)
+        for principal, sid in list(self._principal_to_session.items()):
+            if sid == session_id:
+                replacement = self._select_latest_session_locked(self._principal_sessions.get(principal, set()))
+                if replacement:
+                    self._principal_to_session[principal] = replacement
+                else:
+                    self._principal_to_session.pop(principal, None)
 
     def bind_thread_id(self, thread_id: int, session_id: str) -> None:
         with self._lock:
@@ -554,6 +602,7 @@ class SessionManager:
                 self._sid_to_session.clear()
                 self._ip_ua_to_session.clear()
                 self._principal_to_session.clear()
+                self._principal_sessions.clear()
                 self._session_emitters.clear()
                 self._thread_session_map.clear()
                 self._last_contest_options.clear()
@@ -613,6 +662,7 @@ class SessionManager:
         self._ip_ua_to_session = {k: v for k, v in self._ip_ua_to_session.items() if v != session_id}
         self._thread_session_map = {k: v for k, v in self._thread_session_map.items() if v != session_id}
         self._principal_to_session = {k: v for k, v in self._principal_to_session.items() if v != session_id}
+        self._remove_session_from_principal_sets_locked(session_id)
 
     # ------------------------------------------------------------------
     # Session branching and multi-tenant isolation support
