@@ -216,6 +216,7 @@ jobs:
               DATA_API_URL="/api/ballotlens-database" \
               CSP_MODE="STRICT" \
               GUARDED_INGESTION_KEY="${{ secrets.GUARDED_INGESTION_KEY }}" \
+              REQUIRE_CERT_FOR_MUTATIONS="True" \
               HEADLESS_DEFAULT="True" \
               ENABLE_FINGERPRINT_SESSION_RECOVERY="0" \
               DISABLE_HTML_FALLBACK="1" \

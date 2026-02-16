@@ -285,20 +285,25 @@
         }
     </style>
 </head>
-<body style="margin: 0; padding: 0;">
+<body style="margin: 0; padding: 0;" data-require-cert="{{ '1' if require_cert else '0' }}" data-target-url="{{ target_url|default('/') }}">
     <div class="auth-welcome-container">
         <div class="auth-welcome-card">
             <!-- Header -->
             <div class="auth-welcome-header">
                 <h1>🔐 Certificate Authentication</h1>
                 <p>Smart Elections Parser</p>
+                {% if require_cert %}
+                <span class="cert-status-badge warning" id="statusBadge">Certificate Required</span>
+                {% else %}
                 <span class="cert-status-badge valid" id="statusBadge">Certificate Verified</span>
+                {% endif %}
             </div>
 
             <!-- Error/Warning Messages -->
             <div id="messageContainer"></div>
 
             <!-- Certificate Information -->
+            {% if not require_cert %}
             <div class="cert-info-section" id="certInfoSection">
                 <div class="cert-info-row">
                     <span class="cert-info-label">Common Name (CN)</span>
@@ -331,20 +336,34 @@
                 <span>Access Tier:</span>
                 <span class="tier-badge standard" id="tierBadge">Standard User</span>
             </div>
+            {% endif %}
 
             <!-- Explanation -->
             <div class="auth-welcome-explanation">
+                {% if require_cert %}
+                <strong>Certificate required.</strong> This area uses optional mTLS to protect interactive features. Please present your client certificate to continue. If you do not have a certificate yet, contact the administrator or return to the public site.
+                {% else %}
                 <strong>What is this?</strong> Your client certificate has been verified. This certificate is used to authenticate your identity and determine your access level within the Smart Elections Parser system. You can now proceed to the main application.
+                {% endif %}
             </div>
 
             <!-- Actions -->
             <div class="auth-welcome-actions">
+                {% if require_cert %}
+                <button class="btn-auth primary" id="continueBtn" onclick="returnHome()">
+                    Return to Home
+                </button>
+                <button class="btn-auth secondary" id="retryBtn" onclick="retryProtected()">
+                    Try Again
+                </button>
+                {% else %}
                 <button class="btn-auth primary" id="continueBtn" onclick="continueToPlatform()">
                     Continue to Parser
                 </button>
                 <button class="btn-auth secondary" id="certDetailsBtn" onclick="toggleCertDetails()">
                     ℹ Show Details
                 </button>
+                {% endif %}
             </div>
 
             <!-- Footer -->
@@ -359,6 +378,12 @@
         // Initialize page with certificate metadata from query params or session storage
         document.addEventListener('DOMContentLoaded', async function() {
             try {
+                const requireCert = document.body.getAttribute('data-require-cert') === '1';
+                if (requireCert) {
+                    showWarningMessage('A client certificate is required to access this feature.');
+                    document.getElementById('verifiedTime').textContent = new Date().toLocaleString();
+                    return;
+                }
                 // Get cert metadata from URL params or fetch from API
                 const params = new URLSearchParams(window.location.search);
                 const certData = params.get('cert_data');
@@ -550,6 +575,15 @@
                 // Fallback: just redirect to main app
                 window.location.href = '/ballot_lens';
             }
+        }
+
+        function returnHome() {
+            window.location.href = '/';
+        }
+
+        function retryProtected() {
+            const targetUrl = document.body.getAttribute('data-target-url') || '/';
+            window.location.href = targetUrl;
         }
 
         // Optional: Auto-continue after 3 seconds if cert is valid

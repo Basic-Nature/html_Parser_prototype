@@ -185,6 +185,9 @@ from webapp.parser.web_pipeline import (
 ENABLE_HEALTH_TASKS = os.environ.get("ENABLE_HEALTH_TASKS", "false").lower() in {"1", "true", "yes"}
 HEALTH_TASK_TOKEN = os.environ.get("HEALTH_TASK_TOKEN")
 
+# Certificate gating for mutation endpoints (optional mTLS in App Service)
+REQUIRE_CERT_FOR_MUTATIONS = os.environ.get("REQUIRE_CERT_FOR_MUTATIONS", "true").lower() in {"1", "true", "yes"}
+
 # Local, non-DB monitoring log for DB usage/events
 DB_MONITOR_FILE = LOG_DIR / "db_monitor.jsonl"
 try:
@@ -274,6 +277,45 @@ def _guarded_ingestion_allowed(action: str) -> tuple[bool, str]:
         except Exception:
             pass
     return False, "guard_key_invalid"
+
+
+def _cert_required_response(reason: str):
+    accept = request.headers.get("Accept", "") or ""
+    wants_json = (request.path or "").startswith("/api/") or "application/json" in accept or request.is_json
+    if wants_json:
+        return jsonify({"error": "certificate_required", "reason": reason}), 401
+    return (
+        render_template(
+            "auth_welcome.html",
+            principal=None,
+            principal_source=None,
+            cert_metadata=None,
+            session_id=None,
+            require_cert=True,
+            auth_reason=reason,
+            target_url=request.url,
+        ),
+        401,
+    )
+
+
+def _require_client_cert(reason: str):
+    if not REQUIRE_CERT_FOR_MUTATIONS:
+        return None
+    if DEPLOY_ENV == "local" and _is_local_request():
+        return None
+    admin_token = os.environ.get("ADMIN_JWT_TOKEN")
+    auth_hdr = (request.headers.get("Authorization") or "").strip()
+    if admin_token and auth_hdr.lower().startswith("bearer "):
+        try:
+            if hmac.compare_digest(auth_hdr.split(None, 1)[1].strip(), admin_token):
+                return None
+        except Exception:
+            pass
+    principal, _, _ = get_request_principal()
+    if principal and principal.startswith("cert:"):
+        return None
+    return _cert_required_response(reason)
 
 
 def _ingestion_audit_context(session_id: str | None = None) -> dict:
@@ -2318,6 +2360,9 @@ def api_urls():
                     urls.append(u or s)
             return jsonify({"urls": urls})
         elif request.method == "POST":
+            cert_resp = _require_client_cert("api_urls")
+            if cert_resp:
+                return cert_resp
             guard_ok, guard_reason = _guarded_ingestion_allowed("api_urls")
             if not guard_ok:
                 logger.warning({
@@ -3422,6 +3467,9 @@ def api_start_health_task():
     auth_error = _health_auth_response()
     if auth_error:
         return auth_error
+    cert_resp = _require_client_cert("health_task_start")
+    if cert_resp:
+        return cert_resp
     data = request.get_json(silent=True) or {}
     task_key = str(data.get("task") or "").strip()
     if not task_key:
@@ -3547,6 +3595,9 @@ def api_list_dir_compat():
 @app.route("/api/fs/mkdir", methods=["POST"])
 def api_fs_mkdir():
     import os
+    cert_resp = _require_client_cert("fs_mkdir")
+    if cert_resp:
+        return cert_resp
     data = request.get_json(force=True) or {}
     principal, _, _ = get_request_principal()
     root = (data.get("root") or "").lower().strip()
@@ -3576,6 +3627,9 @@ def api_fs_mkdir():
 
 @app.route("/api/fs/delete", methods=["POST"])
 def api_fs_delete():
+    cert_resp = _require_client_cert("fs_delete")
+    if cert_resp:
+        return cert_resp
     data = request.get_json(force=True) or {}
     principal, _, _ = get_request_principal()
     root = (data.get("root") or "").lower().strip()
@@ -3613,6 +3667,9 @@ def api_fs_delete():
 
 @app.route("/api/quick_copy", methods=["POST"])
 def api_quick_copy():
+    cert_resp = _require_client_cert("quick_copy")
+    if cert_resp:
+        return cert_resp
     data = request.get_json(silent=True) or {}
     root = (data.get("root") or "output").lower().strip()
     subpath = (data.get("path") or "").strip().replace("\\", "/")
@@ -3673,6 +3730,9 @@ def api_quick_copy():
 
 @app.route("/api/quick_copy/clear", methods=["POST"])
 def api_quick_copy_clear():
+    cert_resp = _require_client_cert("quick_copy_clear")
+    if cert_resp:
+        return cert_resp
     data = request.get_json(silent=True) or {}
     session_id = resolve_session_id(data or {}, create_if_missing=False)
     if not session_id:
@@ -4538,6 +4598,9 @@ def api_warehouse_election_results():
 
 @app.route("/delete/input/<filename>", methods=["POST"])
 def delete_input_file(filename) -> str:
+    cert_resp = _require_client_cert("delete_input")
+    if cert_resp:
+        return cert_resp
     file_path = os.path.join(INPUT_DIR, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
@@ -4548,6 +4611,9 @@ def delete_input_file(filename) -> str:
 
 @app.route("/delete/output/<filename>", methods=["POST"])
 def delete_output_file(filename) -> str:
+    cert_resp = _require_client_cert("delete_output")
+    if cert_resp:
+        return cert_resp
     file_path = os.path.join(OUTPUT_DIR, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
@@ -4558,6 +4624,9 @@ def delete_output_file(filename) -> str:
 
 @app.route("/delete/uploads/<filename>", methods=["POST"])
 def delete_upload_file(filename) -> str:
+    cert_resp = _require_client_cert("delete_uploads")
+    if cert_resp:
+        return cert_resp
     file_path = os.path.join(UPLOADS_DIR, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
@@ -4666,6 +4735,9 @@ def ballot_lens():
             session['manual_source_pref'] = qp_source
         if request.method == "POST" and "data_file" in request.files:
             file = request.files.get("data_file")
+            cert_resp = _require_client_cert("ballot_lens_upload")
+            if cert_resp:
+                return cert_resp
             guard_ok, guard_reason = _guarded_ingestion_allowed("ballot_lens_upload")
             if not guard_ok:
                 logger.warning({
@@ -4872,8 +4944,19 @@ def auth_welcome():
     principal, principal_source, cert_metadata = get_request_principal()
 
     if not principal:
-        # Redirect to error page or main app
-        return redirect(url_for("index"))
+        return (
+            render_template(
+                "auth_welcome.html",
+                principal=None,
+                principal_source=None,
+                cert_metadata=None,
+                session_id=None,
+                require_cert=True,
+                auth_reason="certificate_required",
+                target_url=request.args.get("next") or request.referrer or url_for("index"),
+            ),
+            401,
+        )
     
     # Get session ID if available
     try:
@@ -4882,17 +4965,25 @@ def auth_welcome():
         session_id = None
     
     # Pass metadata to template
-    return render_template("auth_welcome.html", 
-                         principal=principal,
-                         principal_source=principal_source,
-                         cert_metadata=cert_metadata,
-                         session_id=session_id)
+    return render_template(
+        "auth_welcome.html",
+        principal=principal,
+        principal_source=principal_source,
+        cert_metadata=cert_metadata,
+        session_id=session_id,
+        require_cert=False,
+        auth_reason=None,
+        target_url=url_for("ballot_lens"),
+    )
 
 
 @app.route("/upload/input", methods=["POST"])
 @_rate_limit("5/minute")
 def upload_to_input() -> str:
     file = request.files.get("file")
+    cert_resp = _require_client_cert("upload_input")
+    if cert_resp:
+        return cert_resp
     logger.info({
         "level": "INFO",
         "type": "status",
@@ -4956,6 +5047,9 @@ def upload_to_input() -> str:
 @_rate_limit("5/minute")
 def upload_to_output() -> str:
     file = request.files.get("file")
+    cert_resp = _require_client_cert("upload_output")
+    if cert_resp:
+        return cert_resp
     logger.info({
         "level": "INFO",
         "type": "status",
@@ -5017,6 +5111,9 @@ def upload_to_output() -> str:
 @_rate_limit("5/minute")
 def upload_to_uploads() -> str:
     file = request.files.get("data_file") or request.files.get("file")
+    cert_resp = _require_client_cert("upload_uploads")
+    if cert_resp:
+        return cert_resp
     guard_ok, guard_reason = _guarded_ingestion_allowed("upload_uploads")
     if not guard_ok:
         logger.warning({
@@ -6390,6 +6487,9 @@ def api_fec_problem_rows():
 
 @app.route('/api/fec/save_mapping', methods=['POST'])
 def api_fec_save_mapping():
+    cert_resp = _require_client_cert("fec_save_mapping")
+    if cert_resp:
+        return cert_resp
     data = request.get_json(force=True) or {}
 
     def _validate(name: str, val, *, allow_null: bool = False, max_len: int = 256):
@@ -6485,6 +6585,9 @@ def api_data_assurance_classify():
     Classify parsed election data as DL1 (Data Level 1) with auto QA checks.
     Stores results in PostgreSQL and optionally writes to ner_training_data for ML.
     """
+    cert_resp = _require_client_cert("data_assurance_classify")
+    if cert_resp:
+        return cert_resp
     try:
         data = request.get_json()
         metadata = data.get("metadata", {})
@@ -6612,6 +6715,9 @@ def api_data_assurance_promote():
     Promote verified dataset from DL1 to DL2 after manual review.
     Updates PostgreSQL and marks associated NER training data as verified.
     """
+    cert_resp = _require_client_cert("data_assurance_promote")
+    if cert_resp:
+        return cert_resp
     try:
         from datetime import datetime
         

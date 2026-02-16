@@ -1089,6 +1089,126 @@ const _TablePreview = (() => {
     const cont = modal.querySelector('.preview-continue');
     if (cont instanceof Element) cont.addEventListener('click', () => modal.remove());
   }
+
+  function showCertRequiredModal(targetUrl) {
+    const existing = document.getElementById('certRequiredModal');
+    if (existing) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'certRequiredModal';
+    modal.className = 'modal cert-required-modal';
+
+    const content = document.createElement('div');
+    content.className = 'modal-content modal-small';
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+    const h3 = document.createElement('h3');
+    h3.textContent = 'Certificate Required';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'modal-close';
+    closeBtn.setAttribute('aria-label', 'Close certificate prompt');
+    closeBtn.textContent = '×';
+    header.appendChild(h3);
+    header.appendChild(closeBtn);
+
+    const bodyDiv = document.createElement('div');
+    bodyDiv.className = 'modal-body';
+    bodyDiv.innerHTML = '<p>This action requires a client certificate. Please present your certificate and try again.</p>' +
+      '<p class="text-muted">If you are not prompted, the site may be running in optional client-certificate mode. Reloading or opening the certificate screen can trigger the prompt.</p>';
+
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+    const openBtn = document.createElement('button');
+    openBtn.className = 'btn btn-primary';
+    openBtn.textContent = 'Open Certificate Screen';
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'btn btn-secondary';
+    retryBtn.textContent = 'Reload Page';
+    footer.appendChild(openBtn);
+    footer.appendChild(retryBtn);
+
+    content.appendChild(header);
+    content.appendChild(bodyDiv);
+    content.appendChild(footer);
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+
+    closeBtn.addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+    openBtn.addEventListener('click', () => {
+      const next = encodeURIComponent(targetUrl || window.location.href);
+      window.location.href = `/auth/welcome?next=${next}`;
+    });
+    retryBtn.addEventListener('click', () => window.location.reload());
+  }
+
+  function isCertProtectedPath(path) {
+    if (!path) return false;
+    return path.startsWith('/api/') || path.startsWith('/upload/') || path.startsWith('/delete/');
+  }
+
+  function getRequestUrl(input) {
+    if (typeof input === 'string') return input;
+    if (input && typeof input.url === 'string') return input.url;
+    return '';
+  }
+
+  function isCertProtectedUrl(url) {
+    if (!url) return false;
+    if (url.startsWith('/')) return isCertProtectedPath(url);
+    if (url.startsWith('http')) {
+      const origin = window.location.origin;
+      if (!url.startsWith(origin)) return false;
+      return isCertProtectedPath(url.slice(origin.length));
+    }
+    return false;
+  }
+
+  if (typeof window !== 'undefined') {
+    const winAny = /** @type {any} */ (window);
+    if (typeof window.fetch === 'function' && !winAny.__blFetchWrapped) {
+      const nativeFetch = window.fetch.bind(window);
+      winAny.__blFetchWrapped = true;
+      window.fetch = function(input, init) {
+      return nativeFetch(input, init).then((resp) => {
+        try {
+          const url = getRequestUrl(input);
+          if (resp && resp.status === 401 && isCertProtectedUrl(url)) {
+            showCertRequiredModal(url);
+          }
+        } catch (e) {
+          // No-op
+        }
+        return resp;
+      });
+      };
+    }
+  }
+
+  async function ensureCertForMutation(targetUrl) {
+    try {
+      // Azure App Service optional mTLS reference:
+      // https://learn.microsoft.com/en-us/azure/app-service/app-service-web-configure-tls-mutual-auth
+      const resp = await fetch('/api/auth/certificate_info', {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (resp && resp.status === 401) {
+        showCertRequiredModal(targetUrl || window.location.href);
+        return false;
+      }
+      return resp && resp.ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    const winAny = /** @type {any} */ (window);
+    winAny.__blEnsureCertForMutation = ensureCertForMutation;
+  }
   
   return { renderPreview, showPreviewModal };
 })();
@@ -3902,7 +4022,14 @@ function resolveWarehouseGateUrl(fileSource) {
 
 // Run Parser Button
 $$('#btnRunParser, #btnRunParser2').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
+    const winAny = (typeof window !== 'undefined') ? /** @type {any} */ (window) : null;
+    const certCheck = winAny ? winAny.__blEnsureCertForMutation : null;
+    const certOk = typeof certCheck === 'function' ? await certCheck('/ballot_lens') : true;
+    if (!certOk) {
+      showToast('Certificate required to run parser.', 'warning');
+      return;
+    }
     const fileSourceEl = document.querySelector('input[name="fileSource"]:checked');
     const fileSource = (fileSourceEl instanceof HTMLInputElement) ? fileSourceEl.value : '';
     
