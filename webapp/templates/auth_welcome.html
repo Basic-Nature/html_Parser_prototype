@@ -131,18 +131,18 @@
         }
 
         .auth-welcome-explanation {
-            color: #555;
+            color: #1a232a;
             font-size: 14px;
             line-height: 1.6;
             margin-bottom: 24px;
-            background: #f0f7ff;
+            background: #e0eef7;
             padding: 12px 16px;
             border-radius: 6px;
-            border-left: 3px solid #2563eb;
+            border-left: 3px solid #1e40af;
         }
 
         .auth-welcome-explanation strong {
-            color: #1a232a;
+            color: #0c2340;
         }
 
         .tier-info {
@@ -582,8 +582,12 @@
         }
 
         function retryProtected() {
-            const targetUrl = document.body.getAttribute('data-target-url') || '/';
-            window.location.href = targetUrl;
+            // Get the original target page (the one that required cert)
+            const params = new URLSearchParams(window.location.search);
+            const originalTarget = params.get('target_url') || params.get('next') || '/ballot_lens';
+            
+            // Reload the original target page; if cert is now available, it will proceed
+            window.location.href = originalTarget;
         }
 
         // Optional: Auto-continue after 3 seconds if cert is valid

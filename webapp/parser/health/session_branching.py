@@ -101,17 +101,28 @@ class SessionBranch:
         
         Returns:
             True if principal can access, False if isolation breach.
+            
+        Logic:
+            - Default-allow for "view" (normal URL access)
+            - Only block if URL is in rejected_urls
+            - "quarantine" and "reject" access types require explicit inclusion
         """
         with self._lock:
-            # Quarantine access
+            # View access: default-allow, block only if rejected
+            if access_type == "view":
+                if url in self.rejected_urls:
+                    return False  # Blocked
+                return True  # Allow by default
+            
+            # Quarantine access: only if explicitly quarantined
             if access_type == "quarantine" and url in self.quarantined_urls:
                 return True
             
-            # Reject access
+            # Reject access: only if explicitly rejected
             if access_type == "reject" and url in self.rejected_urls:
                 return True
             
-            # Default: no access
+            # Other access types: deny by default
             return False
     
     def record_access(self, url: str, timestamp: float | None = None) -> None:
