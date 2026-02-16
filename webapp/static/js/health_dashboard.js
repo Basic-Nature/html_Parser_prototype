@@ -7,6 +7,7 @@
   const tableBody = document.querySelector("[data-task-status]");
   const taskButtons = document.querySelectorAll("[data-task-key]");
   const refreshButton = document.querySelector("[data-refresh-health-tasks]");
+  const socketTestButton = document.querySelector("[data-socket-test-broadcast]");
   const alertBox = document.querySelector("[data-health-alert]");
   const defaultAlert = alertBox ? alertBox.textContent.trim() : "";
 
@@ -175,6 +176,31 @@
   });
   if (refreshButton) {
       refreshButton.addEventListener("click", () => fetchTasks(true));
+  }
+  if (socketTestButton instanceof HTMLButtonElement) {
+      socketTestButton.addEventListener("click", async () => {
+          socketTestButton.disabled = true;
+          try {
+              const winAny = (typeof window !== 'undefined') ? /** @type {any} */ (window) : null;
+              const authUtils = winAny ? winAny.AuthUtils : null;
+              const execMutation = async () => {
+                  return fetch("/api/health_socket_test", { method: "POST" });
+              };
+              const resp = authUtils && typeof authUtils.executeMutationOnce === 'function'
+                  ? await authUtils.executeMutationOnce("health_socket_test", execMutation)
+                  : await execMutation();
+              const data = await resp.json().catch(() => null);
+              if (!resp.ok) {
+                  throw new Error(data?.error || "Unable to broadcast socket test.");
+              }
+              const instance = data?.payload?.instance_id || data?.payload?.hostname || "unknown";
+              pushAlert(`Socket test broadcast sent from ${instance}.`, "info");
+          } catch (error) {
+              pushAlert(error.message || "Unable to broadcast socket test.", "danger");
+          } finally {
+              socketTestButton.disabled = false;
+          }
+      });
   }
 
   // Render any initial payload embedded by the server.

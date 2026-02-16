@@ -2389,7 +2389,7 @@ const socket = io({
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
   reconnectionAttempts: 5,
-  autoConnect: false,
+  autoConnect: true,
 });
 
 let socketJoinRequested = false;
@@ -2632,6 +2632,14 @@ socket.on('session_list', /** @param {SessionListPayload} data */ (data) => {
   ErrorBoundary.safeExecute(() => {
     updateSessionsList(data.sessions);
   }, 'socket:session_list');
+});
+
+socket.on('health_socket_test', /** @param {Object} data */ (data) => {
+  ErrorBoundary.safeExecute(() => {
+    const instance = data?.instance_id || data?.hostname || 'unknown instance';
+    const testId = data?.test_id ? ` (${data.test_id})` : '';
+    showToast(`Socket test from ${instance}${testId}`, 'info');
+  }, 'socket:health_socket_test');
 });
 
 // Auth status events: auth_blocked / auth_unblocked
@@ -9778,6 +9786,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if ((/** @type {any} */ (window)).__tl_sidebarUnified) {
       // Unified sidebar controller active; skip legacy toggle wiring to avoid conflicts.
       updateSessionsList();
+      // Connect socket to receive broadcast events (e.g., health_socket_test)
+      if (!socket.connected) {
+        socket.connect();
+      }
       console.log('[Parser UI] Initialization complete');
       return;
     }
@@ -9881,6 +9893,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     updateSessionsList();
+    
+    // Connect socket to receive broadcast events (e.g., health_socket_test)
+    if (!socket.connected) {
+      socket.connect();
+    }
   
   console.log('[Parser UI] Initialization complete');
 });

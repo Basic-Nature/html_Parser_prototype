@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import socket
 
 # ============================================
 # SocketIO Configuration: Threading Framework
@@ -3252,7 +3253,13 @@ def api_data_framework_warehouse_status():
         with engine.connect() as conn:
             exists = conn.execute(text("SELECT to_regclass('workflow.contests')")).scalar()
             if not exists:
-                return jsonify({"error": "workflow.contests table not found"}), 503
+                return jsonify({
+                    "available": False,
+                    "error": "workflow.contests table not found",
+                    "expected_total": 0,
+                    "missing_total": 0,
+                    "by_priority": [],
+                })
 
             summary = conn.execute(text(
                 """
@@ -3542,6 +3549,46 @@ def api_health_task_detail(task_id: str):
     if not record:
         return jsonify({"error": "Task not found."}), 404
     return jsonify({"task": record})
+
+
+@app.route("/api/health_socket_test", methods=["POST"])
+def api_health_socket_test():
+    """Diagnostic endpoint for testing Socket.IO multi-instance propagation.
+    Does not require client cert since it's a test/diagnostic tool.
+    """
+    auth_error = _health_auth_response()
+    if auth_error:
+        return auth_error
+    # No cert required for diagnostic endpoint
+    try:
+        test_id = secrets.token_hex(6)
+        payload = {
+            "test_id": test_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "instance_id": os.environ.get("WEBSITE_INSTANCE_ID") or os.environ.get("WEBSITES_INSTANCE_ID"),
+            "hostname": socket.gethostname(),
+        }
+        # emit() broadcasts to all clients by default when called from a route
+        socketio.emit("health_socket_test", payload)
+        logger.info({
+            "level": "INFO",
+            "type": "health",
+            "message": "health_socket_test broadcast",
+            "session_id": None,
+            "test_id": test_id,
+            "instance_id": payload.get("instance_id"),
+            "hostname": payload.get("hostname"),
+        })
+        return jsonify({"ok": True, "payload": payload})
+    except Exception as e:
+        logger.error({
+            "level": "ERROR",
+            "type": "health",
+            "message": "health_socket_test failed",
+            "error": str(e),
+            "error_type": type(e).__name__,
+        })
+        return jsonify({"error": f"Socket test failed: {str(e)}"}), 500
 
 
 @app.route('/test/ui/prompt', methods=['POST'])

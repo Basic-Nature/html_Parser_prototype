@@ -497,8 +497,7 @@ function initQAPanelIntegration() {
         mutation.addedNodes.forEach((node) => {
           if (node instanceof HTMLElement && node.classList.contains('result-card')) {
             // In a full implementation, extract metadata from card and classify
-            // For now, just log
-            console.log('[QA] New result card detected:', node.getAttribute('data-result-id'));
+            // Card detection is working, no need to log every card
           }
         });
       }

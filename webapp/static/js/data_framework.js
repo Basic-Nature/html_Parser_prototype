@@ -244,6 +244,11 @@ document.addEventListener('DOMContentLoaded', () => {
         setPriorityStatus('Priority tracker unavailable.', 'error');
         return;
       }
+      if (payload.error || payload.available === false) {
+        const msg = payload.error || 'Priority tracker unavailable.';
+        setPriorityStatus(msg, 'error');
+        return;
+      }
       const summary = formatPrioritySummary(payload);
       setPriorityStatus(summary || 'Priority tracker ready.', payload.missing_total ? 'info' : 'ok');
     } catch (err) {
