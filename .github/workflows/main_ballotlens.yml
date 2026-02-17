@@ -95,6 +95,11 @@ jobs:
             exit 1
           fi
 
+      - name: Debug requirements.txt (first 40 lines)
+        run: |
+          echo "---- requirements.txt ----"
+          nl -ba requirements.txt | sed -n '1,40p'
+
       - name: Install Python dependencies (no cache, prefer binary)
         run: |
           set -e
