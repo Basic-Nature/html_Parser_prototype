@@ -7561,8 +7561,48 @@ const UrlListManager = (() => {
     qaStatus: null,
   };
 
+  // Authoritative state-to-county mappings from Google Sheets
+  let stateCountyMappings = {
+    states: [],
+    counties: {}
+  };
+  let mappingsFetched = false;
+
+  /**
+   * Fetch authoritative state-to-county mappings from Google Sheets API.
+   * Replaces unreliable URL-based heuristics with clean, normalized data.
+   */
+  async function fetchStateCountyMappings() {
+    if (mappingsFetched) return; // Only fetch once
+
+    try {
+      const response = await fetch('/api/election_data/states_counties', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) {
+        console.warn('[UrlListManager] Failed to fetch state/county mappings:', response.status);
+        return;
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        stateCountyMappings.states = data.states || [];
+        stateCountyMappings.counties = data.counties || {};
+        mappingsFetched = true;
+        console.log('[UrlListManager] Loaded authoritative mappings:', data.total_states, 'states,', data.total_counties, 'counties');
+      } else {
+        console.warn('[UrlListManager] State/county mappings fetch failed:', data.error);
+      }
+    } catch (error) {
+      console.warn('[UrlListManager] Error fetching state/county mappings:', error);
+    }
+  }
+
   /**
    * Extract state/county hints from a URL using lightweight heuristics.
+   * @deprecated Use authoritative Google Sheets data instead
    * @param {string} url
    * @returns {{ url: string, state: string|null, county: string|null }}
    */
@@ -7609,40 +7649,78 @@ const UrlListManager = (() => {
     return { url, state, county: tidyCounty || null };
   }
 
+  /**
+   * Populate state/county dropdowns with authoritative Google Sheets data.
+   * Falls back to URL-based heuristics if mappings unavailable.
+   * @param {Array} meta - URL metadata (fallback only)
+   */
   function populateTaxonomy(meta) {
     const stateSelect = $('#urlStateFilter');
     const countySelect = $('#urlCountyFilter');
     if (!stateSelect || !(stateSelect instanceof HTMLSelectElement) || !countySelect || !(countySelect instanceof HTMLSelectElement)) return;
 
-    const statesSeen = Array.from(new Set(meta.map(m => m.state).filter(Boolean))).sort();
+    // Use authoritative Google Sheets data if available
+    if (mappingsFetched && stateCountyMappings.states.length > 0) {
+      // Populate states from Google Sheets
+      stateSelect.innerHTML = '<option value="">— Filter by state —</option>';
+      stateCountyMappings.states.forEach(state => {
+        const opt = document.createElement('option');
+        opt.value = state;
+        opt.textContent = state;
+        stateSelect.appendChild(opt);
+      });
 
-    // Reset state options
-    stateSelect.innerHTML = '<option value="">— Filter by state —</option>';
-    statesSeen.forEach(st => {
-      const opt = document.createElement('option');
-      opt.value = st;
-      opt.textContent = st;
-      stateSelect.appendChild(opt);
-    });
+      // Populate counties for selected state
+      countySelect.innerHTML = '<option value="">— Select a state first —</option>';
+      countySelect.disabled = !selectedState;
 
-    // Reset county options
-    countySelect.innerHTML = '<option value="">— Select a state first —</option>';
-    countySelect.disabled = !selectedState;
+      if (selectedState && stateCountyMappings.counties[selectedState]) {
+        const counties = stateCountyMappings.counties[selectedState];
+        if (counties.length > 0) {
+          countySelect.innerHTML = '<option value="">— Filter by county —</option>';
+          counties.forEach(county => {
+            const opt = document.createElement('option');
+            opt.value = county;
+            opt.textContent = county;
+            countySelect.appendChild(opt);
+          });
+          countySelect.disabled = false;
+        } else {
+          countySelect.innerHTML = `<option value="">No counties for ${selectedState}</option>`;
+          countySelect.disabled = true;
+        }
+      }
+    } else {
+      // Fallback: use URL-based heuristics (legacy behavior)
+      console.warn('[UrlListManager] Using URL-based state/county detection (fallback)');
+      const statesSeen = Array.from(new Set(meta.map(m => m.state).filter(Boolean))).sort();
 
-    if (selectedState) {
-      const counties = Array.from(new Set(meta.filter(m => m.state === selectedState && m.county).map(m => m.county))).sort();
-      if (counties.length) {
-        countySelect.innerHTML = '<option value="">— Filter by county —</option>';
-        counties.forEach(c => {
-          const opt = document.createElement('option');
-          opt.value = c;
-          opt.textContent = c;
-          countySelect.appendChild(opt);
-        });
-        countySelect.disabled = false;
-      } else {
-        countySelect.innerHTML = `<option value="">No counties detected for ${selectedState}</option>`;
-        countySelect.disabled = true;
+      stateSelect.innerHTML = '<option value="">— Filter by state —</option>';
+      statesSeen.forEach(st => {
+        const opt = document.createElement('option');
+        opt.value = st;
+        opt.textContent = st;
+        stateSelect.appendChild(opt);
+      });
+
+      countySelect.innerHTML = '<option value="">— Select a state first —</option>';
+      countySelect.disabled = !selectedState;
+
+      if (selectedState) {
+        const counties = Array.from(new Set(meta.filter(m => m.state === selectedState && m.county).map(m => m.county))).sort();
+        if (counties.length) {
+          countySelect.innerHTML = '<option value="">— Filter by county —</option>';
+          counties.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c;
+            countySelect.appendChild(opt);
+          });
+          countySelect.disabled = false;
+        } else {
+          countySelect.innerHTML = `<option value="">No counties detected for ${selectedState}</option>`;
+          countySelect.disabled = true;
+        }
       }
     }
 
@@ -8132,6 +8210,9 @@ const UrlListManager = (() => {
   function init() {
     // Load warehouse coverage data
     loadWarehouseCoverage();
+    
+    // Load authoritative state-to-county mappings from Google Sheets
+    fetchStateCountyMappings();
     
     const searchBox = $('.url-search-box');
     const refreshBtn = $('#refreshUrlListBtn');

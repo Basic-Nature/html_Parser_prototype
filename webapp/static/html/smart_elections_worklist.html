@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART Elections Worklist - 4-Step Workflow</title>
+    <link rel="stylesheet" href="/static/css/smart_elections.css">
+</head>
+<body>
+    <div class="smart-elections-container">
+        <!-- Header -->
+        <header class="se-header">
+            <h1>🗳️ SMART Elections Worklist</h1>
+            <p class="subtitle">4-Step Workflow: Source → DL1/DL2 → Pre-QC → QC1 → QC2 → Production</p>
+            <div class="stats-bar">
+                <div class="stat">
+                    <span class="label">Total Races:</span>
+                    <span class="value" id="stat-total">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">DL1 Ready:</span>
+                    <span class="value" id="stat-dl1-ready">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">DL2 Ready:</span>
+                    <span class="value" id="stat-dl2-ready">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Pre-QC Passed:</span>
+                    <span class="value" id="stat-preqc-passed">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">QC1 Pending:</span>
+                    <span class="value" id="stat-qc1-pending">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Production Ready:</span>
+                    <span class="value" id="stat-production">0</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Filters -->
+        <section class="se-filters">
+            <label>
+                Filter by State:
+                <input type="text" id="filter-state" placeholder="e.g., CA, NY" class="filter-input">
+            </label>
+            <label>
+                Filter by Year:
+                <input type="number" id="filter-year" placeholder="2024" class="filter-input">
+            </label>
+            <label>
+                Filter by Status:
+                <select id="filter-status" class="filter-select">
+                    <option value="">All Statuses</option>
+                    <option value="step_1">Step 1: Source URL</option>
+                    <option value="step_2">Step 2: DL1/DL2 Standardization</option>
+                    <option value="step_3">Step 3: QC1 Review</option>
+                    <option value="step_4">Step 4: QC2 Final</option>
+                    <option value="completed">Completed</option>
+                </select>
+            </label>
+            <button id="apply-filters" class="btn btn-primary">Apply Filters</button>
+            <button id="reset-filters" class="btn btn-secondary">Reset</button>
+        </section>
+
+        <!-- Live Google Sheets Sources -->
+        <section class="se-data-sources">
+            <h2>Live Google Sheets</h2>
+            <div class="source-grid">
+                <div class="source-card">
+                    <h3>Worklist Overview</h3>
+                    <div class="source-meta">Sheet: <span id="worklist-sheet-name">-</span></div>
+                    <div class="source-count">Rows: <span id="worklist-row-count">0</span></div>
+                    <div class="source-status" id="worklist-fetch-status">Not loaded</div>
+                </div>
+                <div class="source-card">
+                    <h3>DB-Lite Finalized</h3>
+                    <div class="source-meta">Sheet: <span id="dblite-finalized-sheet-name">-</span></div>
+                    <div class="source-count">Rows: <span id="dblite-finalized-row-count">0</span></div>
+                    <div class="source-status" id="dblite-finalized-fetch-status">Not loaded</div>
+                </div>
+                <div class="source-card">
+                    <h3>DB-Lite Down-Ballot</h3>
+                    <div class="source-meta">Sheet: <span id="dblite-down-sheet-name">-</span></div>
+                    <div class="source-count">Rows: <span id="dblite-down-row-count">0</span></div>
+                    <div class="source-status" id="dblite-down-fetch-status">Not loaded</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Worklist Grid -->
+        <section class="se-worklist">
+            <div class="worklist-container">
+                <table class="worklist-grid" id="worklist-table">
+                    <thead>
+                        <tr>
+                            <th class="col-race-id">Race ID</th>
+                            <th class="col-state">State</th>
+                            <th class="col-county">County</th>
+                            <th class="col-office">Office</th>
+                            <th class="col-step-indicator">Progress</th>
+                            <th class="col-dl1">DL1 Owner</th>
+                            <th class="col-dl1-status">DL1 Status</th>
+                            <th class="col-dl2">DL2 Owner</th>
+                            <th class="col-dl2-status">DL2 Status</th>
+                            <th class="col-preqc">Pre-QC Result</th>
+                            <th class="col-qc1">QC1 Status</th>
+                            <th class="col-qc2">QC2 Status</th>
+                            <th class="col-workflow">Workflow Status</th>
+                            <th class="col-actions">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="worklist-body">
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="loading-indicator" id="loading-indicator" style="display: none;">
+                <div class="spinner"></div>
+                <span>Loading worklist...</span>
+            </div>
+        </section>
+    </div>
+
+    <!-- Modal: Assign DL Owner -->
+    <div class="modal" id="modal-assign-dl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Assign DL Owner</h2>
+                <button class="modal-close" onclick="closeModal('modal-assign-dl')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="assign-race-id" class="race-id-display"></p>
+                <label>
+                    DL Type:
+                    <select id="assign-dl-type" class="form-control">
+                        <option value="DL1">DL1 (Human-Curated)</option>
+                        <option value="DL2">DL2 (Machine-Enriched)</option>
+                    </select>
+                </label>
+                <label>
+                    Assign to Username:
+                    <input type="text" id="assign-username" placeholder="Enter username" class="form-control">
+                </label>
+                <div class="modal-error" id="assign-error"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('modal-assign-dl')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitAssignDL()">Assign</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: DL Editor (DL1/DL2 side-by-side) -->
+    <div class="modal modal-large" id="modal-dl-editor">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>DL Editor - <span id="editor-race-id"></span></h2>
+                <button class="modal-close" onclick="closeModal('modal-dl-editor')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="editor-container">
+                    <!-- DL1 Tab -->
+                    <div class="editor-tabs">
+                        <button class="tab-button active" data-tab="dl1">DL1 (Human-Curated)</button>
+                        <button class="tab-button" data-tab="dl2">DL2 (Machine-Enriched)</button>
+                        <button class="tab-button" data-tab="preqc">Pre-QC Results</button>
+                    </div>
+
+                    <div class="tab-content" id="tab-dl1">
+                        <form class="record-form" id="form-dl1">
+                            <label>Candidate Name (standardized): <input type="text" name="standardized_candidate_name" class="form-control"></label>
+                            <label>Ballot Party: <input type="text" name="ballot_party" class="form-control"></label>
+                            <label>FEC Party: <input type="text" name="fec_party" class="form-control"></label>
+                            <label>FEC ID: <input type="text" name="fec_id" class="form-control"></label>
+                            <label>Total Votes: <input type="number" name="total_votes" class="form-control"></label>
+                            <label>Uncategorized: <input type="number" name="uncategorized" class="form-control"></label>
+                            <label>Early: <input type="number" name="early" class="form-control"></label>
+                            <label>Election Day: <input type="number" name="election_day" class="form-control"></label>
+                            <label>Mail: <input type="number" name="mail" class="form-control"></label>
+                            <label>Provisional: <input type="number" name="provisional" class="form-control"></label>
+                            <label>
+                                <input type="checkbox" name="is_write_in"> Write-In Candidate
+                            </label>
+                            <button type="button" class="btn btn-primary" onclick="saveDL1Record()">Save DL1</button>
+                        </form>
+                    </div>
+
+                    <div class="tab-content" id="tab-dl2" style="display: none;">
+                        <form class="record-form" id="form-dl2">
+                            <label>Candidate Name (standardized): <input type="text" name="standardized_candidate_name" class="form-control"></label>
+                            <label>Ballot Party: <input type="text" name="ballot_party" class="form-control"></label>
+                            <label>FEC Party: <input type="text" name="fec_party" class="form-control"></label>
+                            <label>FEC ID: <input type="text" name="fec_id" class="form-control"></label>
+                            <label>Total Votes: <input type="number" name="total_votes" class="form-control"></label>
+                            <label>Uncategorized: <input type="number" name="uncategorized" class="form-control"></label>
+                            <label>Early: <input type="number" name="early" class="form-control"></label>
+                            <label>Election Day: <input type="number" name="election_day" class="form-control"></label>
+                            <label>Mail: <input type="number" name="mail" class="form-control"></label>
+                            <label>Provisional: <input type="number" name="provisional" class="form-control"></label>
+                            <label>
+                                <input type="checkbox" name="is_write_in"> Write-In Candidate
+                            </label>
+                            <div class="auto-flags-section" id="auto-flags-dl2">
+                                <h3>ML Auto-Detected Issues:</h3>
+                                <div id="flags-list-dl2"></div>
+                            </div>
+                            <button type="button" class="btn btn-primary" onclick="saveDL2Record()">Save DL2</button>
+                        </form>
+                    </div>
+
+                    <div class="tab-content" id="tab-preqc" style="display: none;">
+                        <div id="preqc-comparison-results">
+                            <!-- Populated by JavaScript after Pre-QC comparison -->
+                        </div>
+                        <button type="button" class="btn btn-success" onclick="runPreQCCheck()">Run Pre-QC Check Now</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('modal-dl-editor')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Pre-QC Results -->
+    <div class="modal modal-large" id="modal-preqc-results">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Pre-QC Comparison Results - <span id="preqc-race-id"></span></h2>
+                <button class="modal-close" onclick="closeModal('modal-preqc-results')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="preqc-summary">
+                    <div class="summary-item">
+                        <label>Strict Equality:</label>
+                        <span id="preqc-strict" class="badge"></span>
+                    </div>
+                    <div class="summary-item">
+                        <label>Fuzzy Confidence:</label>
+                        <span id="preqc-fuzzy" class="badge"></span>
+                    </div>
+                    <div class="summary-item">
+                        <label>Status:</label>
+                        <span id="preqc-status" class="badge"></span>
+                    </div>
+                </div>
+
+                <div class="preqc-details">
+                    <h3>Field-by-Field Comparison</h3>
+                    <table class="comparison-table">
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>DL1 Value</th>
+                                <th>DL2 Value</th>
+                                <th>Confidence</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="preqc-details-body">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="preqc-summary-text">
+                    <h3>Summary</h3>
+                    <p id="preqc-summary-text"></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('modal-preqc-results')">Close</button>
+                <button class="btn btn-primary" onclick="proceedToQC1()">Proceed to QC1 →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: QC1 Checkpoint Form -->
+    <div class="modal modal-large" id="modal-qc1-form">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>QC1 Checkpoint Review - <span id="qc1-race-id"></span></h2>
+                <button class="modal-close" onclick="closeModal('modal-qc1-form')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="form-qc1" class="qc1-form">
+                    <!-- ML Auto-Flags Section -->
+                    <section class="form-section">
+                        <h3>⚠️ ML Auto-Detected Issues</h3>
+                        <div class="auto-flags-card" id="qc1-auto-flags">
+                            <!-- Populated by JavaScript -->
+                        </div>
+                    </section>
+
+                    <!-- Data Inspection Checklist -->
+                    <section class="form-section">
+                        <h3>Data Inspection Checklist</h3>
+                        <div class="checklist">
+                            <label class="checkbox-item">
+                                <input type="checkbox" name="check-candidate-names">
+                                Candidate names are properly standardized (LASTNAME, FIRSTNAME)
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" name="check-fec-ids">
+                                FEC IDs are valid and match records
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" name="check-vote-totals">
+                                Vote totals reconcile correctly
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" name="check-party-codes">
+                                Party codes are correct and standardized
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" name="check-vote-types">
+                                Vote type categories are appropriate
+                            </label>
+                        </div>
+                    </section>
+
+                    <!-- Source Selection -->
+                    <section class="form-section">
+                        <h3>Select Data Source for Import</h3>
+                        <label class="radio-item">
+                            <input type="radio" name="selected_dl" value="DL1" checked>
+                            <strong>DL1 (Human-Curated)</strong> - Manually entered and verified
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="selected_dl" value="DL2">
+                            <strong>DL2 (Machine-Enriched)</strong> - Auto-enriched from Google Sheets
+                        </label>
+                    </section>
+
+                    <!-- Inspection Result -->
+                    <section class="form-section">
+                        <h3>Inspection Result</h3>
+                        <label>
+                            Data Inspection Result:
+                            <select name="inspection_result" class="form-control">
+                                <option value="">-- Select Result --</option>
+                                <option value="pass">✓ Pass - Data is ready for QC2</option>
+                                <option value="fail">✗ Fail - Data requires corrections</option>
+                            </select>
+                        </label>
+                        <label>
+                            Review Notes:
+                            <textarea name="notes" class="form-control" rows="4" placeholder="Add any notes about this review..."></textarea>
+                        </label>
+                    </section>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('modal-qc1-form')">Cancel</button>
+                <button class="btn btn-danger" onclick="submitQC1('reject')">Reject - Return to DL</button>
+                <button class="btn btn-primary" onclick="submitQC1('approve')">Approve & Proceed →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: QC2 Final Review -->
+    <div class="modal modal-large" id="modal-qc2-form">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>QC2 Final Review - <span id="qc2-race-id"></span></h2>
+                <button class="modal-close" onclick="closeModal('modal-qc2-form')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="form-qc2" class="qc2-form">
+                    <!-- Import File Info -->
+                    <section class="form-section">
+                        <h3>Import File</h3>
+                        <p><strong>Selected Source:</strong> <span id="qc2-selected-dl"></span></p>
+                        <p><strong>Record Count:</strong> <span id="qc2-record-count"></span></p>
+                        <p><strong>Imported At:</strong> <span id="qc2-imported-at"></span></p>
+                    </section>
+
+                    <!-- ML Flagged Issues -->
+                    <section class="form-section">
+                        <h3>⚠️ ML-Flagged Issues for QC2 Attention</h3>
+                        <div class="flagged-issues" id="qc2-flagged-issues">
+                            <!-- Populated by JavaScript -->
+                        </div>
+                    </section>
+
+                    <!-- Address Flags -->
+                    <section class="form-section">
+                        <h3>Address ML-Flagged Issues</h3>
+                        <label>
+                            <input type="checkbox" name="flags-addressed" id="flags-addressed">
+                            All ML-flagged issues have been reviewed and addressed (or documented reasoning provided)
+                        </label>
+                    </section>
+
+                    <!-- Validation -->
+                    <section class="form-section">
+                        <h3>Data Validation</h3>
+                        <label>
+                            Validation Status:
+                            <select name="validation_status" class="form-control">
+                                <option value="">-- Select Status --</option>
+                                <option value="passed">✓ Validation Passed</option>
+                                <option value="failed">✗ Validation Failed</option>
+                            </select>
+                        </label>
+                        <label>
+                            Validation Notes:
+                            <textarea name="validation_notes" class="form-control" rows="3" placeholder="Document any validation issues..."></textarea>
+                        </label>
+                    </section>
+
+                    <!-- Final Approval -->
+                    <section class="form-section">
+                        <h3>Final Approval</h3>
+                        <label>
+                            Final Review Result:
+                            <select name="final_result" class="form-control">
+                                <option value="">-- Select Result --</option>
+                                <option value="approved">✓ Approved for Production</option>
+                                <option value="rejected">✗ Rejected - Return for Correction</option>
+                            </select>
+                        </label>
+                        <label>
+                            Final Notes:
+                            <textarea name="final_notes" class="form-control" rows="3" placeholder="Final reviewer notes..."></textarea>
+                        </label>
+                    </section>
+
+                    <!-- Chain of Custody Preview -->
+                    <section class="form-section">
+                        <h3>Chain of Custody</h3>
+                        <div class="custody-log" id="qc2-custody-log">
+                            <p><em>Loading audit trail...</em></p>
+                        </div>
+                    </section>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('modal-qc2-form')">Cancel</button>
+                <button class="btn btn-danger" onclick="submitQC2('rejected')">Reject & Return</button>
+                <button class="btn btn-success" onclick="submitQC2('approved')">Export to Production ✓</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success/Error Toast Notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="/static/js/smart_elections_worklist.js"></script>
+</body>
+</html>

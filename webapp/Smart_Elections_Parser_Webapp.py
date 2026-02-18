@@ -164,6 +164,8 @@ from webapp.parser.config import (
     URL_ENFORCE_ALLOWLIST,
     URL_LIST_FILE,
 )
+from webapp.parser.url_parser import parse_url_simple, parse_url_components, format_url_components_for_training
+from webapp.parser.filename_parser import parse_filename_simple
 from webapp.parser.utils.cert_utils import extract_client_principal
 from webapp.parser.utils.db_utils import SessionLocal, get_engine
 from webapp.parser.utils.misc_utils import extract_url_and_label, load_processed_urls
@@ -336,6 +338,21 @@ def _require_cert_for_socket_action(action: str, session_id: str | None = None) 
                 return True
         except Exception:
             pass
+    # First check if session has a cached principal (for socket events where HTTP headers aren't preserved)
+    if session_id:
+        try:
+            meta = session_manager.get_metadata(session_id)
+            if meta and meta.get("principal"):
+                cached_principal = meta.get("principal")
+                if isinstance(cached_principal, str) and (
+                    cached_principal.startswith("cert:") or
+                    cached_principal.startswith("sso:") or
+                    cached_principal.startswith("dev:")
+                ):
+                    return True
+        except Exception:
+            pass
+    # Fall back to current request principal (for HTTP requests)
     principal, _, _ = get_request_principal()
     if principal and principal.startswith("cert:"):
         return True
@@ -1262,6 +1279,9 @@ def _apply_auth_context(session_id: str, principal: str | None, principal_source
     if not session_id:
         return
     updates = _derive_auth_context(principal, principal_source)
+    # Also cache principal to metadata so it's available for socket events (where HTTP headers aren't preserved)
+    if principal:
+        updates["principal"] = principal
     session_manager.update_metadata(session_id, **updates)
 
 
@@ -2540,6 +2560,310 @@ def api_urls():
     except Exception as exc:
         logger.error({"level": "ERROR", "type": "api", "message": f"api_urls GET/POST failed: {exc}", "session_id": None})
         return jsonify({"urls": [], "error": "internal"}), 500
+
+
+@app.route("/api/urls/parse", methods=["POST"])
+@_rate_limit("60/minute")
+def api_urls_parse():
+    """
+    Parse URL(s) into structured components for training.
+    
+    Request body:
+        {"url": "https://..."} - Parse single URL
+        {"urls": ["https://...", ...]} - Parse multiple URLs
+        {"store": true} - Optionally store parsed results to training file
+    
+    Response:
+        Single URL: {"success": true, "parsed": {...}}
+        Multiple URLs: {"success": true, "parsed": [{...}, ...]}
+    """
+    try:
+        data = request.get_json() or {}
+        single_url = safe_strip(safe_get(data, "url", ""))
+        urls_list = data.get("urls", [])
+        store_results = data.get("store", False)
+        
+        # Determine if single or batch
+        if single_url:
+            urls_to_parse = [single_url]
+            is_batch = False
+        elif urls_list and isinstance(urls_list, list):
+            urls_to_parse = [safe_strip(u) for u in urls_list if isinstance(u, str) and safe_strip(u)]
+            is_batch = True
+        else:
+            return jsonify({"success": False, "error": "Provide 'url' or 'urls' parameter"}), 400
+        
+        if not urls_to_parse:
+            return jsonify({"success": False, "error": "No valid URLs provided"}), 400
+        
+        # Parse URLs
+        parsed_results = []
+        for url in urls_to_parse:
+            try:
+                parsed = parse_url_simple(url)
+                parsed_results.append(parsed)
+            except Exception as parse_exc:
+                logger.warning(f"Failed to parse URL {url}: {parse_exc}")
+                parsed_results.append({
+                    "url": url,
+                    "error": str(parse_exc)
+                })
+        
+        # Store to training file if requested
+        if store_results:
+            try:
+                training_file = LOG_DIR / "parsed_urls_training.jsonl"
+                with open(training_file, "a", encoding="utf-8") as f:
+                    for result in parsed_results:
+                        if "error" not in result:
+                            f.write(orjson.dumps(result).decode("utf-8") + "\n")
+            except Exception as store_exc:
+                logger.error(f"Failed to store parsed URLs: {store_exc}")
+        
+        # Return results
+        if is_batch:
+            return jsonify({
+                "success": True,
+                "parsed": parsed_results,
+                "count": len(parsed_results)
+            }), 200
+        else:
+            return jsonify({
+                "success": True,
+                "parsed": parsed_results[0] if parsed_results else {}
+            }), 200
+            
+    except Exception as exc:
+        logger.error({"level": "ERROR", "type": "api", "message": f"api_urls_parse failed: {exc}", "session_id": None})
+        return jsonify({"success": False, "error": "internal"}), 500
+
+
+@app.route("/api/urls/training_data", methods=["GET"])
+@_rate_limit("30/minute")
+def api_urls_training_data():
+    """
+    Get parsed URL training data.
+    
+    Query parameters:
+        limit: Max number of records (default: 100, max: 1000)
+        offset: Skip first N records (default: 0)
+        state: Filter by state code/name
+        vendor: Filter by vendor hint
+        has_county: Filter to URLs with county data (true/false)
+    
+    Response:
+        {
+            "success": true,
+            "data": [...],
+            "count": N,
+            "total": M
+        }
+    """
+    try:
+        training_file = LOG_DIR / "parsed_urls_training.jsonl"
+        
+        # Parse query parameters
+        limit = min(int(request.args.get("limit", 100)), 1000)
+        offset = int(request.args.get("offset", 0))
+        state_filter = safe_strip(request.args.get("state", "")).upper()
+        vendor_filter = safe_strip(request.args.get("vendor", "")).lower()
+        has_county_filter = request.args.get("has_county", "").lower() in {"true", "1", "yes"}
+        
+        if not training_file.exists():
+            return jsonify({
+                "success": True,
+                "data": [],
+                "count": 0,
+                "total": 0,
+                "message": "No training data available yet"
+            }), 200
+        
+        # Read and filter data
+        all_records = []
+        with open(training_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = orjson.loads(line)
+                    
+                    # Apply filters
+                    if state_filter and record.get("state", "").upper() != state_filter:
+                        continue
+                    if vendor_filter and record.get("vendor_hint", "").lower() != vendor_filter:
+                        continue
+                    if has_county_filter and not record.get("county"):
+                        continue
+                    
+                    all_records.append(record)
+                except Exception:
+                    continue
+        
+        total = len(all_records)
+        
+        # Apply pagination
+        paginated_records = all_records[offset:offset + limit]
+        
+        return jsonify({
+            "success": True,
+            "data": paginated_records,
+            "count": len(paginated_records),
+            "total": total,
+            "offset": offset,
+            "limit": limit
+        }), 200
+        
+    except Exception as exc:
+        logger.error({"level": "ERROR", "type": "api", "message": f"api_urls_training_data failed: {exc}", "session_id": None})
+        return jsonify({"success": False, "error": "internal"}), 500
+
+
+@app.route("/api/urls/parse_all", methods=["POST"])
+@_rate_limit("10/hour")
+def api_urls_parse_all():
+    """
+    Parse all URLs from url_library (urls.txt) and store to training file.
+    
+    This is a batch operation that may take time for large URL lists.
+    
+    Response:
+        {
+            "success": true,
+            "parsed_count": N,
+            "failed_count": M,
+            "training_file": "path/to/file.jsonl"
+        }
+    """
+    try:
+        urls_file = str(URL_LIST_FILE)
+        if not os.path.exists(urls_file):
+            return jsonify({
+                "success": False,
+                "error": "URL library file not found"
+            }), 404
+        
+        # Read all URLs
+        urls_to_parse = []
+        with open(urls_file, "r", encoding="utf-8") as f:
+            for raw in f:
+                s = safe_strip(raw)
+                if not s or s.startswith('#'):
+                    continue
+                u, _ = extract_url_and_label(s)
+                if u:
+                    urls_to_parse.append(u)
+        
+        if not urls_to_parse:
+            return jsonify({
+                "success": False,
+                "error": "No URLs found in library"
+            }), 404
+        
+        # Parse all URLs
+        parsed_count = 0
+        failed_count = 0
+        training_file = LOG_DIR / "parsed_urls_training.jsonl"
+        
+        with open(training_file, "a", encoding="utf-8") as f:
+            for url in urls_to_parse:
+                try:
+                    parsed = parse_url_simple(url)
+                    f.write(orjson.dumps(parsed).decode("utf-8") + "\n")
+                    parsed_count += 1
+                except Exception as parse_exc:
+                    logger.warning(f"Failed to parse URL {url}: {parse_exc}")
+                    failed_count += 1
+        
+        return jsonify({
+            "success": True,
+            "parsed_count": parsed_count,
+            "failed_count": failed_count,
+            "training_file": str(training_file),
+            "total_urls": len(urls_to_parse)
+        }), 200
+        
+    except Exception as exc:
+        logger.error({"level": "ERROR", "type": "api", "message": f"api_urls_parse_all failed: {exc}", "session_id": None})
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/filename/parse", methods=["POST"])
+@_rate_limit("60/minute")
+def api_filename_parse():
+    """
+    Parse filename(s) into structured components for metadata extraction.
+    
+    Similar to /api/urls/parse but for filenames.
+    
+    Request body:
+        {"filename": "Alabama_Jefferson_2024.pdf"} - Parse single filename
+        {"filenames": ["file1.pdf", ...]} - Parse multiple filenames
+        {"store": true} - Optionally store parsed results to training file
+    
+    Response:
+        Single: {"success": true, "parsed": {...}}
+        Multiple: {"success": true, "parsed": [{...}, ...]}
+    """
+    try:
+        data = request.get_json() or {}
+        single_filename = safe_strip(safe_get(data, "filename", ""))
+        filenames_list = data.get("filenames", [])
+        store_results = data.get("store", False)
+        
+        # Determine if single or batch
+        if single_filename:
+            filenames_to_parse = [single_filename]
+            is_batch = False
+        elif filenames_list and isinstance(filenames_list, list):
+            filenames_to_parse = [safe_strip(f) for f in filenames_list if isinstance(f, str) and safe_strip(f)]
+            is_batch = True
+        else:
+            return jsonify({"success": False, "error": "Provide 'filename' or 'filenames' parameter"}), 400
+        
+        if not filenames_to_parse:
+            return jsonify({"success": False, "error": "No valid filenames provided"}), 400
+        
+        # Parse filenames
+        parsed_results = []
+        for filename in filenames_to_parse:
+            try:
+                parsed = parse_filename_simple(filename)
+                parsed_results.append(parsed)
+            except Exception as parse_exc:
+                logger.warning(f"Failed to parse filename {filename}: {parse_exc}")
+                parsed_results.append({
+                    "filename": filename,
+                    "error": str(parse_exc)
+                })
+        
+        # Store to training file if requested
+        if store_results:
+            try:
+                training_file = LOG_DIR / "parsed_filenames_training.jsonl"
+                with open(training_file, "a", encoding="utf-8") as f:
+                    for result in parsed_results:
+                        if "error" not in result:
+                            f.write(orjson.dumps(result).decode("utf-8") + "\n")
+            except Exception as store_exc:
+                logger.error(f"Failed to store parsed filenames: {store_exc}")
+        
+        # Return results
+        if is_batch:
+            return jsonify({
+                "success": True,
+                "parsed": parsed_results,
+                "count": len(parsed_results)
+            }), 200
+        else:
+            return jsonify({
+                "success": True,
+                "parsed": parsed_results[0] if parsed_results else {}
+            }), 200
+            
+    except Exception as exc:
+        logger.error({"level": "ERROR", "type": "api", "message": f"api_filename_parse failed: {exc}", "session_id": None})
+        return jsonify({"success": False, "error": "internal"}), 500
 
 
 def _load_output_metadata(meta_path: str) -> dict:
@@ -5269,6 +5593,36 @@ def upload_to_uploads() -> str:
         session['FORCE_PARSE_INPUT_FILE'] = saved_name
         session['FORCE_PARSE_FORMAT'] = saved_name.rsplit('.', 1)[-1].lower() if '.' in saved_name else ''
         session['manual_source_pref'] = 'uploads'  # default UI to uploads after upload
+        
+        # Parse filename for metadata hints
+        try:
+            parsed_filename = parse_filename_simple(saved_name)
+            # Store parsed metadata in session for later use
+            if parsed_filename.get('state'):
+                session['PARSED_STATE_HINT'] = parsed_filename['state']
+            if parsed_filename.get('county'):
+                session['PARSED_COUNTY_HINT'] = parsed_filename['county']
+            if parsed_filename.get('year'):
+                session['PARSED_YEAR_HINT'] = parsed_filename['year']
+            if parsed_filename.get('contest_type'):
+                session['PARSED_CONTEST_HINT'] = parsed_filename['contest_type']
+            
+            # Log parsed metadata for debugging
+            logger.info({
+                "level": "INFO",
+                "type": "upload",
+                "message": "Parsed filename metadata",
+                "filename": saved_name,
+                "parsed_metadata": {
+                    "state": parsed_filename.get('state'),
+                    "county": parsed_filename.get('county'),
+                    "year": parsed_filename.get('year'),
+                    "contest_type": parsed_filename.get('contest_type')
+                }
+            })
+        except Exception as e:
+            logger.warning(f"Failed to parse filename metadata: {e}")
+        
         flash(f"File '{saved_name}' uploaded to uploads folder.", "success")
     else:
         flash(saved_name or "Invalid file type or no file selected.", "danger")
@@ -5364,6 +5718,677 @@ def rerun_prior(run_id):
     flash(f"Re-running prior config (run_id={run_id}) in new session {new_session}", "success")
     # Front-end JS should now request a run (or we can directly invoke)
     return redirect(url_for("ballot_lens", source=source))
+
+
+# =====================================================================
+# 5. ELECTION DATA WORKFLOW - SMART Elections DL1/DL2 Pipeline
+# =====================================================================
+# Worklist management, Pre-QC comparison, QC1/QC2 checkpoints
+# Role enforcement: DL1 ≠ DL2 ≠ QC1 ≠ QC2
+# Complete audit trail with chain of custody
+
+@app.route("/api/election_data/worklist", methods=["GET"])
+def api_election_data_worklist():
+    """
+    Get Worklist - all races with step-by-step status tracking.
+    
+    Query params:
+    - state: filter by state
+    - year: filter by year
+    - status: filter by workflow_status (step_1|step_2|step_3|step_4|completed)
+    - limit: max records (default 100)
+    """
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    try:
+        from webapp.parser.models.election_data import DownloadRecord
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy import create_engine
+        
+        # Store DB URL in env or fallback to default
+        db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
+        engine = create_engine(db_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        
+        try:
+            query = session.query(DownloadRecord)
+            
+            # Apply filters
+            for param, field in [('state', 'state'), ('year', 'year')]:
+                if request.args.get(param):
+                    val = request.args.get(param)
+                    if param == 'year':
+                        val = int(val) if val.isdigit() else val
+                    query = query.filter(getattr(DownloadRecord, field) == val)
+            
+            if request.args.get('status'):
+                query = query.filter(DownloadRecord.workflow_status == request.args.get('status'))
+            
+            limit = min(int(request.args.get('limit', 100)), 500)
+            total = query.count()
+            records = query.limit(limit).all()
+            
+            # Convert to dict
+            worklist = [{
+                'id': r.id,
+                'race_id': r.race_id,
+                'year': r.year,
+                'state': r.state,
+                'county': r.county,
+                'office': r.office,
+                'source_url': r.source_url,
+                'dl1_assigned_to': r.dl1_assigned_to,
+                'dl1_status': r.dl1_status,
+                'dl2_assigned_to': r.dl2_assigned_to,
+                'dl2_status': r.dl2_status,
+                'preqc_result': r.preqc_result,
+                'qc1_assigned_to': r.qc1_assigned_to,
+                'qc1_status': r.qc1_status,
+                'qc1_selected_dl': r.qc1_selected_dl,
+                'qc2_assigned_to': r.qc2_assigned_to,
+                'qc2_status': r.qc2_status,
+                'workflow_status': r.workflow_status,
+                'updated_at': r.updated_at.isoformat() if r.updated_at else None,
+            } for r in records]
+            
+            return jsonify({'success': True, 'total': total, 'records': worklist}), 200
+        
+        finally:
+            session.close()
+    
+    except Exception as e:
+        logger.error(f"Error fetching worklist: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route("/api/election_data/worklist/overview", methods=["GET"])
+def api_election_data_worklist_overview():
+    """
+    Fetch worklist overview data from Google Sheets.
+
+    Query params:
+    - limit: max records (default 200)
+    - sheet: override sheet name (defaults to GOOGLE_SHEETS_WORKLIST_OVERVIEW_SHEET)
+    """
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    try:
+        from webapp.parser.data_standardization.google_sheets_client import fetch_worklist_overview
+
+        limit = min(int(request.args.get('limit', 200)), 2000)
+        sheet_name = request.args.get('sheet')
+        result = fetch_worklist_overview(sheet_name=sheet_name)
+
+        if not result.success:
+            return jsonify({'success': False, 'error': result.error or 'Failed to fetch sheet'}), 500
+
+        records = result.records[:limit]
+
+        return jsonify({
+            'success': True,
+            'sheet_name': result.sheet_name,
+            'row_count': result.row_count,
+            'records': records,
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching worklist overview: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route("/api/election_data/db_lite/finalized", methods=["GET"])
+def api_election_data_db_lite_finalized():
+    """
+    Fetch Finalized Data sheet from SMART Elections Database-Lite.
+
+    Query params:
+    - limit: max records (default 200)
+    """
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    try:
+        from webapp.parser.data_standardization.google_sheets_client import get_election_data_client
+
+        limit = min(int(request.args.get('limit', 200)), 2000)
+        client = get_election_data_client()
+        result = client.fetch_finalized_data()
+
+        if not result.success:
+            return jsonify({'success': False, 'error': result.error or 'Failed to fetch sheet'}), 500
+
+        records = result.records[:limit]
+
+        return jsonify({
+            'success': True,
+            'sheet_name': result.sheet_name,
+            'row_count': result.row_count,
+            'records': records,
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching DB-Lite finalized data: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route("/api/election_data/db_lite/down_ballot", methods=["GET"])
+def api_election_data_db_lite_down_ballot():
+    """
+    Fetch Down-Ballot Calculations sheet from SMART Elections Database-Lite.
+
+    Query params:
+    - limit: max records (default 200)
+    """
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    try:
+        from webapp.parser.data_standardization.google_sheets_client import get_election_data_client
+
+        limit = min(int(request.args.get('limit', 200)), 2000)
+        client = get_election_data_client()
+        result = client.fetch_down_ballot_calculations()
+
+        if not result.success:
+            return jsonify({'success': False, 'error': result.error or 'Failed to fetch sheet'}), 500
+
+        records = result.records[:limit]
+
+        return jsonify({
+            'success': True,
+            'sheet_name': result.sheet_name,
+            'row_count': result.row_count,
+            'records': records,
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching DB-Lite down-ballot data: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route("/api/election_data/google_sheets/health", methods=["GET"])
+def api_election_data_google_sheets_health():
+    """
+    Verify Google Sheets access for worklist overview + DB-Lite sheets.
+    """
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    try:
+        from webapp.parser.data_standardization.google_sheets_client import (
+            fetch_worklist_overview,
+            get_election_data_client,
+        )
+
+        results = {}
+
+        try:
+            worklist_result = fetch_worklist_overview()
+            results['worklist_overview'] = {
+                'success': worklist_result.success,
+                'sheet_name': worklist_result.sheet_name,
+                'row_count': worklist_result.row_count,
+                'error': worklist_result.error,
+            }
+        except Exception as e:
+            results['worklist_overview'] = {
+                'success': False,
+                'sheet_name': None,
+                'row_count': 0,
+                'error': str(e),
+            }
+
+        try:
+            client = get_election_data_client()
+            finalized_result = client.fetch_finalized_data()
+            results['db_lite_finalized'] = {
+                'success': finalized_result.success,
+                'sheet_name': finalized_result.sheet_name,
+                'row_count': finalized_result.row_count,
+                'error': finalized_result.error,
+            }
+        except Exception as e:
+            results['db_lite_finalized'] = {
+                'success': False,
+                'sheet_name': None,
+                'row_count': 0,
+                'error': str(e),
+            }
+
+        try:
+            client = get_election_data_client()
+            down_ballot_result = client.fetch_down_ballot_calculations()
+            results['db_lite_down_ballot'] = {
+                'success': down_ballot_result.success,
+                'sheet_name': down_ballot_result.sheet_name,
+                'row_count': down_ballot_result.row_count,
+                'error': down_ballot_result.error,
+            }
+        except Exception as e:
+            results['db_lite_down_ballot'] = {
+                'success': False,
+                'sheet_name': None,
+                'row_count': 0,
+                'error': str(e),
+            }
+
+        overall_ok = all(result.get('success') for result in results.values())
+
+        return jsonify({
+            'success': overall_ok,
+            'results': results,
+        }), 200 if overall_ok else 503
+
+    except Exception as e:
+        logger.error(f"Error checking Google Sheets health: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route("/api/election_data/states_counties", methods=["GET"])
+def api_election_data_states_counties():
+    """
+    Return authoritative state-to-county mappings from Google Sheets.
+    
+    This replaces unreliable URL-based heuristics with clean, normalized data
+    from the SMART Elections Database-Lite Finalized Data sheet.
+    
+    Returns:
+        {
+            "success": true,
+            "states": ["Alabama", "Alaska", ...],
+            "counties": {
+                "Alabama": ["Autauga", "Baldwin", ...],
+                "Alaska": ["District 01", "District 02", ...],
+                ...
+            },
+            "total_states": 50,
+            "total_counties": 3143
+        }
+    """
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    try:
+        from webapp.parser.data_standardization.google_sheets_client import get_election_data_client
+        from collections import defaultdict
+
+        client = get_election_data_client()
+        result = client.fetch_finalized_data()
+
+        if not result.success:
+            return jsonify({
+                'success': False,
+                'error': result.error or 'Failed to fetch Google Sheets data'
+            }), 500
+
+        # Build normalized state-to-county mappings
+        state_counties = defaultdict(set)
+        
+        for record in result.records:
+            state = record.get('State', '').strip()
+            county = record.get('County/District', '').strip()
+            
+            if state and county:
+                # Normalize: title case, deduplicate
+                state_normalized = state.title()
+                county_normalized = county.title()
+                state_counties[state_normalized].add(county_normalized)
+
+        # Convert to sorted lists for consistent ordering
+        states_list = sorted(state_counties.keys())
+        counties_dict = {
+            state: sorted(list(counties))
+            for state, counties in state_counties.items()
+        }
+        
+        total_counties = sum(len(counties) for counties in counties_dict.values())
+
+        return jsonify({
+            'success': True,
+            'states': states_list,
+            'counties': counties_dict,
+            'total_states': len(states_list),
+            'total_counties': total_counties,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error fetching states/counties mapping: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route("/api/election_data/worklist/<race_id>/assign", methods=["POST"])
+def api_assign_dl_owner(race_id):
+    """
+    Assign DL1 or DL2 owner to a race.
+    
+    Body: {'dl': 'DL1'|'DL2', 'assigned_to': 'username}
+    """
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    try:
+        from webapp.parser.models.election_data import DownloadRecord
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy import create_engine
+        
+        data = request.get_json() or {}
+        dl = data.get('dl', '').upper()  # DL1 or DL2
+        assigned_to = data.get('assigned_to', principal)
+        
+        if dl not in ('DL1', 'DL2'):
+            return jsonify({'success': False, 'error': 'dl must be DL1 or DL2'}), 400
+        
+        db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
+        engine = create_engine(db_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        
+        try:
+            record = session.query(DownloadRecord).filter(DownloadRecord.race_id == race_id).first()
+            
+            if not record:
+                return jsonify({'success': False, 'error': f'Race {race_id} not found'}), 404
+            
+            # Enforce role separation: DL1 ≠ DL2
+            if dl == 'DL1':
+                if record.dl2_assigned_to and record.dl2_assigned_to == assigned_to:
+                    return jsonify({
+                        'success': False,
+                        'error': f'{assigned_to} is already assigned to DL2 - cannot also assign to DL1'
+                    }), 400
+                record.dl1_assigned_to = assigned_to
+                record.dl1_status = 'pending'
+            else:  # DL2
+                if record.dl1_assigned_to and record.dl1_assigned_to == assigned_to:
+                    return jsonify({
+                        'success': False,
+                        'error': f'{assigned_to} is already assigned to DL1 - cannot also assign to DL2'
+                    }), 400
+                record.dl2_assigned_to = assigned_to
+                record.dl2_status = 'pending'
+            
+            record.updated_at = datetime.utcnow()
+            session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': f'{assigned_to} assigned to {dl} for race {race_id}'
+            }), 200
+        
+        finally:
+            session.close()
+    
+    except Exception as e:
+        logger.error(f"Error assigning DL owner: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route("/api/election_data/preqc/<race_id>", methods=["POST"])
+def api_preqc_check(race_id):
+    """
+    Run Pre-QC Auto-check: strict equality + fuzzy matching between DL1 and DL2.
+    
+    Returns discrepancy report for QC1 review.
+    """
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    try:
+        from webapp.parser.models.election_data import (
+            DownloadRecord, ValidationRecord_DL1, ValidationRecord_DL2, PreQCComparison
+        )
+        from webapp.parser.data_standardization.election_data_standardizer import (
+            PreQCComparisonEngine
+        )
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy import create_engine
+        
+        db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
+        engine = create_engine(db_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        
+        try:
+            # Get DL1 and DL2 records
+            dl1 = session.query(ValidationRecord_DL1).filter(
+                ValidationRecord_DL1.race_id == race_id
+            ).first()
+            dl2 = session.query(ValidationRecord_DL2).filter(
+                ValidationRecord_DL2.race_id == race_id
+            ).first()
+            
+            if not dl1 or not dl2:
+                return jsonify({
+                    'success': False,
+                    'error': 'Both DL1 and DL2 records required for Pre-QC comparison'
+                }), 400
+            
+            # Convert to dict for comparison
+            dl1_dict = {
+                'race_id': dl1.race_id,
+                'standardized_candidate_name': dl1.standardized_candidate_name,
+                'ballot_party': dl1.ballot_party,
+                'fec_party': dl1.fec_party,
+                'fec_id': dl1.fec_id,
+                'total_votes': dl1.total_votes,
+                'is_write_in': dl1.is_write_in,
+            }
+            dl2_dict = {
+                'race_id': dl2.race_id,
+                'standardized_candidate_name': dl2.standardized_candidate_name,
+                'ballot_party': dl2.ballot_party,
+                'fec_party': dl2.fec_party,
+                'fec_id': dl2.fec_id,
+                'total_votes': dl2.total_votes,
+                'is_write_in': dl2.is_write_in,
+            }
+            
+            # Run Pre-QC comparison
+            preqc_result = PreQCComparisonEngine.compare_records(dl1_dict, dl2_dict)
+            
+            # Store result
+            preqc = PreQCComparison(
+                race_id=race_id,
+                dl1_record_id=dl1.id,
+                dl2_record_id=dl2.id,
+                strict_equality_passed=preqc_result.strict_passed,
+                fuzzy_match_confidence=preqc_result.fuzzy_confidence,
+                fuzzy_candidate_confidence=preqc_result.candidate_confidence,
+                fuzzy_party_confidence=preqc_result.party_confidence,
+                fuzzy_fec_id_confidence=preqc_result.fec_id_confidence,
+                discrepancy_count=preqc_result.discrepancy_count,
+                discrepancy_fields=json.dumps(preqc_result.discrepancies),
+                comparison_status=preqc_result.status,
+                comparison_summary=preqc_result.summary,
+                checked_by=principal,
+            )
+            session.add(preqc)
+            
+            # Update DownloadRecord
+            download = session.query(DownloadRecord).filter(
+                DownloadRecord.race_id == race_id
+            ).first()
+            if download:
+                download.preqc_auto_check_completed = True
+                download.preqc_result = preqc_result.status
+                download.preqc_strict_passed = preqc_result.strict_passed
+                download.preqc_fuzzy_score = preqc_result.fuzzy_confidence
+                download.preqc_discrepancy_count = preqc_result.discrepancy_count
+                download.preqc_checked_at = datetime.utcnow()
+            
+            session.commit()
+            
+            return jsonify({
+                'success': True,
+                'preqc_result': {
+                    'race_id': preqc_result.race_id,
+                    'strict_passed': preqc_result.strict_passed,
+                    'fuzzy_confidence': round(preqc_result.fuzzy_confidence, 3),
+                    'status': preqc_result.status,
+                    'summary': preqc_result.summary,
+                    'discrepancy_count': preqc_result.discrepancy_count,
+                    'discrepancies': preqc_result.discrepancies,
+                }
+            }), 200
+        
+        finally:
+            session.close()
+    
+    except Exception as e:
+        logger.error(f"Error running Pre-QC check for {race_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route("/api/election_data/qc1/<race_id>/submit", methods=["POST"])
+def api_qc1_submit(race_id):
+    """
+    Submit QC1 form and approve/reject data for QC2.
+    
+    Body: {
+      'selected_dl': 'DL1'|'DL2',
+      'inspection_result': 'pass'|'fail',
+      'checklist_results': {...},
+      'notes': 'optional notes'
+    }
+    """
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    try:
+        from webapp.parser.models.election_data import (
+            DownloadRecord, QC1Checkpoint, PreQCComparison
+        )
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy import create_engine
+        
+        data = request.get_json() or {}
+        selected_dl = data.get('selected_dl', '').upper()
+        
+        if selected_dl not in ('DL1', 'DL2'):
+            return jsonify({'success': False, 'error': 'selected_dl must be DL1 or DL2'}), 400
+        
+        db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
+        engine = create_engine(db_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        
+        try:
+            download = session.query(DownloadRecord).filter(
+                DownloadRecord.race_id == race_id
+            ).first()
+            
+            if not download:
+                return jsonify({'success': False, 'error': f'Race {race_id} not found'}), 404
+            
+            # Enforce role separation: QC1 cannot be DL1 or DL2 owner
+            if principal in (download.dl1_assigned_to, download.dl2_assigned_to):
+                return jsonify({
+                    'success': False,
+                    'error': f'QC1 designee cannot also be DL1 or DL2 owner'
+                }), 400
+            
+            # Get Pre-QC results
+            preqc = session.query(PreQCComparison).filter(
+                PreQCComparison.race_id == race_id
+            ).order_by(PreQCComparison.checked_at.desc()).first()
+            
+            # Create QC1 checkpoint
+            qc1 = QC1Checkpoint(
+                download_record_id=download.id,
+                preqc_comparison_id=preqc.id if preqc else None,
+                reviewed_by=principal,
+                reviewed_at=datetime.utcnow(),
+                qc1_checklist_results=json.dumps(data.get('checklist_results', {})),
+                data_inspection_result=data.get('inspection_result', 'pending'),
+                data_inspection_notes=data.get('notes', ''),
+                selected_dl_source=selected_dl,
+                approval_status='approved' if data.get('inspection_result') == 'pass' else 'rejected',
+            )
+            session.add(qc1)
+            
+            # Update DownloadRecord
+            download.qc1_assigned_to = principal
+            download.qc1_status = 'completed'
+            download.qc1_selected_dl = selected_dl
+            download.qc1_completed_at = datetime.utcnow()
+            download.qc1_data_inspection_result = data.get('inspection_result')
+            download.workflow_status = 'step_3' if data.get('inspection_result') == 'pass' else 'step_2_review'
+            
+            session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': f'QC1 review completed for {race_id}',
+                'qc1_id': qc1.id,
+                'workflow_status': download.workflow_status,
+            }), 200
+        
+        finally:
+            session.close()
+    
+    except Exception as e:
+        logger.error(f"Error submitting QC1 for {race_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route("/api/election_data/stats", methods=["GET"])
+def api_election_data_stats():
+    """Get overall election data pipeline statistics."""
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    try:
+        from webapp.parser.models.election_data import (
+            DownloadRecord, ValidationRecord_DL1, ValidationRecord_DL2, ElectionResult
+        )
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy import create_engine, func
+        
+        db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
+        engine = create_engine(db_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        
+        try:
+            stats = {
+                'total_races': session.query(func.count(DownloadRecord.id)).scalar() or 0,
+                'dl1_ready': session.query(func.count(DownloadRecord.id)).filter(
+                    DownloadRecord.dl1_status == 'ready_for_qc'
+                ).scalar() or 0,
+                'dl2_ready': session.query(func.count(DownloadRecord.id)).filter(
+                    DownloadRecord.dl2_status == 'ready_for_qc'
+                ).scalar() or 0,
+                'preqc_passed': session.query(func.count(DownloadRecord.id)).filter(
+                    DownloadRecord.preqc_result == 'passed'
+                ).scalar() or 0,
+                'qc1_pending': session.query(func.count(DownloadRecord.id)).filter(
+                    DownloadRecord.qc1_status == 'pending'
+                ).scalar() or 0,
+                'qc2_pending': session.query(func.count(DownloadRecord.id)).filter(
+                    DownloadRecord.qc2_status == 'pending'
+                ).scalar() or 0,
+                'production_records': session.query(func.count(ElectionResult.id)).scalar() or 0,
+            }
+            
+            return jsonify({'success': True, 'stats': stats}), 200
+        
+        finally:
+            session.close()
+    
+    except Exception as e:
+        logger.error(f"Error fetching stats: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # 6. SocketIO Event Handlers
 
