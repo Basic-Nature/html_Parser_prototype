@@ -4,10 +4,9 @@ Handles County/District, Candidate Name, Party, Vote Types, Write-In flags, and 
 Flags data for manual review when standardization cannot be automated.
 """
 
-import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
 
 # Union type for multi-return annotations
 try:
@@ -585,13 +584,13 @@ class PreQCComparisonEngine:
         strict_passed = True
         strict_mismatches = {}
         
-        for field in cls.STRICT_COMPARISON_FIELDS:
-            dl1_val = dl1_record.get(field)
-            dl2_val = dl2_record.get(field)
+        for field_name in cls.STRICT_COMPARISON_FIELDS:
+            dl1_val = dl1_record.get(field_name)
+            dl2_val = dl2_record.get(field_name)
             
             if dl1_val != dl2_val:
                 strict_passed = False
-                strict_mismatches[field] = {'dl1': dl1_val, 'dl2': dl2_val}
+                strict_mismatches[field_name] = {'dl1': dl1_val, 'dl2': dl2_val}
         
         # Fuzzy Matching Confidence Scores
         candidate_conf, candidate_reason = CandidateNameMatcher.normalized_similarity(
@@ -614,32 +613,32 @@ class PreQCComparisonEngine:
         
         # Determine discrepancies
         discrepancies = {}
-        for field, mismatch in strict_mismatches.items():
-            if field == 'standardized_candidate_name':
-                discrepancies[field] = {
+        for field_name, mismatch in strict_mismatches.items():
+            if field_name == 'standardized_candidate_name':
+                discrepancies[field_name] = {
                     **mismatch,
                     'confidence': candidate_conf,
                     'reason': candidate_reason,
                 }
-            elif field in ('ballot_party', 'fec_party'):
-                discrepancies[field] = {
+            elif field_name in ('ballot_party', 'fec_party'):
+                discrepancies[field_name] = {
                     **mismatch,
                     'confidence': party_conf,
                     'reason': 'Party code mismatch',
                 }
-            elif field == 'fec_id':
-                discrepancies[field] = {
+            elif field_name == 'fec_id':
+                discrepancies[field_name] = {
                     **mismatch,
                     'confidence': fec_id_conf,
                     'reason': 'FEC ID mismatch',
                 }
             else:
-                discrepancies[field] = mismatch
+                discrepancies[field_name] = mismatch
         
         # Determine status
         if strict_passed:
             status = 'passed'
-            summary = f"✓ DL1 and DL2 match exactly"
+            summary = "✓ DL1 and DL2 match exactly"
         elif overall_fuzzy >= cls.FUZZY_CONFIDENCE_THRESHOLD:
             status = 'review_needed'
             summary = f"⚠ Fuzzy match confidence {overall_fuzzy:.1%} - minor discrepancies"

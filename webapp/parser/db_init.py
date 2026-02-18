@@ -17,16 +17,16 @@ Usage:
     python db_init.py postgresql://...   # Use PostgreSQL connection string
 """
 
-import sys
 import os
-from datetime import datetime
+import sys
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from models.election_data import Base
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
-from models.election_data import Base
+
 
 def get_connection_string():
     """Get database connection string from argument or env var."""
@@ -56,7 +56,7 @@ def init_db(db_url=None):
         engine = create_engine(db_url, echo=False)
         
         # Verify connection
-        with engine.connect() as conn:
+        with engine.connect() as _conn:
             print("✓ Database connection successful")
         
         # Inspect existing tables
@@ -125,7 +125,7 @@ def test_connection(db_url=None):
     if db_url is None:
         db_url = get_connection_string()
     
-    print(f"\nTesting database operations...")
+    print("\nTesting database operations...")
     
     try:
         engine = create_engine(db_url)

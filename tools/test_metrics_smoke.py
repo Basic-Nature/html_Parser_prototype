@@ -8,11 +8,13 @@ import sys
 import tempfile
 import time
 import urllib.request
+from pathlib import Path
 
 HOST = os.environ.get('TEST_HOST', '127.0.0.1')
 START_PORT = int(os.environ.get('TEST_PORT', '5000'))
 TRIES = int(os.environ.get('TEST_PORT_TRIES', '5'))
 PY = os.environ.get('PYTHON', sys.executable or 'python')
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def start_server(env=None, log_path=None):
@@ -21,9 +23,17 @@ def start_server(env=None, log_path=None):
     if isinstance(env, dict):
         base_env.update(env)
     base_env['ENABLE_PROMETHEUS'] = 'true'
+    # Ensure project root is on sys.path for module resolution
+    base_env['PYTHONPATH'] = str(PROJECT_ROOT)
     cmd = [PY, '-m', 'webapp.Smart_Elections_Parser_Webapp']
     lf = open(log_path, 'ab') if log_path else subprocess.PIPE
-    proc = subprocess.Popen(cmd, env=base_env, stdout=lf, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(
+        cmd,
+        env=base_env,
+        cwd=str(PROJECT_ROOT),
+        stdout=lf,
+        stderr=subprocess.STDOUT,
+    )
     return proc, lf
 
 

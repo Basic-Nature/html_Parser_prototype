@@ -5,7 +5,6 @@ Verifies that the new individual env var approach works correctly
 
 import os
 import sys
-import json
 from pathlib import Path
 
 # Add webapp to path
@@ -36,7 +35,9 @@ def test_env_var_reconstruction():
     
     try:
         # Import the helper function
-        from webapp.parser.data_standardization.google_sheets_client import _build_service_account_json_from_env
+        from webapp.parser.data_standardization.google_sheets_client import (
+            _build_service_account_json_from_env,
+        )
         
         # Test: Build JSON from env vars
         print("✓ Successfully imported google_sheets_client module")
@@ -120,11 +121,13 @@ def test_priority_fallback():
     os.environ['GOOGLE_SHEETS_DB_LITE_ID'] = 'test-sheet-id'
     
     try:
-        from webapp.parser.data_standardization.google_sheets_client import GoogleSheetsElectionClient
+        from webapp.parser.data_standardization.google_sheets_client import (
+            GoogleSheetsElectionClient,
+        )
         
         # Test 1: No credentials should raise ValueError
         try:
-            client = GoogleSheetsElectionClient()
+            GoogleSheetsElectionClient()
             print("✗ FAIL: Should raise ValueError when no credentials are provided")
             return False
         except ValueError as e:

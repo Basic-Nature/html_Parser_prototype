@@ -3,18 +3,16 @@ Google Sheets API Client
 Fetches election data from Smart Elections Database-Lite workbooks
 """
 
-import os
 import json
 import logging
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+import os
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
-    from google.oauth2 import service_account
-    from google.auth.transport.requests import Request
     from google.auth.exceptions import GoogleAuthError
-    import google.auth.exceptions
+    from google.oauth2 import service_account
     GOOGLE_SHEETS_AVAILABLE = True
 except ImportError:
     GOOGLE_SHEETS_AVAILABLE = False

@@ -197,56 +197,56 @@ def validate_webapp_startup():
 
 
 def run_self_check():
-    """Run the headless CI self-check script and return True on success."""
-    logger.info("[AUTOMATE] Running headless self-check (tools/ci_headless_check.py)...")
+    """Run the consolidated UI robust check script and return True on success."""
+    logger.info("[AUTOMATE] Running UI robust check (tools/ui_robust_check.py)...")
     try:
         result = subprocess.run(
-            [sys.executable, "tools/ci_headless_check.py"],
+            [sys.executable, "tools/ui_robust_check.py"],
             cwd=project_root,
             capture_output=True,
             text=True,
             timeout=180
         )
-        logger.debug(f"[AUTOMATE] Self-check stdout: {result.stdout}")
-        logger.debug(f"[AUTOMATE] Self-check stderr: {result.stderr}")
+        logger.debug(f"[AUTOMATE] UI check stdout: {result.stdout}")
+        logger.debug(f"[AUTOMATE] UI check stderr: {result.stderr}")
         if result.returncode == 0:
-            logger.info("[AUTOMATE] Self-check passed.")
+            logger.info("[AUTOMATE] UI robust check passed.")
             return True
         else:
-            logger.error(f"[AUTOMATE] Self-check failed with code {result.returncode}")
+            logger.error(f"[AUTOMATE] UI check failed with code {result.returncode}")
             print(result.stdout)
             print(result.stderr)
             return False
     except subprocess.TimeoutExpired:
-        logger.error("[AUTOMATE] Self-check timed out.")
+        logger.error("[AUTOMATE] UI check timed out.")
         return False
     except Exception as e:
-        logger.error(f"[AUTOMATE] Self-check failed: {e}")
+        logger.error(f"[AUTOMATE] UI check failed: {e}")
         return False
 
 
 def run_ballot_lens_check():
-    """Run the Playwright Ballot Lens visibility check (tools/pw_check_ballot_lens.py)."""
-    logger.info("[AUTOMATE] Running Ballot Lens headless check (tools/pw_check_ballot_lens.py)...")
+    """Run the UI verification script (verify_modern_ui.py)."""
+    logger.info("[AUTOMATE] Running UI verification (verify_modern_ui.py)...")
     try:
         result = subprocess.run(
-            [sys.executable, "tools/pw_check_ballot_lens.py"],
+            [sys.executable, "verify_modern_ui.py"],
             cwd=project_root,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=30,
         )
-        logger.debug(f"[AUTOMATE] Ballot Lens stdout: {result.stdout}")
-        logger.debug(f"[AUTOMATE] Ballot Lens stderr: {result.stderr}")
+        logger.debug(f"[AUTOMATE] UI verification stdout: {result.stdout}")
+        logger.debug(f"[AUTOMATE] UI verification stderr: {result.stderr}")
         if result.returncode == 0:
-            logger.info("[AUTOMATE] Ballot Lens check passed.")
+            logger.info("[AUTOMATE] UI verification passed.")
             return True
-        logger.error(f"[AUTOMATE] Ballot Lens check failed with code {result.returncode}")
+        logger.error(f"[AUTOMATE] UI verification failed with code {result.returncode}")
         print(result.stdout)
         print(result.stderr)
         return False
     except subprocess.TimeoutExpired:
-        logger.error("[AUTOMATE] Ballot Lens check timed out.")
+        logger.error("[AUTOMATE] UI verification timed out.")
         return False
     except Exception as e:
         logger.error(f"[AUTOMATE] Ballot Lens check failed: {e}")
@@ -287,8 +287,8 @@ def main():
     parser.add_argument("--skip-health", action="store_true", help="Skip health bots")
     parser.add_argument("--skip-tests", action="store_true", help="Skip automated tests")
     parser.add_argument("--skip-webapp-check", action="store_true", help="Skip webapp startup validation")
-    parser.add_argument("--self-check", action="store_true", help="Run headless self-check (tools/ci_headless_check.py) after other checks")
-    parser.add_argument("--ballot-lens-check", action="store_true", help="Run Ballot Lens Playwright visibility check (tools/pw_check_ballot_lens.py)")
+    parser.add_argument("--self-check", action="store_true", help="Run UI robust check (tools/ui_robust_check.py) after other checks")
+    parser.add_argument("--ballot-lens-check", action="store_true", help="Run UI verification (verify_modern_ui.py)")
     parser.add_argument("--pipeline-check", action="store_true", help="Run pipeline regression checker (scripts/pipeline_regression_check.py)")
 
     args = parser.parse_args()

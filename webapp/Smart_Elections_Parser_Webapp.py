@@ -164,8 +164,10 @@ from webapp.parser.config import (
     URL_ENFORCE_ALLOWLIST,
     URL_LIST_FILE,
 )
-from webapp.parser.url_parser import parse_url_simple, parse_url_components, format_url_components_for_training
 from webapp.parser.filename_parser import parse_filename_simple
+from webapp.parser.url_parser import (
+    parse_url_simple,
+)
 from webapp.parser.utils.cert_utils import extract_client_principal
 from webapp.parser.utils.db_utils import SessionLocal, get_engine
 from webapp.parser.utils.misc_utils import extract_url_and_label, load_processed_urls
@@ -474,7 +476,8 @@ if ENABLE_PROMETHEUS:
 # If Prometheus is enabled, try to import the internal metrics module so counters are registered
 if os.environ.get('ENABLE_PROMETHEUS', 'false').lower() in ('1', 'true', 'yes'):
     try:
-        pass  # ensure counters are created on import
+        from webapp.parser.utils import metrics_prom as _metrics_prom
+        _ = _metrics_prom  # keep linter happy; import triggers counter registration
     except Exception:
         try:
             logger.debug({"level": "DEBUG", "type": "metrics", "message": "Failed to import metrics_prom on startup."})
@@ -5743,9 +5746,10 @@ def api_election_data_worklist():
         return jsonify({"error": "Unauthorized"}), 403
     
     try:
-        from webapp.parser.models.election_data import DownloadRecord
-        from sqlalchemy.orm import sessionmaker
         from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from webapp.parser.models.election_data import DownloadRecord
         
         # Store DB URL in env or fallback to default
         db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
@@ -6015,8 +6019,9 @@ def api_election_data_states_counties():
         return jsonify({"error": "Unauthorized"}), 403
 
     try:
-        from webapp.parser.data_standardization.google_sheets_client import get_election_data_client
         from collections import defaultdict
+
+        from webapp.parser.data_standardization.google_sheets_client import get_election_data_client
 
         client = get_election_data_client()
         result = client.fetch_finalized_data()
@@ -6074,9 +6079,10 @@ def api_assign_dl_owner(race_id):
         return jsonify({"error": "Unauthorized"}), 403
     
     try:
-        from webapp.parser.models.election_data import DownloadRecord
-        from sqlalchemy.orm import sessionmaker
         from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from webapp.parser.models.election_data import DownloadRecord
         
         data = request.get_json() or {}
         dl = data.get('dl', '').upper()  # DL1 or DL2
@@ -6142,14 +6148,18 @@ def api_preqc_check(race_id):
         return jsonify({"error": "Unauthorized"}), 403
     
     try:
-        from webapp.parser.models.election_data import (
-            DownloadRecord, ValidationRecord_DL1, ValidationRecord_DL2, PreQCComparison
-        )
-        from webapp.parser.data_standardization.election_data_standardizer import (
-            PreQCComparisonEngine
-        )
-        from sqlalchemy.orm import sessionmaker
         from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from webapp.parser.data_standardization.election_data_standardizer import (
+            PreQCComparisonEngine,
+        )
+        from webapp.parser.models.election_data import (
+            DownloadRecord,
+            PreQCComparison,
+            ValidationRecord_DL1,
+            ValidationRecord_DL2,
+        )
         
         db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
         engine = create_engine(db_url)
@@ -6264,11 +6274,14 @@ def api_qc1_submit(race_id):
         return jsonify({"error": "Unauthorized"}), 403
     
     try:
-        from webapp.parser.models.election_data import (
-            DownloadRecord, QC1Checkpoint, PreQCComparison
-        )
-        from sqlalchemy.orm import sessionmaker
         from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from webapp.parser.models.election_data import (
+            DownloadRecord,
+            PreQCComparison,
+            QC1Checkpoint,
+        )
         
         data = request.get_json() or {}
         selected_dl = data.get('selected_dl', '').upper()
@@ -6293,7 +6306,7 @@ def api_qc1_submit(race_id):
             if principal in (download.dl1_assigned_to, download.dl2_assigned_to):
                 return jsonify({
                     'success': False,
-                    'error': f'QC1 designee cannot also be DL1 or DL2 owner'
+                    'error': 'QC1 designee cannot also be DL1 or DL2 owner'
                 }), 400
             
             # Get Pre-QC results
@@ -6348,11 +6361,13 @@ def api_election_data_stats():
         return jsonify({"error": "Unauthorized"}), 403
     
     try:
-        from webapp.parser.models.election_data import (
-            DownloadRecord, ValidationRecord_DL1, ValidationRecord_DL2, ElectionResult
-        )
-        from sqlalchemy.orm import sessionmaker
         from sqlalchemy import create_engine, func
+        from sqlalchemy.orm import sessionmaker
+
+        from webapp.parser.models.election_data import (
+            DownloadRecord,
+            ElectionResult,
+        )
         
         db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
         engine = create_engine(db_url)

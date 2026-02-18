@@ -12,11 +12,10 @@ Used for ML training on election URL patterns.
 """
 
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import parse_qs, unquote, urlparse
 
 # State codes for pattern matching
 STATE_CODES = [

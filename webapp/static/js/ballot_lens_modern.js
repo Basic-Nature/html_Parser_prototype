@@ -1194,7 +1194,7 @@ const _TablePreview = (() => {
 
   // LEGACY: older cert check via separate fetch (no longer primary path—socket.io TLS now validates)
   // Kept for reference/fallback to prevent regression
-  async function ensureCertForMutation(targetUrl) {
+  async function _ensureCertForMutation(targetUrl) {
     const now = Date.now();
     if (certCheckLastOk && (now - certCheckLastOk) < CERT_CHECK_COOLDOWN_MS) {
       return true;

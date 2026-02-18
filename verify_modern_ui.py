@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Modern Parser UI - Deployment Verification Script
-Validates that Steps 1-3 of the Quick Start implementation are correctly in place.
+Ballot Lens Modern UI - Verification Script
+Validates that the modern parser UI implementation is correctly in place.
+
+Note: The modern UI is now integrated into /ballot_lens (consolidated architecture).
+The /ballot_lens_modern route redirects to the main ballot_lens page.
 """
 
 import re
@@ -38,15 +41,15 @@ def print_check(passed, description, details=""):
 
 def main():
     print(f"\n{BLUE}{'='*70}")
-    print("Modern Parser UI - Deployment Verification")
+    print("Ballot Lens Modern UI - Deployment Verification")
     print(f"{'='*70}{RESET}\n")
     
     checks = []
     
     # ==========================================
-    # Step 1: Flask Route Verification
+    # Flask Route Verification
     # ==========================================
-    print(f"{YELLOW}STEP 1: Flask Route (/ballot_lens_modern){RESET}")
+    print(f"{YELLOW}Flask Route (/ballot_lens){RESET}")
     
     flask_file = Path("webapp/Smart_Elections_Parser_Webapp.py")
     
@@ -57,89 +60,63 @@ def main():
         print_check(True, "Flask app file exists", str(flask_file))
         checks.append(True)
         
-        # Check for route decorator
+        # Check for main ballot_lens route
+        found, _ = check_pattern_in_file(
+            flask_file,
+            r'@app\.route\("/ballot_lens"',
+            "Flask route decorator @app.route(/ballot_lens)"
+        )
+        print_check(found, "Main route present", "Pattern: @app.route('/ballot_lens')")
+        checks.append(found)
+        
+        # Check for redirect route
         found, _ = check_pattern_in_file(
             flask_file,
             r'@app\.route\("/ballot_lens_modern"',
-            "Flask route decorator @app.route(/ballot_lens_modern)"
+            "Redirect route @app.route(/ballot_lens_modern)"
         )
-        print_check(found, "Route decorator present", "Pattern: @app.route('/ballot_lens_modern')")
-        checks.append(found)
-        
-        # Check for function definition
-        found, _ = check_pattern_in_file(
-            flask_file,
-            r'def ballot_lens_modern\(\):',
-            "Function ballot_lens_modern() defined"
-        )
-        print_check(found, "Function definition present", "def ballot_lens_modern():")
-        checks.append(found)
-        
-        # Check for render_template call
-        found, _ = check_pattern_in_file(
-            flask_file,
-            r'render_template\(\s*"ballot_lens_modern\.html"',
-            "Template rendering"
-        )
-        print_check(found, "Template rendering present", 'render_template("ballot_lens_modern.html")')
-        checks.append(found)
-        
-        # Check for error handling
-        found, _ = check_pattern_in_file(
-            flask_file,
-            r'except Exception as e:.*logger\.error',
-            "Error handling with logging"
-        )
-        print_check(found, "Error handling present", "Exception handling with logger")
+        print_check(found, "Redirect route present", "/ballot_lens_modern redirects to /ballot_lens")
         checks.append(found)
     
     # ==========================================
-    # Step 2: Navigation Link Verification
+    # Template Verification
     # ==========================================
-    print(f"\n{YELLOW}STEP 2: Navigation Link (index.html){RESET}")
+    print(f"\n{YELLOW}Template (ballot_lens.html){RESET}")
     
-    html_file = Path("webapp/templates/index.html")
+    html_file = Path("webapp/templates/ballot_lens.html")
     
     if not check_file_exists(html_file):
-        print_check(False, "index.html file exists", f"Not found: {html_file}")
+        print_check(False, "ballot_lens.html exists", f"Not found: {html_file}")
         checks.append(False)
     else:
-        print_check(True, "index.html file exists", str(html_file))
+        print_check(True, "ballot_lens.html exists", str(html_file))
         checks.append(True)
         
-        # Check for feature card
+        # Check for critical UI elements
         found, _ = check_pattern_in_file(
             html_file,
-            r'Parser Dashboard.*Beta',
-            "Feature card with Beta label"
+            r'btnRunParser2',
+            "Run button element"
         )
-        print_check(found, "Feature card present", "Parser Dashboard (Beta)")
+        print_check(found, "Run button present", "id=\"btnRunParser2\"")
         checks.append(found)
         
-        # Check for URL helper
+        # Check for sidebar elements
         found, _ = check_pattern_in_file(
             html_file,
-            r'url_for\([\'"]ballot_lens_modern[\'"]\)',
-            "URL helper function"
+            r'id="sidebar"',
+            "Sidebar element"
         )
-        print_check(found, "URL helper present", "{{ url_for('ballot_lens_modern') }}")
-        checks.append(found)
-        
-        # Check for description
-        found, _ = check_pattern_in_file(
-            html_file,
-            r'real-time results grid|file preview|advanced filtering',
-            "Feature description"
-        )
-        print_check(found, "Feature description present", "Describes dashboard capabilities")
+        print_check(found, "Sidebar present", "id=\"sidebar\"")
         checks.append(found)
     
     # ==========================================
-    # Step 3: JavaScript Data Integration
+    # JavaScript and CSS Verification
     # ==========================================
-    print(f"\n{YELLOW}STEP 3: Real Data Integration (ballot_lens_modern.js){RESET}")
+    print(f"\n{YELLOW}Assets (JS and CSS){RESET}")
     
     js_file = Path("webapp/static/js/ballot_lens_modern.js")
+    css_file = Path("webapp/static/css/ballot_lens_modern.css")
     
     if not check_file_exists(js_file):
         print_check(False, "JavaScript file exists", f"Not found: {js_file}")
@@ -157,55 +134,17 @@ def main():
         print_check(found, "loadRealData() function present", "async function loadRealData()")
         checks.append(found)
         
-        # Check for API fetch
+        # Check for DOMContentLoaded initialization
         found, _ = check_pattern_in_file(
             js_file,
-            r'fetch\([\'"]*/api/warehouse_election_results',
-            "API endpoint fetch"
+            r"document\.addEventListener\(['\"]DOMContentLoaded",
+            "DOMContentLoaded initialization"
         )
-        print_check(found, "API fetch present", "/api/warehouse_election_results endpoint")
-        checks.append(found)
-        
-        # Check for schema transformation
-        found, _ = check_pattern_in_file(
-            js_file,
-            r'items\.map\(\(item.*idx\).*=>\s*\({',
-            "Schema transformation"
-        )
-        print_check(found, "Schema transformation present", "items.map(...) transformation")
-        checks.append(found)
-        
-        # Check for fallback
-        found, _ = check_pattern_in_file(
-            js_file,
-            r'loadSampleData\(\)',
-            "Fallback to sample data"
-        )
-        print_check(found, "Fallback present", "loadSampleData() on error")
-        checks.append(found)
-        
-        # Check for initialization call
-        found, _ = check_pattern_in_file(
-            js_file,
-            r'document\.addEventListener\([\'"]DOMContentLoaded[\'"].*loadRealData\(\)',
-            "Initialization hook"
-        )
-        print_check(found, "Initialization present", "loadRealData() called on DOMContentLoaded")
+        print_check(found, "DOMContentLoaded hooks present", "Multiple initialization hooks")
         checks.append(found)
     
-    # ==========================================
-    # Template Files Verification
-    # ==========================================
-    print(f"\n{YELLOW}Supporting Files{RESET}")
-    
-    modern_html = Path("webapp/templates/ballot_lens_modern.html")
-    modern_css = Path("webapp/static/css/ballot_lens_modern.css")
-    
-    print_check(check_file_exists(modern_html), "ballot_lens_modern.html exists", str(modern_html))
-    checks.append(check_file_exists(modern_html))
-    
-    print_check(check_file_exists(modern_css), "ballot_lens_modern.css exists", str(modern_css))
-    checks.append(check_file_exists(modern_css))
+    print_check(check_file_exists(css_file), "CSS file exists", str(css_file))
+    checks.append(check_file_exists(css_file))
     
     # ==========================================
     # Summary
@@ -216,7 +155,7 @@ def main():
     
     passed = sum(checks)
     total = len(checks)
-    percentage = int((passed / total) * 100)
+    percentage = int((passed / total) * 100) if total > 0 else 0
     
     print(f"Total Checks: {total}")
     print(f"Passed:       {passed} {GREEN}✓{RESET}")
@@ -224,14 +163,16 @@ def main():
     print(f"Success Rate: {percentage}%\n")
     
     if all(checks):
-        print(f"{GREEN}✓ All checks passed! Implementation is complete.{RESET}\n")
+        print(f"{GREEN}✓ All checks passed! Modern UI is deployed.{RESET}\n")
         print("Next steps:")
-        print("  1. Start Flask app: python -m flask run")
-        print("  2. Visit http://localhost:5000/ballot_lens_modern")
-        print("  3. Follow MODERN_UI_ROLLOUT_TESTING.md for full test suite\n")
+        print("  1. Run UI tests: python tools/ui_robust_check.py")
+        print("  2. Start server: python -m webapp.Smart_Elections_Parser_Webapp")
+        print("  3. Visit http://localhost:5000/ballot_lens\n")
         return 0
     else:
         print(f"{RED}✗ Some checks failed. Review the output above.{RESET}\n")
+        print("For detailed UI behavior tests, run:")
+        print("  python tools/ui_robust_check.py\n")
         return 1
 
 if __name__ == "__main__":

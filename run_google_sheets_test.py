@@ -3,9 +3,9 @@ Quick test script to pull data from Google Sheets using the google_service_accou
 This will show you what data is in the sheets and help debug state/county dropdown issues
 """
 
+import io
 import os
 import sys
-import io
 from pathlib import Path
 
 # Force UTF-8 encoding for console output on Windows
@@ -31,9 +31,8 @@ os.environ['GOOGLE_SHEETS_WORKLIST_ID'] = WORKLIST_ID
 os.environ['GOOGLE_SHEETS_DB_LITE_ID'] = DB_LITE_ID
 os.environ['GOOGLE_SHEETS_WORKLIST_OVERVIEW_SHEET'] = 'Overview'
 
-print(f"📊 Testing with:")
+print("📊 Testing with:")
 print(f"   Worklist ID: {WORKLIST_ID}")
 print(f"   DB-Lite ID:  {DB_LITE_ID}\n")
 
 # Now run the full test suite
-import test_google_sheets_data_pull

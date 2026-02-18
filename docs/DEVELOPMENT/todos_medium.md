@@ -6,27 +6,30 @@ title: "TODO/FIXME Index — Medium"
 <!-- markdownlint-disable-file MD001 MD004 MD011 MD022 MD024 MD025 MD033 MD034 MD037 MD050 MD052 -->
 
 Index scope: TODO/FIXME/HACK/XXX annotations under `webapp, scripts, docs`.
-Generated: 2026-02-15 05:37:16Z
-Total annotations: 55
-High: 0, Medium: 55, Low: 0
+Generated: 2026-02-18 03:34:21Z
+Total annotations: 71
+High: 0, Medium: 71, Low: 0
 
 ## Scan Profile
 
 - Roots: webapp, scripts, docs
 - Tracked markers: TODO, FIXME, HACK, XXX
 - Priority map: high: FIXME; medium: HACK, TODO, XXX; low: none
-- Exclusions (sample): docs/DEVELOPMENT/todos_high.md, webapp/parser/Context_Integration/Context_Library/cache/context_cache.json, docs/DEVELOPMENT/project_audit.md, docs/DEVELOPMENT/todos_low.md, docs/DEVELOPMENT/todos.md
+- Exclusions (sample): docs/DEVELOPMENT/todos_medium.md, webapp/parser/Context_Integration/Context_Library/cache/context_cache.json, docs/DEVELOPMENT/pipeline_map.md, webapp/static/vendor/xlsx.full.min.js, docs/DEVELOPMENT/todos.md
 - Regex: \b(TODO|FIXME|HACK|XXX)\b (case-insensitive)
 
 ## Marker Breakdown
 
 - HACK: 5 (medium)
-- TODO: 46 (medium)
+- TODO: 62 (medium)
 - XXX: 4 (medium)
 
 ## Root Coverage
 
 - docs\DEVELOPMENT\TODOS_OVERVIEW.md: 26
+- docs\FEATURES\ML_TRAINING_ENHANCEMENTS.md: 1
+- docs\FEATURES\NLP_ML_TRAINING_ASSESSMENT.md: 11
+- docs\FEATURES\STORAGE_ARCHITECTURE.md: 1
 - docs\QUALITY\DATA_COMPARISON_ROADMAP.md: 1
 - docs\QUALITY\GOOGLE_SHEETS_MIGRATION.md: 1
 - docs\README.md: 3
@@ -36,9 +39,11 @@ High: 0, Medium: 55, Low: 0
 - scripts\generate_state_handler.py: 2
 - scripts\generate_todo_index.py: 2
 - scripts\migrate_google_sheets.py: 1
+- webapp\Smart_Elections_Parser_Webapp.py: 1
 - webapp\parser\fixtures\candidate_summary_index.json: 3
 - webapp\parser\handlers\states\new_york\county\westchester.py: 2
 - webapp\parser\handlers\vendor_state_map.py: 2
+- webapp\parser\health\fine_tune_bert_ner.py: 2
 - webapp\parser\quality_assurance\qa_endpoints.py: 1
 - webapp\parser\utils\shared_logic.py: 1
 - webapp\parser\verification_endpoints.py: 1
@@ -76,6 +81,28 @@ High: 0, Medium: 55, Low: 0
 - L172 **TODO**: - Reference issue numbers when applicable: `TODO: Fix #42 - ...`
 - L179 **TODO**: - Commit with "TODO: test this" type placeholders
 - L202 **TODO**: - Ensure marker format is correct: `# TODO: Description` or `# FIXME: Description`
+
+### docs/FEATURES/ML_TRAINING_ENHANCEMENTS.md
+
+- L404 **TODO**: # (TODO: Implement evaluation metrics in fine_tune_bert_ner.py)
+
+### docs/FEATURES/NLP_ML_TRAINING_ASSESSMENT.md
+
+- L596 **TODO**: - 🔄 TODO: Wire corrections into `ner_training_data` table
+- L600 **TODO**: - 🔬 TODO: Implement `incremental_train_spacy_ner(new_examples)`
+- L601 **TODO**: - 🔬 TODO: Avoid full retraining (just update weights on new data)
+- L602 **TODO**: - 🔬 TODO: Add version tracking for models (metadata)
+- L639 **TODO**: - 🔬 TODO: Implement `extract_anonymized_patterns(context_library)`
+- L640 **TODO**: - 🔬 TODO: Hash state/county/contest combos + aggregate confidence scores
+- L641 **TODO**: - 🔬 TODO: Export to `pattern_export.jsonl`
+- L645 **TODO**: - 🔬 TODO: Implement `sync_patterns_to_pool(pattern_export.jsonl, remote_url)`
+- L646 **TODO**: - 🔬 TODO: Download remote patterns via REST API
+- L647 **TODO**: - 🔬 TODO: Merge into local `context_library.json` (keep highest confidence)
+- L791 **TODO**: _**TODO: Add Test Dataset Evaluation**_
+
+### docs/FEATURES/STORAGE_ARCHITECTURE.md
+
+- L394 **TODO**: **Planned (TODO):**
 
 ### docs/QUALITY/DATA_COMPARISON_ROADMAP.md
 
@@ -125,6 +152,10 @@ High: 0, Medium: 55, Low: 0
 
 - L335 **TODO**: # TODO: Migrate DL1/DL2 data sheets (requires discovery first to identify them)
 
+### webapp/Smart_Elections_Parser_Webapp.py
+
+- L7844 **TODO**: entities = []  # TODO: Use spaCy NER to detect entities
+
 ### webapp/parser/fixtures/candidate_summary_index.json
 
 - L480195 **XXX**: "CLYMER": "XXX, XXX",
@@ -140,6 +171,11 @@ High: 0, Medium: 55, Low: 0
 
 - L38 **TODO**: "notes": "TODO: enhancedvoting.com domain; confirm vendor",
 - L45 **TODO**: "notes": "TODO: enhancedvoting.com domain; confirm vendor",
+
+### webapp/parser/health/fine_tune_bert_ner.py
+
+- L80 **TODO**: # TODO: Improve token alignment with actual character offsets (start, end)
+- L112 **TODO**: # TODO: Improve token alignment (start, end offsets)
 
 ### webapp/parser/quality_assurance/qa_endpoints.py
 

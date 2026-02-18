@@ -4,10 +4,11 @@ Defines schema for election results with staging, validation, and production tie
 """
 
 from datetime import datetime
-from typing import Optional
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, Text, ForeignKey, DECIMAL, Index, Enum as SQLEnum
-from sqlalchemy.orm import declarative_base, relationship
 from enum import Enum as PyEnum
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 

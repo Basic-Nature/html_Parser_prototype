@@ -100,22 +100,18 @@ const AuthUtils = (() => {
       }
     }
     
-    try {
-      const resp = await fetch(url, options);
-      
-      // If 401 on cert-required endpoint, cert might have expired/changed
-      if (resp.status === 401 && requiresCert) {
-        // Clear cache so next check fetches fresh
-        certCheckLastOk = 0;
-        if (typeof onCertRequired === 'function') {
-          onCertRequired(url);
-        }
+    const resp = await fetch(url, options);
+    
+    // If 401 on cert-required endpoint, cert might have expired/changed
+    if (resp.status === 401 && requiresCert) {
+      // Clear cache so next check fetches fresh
+      certCheckLastOk = 0;
+      if (typeof onCertRequired === 'function') {
+        onCertRequired(url);
       }
-      
-      return resp;
-    } catch (e) {
-      throw e;
     }
+    
+    return resp;
   }
 
   /**

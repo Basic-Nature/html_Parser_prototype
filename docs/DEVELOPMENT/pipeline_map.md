@@ -14,8 +14,8 @@ Comprehensive pipeline audit for `webapp/parser/`.
 
 ## Overview
 
-- **Total Modules Audited:** 75
-- **Total Connections:** 94
+- **Total Modules Audited:** 77
+- **Total Connections:** 97
 - **Clusters:** Entry, Pipeline, Routing, State Handlers, Format Handlers,
 Shared Handlers, Services, Utils, Context Integration, Health
 - **Audit Scope:** All `webapp/parser/` files with full context, imports,
@@ -81,12 +81,12 @@ graph TD
     quarantine_queue["quarantine_queue"]
     session_branching["session_branching"]
     session_manager["session_manager"]
+    create_test_dataset["create_test_dataset"]
     dataset_promotion["dataset_promotion"]
+    fine_tune_bert_ner["fine_tune_bert_ner"]
     health_router["health_router"]
     integrity_check_runner["integrity_check_runner"]
     log_cache_cleaner_bot["log_cache_cleaner_bot"]
-    promotion_helpers["promotion_helpers"]
-    retrain_table_structure_models["retrain_table_structure_models"]
   end
   table_builder -->|37| dynamic_table_extractor
   manual_correction_bot -->|36| librarian
@@ -150,11 +150,11 @@ changes.
 - Context Integration → Context Integration: 19 edges (intra-cluster flow to
 monitor.)
 - Format Handlers → Other: 11 edges (cross-cluster flow to monitor.)
+- Health → Entry: 8 edges (cross-cluster flow to monitor.)
 - Other → Other: 7 edges (intra-cluster flow to monitor.)
-- Health → Entry: 7 edges (cross-cluster flow to monitor.)
+- Health → Health: 7 edges (intra-cluster flow to monitor.)
 - Entry → Context Integration: 6 edges (cross-cluster flow to monitor.)
 - Services → Utils: 6 edges (cross-cluster flow to monitor.)
-- Pipeline → Health: 5 edges (cross-cluster flow to monitor.)
 
 ## File Connection Map
 
@@ -607,24 +607,24 @@ framework.
 - L983 **NOTE**: Both DL1 and DL2 are now stored in
 CONTEXT_LIBRARY_DIR/verification
 
-### config/\_ocr\_helpers.py {#webapp-parser-config-ocr-helpers-py}
+### config\_helpers/\_ocr\_helpers.py {#webapp-parser-config-helpers-ocr-helpers-py}
 
 > OCR Configuration Helper Functions
 
-#### 🔧 Key Functions & Classes (config__ocr_helpers)
+#### 🔧 Key Functions & Classes (config_helpers__ocr_helpers)
 
 - `get_ocr_config_dict` (function, line 8)
 - `log_ocr_config_summary` (function, line 43)
 
-### config/ocr\_tuning.py {#webapp-parser-config-ocr-tuning-py}
+### config\_helpers/ocr\_tuning.py {#webapp-parser-config-helpers-ocr-tuning-py}
 
 > OCR Tuning Parameters — Centralized Configuration
 
-#### 🔧 Key Functions & Classes (config_ocr_tuning)
+#### 🔧 Key Functions & Classes (config_helpers_ocr_tuning)
 
 - `OcrTuningConfig` (class, line 46)
 
-#### 📦 Key Imports (config_ocr_tuning)
+#### 📦 Key Imports (config_helpers_ocr_tuning)
 
 - `os`
 - `typing`
@@ -655,6 +655,89 @@ CONTEXT_LIBRARY_DIR/verification
 - `utils.logger_singleton`
 - `utils.logger_singleton`
 - `utils.logger_singleton`
+
+### data\_standardization/election\_data\_standardizer.py {#webapp-parser-data-standardization-election-data-standardizer-py}
+
+> Election Data Standardizer
+
+#### 🔧 Key Functions & Classes (data_standardization_election_data_standardizer)
+
+- `DataQualityFlag` (class, line 18)
+- `StandardizationResult` (class, line 31)
+- `PartyCodeMapper` (class, line 48)
+- `CandidateNameStandardizer` (class, line 124)
+- `VoteTypeStandardizer` (class, line 192)
+- `CountyDistrictStandardizer` (class, line 276)
+- `WriteInFlagStandardizer` (class, line 299)
+- `ElectionDataStandardizer` (class, line 337)
+- `CandidateNameMatcher` (class, line 465)
+- `PreQCResult` (class, line 547)
+- `PreQCComparisonEngine` (class, line 561)
+- `QCAutoFlagger` (class, line 693)
+
+#### 📦 Key Imports (data_standardization_election_data_standardizer)
+
+- `dataclasses`
+- `dataclasses`
+- `enum`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+
+### data\_standardization/google\_sheets\_client.py {#webapp-parser-data-standardization-google-sheets-client-py}
+
+> Google Sheets API Client
+
+#### 🔧 Key Functions & Classes (data_standardization_google_sheets_client)
+
+- `_build_service_account_json_from_env` (function, line 23)
+- `SheetFetchResult` (class, line 68)
+- `GoogleSheetsElectionClient` (class, line 83)
+- `get_election_data_client` (function, line 374)
+- `get_worklist_client` (function, line 379)
+- `fetch_worklist_overview` (function, line 391)
+
+#### 📦 Key Imports (data_standardization_google_sheets_client)
+
+- `json`
+- `logging`
+- `os`
+- `dataclasses`
+- `datetime`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+
+### db\_init.py {#webapp-parser-db-init-py}
+
+> Database Initialization for SMART Elections Workflow
+
+#### 🔧 Key Functions & Classes (db_init)
+
+- `get_connection_string` (function, line 31)
+- `init_db` (function, line 47)
+- `test_connection` (function, line 123)
+
+#### 📦 Key Imports (db_init)
+
+- `os`
+- `sys`
+- `models.election_data`
+- `sqlalchemy`
+- `sqlalchemy`
+- `sqlalchemy.orm`
+
+#### 💬 Top-of-file Comments (db_init)
+
+```python
+
+#!/usr/bin/env python3
+
+```
 
 ### election\_fixtures.py {#webapp-parser-election-fixtures-py}
 
@@ -703,6 +786,35 @@ pattern).
 - `typing`
 - `config`
 - `config`
+
+### filename\_parser.py {#webapp-parser-filename-parser-py}
+
+> Filename Parser for Smart Elections Parser
+
+#### 🔧 Key Functions & Classes (filename_parser)
+
+- `FilenameComponents` (class, line 61)
+- `split_filename_parts` (function, line 87)
+- `detect_state_from_parts` (function, line 113)
+- `detect_county_from_parts` (function, line 143)
+- `detect_year_from_parts` (function, line 180)
+- `detect_contest_type_from_parts` (function, line 199)
+- `detect_scope_from_parts` (function, line 216)
+- `detect_format_hint_from_parts` (function, line 232)
+- `parse_filename` (function, line 256)
+- `parse_filename_simple` (function, line 297)
+
+#### 📦 Key Imports (filename_parser)
+
+- `re`
+- `dataclasses`
+- `dataclasses`
+- `datetime`
+- `datetime`
+- `pathlib`
+- `typing`
+- `typing`
+- `typing`
 
 ### handlers/batch\_handler.py {#webapp-parser-handlers-batch-handler-py}
 
@@ -2316,6 +2428,44 @@ select one:\[/yellow\]")
 - `utils.models`
 - `utils.models`
 
+### health/create\_test\_dataset.py {#webapp-parser-health-create-test-dataset-py}
+
+> Test Dataset Split Script for NER Model Evaluation
+
+#### 🔧 Key Functions & Classes (health_create_test_dataset)
+
+- `load_verified_ner_data_from_db` (function, line 31)
+- `load_ner_data_from_jsonl` (function, line 51)
+- `split_train_test` (function, line 78)
+- `save_datasets` (function, line 119)
+- `compute_entity_distribution` (function, line 155)
+- `print_dataset_statistics` (function, line 166)
+- `main` (function, line 185)
+
+#### 📦 Key Imports (health_create_test_dataset)
+
+- `os`
+- `random`
+- `sys`
+- `pathlib`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+- `orjson`
+- `webapp.parser.config`
+- `webapp.parser.utils.db_utils`
+- `webapp.parser.utils.logger_singleton`
+
+#### ⚠️ Task markers (health_create_test_dataset)
+
+- L56 **WARNING**: (f"\[TEST_SPLIT\] No JSONL training data found at
+{jsonl_path}")
+- L71 **WARNING**: (f"\[TEST_SPLIT\] Failed to parse JSONL line: {e}")
+- L97 **WARNING**: (
+- L190 **WARNING**: ("\[TEST_SPLIT\] No verified data in DB, falling back to
+JSONL")
+
 ### health/dataset\_promotion.py {#webapp-parser-health-dataset-promotion-py}
 
 #### 🔧 Key Functions & Classes (health_dataset_promotion)
@@ -2359,6 +2509,48 @@ select one:\[/yellow\]")
 #### ⚠️ Task markers (health_dataset_promotion)
 
 - L294 **WARNING**: (f"\[PROMOTE\] Skipping blocked URL: {source_url}")
+
+### health/fine\_tune\_bert\_ner.py {#webapp-parser-health-fine-tune-bert-ner-py}
+
+> BERT/RoBERTa NER Fine-Tuning Module for Election Data Extraction
+
+#### 🔧 Key Functions & Classes (health_fine_tune_bert_ner)
+
+- `load_ner_data_from_db` (function, line 61)
+- `load_ner_data_from_jsonl` (function, line 89)
+- `tokenize_and_align_labels` (function, line 124)
+- `fine_tune_bert_ner` (function, line 160)
+
+#### 📦 Key Imports (health_fine_tune_bert_ner)
+
+- `os`
+- `sys`
+- `pathlib`
+- `typing`
+- `typing`
+- `typing`
+- `orjson`
+- `datasets`
+- `transformers`
+- `transformers`
+- `transformers`
+- `transformers`
+- `transformers`
+- `webapp.parser.config`
+- `webapp.parser.config`
+- `webapp.parser.utils.db_utils`
+- `webapp.parser.utils.logger_singleton`
+
+#### ⚠️ Task markers (health_fine_tune_bert_ner)
+
+- L80 **TODO**: Improve token alignment with actual character offsets (start,
+end)
+- L94 **WARNING**: (f"\[BERT_NER\] No JSONL training data found at
+{jsonl_path}")
+- L112 **TODO**: Improve token alignment (start, end offsets)
+- L117 **WARNING**: (f"\[BERT_NER\] Failed to parse JSONL line: {e}")
+- L165 **WARNING**: ("\[BERT_NER\] No verified data in DB, falling back to
+JSONL")
 
 ### health/health\_config.py {#webapp-parser-health-health-config-py}
 
@@ -2971,12 +3163,12 @@ may remain.")
 #### 🔧 Key Functions & Classes (health_session_branching)
 
 - `SessionBranch` (class, line 22)
-- `get_isolated_branch` (function, line 153)
-- `validate_url_access` (function, line 171)
-- `add_url_to_isolation` (function, line 229)
-- `get_isolation_summary` (function, line 263)
-- `list_all_isolation_branches` (function, line 278)
-- `cleanup_principal_isolation` (function, line 291)
+- `get_isolated_branch` (function, line 164)
+- `validate_url_access` (function, line 182)
+- `add_url_to_isolation` (function, line 240)
+- `get_isolation_summary` (function, line 274)
+- `list_all_isolation_branches` (function, line 289)
+- `cleanup_principal_isolation` (function, line 302)
 
 #### 📦 Key Imports (health_session_branching)
 
@@ -2991,9 +3183,9 @@ may remain.")
 
 #### ⚠️ Task markers (health_session_branching)
 
-- L219 **WARNING**: ({
-- L220 **WARNING**: ",
-- L284 **WARNING**:     WARNING:
+- L230 **WARNING**: ({
+- L231 **WARNING**: ",
+- L295 **WARNING**:     WARNING:
 
 ### health/session\_manager.py {#webapp-parser-health-session-manager-py}
 
@@ -3089,6 +3281,47 @@ may remain.")
 - L1250 **WARNING**: ",
 - L1425 **WARNING**: ({
 - L1426 **WARNING**: ",
+
+### models/election\_data.py {#webapp-parser-models-election-data-py}
+
+> Election Data SQLAlchemy Models
+
+#### 🔧 Key Functions & Classes (models_election_data)
+
+- `DataQualityTier` (class, line 16)
+- `ManualReviewStatus` (class, line 23)
+- `DataQualityFlagType` (class, line 32)
+- `ElectionResult` (class, line 44)
+- `ValidationRecord` (class, line 109)
+- `StagingRecord` (class, line 177)
+- `VoterDropoff` (class, line 220)
+- `RaceMetadata` (class, line 251)
+- `AuditLog` (class, line 287)
+- `ManualReviewQueue` (class, line 323)
+- `GoogleSheetsSync` (class, line 369)
+- `DownloadRecord` (class, line 402)
+- `ValidationRecord_DL1` (class, line 476)
+- `ValidationRecord_DL2` (class, line 540)
+- `PreQCComparison` (class, line 607)
+- `QC1Checkpoint` (class, line 646)
+- `QC2Checkpoint` (class, line 684)
+- `ChainOfCustody` (class, line 726)
+
+#### 📦 Key Imports (models_election_data)
+
+- `datetime`
+- `enum`
+- `sqlalchemy`
+- `sqlalchemy`
+- `sqlalchemy`
+- `sqlalchemy`
+- `sqlalchemy`
+- `sqlalchemy`
+- `sqlalchemy`
+- `sqlalchemy`
+- `sqlalchemy`
+- `sqlalchemy.orm`
+- `sqlalchemy.orm`
 
 ### navigator/\_\_init\_\_.py {#webapp-parser-navigator-init-py}
 
@@ -3545,6 +3778,38 @@ fuzzy matching.")
 - `os`
 - `webapp.parser.handlers`
 - `webapp.parser.utils`
+
+### url\_parser.py {#webapp-parser-url-parser-py}
+
+> URL Parser for Smart Elections Parser
+
+#### 🔧 Key Functions & Classes (url_parser)
+
+- `UrlComponents` (class, line 64)
+- `extract_root_domain` (function, line 106)
+- `extract_state_from_url` (function, line 136)
+- `extract_county_from_url` (function, line 159)
+- `extract_year_from_url` (function, line 184)
+- `detect_contest_type` (function, line 208)
+- `detect_vendor_hint` (function, line 219)
+- `find_election_keywords` (function, line 238)
+- `parse_url_components` (function, line 250)
+- `format_url_components_for_training` (function, line 319)
+- `parse_url_simple` (function, line 346)
+
+#### 📦 Key Imports (url_parser)
+
+- `re`
+- `dataclasses`
+- `datetime`
+- `datetime`
+- `typing`
+- `typing`
+- `typing`
+- `typing`
+- `urllib.parse`
+- `urllib.parse`
+- `urllib.parse`
 
 ### utils/audit\_trail\_router.py {#webapp-parser-utils-audit-trail-router-py}
 

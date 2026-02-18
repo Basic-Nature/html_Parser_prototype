@@ -1326,7 +1326,7 @@ document.addEventListener('DOMContentLoaded', () => {
               uploadUrl,
               fetchInit,
               true,  // requiresCert
-              (url) => {
+              (_url) => {
                 setStatus(el.uploadStatus, 'warning', 'Client certificate required for upload');
               }
             );

@@ -9,9 +9,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from webapp.parser.url_parser import parse_url_simple
-from webapp.parser.config import URL_LIST_FILE, LOG_DIR
 import json
+
+from webapp.parser.config import URL_LIST_FILE
+from webapp.parser.url_parser import parse_url_simple
 
 
 def demo_parse_url_library():
@@ -120,9 +121,9 @@ def demo_parse_url_library():
         print()
     
     print("=" * 80)
-    print(f"To parse ALL URLs and save to training file, use:")
-    print(f"  curl -X POST http://localhost:5000/api/urls/parse_all")
-    print(f"Or call the API endpoint /api/urls/parse with store=true")
+    print("To parse ALL URLs and save to training file, use:")
+    print("  curl -X POST http://localhost:5000/api/urls/parse_all")
+    print("Or call the API endpoint /api/urls/parse with store=true")
     print("=" * 80)
 
 

@@ -12,10 +12,10 @@ Common patterns:
 """
 
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 # State codes and names (same as url_parser)
 STATE_CODES = [

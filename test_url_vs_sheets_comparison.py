@@ -2,11 +2,11 @@
 Diagnostic: Compare URL-based state/county extraction vs Google Sheets truth data
 This shows why ballot_lens dropdowns were incorrect
 """
+import io
 import os
 import sys
-import io
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
 
 if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
