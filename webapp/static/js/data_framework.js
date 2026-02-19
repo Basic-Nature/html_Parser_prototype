@@ -72,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
     vizChart: document.getElementById('warehouseVizChart'),
     vizTable: document.getElementById('warehouseVizTable'),
     vizPanel: document.getElementById('vizPanel'),
+    vizFilters: document.querySelector('.viz-filters'),
     vizPreviewStatus: document.getElementById('vizPreviewStatus'),
     dropoffDrawer: document.getElementById('dropoffDrawer'),
     dropoffDrawerToggle: document.getElementById('dropoffDrawerToggle'),
@@ -563,9 +564,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateVizStates() {
+    // Filter rows by selected year, then extract unique states from warehouse data
     const scopeRows = vizYear
       ? vizRows.filter(row => String(row.election_date || row.year || '').startsWith(vizYear))
       : vizRows;
+    // Extract states from PostgreSQL warehouse data (ensure sync with database)
     const states = Array.from(new Set(scopeRows.map(row => row.state).filter(Boolean))).sort();
     if (el.vizState instanceof HTMLSelectElement) {
       el.vizState.innerHTML = '';
@@ -584,6 +587,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateVizCounties() {
+    // Filter rows by year + state, then extract unique counties from warehouse data
     const scopeRows = vizYear && vizState
       ? vizRows.filter(row => 
           String(row.election_date || row.year || '').startsWith(vizYear) &&
@@ -592,6 +596,7 @@ document.addEventListener('DOMContentLoaded', () => {
       : vizYear
         ? vizRows.filter(row => String(row.election_date || row.year || '').startsWith(vizYear))
         : vizRows;
+    // Extract counties from PostgreSQL warehouse data (cascading filter from state)
     const counties = Array.from(new Set(scopeRows.map(row => row.county).filter(Boolean))).sort();
     if (el.vizCounty instanceof HTMLSelectElement) {
       el.vizCounty.innerHTML = '';
@@ -1730,10 +1735,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   el.curatedRefresh?.addEventListener('click', () => fetchCuratedDatasets());
 
+  // Pause auto-rotation when hovering over chart, table, OR filter dropdowns
   el.vizChart?.addEventListener('mouseenter', pauseVizAutoRotation);
   el.vizChart?.addEventListener('mouseleave', resumeVizAutoRotation);
   el.vizTable?.addEventListener('mouseenter', pauseVizAutoRotation);
   el.vizTable?.addEventListener('mouseleave', resumeVizAutoRotation);
+  el.vizFilters?.addEventListener('mouseenter', pauseVizAutoRotation);
+  el.vizFilters?.addEventListener('mouseleave', resumeVizAutoRotation);
 
   el.vizYear?.addEventListener('change', e => {
     const tgt = e.target;

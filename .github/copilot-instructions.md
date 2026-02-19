@@ -4,6 +4,12 @@
 - Docs live in `docs/` (architecture, handlers, project_audit, index). Open the relevant doc before touching code; follow described contracts and hotspots.
 - Repo entry points: CLI [webapp/parser/html_election_parser.py](../webapp/parser/html_election_parser.py); Flask UI [webapp/Smart_Elections_Parser_Webapp.py](../webapp/Smart_Elections_Parser_Webapp.py). `.env` must be populated.
 
+**NEW: Database Comparison (Jan 2026)**
+- URLs are now checked against Google Sheets + warehouse DB BEFORE parsing to avoid re-processing finalized data
+- See [DATABASE_COMPARISON.md](../docs/FEATURES/DATABASE_COMPARISON.md) for details
+- Controlled via `skip_database_check` kwarg (default: False = checks enabled)
+- URLs with existing data are marked `status="skipped_data_exists"` in `.processed_urls`
+
 **NEW: Selenium-NLP Integration** (Feb 2026)
 - Selenium is now a **strategic NLP training data collector**, not just CAPTCHA fallback
 - Enabled by default (`ENABLE_SELENIUM_FALLBACK=true`) to capture entity-rich data from Cloudflare-protected government sites

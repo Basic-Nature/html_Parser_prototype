@@ -2564,16 +2564,95 @@ def main(
             })
             return
 
+        # --- 6.5. Database Comparison Check (Skip URLs with Existing Finalized Data) ---
+        urls_to_process = []
+        skip_database_check = bool(kwargs.get("skip_database_check", False))
+        
+        if not skip_database_check:
+            logger.info({
+                "level": "INFO",
+                "type": "database",
+                "message": "[DatabaseComparison] Checking for existing finalized data before processing URLs...",
+                "session_id": session_id
+            })
+            
+            from .utils.database_comparison import check_existing_finalized_data
+            
+            for url in selected_urls:
+                # Infer state/county from URL for better matching
+                state_hint, county_hint = infer_state_county_from_url(url)
+                
+                # Check if finalized data exists
+                data_exists, data_source, metadata = check_existing_finalized_data(
+                    url,
+                    session_id=session_id,
+                    state=state_hint,
+                    county=county_hint
+                )
+                
+                if data_exists:
+                    logger.info({
+                        "level": "INFO",
+                        "type": "database",
+                        "message": f"[DatabaseComparison] Skipping URL - finalized data exists in {data_source}",
+                        "session_id": session_id,
+                        "url": url,
+                        "data_source": data_source,
+                        "metadata": metadata
+                    })
+                    
+                    # Mark as processed with database source metadata
+                    mark_url_processed(
+                        url,
+                        status="skipped_data_exists",
+                        session_id=session_id,
+                        data_source=data_source,
+                        retrieved_from_database=True,
+                        **(metadata or {})
+                    )
+                else:
+                    # No existing data - add to processing list
+                    urls_to_process.append(url)
+            
+            skipped_count = len(selected_urls) - len(urls_to_process)
+            if skipped_count > 0:
+                logger.info({
+                    "level": "INFO",
+                    "type": "database",
+                    "message": f"[DatabaseComparison] Skipped {skipped_count} URL(s) with existing finalized data",
+                    "session_id": session_id,
+                    "skipped": skipped_count,
+                    "processing": len(urls_to_process)
+                })
+        else:
+            # Database check disabled - process all selected URLs
+            urls_to_process = selected_urls
+            logger.info({
+                "level": "INFO",
+                "type": "database",
+                "message": "[DatabaseComparison] Database check disabled - processing all URLs",
+                "session_id": session_id
+            })
+        
+        if not urls_to_process:
+            logger.info({
+                "level": "INFO",
+                "type": "database",
+                "message": "[DatabaseComparison] All URLs have existing finalized data - nothing to process",
+                "session_id": session_id
+            })
+            return
+        
         # --- 7. Process URLs (Parallel or Sequential) ---
         if ENABLE_PARALLEL:
             arg_list = [
                 (url, processed_info, session_id, output_bypass, kwargs)
-                for url in selected_urls
+                for url in urls_to_process
             ]
             with Pool() as pool:
                 pool.map(_orchestrate_url_worker, arg_list)
         else:
-            for url in selected_urls:
+            for url in urls_to_process:
                 if cancel_flag and hasattr(cancel_flag, "is_set") and cancel_flag.is_set():
                     logger.info({
                         "level": "INFO",
@@ -2592,7 +2671,14 @@ def main(
                 )
 
         # --- 8. Summarize Results ---
-        summary = {"success": 0, "fail": 0, "partial": 0, "error": 0, "flagged": 0}
+        summary = {
+            "success": 0,
+            "fail": 0,
+            "partial": 0,
+            "error": 0,
+            "flagged": 0,
+            "skipped_data_exists": 0
+        }
         processed = load_processed_urls()
         for url in selected_urls:
             proc_entry = processed.get(url, {})
