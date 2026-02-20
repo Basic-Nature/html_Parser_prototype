@@ -30,8 +30,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const curatedUrl = cfgEl?.dataset?.curatedUrl || '/api/data_framework/curated';
   const priorityUrl = cfgEl?.dataset?.priorityUrl || '/api/data_framework/warehouse_status';
   const previewUrl = cfgEl?.dataset?.previewUrl || '/api/data_framework/preview';
-  const dbLiteFinalizedUrl = cfgEl?.dataset?.dbliteFinalizedUrl || '/api/election_data/db_lite/finalized';
-  const dbLiteDownBallotUrl = cfgEl?.dataset?.dbliteDownballotUrl || '/api/election_data/db_lite/down_ballot';
+  const dbLiteFinalizedUrl = cfgEl?.dataset?.dbliteFinalizedUrl || '/api/election_data/db_lite/finalized?limit=2000';
+  const dbLiteDownBallotUrl = cfgEl?.dataset?.dbliteDownballotUrl || '/api/election_data/db_lite/down_ballot?limit=2000';
   const worklistOverviewUrl = '/api/election_data/worklist/overview';
   const csrfToken = cfgEl?.dataset?.csrfToken || null;
 

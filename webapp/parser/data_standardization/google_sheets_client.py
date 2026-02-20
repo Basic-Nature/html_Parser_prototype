@@ -64,6 +64,24 @@ def _build_service_account_json_from_env() -> Optional[Dict[str, str]]:
     return creds_dict
 
 
+def _load_credentials_from_file(file_path: str) -> Optional[Dict[str, Any]]:
+    """
+    Load credentials JSON from a file path.
+    
+    Returns parsed JSON dict if successful, None otherwise.
+    """
+    try:
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                creds = json.load(f)
+                logger.info(f"✓ Loaded credentials from file: {file_path}")
+                return creds
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.debug(f"Could not load credentials from {file_path}: {e}")
+    
+    return None
+
+
 @dataclass
 class SheetFetchResult:
     """Result of fetching a sheet"""
@@ -132,13 +150,20 @@ class GoogleSheetsElectionClient:
         """
         Initialize Google Sheets client.
         
+        Credentials Loading Priority (first match wins):
+            1. credentials_json parameter (file path or JSON string)
+            2. Individual env vars (GOOGLE_SHEETS_SA_*) - Recommended for Azure
+            3. GOOGLE_SHEETS_ELECTION_DB_LITE_CREDENTIALS env var (file/JSON string)
+            4. GOOGLE_APPLICATION_CREDENTIALS env var (points to file)
+            5. google_service_account.json in project root (local dev convenience)
+        
+        Spreadsheet ID Loading:
+            1. spreadsheet_id parameter
+            2. GOOGLE_SHEETS_DB_LITE_ID env var
+        
         Args:
-            credentials_json: Path to service account JSON file or JSON string.
-                           If None, attempts these in order:
-                           1. Individual env vars (GOOGLE_SHEETS_SA_*)
-                           2. GOOGLE_SHEETS_ELECTION_DB_LITE_CREDENTIALS env var
-            spreadsheet_id: Optional override for the spreadsheet ID. If None, uses
-                            GOOGLE_SHEETS_DB_LITE_ID environment variable.
+            credentials_json: Optional file path or JSON string for credentials
+            spreadsheet_id: Optional override for spreadsheet ID
         """
         if not GOOGLE_SHEETS_AVAILABLE:
             raise ImportError("Google Sheets API client requires 'google-auth' and 'google-auth-oauthlib' packages")
@@ -147,52 +172,85 @@ class GoogleSheetsElectionClient:
         self.service = None
         self.spreadsheet_id = spreadsheet_id or os.getenv('GOOGLE_SHEETS_DB_LITE_ID', '').strip()
         
-        # Load credentials - try multiple sources in priority order
-        creds_source = credentials_json
+        # Attempt to load credentials using priority chain
         creds_data = None
+        credentials_source = None
         
-        if not creds_source:
-            # Priority 1: Individual env vars (recommended for Azure)
+        # Priority 1: credentials_json parameter (explicit parameter)
+        if credentials_json:
+            credentials_source = credentials_json
+        
+        # Priority 2: Individual env vars (Azure recommended)
+        if not credentials_source and not creds_data:
             creds_data = _build_service_account_json_from_env()
             if creds_data:
-                logger.info("Using service account credentials from individual environment variables")
-            else:
-                # Priority 2: JSON string/file from legacy env var
-                creds_source = os.getenv('GOOGLE_SHEETS_ELECTION_DB_LITE_CREDENTIALS')
+                logger.info("✓ Using credentials from individual env vars (Azure recommended)")
         
-        if not creds_source and not creds_data:
+        # Priority 3: GOOGLE_SHEETS_ELECTION_DB_LITE_CREDENTIALS env var (legacy)
+        if not credentials_source and not creds_data:
+            credentials_source = os.getenv('GOOGLE_SHEETS_ELECTION_DB_LITE_CREDENTIALS', '').strip()
+            if credentials_source:
+                logger.debug("Using credentials from GOOGLE_SHEETS_ELECTION_DB_LITE_CREDENTIALS")
+        
+        # Priority 4: GOOGLE_APPLICATION_CREDENTIALS env var (local/GCP standard)
+        if not credentials_source and not creds_data:
+            credentials_source = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', '').strip()
+            if credentials_source:
+                logger.debug(f"Using credentials from GOOGLE_APPLICATION_CREDENTIALS: {credentials_source}")
+        
+        # Priority 5: google_service_account.json in project root (local dev convenience)
+        if not credentials_source and not creds_data:
+            default_json_path = 'google_service_account.json'
+            if os.path.exists(default_json_path):
+                credentials_source = default_json_path
+                logger.debug(f"Using credentials from {default_json_path} (local dev)")
+        
+        # Validation: Did we find any credentials?
+        if not credentials_source and not creds_data:
             raise ValueError(
-                "Google Sheets credentials not configured. Provide credentials via:\n"
-                "  1. Individual env vars (GOOGLE_SHEETS_SA_TYPE, GOOGLE_SHEETS_SA_PROJECT_ID, etc.), OR\n"
-                "  2. GOOGLE_SHEETS_ELECTION_DB_LITE_CREDENTIALS env var (JSON string or file path), OR\n"
-                "  3. credentials_json parameter (JSON string or file path)"
+                "Google Sheets credentials not configured. Configure one of:\n\n"
+                "  OPTION 1 (Azure Recommended) - Individual environment variables:\n"
+                "    GOOGLE_SHEETS_SA_TYPE, GOOGLE_SHEETS_SA_PROJECT_ID,\n"
+                "    GOOGLE_SHEETS_SA_PRIVATE_KEY_ID, GOOGLE_SHEETS_SA_PRIVATE_KEY,\n"
+                "    GOOGLE_SHEETS_SA_CLIENT_EMAIL, GOOGLE_SHEETS_SA_CLIENT_ID,\n"
+                "    GOOGLE_SHEETS_SA_AUTH_URI, GOOGLE_SHEETS_SA_TOKEN_URI,\n"
+                "    GOOGLE_SHEETS_SA_AUTH_PROVIDER_CERT_URL, GOOGLE_SHEETS_SA_CLIENT_CERT_URL,\n"
+                "    GOOGLE_SHEETS_SA_UNIVERSE_DOMAIN\n\n"
+                "  OPTION 2 (Local Dev) - JSON file:\n"
+                "    A) GOOGLE_APPLICATION_CREDENTIALS=/path/to/google_service_account.json\n"
+                "    B) Place google_service_account.json in project root\n\n"
+                "  OPTION 3 (Legacy) - Complete JSON string:\n"
+                "    GOOGLE_SHEETS_ELECTION_DB_LITE_CREDENTIALS='{...}'\n"
             )
 
         if not self.spreadsheet_id:
             raise ValueError(
-                "Spreadsheet ID not configured. Set GOOGLE_SHEETS_DB_LITE_ID or pass spreadsheet_id."
+                "Spreadsheet ID not configured. Set GOOGLE_SHEETS_DB_LITE_ID environment variable."
             )
         
         try:
             if creds_data:
                 # Use pre-built JSON dict from individual env vars
                 self.credentials = service_account.Credentials.from_service_account_info(creds_data)
-            elif os.path.exists(creds_source):
-                # File path
-                self.credentials = service_account.Credentials.from_service_account_file(creds_source)
-                logger.info("Using service account credentials from file")
+                logger.info("✓ Google Sheets authentication successful (from env vars)")
+            elif os.path.exists(credentials_source):
+                # File path - try loading JSON
+                creds_data = _load_credentials_from_file(credentials_source)
+                if creds_data:
+                    self.credentials = service_account.Credentials.from_service_account_info(creds_data)
+                    logger.info(f"✓ Google Sheets authentication successful (from file: {credentials_source})")
+                else:
+                    raise FileNotFoundError(f"Could not parse JSON from {credentials_source}")
             else:
-                # JSON string
-                creds_data = json.loads(creds_source)
+                # Assume it's a JSON string
+                creds_data = json.loads(credentials_source)
                 self.credentials = service_account.Credentials.from_service_account_info(creds_data)
-                logger.info("Using service account credentials from JSON string")
+                logger.info("✓ Google Sheets authentication successful (from JSON string)")
             
             # Add required scopes
             self.credentials = self.credentials.with_scopes(
                 ['https://www.googleapis.com/auth/spreadsheets.readonly']
             )
-            
-            logger.info("✓ Google Sheets authentication successful")
             
         except (FileNotFoundError, json.JSONDecodeError, GoogleAuthError) as e:
             logger.error(f"✗ Failed to initialize Google Sheets client: {e}")

@@ -172,6 +172,18 @@ h4 {
   z-index: 1000;
 }
 
+.kbd-tooltip-host {
+  position: relative;
+}
+
+.qr-row-hidden {
+  display: none !important;
+}
+
+.quickref-highlight {
+  color: #3b82f6 !important;
+}
+
 /* Section Navigation */
 .section-nav {
   border-left: 4px solid #0066cc;

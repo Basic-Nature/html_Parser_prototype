@@ -186,8 +186,7 @@ function updateTable() {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 8;
-        td.style.textAlign = 'center';
-        td.style.padding = '2rem';
+        td.classList.add('table-empty-cell');
         td.textContent = 'No data';
         tr.appendChild(td);
         tbody.appendChild(tr);
@@ -200,10 +199,8 @@ function updateTable() {
         const makeTd = (text, opts = {}) => {
             const td = document.createElement('td');
             if (opts.maxWidth) {
-                td.style.maxWidth = opts.maxWidth;
-                td.style.overflow = 'hidden';
-                td.style.textOverflow = 'ellipsis';
-                td.style.whiteSpace = 'nowrap';
+                td.classList.add('td-truncate');
+                td.classList.add('td-truncate-200');
             }
             td.textContent = text;
             return td;

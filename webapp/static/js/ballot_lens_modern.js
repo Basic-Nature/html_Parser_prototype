@@ -286,8 +286,7 @@ try {
 
       function setActive(nextIndex){
         index = Math.max(0, Math.min(nextIndex, slides.length - 1));
-        // Use a CSS custom property for the translate so presentation is driven by CSS
-        try { track.style.setProperty('--carousel-translate', (-index * 100) + '%'); } catch (e) { /* fallback */ }
+        // CSP-safe carousel behavior: toggle active slide classes only
         slides.forEach(function(slide, idx){
           var isActive = idx === index;
           slide.classList.toggle('is-active', isActive);
@@ -1532,8 +1531,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Calculate actual viewport height (accounts for mobile browser chrome)
 function setViewportHeight() {
-  const vh = window.innerHeight * 0.01;
-  document.documentElement.style.setProperty('--vh', `${vh}px`);
+  // No-op under strict CSP: avoid runtime inline style mutation
 }
 
 // Debounced resize handler for viewport height and sidebar state
@@ -4065,8 +4063,12 @@ function setQualityPill(confidence) {
   const fillEl = pill.querySelector('.mini-meter-fill');
   if (valueEl) valueEl.textContent = `${val.toFixed(1)}%`;
   if (fillEl instanceof HTMLElement) {
-    try { fillEl.style.setProperty('--quality-fill', `${val}%`); } catch (e) {}
-    try { fillEl.style.setProperty('--quality-opacity', '1'); } catch (e) {}
+    const bucket = Math.max(0, Math.min(100, Math.round(val / 10) * 10));
+    pill.className = pill.className
+      .replace(/\bq-\d{1,3}\b/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    pill.classList.add(`q-${bucket}`);
     pill.classList.add('has-quality');
   }
 }
@@ -4240,7 +4242,6 @@ if (drawerHandle) {
     if (!legacySidebar || !logDrawer) return;
     const width = legacySidebar.offsetWidth;
     if (width > 0) {
-      root.style.setProperty('--drawer-left-offset', width + 'px');
       // Keep the drawer full-width; do not offset into the main grid.
       // Clear presentation by removing inline-style helper class
       logDrawer.classList.remove('drawer-inline');
@@ -9539,27 +9540,14 @@ document.addEventListener('DOMContentLoaded', () => {
   function setNavDropdown(open) {
     if (!navMoreDropdown || !navMoreToggle) return;
     navMoreDropdown.classList.toggle('open', open);
-    // Ensure dropdown is visible to headless checks by applying inline styles
+    // Ensure dropdown is visible without inline style mutations (strict CSP safe)
     try {
       if (open) {
-        // Toggle helper class and set positioning via CSS variables (avoids inline layout-by-style where possible)
+        // Toggle helper class; positioning is handled by CSS class rules
         navMoreDropdown.classList.add('nav-more-open');
-        try {
-          const r = navMoreToggle.getBoundingClientRect();
-          navMoreDropdown.style.setProperty('--navmore-left', `${Math.max(6, Math.round(r.left))}px`);
-          navMoreDropdown.style.setProperty('--navmore-top', `${Math.round(r.bottom + 6)}px`);
-          navMoreDropdown.style.setProperty('--navmore-minwidth', '160px');
-          navMoreDropdown.style.setProperty('--navmore-zindex', '20000');
-        } catch (errPos) { /* ignore */ }
       } else {
-        // Remove helper class and clear the CSS variables
+        // Remove helper class
         navMoreDropdown.classList.remove('nav-more-open');
-        try {
-          navMoreDropdown.style.removeProperty('--navmore-left');
-          navMoreDropdown.style.removeProperty('--navmore-top');
-          navMoreDropdown.style.removeProperty('--navmore-minwidth');
-          navMoreDropdown.style.removeProperty('--navmore-zindex');
-        } catch (err) { /* ignore */ }
       }
     } catch (e) {}
     // Use centralized inert/tabindex management helper when available; fallback to setHiddenWithInert
@@ -9719,7 +9707,6 @@ document.addEventListener('DOMContentLoaded', () => {
         wrapper.className = 'results-row';
         // use display: contents via CSS class to avoid inline presentation styles
         wrapper.classList.add('display-contents');
-        wrapper.style.setProperty('--row-min-height', max + 'px');
 
         // Append wrapper and move row cards into it in order
         grid.appendChild(wrapper);
@@ -10094,10 +10081,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Race
         const tdRace = document.createElement('td');
         tdRace.textContent = row.Race || '-';
-        tdRace.style.maxWidth = '200px';
-        tdRace.style.overflow = 'hidden';
-        tdRace.style.textOverflow = 'ellipsis';
-        tdRace.style.whiteSpace = 'nowrap';
+        tdRace.classList.add('worklist-race-cell');
         tdRace.title = row.Race || '-';
         tr.appendChild(tdRace);
         

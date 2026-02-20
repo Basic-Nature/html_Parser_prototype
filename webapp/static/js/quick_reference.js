@@ -102,7 +102,7 @@ const QuickReference = (() => {
         const htmlRow = /** @type {HTMLElement} */ (row);
         const text = htmlRow.textContent.toLowerCase();
         const matches = query === '' || text.includes(query);
-        htmlRow.style.display = matches ? '' : 'none';
+        htmlRow.classList.toggle('qr-row-hidden', !matches);
       });
 
       // Save user preference
@@ -151,18 +151,9 @@ const QuickReference = (() => {
       // Create tooltip on hover
       kbd.addEventListener('mouseenter', () => {
         const tooltip = document.createElement('div');
-        tooltip.style.cssText = `
-          position: absolute;
-          background: #0f172a;
-          color: #60a5fa;
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 0.75rem;
-          pointer-events: none;
-          white-space: nowrap;
-        `;
+        tooltip.className = 'kbd-tooltip';
         tooltip.textContent = 'Click to copy';
-        kbd.parentElement.style.position = 'relative';
+        kbd.parentElement.classList.add('kbd-tooltip-host');
         kbd.parentElement.appendChild(tooltip);
 
         setTimeout(() => tooltip.remove(), 2000);
@@ -251,9 +242,9 @@ const QuickReference = (() => {
 
     if (target) {
       target.scrollIntoView({ behavior: 'smooth' });
-      target.style.color = '#3b82f6';
+      target.classList.add('quickref-highlight');
       setTimeout(() => {
-        target.style.color = '';
+        target.classList.remove('quickref-highlight');
       }, 2000);
     }
   }

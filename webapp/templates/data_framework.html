@@ -13,8 +13,8 @@
           data-curated-url="{{ url_for('api_data_framework_curated') }}"
           data-priority-url="{{ url_for('api_data_framework_warehouse_status') }}"
           data-preview-url="{{ url_for('api_data_framework_preview') }}"
-          data-dblite-finalized-url="{{ url_for('api_election_data_db_lite_finalized') }}"
-          data-dblite-downballot-url="{{ url_for('api_election_data_db_lite_down_ballot') }}"
+          data-dblite-finalized-url="{{ url_for('api_election_data_db_lite_finalized', limit=2000) }}"
+          data-dblite-downballot-url="{{ url_for('api_election_data_db_lite_down_ballot', limit=2000) }}"
           {% if csrf_token %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
     <!-- Bootstrap -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">

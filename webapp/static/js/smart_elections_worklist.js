@@ -284,7 +284,7 @@ class SmartElectionsWorklist {
         }
 
         if (this.filteredRaces.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:40px;color:#999;">No races found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="14" class="worklist-empty-cell">No races found</td></tr>';
             return;
         }
 
@@ -305,9 +305,9 @@ class SmartElectionsWorklist {
                 <td class="col-county">${this.escapeHtml(race.county)}</td>
                 <td class="col-office">${this.escapeHtml(race.office)}</td>
                 <td class="col-step-indicator">
-                    <div style="margin-bottom:4px;font-size:11px;color:#666;">Step ${workflowStepNumber}/4</div>
+                    <div class="workflow-step-label">Step ${workflowStepNumber}/4</div>
                     <div class="progress-bar">
-                        <div class="progress-bar-fill" style="width:${progressPercent}%"></div>
+                        <div class="progress-bar-fill progress-step-${workflowStepNumber}"></div>
                     </div>
                 </td>
                 <td class="col-dl1">${this.escapeHtml(race.dl1_assigned_to || '—')}</td>
@@ -426,7 +426,7 @@ class SmartElectionsWorklist {
         if (modal) {
             modal.classList.add('active');
             this.currentModal = modal;
-            document.body.style.overflow = 'hidden';
+            document.body.classList.add('se-no-scroll');
             console.log(`[SmartElections] Opened modal: ${modalId}`);
         }
     }
@@ -439,7 +439,7 @@ class SmartElectionsWorklist {
         if (target) {
             target.classList.remove('active');
             this.currentModal = null;
-            document.body.style.overflow = 'auto';
+            document.body.classList.remove('se-no-scroll');
             console.log('[SmartElections] Closed modal');
         }
     }
@@ -528,7 +528,7 @@ class SmartElectionsWorklist {
         if (!container) return;
 
         if (!flags || flags.length === 0) {
-            container.innerHTML = '<p style="color:#999;font-size:12px;">No auto-flags detected</p>';
+            container.innerHTML = '<p class="no-auto-flags">No auto-flags detected</p>';
             return;
         }
 
@@ -554,7 +554,6 @@ class SmartElectionsWorklist {
             group.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
             group.parentElement.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.remove('active');
-                tab.style.display = 'none';
             });
         }
 
@@ -563,7 +562,6 @@ class SmartElectionsWorklist {
         const content = document.getElementById(tabName) || document.getElementById(`tab-${tabName}`);
         if (content) {
             content.classList.add('active');
-            content.style.display = 'block';
             console.log('[SmartElections] Switched to tab:', tabName);
         }
     }
@@ -864,7 +862,7 @@ class SmartElectionsWorklist {
         container.appendChild(toast);
 
         setTimeout(() => {
-            toast.style.animation = 'slideInRight 0.3s ease reverse';
+            toast.classList.add('toast-exit');
             setTimeout(() => toast.remove(), 300);
         }, 3000);
 
@@ -943,7 +941,7 @@ window['closeModal'] = (modalId) => {
     }
     if (modal) {
         modal.classList.remove('active');
-        document.body.style.overflow = 'auto';
+        document.body.classList.remove('se-no-scroll');
     }
 };
 

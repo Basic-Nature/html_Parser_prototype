@@ -150,3 +150,18 @@
     background: #6b7280;
     color: white;
 }
+
+.table-empty-cell {
+    text-align: center;
+    padding: 2rem;
+}
+
+.td-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.td-truncate-200 {
+    max-width: 200px;
+}

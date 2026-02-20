@@ -429,6 +429,7 @@ socketio = SocketIO(
     app,
     async_mode=_SOCKETIO_ASYNC_MODE,
     cors_allowed_origins=SOCKETIO_ALLOWED_ORIGINS,
+    manage_session=False,
     **_SOCKETIO_ENGINE_OPTIONS,
     **socketio_kwargs,
 )
@@ -6316,6 +6317,20 @@ def api_election_data_worklist_overview():
             'row_count': result.row_count,
             'records': records,
         }), 200
+    except ValueError as e:
+        # Google Sheets not configured or invalid parameters
+        error_msg = str(e)
+        logger.warning(f"Worklist endpoint not available: {error_msg}")
+        hint = (
+            "\nFor local development, you can use: "
+            "GOOGLE_APPLICATION_CREDENTIALS=/path/to/google_service_account.json"
+            "\nFor Azure, configure individual GOOGLE_SHEETS_SA_* environment variables."
+        )
+        return jsonify({
+            'success': False, 
+            'error': 'Google Sheets access not configured',
+            'detail': error_msg + hint
+        }), 503
     except Exception as e:
         logger.error(f"Error fetching worklist overview: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -6351,6 +6366,20 @@ def api_election_data_db_lite_finalized():
             'row_count': result.row_count,
             'records': records,
         }), 200
+    except ValueError as e:
+        # Google Sheets not configured or invalid parameters
+        error_msg = str(e)
+        logger.warning(f"DB-Lite finalized endpoint not available: {error_msg}")
+        hint = (
+            "\nFor local development, you can use: "
+            "GOOGLE_APPLICATION_CREDENTIALS=/path/to/google_service_account.json"
+            "\nFor Azure, configure individual GOOGLE_SHEETS_SA_* environment variables."
+        )
+        return jsonify({
+            'success': False,
+            'error': 'Google Sheets access not configured',
+            'detail': error_msg + hint
+        }), 503
     except Exception as e:
         logger.error(f"Error fetching DB-Lite finalized data: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -6386,6 +6415,20 @@ def api_election_data_db_lite_down_ballot():
             'row_count': result.row_count,
             'records': records,
         }), 200
+    except ValueError as e:
+        # Google Sheets not configured or invalid parameters
+        error_msg = str(e)
+        logger.warning(f"DB-Lite down-ballot endpoint not available: {error_msg}")
+        hint = (
+            "\nFor local development, you can use: "
+            "GOOGLE_APPLICATION_CREDENTIALS=/path/to/google_service_account.json"
+            "\nFor Azure, configure individual GOOGLE_SHEETS_SA_* environment variables."
+        )
+        return jsonify({
+            'success': False,
+            'error': 'Google Sheets access not configured',
+            'detail': error_msg + hint
+        }), 503
     except Exception as e:
         logger.error(f"Error fetching DB-Lite down-ballot data: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500

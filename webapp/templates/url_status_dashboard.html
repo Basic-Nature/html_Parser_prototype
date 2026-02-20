@@ -321,6 +321,27 @@
             color: var(--text-muted);
             font-size: 0.9rem;
         }
+
+        .is-hidden {
+            display: none !important;
+        }
+
+        .filter-group-end {
+            justify-content: flex-end;
+        }
+
+        .table-wrapper-scroll {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .table-index-col {
+            width: 40px;
+        }
+
+        .loading-error {
+            color: var(--accent-danger);
+        }
     </style>
 </head>
 <body>
@@ -375,7 +396,7 @@
                 <input type="number" id="limitFilter" min="10" max="1000" value="100">
             </div>
             
-            <div class="filter-group" style="justify-content: flex-end;">
+            <div class="filter-group filter-group-end">
                 <label>&nbsp;</label>
                 <button class="btn-action primary" id="applyFiltersBtn">Apply Filters</button>
             </div>
@@ -431,11 +452,11 @@
                 <p>Loading URL status data...</p>
             </div>
             
-            <div id="tableWrapper" style="display: none; max-height: 600px; overflow-y: auto;">
+            <div id="tableWrapper" class="is-hidden table-wrapper-scroll">
                 <table class="url-table">
                     <thead>
                         <tr>
-                            <th style="width: 40px;">#</th>
+                            <th class="table-index-col">#</th>
                             <th>URL</th>
                             <th>Label</th>
                             <th>Parser Status</th>
@@ -450,7 +471,7 @@
                 </table>
             </div>
             
-            <div class="pagination" id="paginationControls" style="display: none;">
+            <div class="pagination is-hidden" id="paginationControls">
                 <button class="btn-action" id="prevPageBtn">← Previous</button>
                 <span class="pagination-info" id="paginationInfo"></span>
                 <button class="btn-action" id="nextPageBtn">Next →</button>
@@ -504,8 +525,8 @@
             const loadingIndicator = document.getElementById('loadingIndicator');
             const tableWrapper = document.getElementById('tableWrapper');
             
-            loadingIndicator.style.display = 'block';
-            tableWrapper.style.display = 'none';
+            loadingIndicator.classList.remove('is-hidden');
+            tableWrapper.classList.add('is-hidden');
             
             // Build query string with filters
             const params = new URLSearchParams();
@@ -543,16 +564,16 @@
                         updateTable(data);
                         updatePagination(data);
                         
-                        loadingIndicator.style.display = 'none';
-                        tableWrapper.style.display = 'block';
-                        document.getElementById('paginationControls').style.display = 'flex';
+                        loadingIndicator.classList.add('is-hidden');
+                        tableWrapper.classList.remove('is-hidden');
+                        document.getElementById('paginationControls').classList.remove('is-hidden');
                     } else {
                         throw new Error(data.error || 'Failed to load data');
                     }
                 })
                 .catch(err => {
                     console.error('Error loading dashboard data:', err);
-                    loadingIndicator.innerHTML = `<p style="color: var(--accent-danger);">Error: ${err.message}</p>`;
+                    loadingIndicator.innerHTML = `<p class="loading-error">Error: ${err.message}</p>`;
                 });
         }
         

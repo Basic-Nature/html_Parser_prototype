@@ -119,6 +119,15 @@
             margin-left: 16px;
         }
 
+        .is-hidden {
+            display: none !important;
+        }
+
+        .session-id-text {
+            font-size: 10px;
+            color: #999;
+        }
+
         .cert-info-value.monospace {
             font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
             font-size: 12px;
@@ -285,7 +294,7 @@
         }
     </style>
 </head>
-<body style="margin: 0; padding: 0;" data-require-cert="{{ '1' if require_cert else '0' }}" data-target-url="{{ target_url|default('/') }}">
+<body data-require-cert="{{ '1' if require_cert else '0' }}" data-target-url="{{ target_url|default('/') }}">
     <div class="auth-welcome-container">
         <div class="auth-welcome-card">
             <!-- Header -->
@@ -369,7 +378,7 @@
             <!-- Footer -->
             <div class="footer-note">
                 <p>Certificate verified at: <span id="verifiedTime">—</span></p>
-                <p>Session ID: <code id="sessionId" style="font-size: 10px; color: #999;">—</code></p>
+                <p>Session ID: <code id="sessionId" class="session-id-text">—</code></p>
             </div>
         </div>
     </div>
@@ -383,6 +392,12 @@
                     showWarningMessage('A client certificate is required to access this feature.');
                     document.getElementById('verifiedTime').textContent = new Date().toLocaleString();
                     return;
+                }
+                const detailsSection = document.getElementById('certInfoSection');
+                const detailsBtn = document.getElementById('certDetailsBtn');
+                if (detailsSection && detailsBtn) {
+                    detailsSection.classList.add('is-hidden');
+                    detailsBtn.textContent = 'ℹ Show Details';
                 }
                 // Get cert metadata from URL params or fetch from API
                 const params = new URLSearchParams(window.location.search);
@@ -554,11 +569,11 @@
         function toggleCertDetails() {
             const section = document.getElementById('certInfoSection');
             const btn = document.getElementById('certDetailsBtn');
-            if (section.style.display === 'none') {
-                section.style.display = 'block';
+            if (section.classList.contains('is-hidden')) {
+                section.classList.remove('is-hidden');
                 btn.textContent = '✓ Hide Details';
             } else {
-                section.style.display = 'none';
+                section.classList.add('is-hidden');
                 btn.textContent = 'ℹ Show Details';
             }
         }

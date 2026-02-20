@@ -152,16 +152,28 @@
   transition: transform 280ms var(--transition-fast, 300ms);
 }
 
-/* Quality pill mini-meter driven by CSS custom property */
+/* Quality pill mini-meter driven by class buckets (CSP-safe, no inline style mutation) */
 .quality-pill .mini-meter-fill {
-  width: var(--quality-fill, 0%);
-  opacity: var(--quality-opacity, 1);
+  width: 0%;
+  opacity: 1;
   transition: width 220ms ease, opacity 180ms ease;
   display: inline-block;
   height: 8px;
   background: linear-gradient(90deg, var(--accent-success, #10b981), var(--accent-primary, #2563eb));
   border-radius: 6px;
 }
+
+.quality-pill.q-0 .mini-meter-fill { width: 0%; }
+.quality-pill.q-10 .mini-meter-fill { width: 10%; }
+.quality-pill.q-20 .mini-meter-fill { width: 20%; }
+.quality-pill.q-30 .mini-meter-fill { width: 30%; }
+.quality-pill.q-40 .mini-meter-fill { width: 40%; }
+.quality-pill.q-50 .mini-meter-fill { width: 50%; }
+.quality-pill.q-60 .mini-meter-fill { width: 60%; }
+.quality-pill.q-70 .mini-meter-fill { width: 70%; }
+.quality-pill.q-80 .mini-meter-fill { width: 80%; }
+.quality-pill.q-90 .mini-meter-fill { width: 90%; }
+.quality-pill.q-100 .mini-meter-fill { width: 100%; }
 
 /* Clickable header cell helper (use class instead of inline cursor) */
 .clickable { cursor: pointer; }
@@ -191,10 +203,11 @@
   display: block !important;
   opacity: 1 !important;
   position: fixed !important;
-  left: var(--navmore-left, auto) !important;
-  top: var(--navmore-top, auto) !important;
-  min-width: var(--navmore-minwidth, 160px) !important;
-  z-index: var(--z-navmore);
+  top: calc(var(--navbar-height) - 6px) !important;
+  right: 10px !important;
+  left: auto !important;
+  min-width: 160px !important;
+  z-index: var(--z-navmore) !important;
 }
 
 /* Right sidebar inline-style replacement hook: when JS needs to apply dynamic inline presentation,
@@ -2925,20 +2938,17 @@ body.right-sidebar-collapsed .sidebar-right * {
 }
 
 .source-carousel-track {
-  display: flex;
-  transition: transform var(--transition-normal);
-  will-change: transform;
+  display: block;
 }
 
 .source-carousel-slide {
-  min-width: 100%;
-  flex: 0 0 100%;
+  display: none;
   padding: 2px;
-  opacity: 0.6;
-  transition: opacity var(--transition-fast);
+  opacity: 0;
 }
 
 .source-carousel-slide.is-active {
+  display: block;
   opacity: 1;
 }
 
@@ -6025,6 +6035,18 @@ body.pulse-loading {
   background: var(--surface-1);
 }
 
+#worklistTableContainer.worklist-table-scroll {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+#worklistTableContainer .worklist-col-checkbox { width: 40px; }
+#worklistTableContainer .worklist-col-priority { width: 80px; }
+#worklistTableContainer .worklist-col-state { width: 120px; }
+#worklistTableContainer .worklist-col-race { width: 200px; }
+#worklistTableContainer .worklist-col-year { width: 80px; }
+#worklistTableContainer .worklist-col-status { width: 100px; }
+
 #worklistTableContainer table {
   margin-bottom: 0;
   font-size: 0.9rem;
@@ -6059,6 +6081,13 @@ body.pulse-loading {
   vertical-align: middle;
   border-top: 1px solid var(--border-weak);
   color: var(--text-subtle);
+}
+
+#worklistTableContainer .worklist-race-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Worklist checkboxes */
