@@ -3275,17 +3275,37 @@ def _extract_year_from_text(value: str | None) -> str | None:
 
 
 def _collect_data_framework_curated(limit: int = 80) -> dict:
-    scaffold = _collect_data_framework_scaffold(limit=limit)
+    scaffold = _collect_data_framework_scaffold(limit=limit * 2)  # Fetch extra for dedup
     items = []
+    seen_keys = set()
+    
     for record in scaffold.get("records", []):
         state = record.get("state") or ""
         county = record.get("county") or ""
         contest = record.get("contest") or ""
         updated_at = record.get("timestamp") or ""
+        
+        # Quality gates: skip low-quality entries
+        if not state or state.lower() in ("unknown", "test"):
+            continue
+        if not contest or contest.lower() in ("unknown", "test"):
+            continue
+        # Skip entries with trivial row counts (likely test data)
+        row_count = record.get("row_count")
+        if row_count is not None and row_count < 5:
+            continue
+        
+        # Deduplicate by (state, county, contest) - keep most recent
+        dedup_key = (state.lower(), (county or "").lower(), contest.lower())
+        if dedup_key in seen_keys:
+            continue
+        seen_keys.add(dedup_key)
+        
         year = _extract_year_from_text(updated_at) or _extract_year_from_text(contest)
         title_parts = [part for part in [contest, state, county] if part]
         title = " • ".join(title_parts) if title_parts else "Curated dataset"
         item_id = "::".join([state or "NA", county or "NA", contest or "NA", updated_at or "NA"])
+        
         items.append({
             "id": item_id,
             "title": title,
@@ -3293,12 +3313,16 @@ def _collect_data_framework_curated(limit: int = 80) -> dict:
             "county": county,
             "contest": contest,
             "year": year,
-            "row_count": record.get("row_count"),
+            "row_count": row_count,
             "column_count": record.get("column_count"),
             "extraction_confidence": record.get("extraction_confidence"),
             "updated_at": updated_at,
             "source_url": record.get("source_url"),
         })
+        
+        if len(items) >= limit:
+            break
+    
     return {
         "items": items,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -3576,6 +3600,15 @@ def api_data_framework_warehouse_status():
 
     ensure_db_tables()
     engine = get_engine()
+    state_filter = safe_strip(request.args.get("state", ""))
+    state_filter = state_filter.lower() if state_filter else ""
+    year_filter = safe_strip(request.args.get("year", ""))
+    year_value = None
+    if year_filter:
+        try:
+            year_value = int(year_filter)
+        except Exception:
+            year_value = None
     try:
         with engine.connect() as conn:
             exists = conn.execute(text("SELECT to_regclass('workflow.contests')")).scalar()
@@ -3587,6 +3620,100 @@ def api_data_framework_warehouse_status():
                     "missing_total": 0,
                     "by_priority": [],
                 })
+
+            states_result = conn.execute(text(
+                """
+                SELECT DISTINCT state
+                FROM workflow.contests
+                WHERE state IS NOT NULL
+                ORDER BY state
+                """
+            ))
+            available_states = [row[0] for row in states_result if row[0]]
+
+            years_params = {}
+            years_where = "WHERE state IS NOT NULL AND year IS NOT NULL"
+            if state_filter:
+                years_where += " AND LOWER(TRIM(state)) = :state"
+                years_params["state"] = state_filter
+            years_result = conn.execute(text(
+                f"""
+                SELECT DISTINCT year
+                FROM workflow.contests
+                {years_where}
+                ORDER BY year DESC
+                """
+            ), years_params)
+            available_years = [int(row[0]) for row in years_result if row[0] is not None]
+
+            columns = _get_warehouse_columns(engine)
+            has_precinct = "precinct" in columns
+            year_filter_sql = "AND year = :year" if year_value is not None else ""
+            warehouse_filter_sql = "WHERE state IS NOT NULL"
+            if state_filter:
+                warehouse_filter_sql += " AND LOWER(TRIM(state)) = :state"
+            if year_value is not None:
+                warehouse_filter_sql += " AND EXTRACT(YEAR FROM election_date)::int = :year"
+            division_case = """
+                CASE
+                    WHEN county IS NULL OR TRIM(county) = '' THEN 'state'
+                    WHEN LOWER(county) LIKE '%district%' OR LOWER(county) LIKE '%dist.%' THEN 'district'
+                    ELSE 'county'
+                END
+            """
+            if has_precinct:
+                division_case = """
+                    CASE
+                        WHEN precinct IS NOT NULL AND TRIM(precinct) <> ''
+                             AND LOWER(TRIM(precinct)) NOT IN ('all precincts','all') THEN 'precinct'
+                        WHEN county IS NULL OR TRIM(county) = '' THEN 'state'
+                        WHEN LOWER(county) LIKE '%district%' OR LOWER(county) LIKE '%dist.%' THEN 'district'
+                        ELSE 'county'
+                    END
+                """
+            division_params = {}
+            division_where = "WHERE state IS NOT NULL"
+            if state_filter:
+                division_where += " AND LOWER(TRIM(state)) = :state"
+                division_params["state"] = state_filter
+            if year_value is not None:
+                division_where += " AND EXTRACT(YEAR FROM election_date)::int = :year"
+                division_params["year"] = year_value
+            division_summary = conn.execute(text(
+                f"""
+                SELECT {division_case} AS division_type,
+                       COUNT(*) AS rows
+                FROM warehouse_election_results
+                {division_where}
+                GROUP BY division_type
+                ORDER BY rows DESC
+                """
+            ), division_params).mappings().all()
+
+            division_year_params = {}
+            division_year_where = "WHERE state IS NOT NULL AND election_date IS NOT NULL"
+            if state_filter:
+                division_year_where += " AND LOWER(TRIM(state)) = :state"
+                division_year_params["state"] = state_filter
+            if year_value is not None:
+                division_year_where += " AND EXTRACT(YEAR FROM election_date)::int = :year"
+                division_year_params["year"] = year_value
+            division_summary_by_year = conn.execute(text(
+                f"""
+                SELECT EXTRACT(YEAR FROM election_date)::int AS year,
+                       {division_case} AS division_type,
+                       COUNT(*) AS rows
+                FROM warehouse_election_results
+                {division_year_where}
+                GROUP BY year, division_type
+                ORDER BY year DESC, rows DESC
+                """
+            ), division_year_params).mappings().all()
+
+            state_filter_sql = "AND LOWER(TRIM(state)) = :state" if state_filter else ""
+            state_params = {"state": state_filter} if state_filter else {}
+            if year_value is not None:
+                state_params["year"] = year_value
 
             summary = conn.execute(text(
                 """
@@ -3600,6 +3727,8 @@ def api_data_framework_warehouse_status():
                         status
                     FROM workflow.contests
                     WHERE state IS NOT NULL AND race IS NOT NULL AND year IS NOT NULL
+                    {state_filter_sql}
+                    {year_filter_sql}
                 ),
                 warehouse AS (
                     SELECT
@@ -3609,6 +3738,7 @@ def api_data_framework_warehouse_status():
                         EXTRACT(YEAR FROM election_date)::int AS year,
                         COUNT(*) AS rows
                     FROM warehouse_election_results
+                    {warehouse_filter_sql}
                     GROUP BY 1,2,3,4
                 ),
                 missing AS (
@@ -3624,8 +3754,12 @@ def api_data_framework_warehouse_status():
                 SELECT
                     (SELECT COUNT(*) FROM expected) AS expected_total,
                     (SELECT COUNT(*) FROM missing) AS missing_total
-                """
-            )).mappings().first()
+                """.format(
+                    state_filter_sql=state_filter_sql,
+                    year_filter_sql=year_filter_sql,
+                    warehouse_filter_sql=warehouse_filter_sql,
+                )
+            ), state_params).mappings().first()
 
             by_priority = conn.execute(text(
                 """
@@ -3639,6 +3773,8 @@ def api_data_framework_warehouse_status():
                         status
                     FROM workflow.contests
                     WHERE state IS NOT NULL AND race IS NOT NULL AND year IS NOT NULL
+                    {state_filter_sql}
+                    {year_filter_sql}
                 ),
                 warehouse AS (
                     SELECT
@@ -3648,6 +3784,7 @@ def api_data_framework_warehouse_status():
                         EXTRACT(YEAR FROM election_date)::int AS year,
                         COUNT(*) AS rows
                     FROM warehouse_election_results
+                    {warehouse_filter_sql}
                     GROUP BY 1,2,3,4
                 ),
                 missing AS (
@@ -3666,8 +3803,12 @@ def api_data_framework_warehouse_status():
                 FROM missing
                 GROUP BY priority
                 ORDER BY missing DESC
-                """
-            )).mappings().all()
+                """.format(
+                    state_filter_sql=state_filter_sql,
+                    year_filter_sql=year_filter_sql,
+                    warehouse_filter_sql=warehouse_filter_sql,
+                )
+            ), state_params).mappings().all()
 
             by_status = conn.execute(text(
                 """
@@ -3681,6 +3822,8 @@ def api_data_framework_warehouse_status():
                         status
                     FROM workflow.contests
                     WHERE state IS NOT NULL AND race IS NOT NULL AND year IS NOT NULL
+                    {state_filter_sql}
+                    {year_filter_sql}
                 ),
                 warehouse AS (
                     SELECT
@@ -3690,6 +3833,7 @@ def api_data_framework_warehouse_status():
                         EXTRACT(YEAR FROM election_date)::int AS year,
                         COUNT(*) AS rows
                     FROM warehouse_election_results
+                    {warehouse_filter_sql}
                     GROUP BY 1,2,3,4
                 ),
                 missing AS (
@@ -3708,8 +3852,12 @@ def api_data_framework_warehouse_status():
                 FROM missing
                 GROUP BY status
                 ORDER BY missing DESC
-                """
-            )).mappings().all()
+                """.format(
+                    state_filter_sql=state_filter_sql,
+                    year_filter_sql=year_filter_sql,
+                    warehouse_filter_sql=warehouse_filter_sql,
+                )
+            ), state_params).mappings().all()
 
             sample = conn.execute(text(
                 """
@@ -3723,6 +3871,8 @@ def api_data_framework_warehouse_status():
                         status
                     FROM workflow.contests
                     WHERE state IS NOT NULL AND race IS NOT NULL AND year IS NOT NULL
+                    {state_filter_sql}
+                    {year_filter_sql}
                 ),
                 warehouse AS (
                     SELECT
@@ -3732,6 +3882,7 @@ def api_data_framework_warehouse_status():
                         EXTRACT(YEAR FROM election_date)::int AS year,
                         COUNT(*) AS rows
                     FROM warehouse_election_results
+                    {warehouse_filter_sql}
                     GROUP BY 1,2,3,4
                 )
                 SELECT e.state,
@@ -3749,8 +3900,12 @@ def api_data_framework_warehouse_status():
                 WHERE COALESCE(w.rows, 0) = 0
                 ORDER BY e.priority NULLS LAST, e.year DESC
                 LIMIT 8
-                """
-            )).mappings().all()
+                """.format(
+                    state_filter_sql=state_filter_sql,
+                    year_filter_sql=year_filter_sql,
+                    warehouse_filter_sql=warehouse_filter_sql,
+                )
+            ), state_params).mappings().all()
 
         payload = {
             "expected_total": int(summary.get("expected_total") or 0) if summary else 0,
@@ -3758,6 +3913,22 @@ def api_data_framework_warehouse_status():
             "by_priority": [dict(row) for row in by_priority],
             "by_status": [dict(row) for row in by_status],
             "sample_missing": [dict(row) for row in sample],
+            "states": available_states,
+            "selected_state": state_filter or None,
+            "selected_year": year_value,
+            "available_years": available_years,
+            "division_summary": [
+                {"type": row["division_type"], "rows": int(row["rows"])}
+                for row in division_summary
+            ],
+            "division_summary_by_year": [
+                {
+                    "year": int(row["year"]) if row["year"] is not None else None,
+                    "type": row["division_type"],
+                    "rows": int(row["rows"]),
+                }
+                for row in division_summary_by_year
+            ],
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
         return jsonify(payload)
@@ -5203,6 +5374,307 @@ def ballot_lens():
 def ballot_lens_modern():
     """Redirect to consolidated modern interface at /ballot_lens."""
     return redirect(url_for("ballot_lens"))
+
+
+@app.route("/worklist", methods=["GET"])
+def worklist():
+    """
+    Render the SMART Elections Worklist interface.
+    
+    Displays live Google Sheets worklist with DL1/DL2 standardization,
+    Pre-QC, QC1, QC2, and production status tracking.
+    """
+    try:
+        return render_template(
+            "worklist.html",
+            static_version=os.environ.get("STATIC_VERSION", "v1"),
+        )
+    except Exception:
+        import traceback
+        print(traceback.format_exc())
+        return "Internal Server Error", 500
+
+
+@app.route("/api/validate_urls", methods=["POST"])
+def api_validate_urls():
+    """
+    Validate URLs against existing finalized data.
+    
+    Checks each URL against:
+    - Google Sheets finalized data
+    - Warehouse database (warehouse_election_results)
+    - verified_datasets table
+    
+    Request JSON:
+        {"urls": ["url1", "url2", ...]}
+    
+    Response JSON:
+        {
+            "success": true,
+            "results": [
+                {
+                    "url": "...",
+                    "exists": bool,
+                    "source": "google_sheets" | "warehouse" | null,
+                    "metadata": {...}
+                }
+            ]
+        }
+    """
+    try:
+        from webapp.parser.utils.database_comparison import check_existing_finalized_data
+        
+        data = request.get_json()
+        if not data or not isinstance(data.get("urls"), list):
+            return jsonify({"error": "Invalid request: 'urls' array required"}), 400
+        
+        urls = data["urls"]
+        if len(urls) > 100:
+            return jsonify({"error": "Too many URLs: maximum 100 per request"}), 400
+        
+        results = []
+        for url in urls:
+            if not isinstance(url, str):
+                continue
+            
+            url = url.strip()
+            if not url:
+                continue
+            
+            # Check if data exists
+            data_exists, data_source, metadata = check_existing_finalized_data(
+                url,
+                session_id=None
+            )
+            
+            results.append({
+                "url": url,
+                "exists": data_exists,
+                "source": data_source,
+                "metadata": metadata or {}
+            })
+        
+        return jsonify({
+            "success": True,
+            "results": results
+        }), 200
+        
+    except Exception as e:
+        logger.error({
+            "level": "ERROR",
+            "type": "api",
+            "message": f"URL validation error: {e}",
+            "session_id": None,
+        })
+        return jsonify({"error": f"Validation failed: {str(e)}"}), 500
+
+
+@app.route("/api/url_status", methods=["GET"])
+def api_url_status():
+    """
+    Query processed URLs with filtering and production status.
+    Uses status reconciliation to show TRUE status (parser + worklist).
+    
+    Query parameters:
+        status: Filter by RECONCILED status (success|fail|error|partial|cancelled|pending|skipped_data_exists|production|qc_complete|etc)
+        parser_status: Filter by raw parser status only
+        state: Filter by state
+        county: Filter by county
+        from_date: Filter by date (YYYY-MM-DD)
+        to_date: Filter by date (YYYY-MM-DD)
+        limit: Max results (default: 100, max: 1000)
+        offset: Pagination offset
+        hide_pii: Remove personal names (default: true)
+    
+    Returns:
+        {
+            "success": true,
+            "total": 213,
+            "filtered": 42,
+            "entries": [
+                {
+                    "url": "...",
+                    "label": "AZ President 2024",
+                    "parser_status": "pending",
+                    "worklist_status": "PROD Loaded",
+                    "canonical_status": "production",
+                    "status_info": {"icon": "📦", "label": "Production", "badge_class": "success", "authority": "worklist"},
+                    "in_production": true,
+                    "production_source": "google_sheets",
+                    "last_processed": "2026-01-30 12:30:45",
+                    "state": "Arizona",
+                    "county": null
+                }
+            ],
+            "status_breakdown": {"production": 100, "pending": 50, "fail": 6},
+            "canonical_statuses": ["production", "pending", "fail"]
+        }
+    """
+    try:
+        from datetime import datetime
+        from webapp.parser.config import URL_LIST_FILE
+        from webapp.parser.utils.misc_utils import load_processed_urls, extract_url_and_label
+        from webapp.parser.utils.database_comparison import check_existing_finalized_data
+        from webapp.parser.utils.status_reconciliation import StatusReconciliation
+        
+        # Parse query parameters
+        status_filter = request.args.get("status")  # Reconciled status
+        parser_status_filter = request.args.get("parser_status")  # Raw parser status
+        state_filter = request.args.get("state")
+        county_filter = request.args.get("county")
+        from_date = request.args.get("from_date")
+        to_date = request.args.get("to_date")
+        limit = min(int(request.args.get("limit", 100)), 1000)
+        offset = int(request.args.get("offset", 0))
+        hide_pii = request.args.get("hide_pii", "true").lower() != "false"
+        
+        # Load URLs from urls.txt
+        urls_list = []
+        if URL_LIST_FILE.exists():
+            with open(URL_LIST_FILE, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    url, label = extract_url_and_label(line, allowlist_bypass=True)
+                    if url:
+                        urls_list.append((url, label or line))
+                    else:
+                        # Try tab-delimited schema
+                        parts = line.split('\t')
+                        if len(parts) >= 7 and parts[6].startswith('http'):
+                            url = parts[6].strip()
+                            label = f"{parts[0]} {parts[1]} {parts[2]}" if parts[0] != 'TBD' else line
+                            urls_list.append((url, label))
+        
+        # Load processing history
+        processed_map = load_processed_urls()
+        
+        # Build entries with reconciled status
+        entries = []
+        status_breakdown = {}
+        canonical_statuses = set()
+        
+        for url, label in urls_list:
+            # Get processing status
+            processed_entry = processed_map.get(url)
+            parser_status = None
+            last_processed = None
+            state = None
+            county = None
+            
+            if processed_entry:
+                parser_status = processed_entry.get('status')
+                last_processed = processed_entry.get('timestamp')
+                state = processed_entry.get('state')
+                county = processed_entry.get('county')
+            else:
+                parser_status = 'pending'
+            
+            # Check production status
+            in_production, prod_source, prod_metadata = check_existing_finalized_data(url)
+            
+            # Update metadata from production if available
+            if prod_metadata:
+                state = state or prod_metadata.get('state')
+                county = county or prod_metadata.get('county')
+            
+            # Get worklist status (if available)
+            worklist_status = None
+            if prod_metadata and isinstance(prod_metadata, dict):
+                worklist_status = prod_metadata.get('status')  # e.g., "PROD Loaded", "QC Loaded"
+            
+            # === RECONCILIATION: Determine true status ===
+            canonical_status, status_info = StatusReconciliation.reconcile(
+                url=url,
+                parser_status=parser_status,
+                worklist_status=worklist_status,
+                production_source=prod_source,
+                last_processed=last_processed
+            )
+            
+            # Apply filters (use reconciled status as primary)
+            if status_filter and canonical_status != status_filter:
+                continue
+            if parser_status_filter and parser_status != parser_status_filter:
+                continue
+            if state_filter and state != state_filter:
+                continue
+            if county_filter and county != county_filter:
+                continue
+            if from_date and last_processed:
+                try:
+                    proc_date = datetime.strptime(last_processed, '%Y-%m-%d %H:%M:%S')
+                    filter_date = datetime.strptime(from_date, '%Y-%m-%d')
+                    if proc_date < filter_date:
+                        continue
+                except Exception:
+                    pass
+            if to_date and last_processed:
+                try:
+                    proc_date = datetime.strptime(last_processed, '%Y-%m-%d %H:%M:%S')
+                    filter_date = datetime.strptime(to_date, '%Y-%m-%d')
+                    if proc_date > filter_date:
+                        continue
+                except Exception:
+                    pass
+            
+            # Build entry with reconciled status
+            entry = {
+                'url': url,
+                'label': label,
+                'parser_status': parser_status,
+                'worklist_status': worklist_status,
+                'canonical_status': canonical_status,
+                'status_info': status_info,
+                'in_production': in_production,
+                'production_source': prod_source,
+                'last_processed': last_processed,
+                'state': state,
+                'county': county
+            }
+            
+            # Hide PII if requested
+            if hide_pii and 'metadata' in entry:
+                entry['metadata'] = {k: v for k, v in entry['metadata'].items() 
+                                     if k not in ['assigned_to', 'dl1', 'dl2']}
+            
+            entries.append(entry)
+            
+            # Update status breakdown
+            status_breakdown[canonical_status] = status_breakdown.get(canonical_status, 0) + 1
+            canonical_statuses.add(canonical_status)
+        
+        # Sort canonical statuses by priority
+        canonical_statuses_sorted = sorted(canonical_statuses, 
+                                          key=lambda s: StatusReconciliation.get_status_priority(s))
+        
+        # Pagination
+        total_filtered = len(entries)
+        entries_page = entries[offset:offset + limit]
+        
+        return jsonify({
+            "success": True,
+            "total": len(urls_list),
+            "filtered": total_filtered,
+            "limit": limit,
+            "offset": offset,
+            "entries": entries_page,
+            "status_breakdown": status_breakdown,
+            "canonical_statuses": canonical_statuses_sorted
+        }), 200
+        
+    except Exception as e:
+        logger.error({
+            "level": "ERROR",
+            "type": "api",
+            "message": f"URL status query error: {e}",
+            "session_id": None,
+        })
+        return jsonify({"error": f"Query failed: {str(e)}"}), 500
+
+
 @app.route("/site.webmanifest")
 def site_webmanifest():
     manifest = {
@@ -5245,6 +5717,11 @@ def site_webmanifest():
 def quality_dashboard():
     """Quality metrics visualization dashboard."""
     return render_template("quality_dashboard.html")
+
+@app.route("/url_status_dashboard")
+def url_status_dashboard():
+    """URL processing status dashboard with production comparison."""
+    return render_template("url_status_dashboard.html")
 
 @app.route("/quick-reference")
 @app.route("/quick_reference")
@@ -6016,7 +6493,16 @@ def api_election_data_states_counties():
     """
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
-        return jsonify({"error": "Unauthorized"}), 403
+        # Graceful degradation: return empty mappings for unauthenticated users
+        # This prevents 403 errors in console when users browse without cert
+        return jsonify({
+            "success": True,
+            "states": [],
+            "counties": {},
+            "total_states": 0,
+            "total_counties": 0,
+            "note": "Authentication required for state/county mappings"
+        }), 200
 
     try:
         from collections import defaultdict

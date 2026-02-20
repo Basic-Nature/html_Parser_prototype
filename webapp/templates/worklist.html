@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART Elections Worklist - 4-Step Workflow</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/smart_elections.css') }}">
+</head>
+<body>
+    <div class="smart-elections-container">
+        <!-- Header -->
+        <header class="se-header">
+            <h1>🗳️ SMART Elections Worklist</h1>
+            <p class="subtitle">4-Step Workflow: Source → DL1/DL2 → Pre-QC → QC1 → QC2 → Production</p>
+            <div class="action-bar">
+                <a href="{{ url_for('ballot_lens') }}" class="btn btn-secondary">← Back to Ballot Lens</a>
+                <a href="{{ url_for('data_framework') }}" class="btn btn-secondary">Data Framework</a>
+            </div>
+            <div class="stats-bar">
+                <div class="stat">
+                    <span class="label">Total Races:</span>
+                    <span class="value" id="stat-total">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">DL1 Ready:</span>
+                    <span class="value" id="stat-dl1-ready">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">DL2 Ready:</span>
+                    <span class="value" id="stat-dl2-ready">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Pre-QC Passed:</span>
+                    <span class="value" id="stat-preqc-passed">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">QC1 Pending:</span>
+                    <span class="value" id="stat-qc1-pending">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Production Ready:</span>
+                    <span class="value" id="stat-production">0</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Filters -->
+        <section class="se-filters">
+            <label>
+                Filter by State:
+                <input type="text" id="filter-state" placeholder="e.g., CA, NY" class="filter-input">
+            </label>
+            <label>
+                Filter by Year:
+                <input type="number" id="filter-year" placeholder="2024" class="filter-input">
+            </label>
+            <label>
+                Filter by Status:
+                <select id="filter-status" class="filter-select">
+                    <option value="">All Statuses</option>
+                    <option value="step_1">Step 1: Source URL</option>
+                    <option value="step_2">Step 2: DL1/DL2 Standardization</option>
+                    <option value="step_3">Step 3: QC1 Review</option>
+                    <option value="step_4">Step 4: QC2 Final</option>
+                    <option value="completed">Completed</option>
+                </select>
+            </label>
+            <button id="apply-filters" class="btn btn-primary">Apply Filters</button>
+            <button id="reset-filters" class="btn btn-secondary">Reset</button>
+        </section>
+
+        <!-- Live Google Sheets Sources -->
+        <section class="se-data-sources">
+            <h2>Live Google Sheets</h2>
+            <div class="source-grid">
+                <div class="source-card">
+                    <h3>Worklist Overview</h3>
+                    <div class="source-meta">Sheet: <span id="worklist-sheet-name">-</span></div>
+                    <div class="source-count">Rows: <span id="worklist-row-count">0</span></div>
+                    <div class="source-status" id="worklist-fetch-status">Not loaded</div>
+                </div>
+                <div class="source-card">
+                    <h3>DB-Lite Finalized</h3>
+                    <div class="source-meta">Sheet: <span id="dblite-finalized-sheet-name">-</span></div>
+                    <div class="source-count">Rows: <span id="dblite-finalized-row-count">0</span></div>
+                    <div class="source-status" id="dblite-finalized-fetch-status">Not loaded</div>
+                </div>
+                <div class="source-card">
+                    <h3>DB-Lite Down-Ballot</h3>
+                    <div class="source-meta">Sheet: <span id="dblite-down-sheet-name">-</span></div>
+                    <div class="source-count">Rows: <span id="dblite-down-row-count">0</span></div>
+                    <div class="source-status" id="dblite-down-fetch-status">Not loaded</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Worklist Grid -->
+        <section class="se-worklist">
+            <div class="worklist-container">
+                <table class="worklist-grid" id="worklist-table">
+                    <thead>
+                        <tr>
+                            <th class="col-select"><input type="checkbox" id="select-all" title="Select all"></th>
+                            <th class="col-race-id">Race ID</th>
+                            <th class="col-state">State</th>
+                            <th class="col-race">Race</th>
+                            <th class="col-year">Year</th>
+                            <th class="col-download1">Download 1</th>
+                            <th class="col-download2">Download 2</th>
+                            <th class="col-source">Source Link</th>
+                            <th class="col-status">Status</th>
+                            <th class="col-actions">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="worklist-body">
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="loading-indicator" id="loading-indicator" style="display: none;">
+                <div class="spinner"></div>
+                <span>Loading worklist...</span>
+            </div>
+        </section>
+
+        <!-- Bulk Actions -->
+        <section class="se-bulk-actions">
+            <button id="import-selected-btn" class="btn btn-primary" disabled>
+                Import Selected to Ballot Lens (<span id="selected-count">0</span>)
+            </button>
+            <button id="clear-selection-btn" class="btn btn-secondary" disabled>
+                Clear Selection
+            </button>
+        </section>
+    </div>
+
+    <!-- Success/Error Toast Notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/smart_elections_worklist.js') }}?v={{ static_version }}"></script>
+</body>
+</html>

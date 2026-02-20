@@ -45,8 +45,10 @@
                 <a href="/" class="nav-link" title="Home">Home</a>
                 <a href="/ballot_lens" class="nav-link active" title="BallotLens">Ballot Lens</a>
                 <a href="/quality_dashboard" class="nav-link" title="Quality Dashboard">Quality</a>
+                <a href="/url_status_dashboard" class="nav-link" title="URL Status Dashboard">URL Status</a>
                 <a href="/health_dashboard" class="nav-link" title="Health & Monitoring">Health</a>
                 <a href="/data_framework" class="nav-link" title="Data Framework">Data Framework</a>
+                <a href="{{ url_for('worklist') }}" class="nav-link" title="Smart Elections Worklist">Worklist</a>
                 <a href="/history" class="nav-link" title="Run History">History</a>
                 <a href="/quick_reference" class="nav-link" title="Quick Reference Guide">Reference</a>
                 <!-- Overflow "More" toggle (populated by JS when links overflow) -->
@@ -292,6 +294,7 @@
                                   <input type="url" id="newUrl" class="url-add-input" placeholder="Paste new election results URL here" required aria-label="New URL">
                                   <button type="submit" class="btn btn-success url-add-btn">Add URL</button>
                                   <button type="button" class="btn btn-primary ms-1em" id="refreshUrlListBtn" title="Refresh URL list">⟳</button>
+                                  <button type="button" class="btn btn-secondary ms-1em" id="importWorklistBtn" title="Import URLs from Google Sheets worklist">📋 Import from Worklist</button>
                                   <div id="addUrlStatus" class="form-text" role="status" aria-live="polite"></div>
                                 </form>
 
@@ -604,6 +607,65 @@
                   <button type="button" class="btn-primary" id="btnSubmitPrompt">Submit</button>
                   <button type="button" class="btn" id="btnCancelPrompt">Cancel</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- IMPORT WORKLIST MODAL -->
+          <div class="modal hidden" id="importWorklistModal" role="dialog" aria-modal="true" aria-labelledby="importWorklistTitle">
+            <div class="modal-content modal-large">
+              <div class="modal-header">
+                <h3 id="importWorklistTitle">Import URLs from Worklist</h3>
+                <button type="button" class="btn-close" data-action="modal-hide" aria-label="Close modal">×</button>
+              </div>
+              <div class="modal-body">
+                <p class="text-muted mb-3">Select downloads to import into the current batch. URLs will be validated against existing finalized data.</p>
+                
+                <!-- Loading indicator -->
+                <div id="worklistLoadingIndicator" class="text-center py-4 hidden">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading worklist data...</span>
+                  </div>
+                  <p class="mt-2 text-muted">Loading worklist...</p>
+                </div>
+
+                <!-- Error state -->
+                <div id="worklistErrorAlert" class="alert alert-danger hidden" role="alert">
+                  <strong>Error:</strong> <span id="worklistErrorMessage"></span>
+                </div>
+
+                <!-- Selection controls -->
+                <div id="worklistSelectionControls" class="mb-3 hidden">
+                  <button type="button" class="btn btn-sm btn-secondary" id="selectAllWorklistBtn">Select All</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="clearWorklistSelectionBtn">Clear Selection</button>
+                  <span class="ms-3 text-muted" id="worklistSelectionCount">0 selected</span>
+                </div>
+
+                <!-- Worklist table -->
+                <div id="worklistTableContainer" class="table-responsive hidden" style="max-height: 500px; overflow-y: auto;">
+                  <table class="table table-sm table-hover table-striped">
+                    <thead class="sticky-top bg-dark">
+                      <tr>
+                        <th style="width: 40px;"><input type="checkbox" id="selectAllWorklistCheckbox" aria-label="Select all rows"></th>
+                        <th style="width: 80px;">Priority</th>
+                        <th style="width: 120px;">State</th>
+                        <th style="width: 200px;">Race</th>
+                        <th style="width: 80px;">Year</th>
+                        <th style="width: 100px;">Status</th>
+                        <th>Download 1</th>
+                        <th>Download 2</th>
+                        <th>Source Link</th>
+                      </tr>
+                    </thead>
+                    <tbody id="worklistTableBody">
+                      <!-- Populated dynamically -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="importSelectedUrlsBtn" disabled>Import Selected URLs</button>
+                <button type="button" class="btn btn-secondary" data-action="modal-hide">Cancel</button>
               </div>
             </div>
           </div>

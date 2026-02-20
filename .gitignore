@@ -167,6 +167,11 @@ tools/debug_screenshots/
 data/
 tests/
 
+# Temporary documentation (working notes, session drafts)
+docs/temp/
+docs/scratch/
+docs/working/
+
 # Dev notes / scripts (do not ignore necessarily)
 scripts/install_poppler_ubuntu.sh
 

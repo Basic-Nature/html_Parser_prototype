@@ -2,11 +2,139 @@
 
 **Read first**
 - Docs live in `docs/` (architecture, handlers, project_audit, index). Open the relevant doc before touching code; follow described contracts and hotspots.
-- Repo entry points: CLI [webapp/parser/html_election_parser.py](../webapp/parser/html_election_parser.py); Flask UI [webapp/Smart_Elections_Parser_Webapp.py](../webapp/Smart_Elections_Parser_Webapp.py). `.env` must be populated.
+- Repo entry points: CLI [webapp/parser/html_election_parser.py]`(../webapp/parser/html_election_parser.py)`; Flask UI [webapp/Smart_Elections_Parser_Webapp.py]`(../webapp/Smart_Elections_Parser_Webapp.py)`. `.env` must be populated.
+
+**Note on links**
+- Keep links repo-relative (no `file:///` absolute paths). Some editors show diagnostics in preview/virtual docs, but absolute paths are not portable and should never be committed to public repos.
+- Fallback: when a preview/virtual editor flags a missing link, assume the project root (`html_Parser_prototype/`) and resolve the relative path locally (mentally replace the path in parentheses with the repo root). This silences the warning without changing committed links.
+
+**Repository Structure & File Creation Rules**
+
+Root has been cleaned to keep essentials only. Follow these strict placement rules:
+
+**Root Directory (DO NOT clutter)**
+```
+html_Parser_prototype/
+├── .github/              # CI/CD, workflows, copilot instructions
+├── webapp/               # Main application code
+├── docs/                 # Documentation (versioned + temp)
+├── tests/                # Root-level tests (gitignored - use for experiments)
+├── tools/                # Development tools, scripts, utilities
+├── scripts/              # Automation scripts (install, maintenance)
+├── constraints/          # Dependency constraints
+├── automate.py           # Main test runner
+├── pyproject.toml        # Python project config
+├── package.json          # Node/npm config
+└── [config files]        # .gitignore, .env.template, etc.
+```
+
+**File Creation Guidelines (CRITICAL)**
+
+1. **Tests - Three Categories:**
+   - `webapp/tests/` → **Production tests** (committed to git)
+     - Unit tests: `test_*.py`
+     - Integration tests: subfolders ok
+     - Use for: Parser logic, handlers, utils, models
+   
+   - `tests/` (root) → **Experimental tests** (gitignored)
+     - Quick validation scripts
+     - Temporary test files
+     - Agent-generated test explorations
+     - Use when unsure of permanence
+   
+   - `tools/` → **Development test scripts** (committed selectively)
+     - Smoke tests, headless checks
+     - UI validation scripts
+     - Use for: CI/CD tooling, debugging
+
+2. **Webapp Structure (NEVER create at root)**
+   - `webapp/parser/` → Parser engine, handlers, state routers
+   - `webapp/parser/utils/` → Parser utilities (shared_logic, detect, etc.)
+   - `webapp/static/` → CSS, JS, images
+   - `webapp/templates/` → Jinja2 HTML templates
+   - `webapp/tests/` → Webapp unit tests (committed)
+   - `webapp/tools/` → Webapp-specific dev tools
+
+3. **Documentation Placement:**
+   - `docs/` → **Versioned documentation** (committed to GitHub Pages)
+     - `docs/CORE/` → Core architecture
+     - `docs/FEATURES/` → Feature documentation
+     - `docs/DEPLOYMENT/` → Deployment guides
+     - `docs/DEVELOPMENT/` → Development guides
+   
+   - `docs/temp/` → **Temporary/working docs** (gitignored, add to .gitignore)
+     - Session notes, draft documents
+     - Experimental design docs
+     - Files for "just you and I" collaboration
+     - **Always create temp docs here, NOT at root**
+
+4. **Tools & Scripts:**
+   - `tools/` → Development utilities (headless checks, smoke tests)
+   - `scripts/` → Installation and maintenance scripts
+   - **Never create `.py` scripts at root** unless it's a top-level entry point like `automate.py`
+
+**Gitignore Patterns (know before creating)**
+
+Automatically ignored (never committed):
+- `tests/` (root) - experimental tests
+- `tools/tmp/` - temporary tool outputs
+- `tools/debug_headless_output/` - debug artifacts
+- `tools/screenshots/` - UI test screenshots
+- `input/`, `output/`, `uploads/` - runtime data directories
+- `*.log`, `*.csv`, `*.pdf` - runtime files
+- `__pycache__/`, `.pytest_cache/`, `.mypy_cache/` - Python caches
+- `.env`, `google_service_account.json` - secrets (NEVER commit)
+- `node_modules/` - npm packages
+
+Selectively ignored (check .gitignore):
+- `webapp/parser/Context_Integration/Context_Library/log/` - context logs
+- `webapp/parser/Context_Integration/Context_Library/cache/` - context cache
+- `selenium-screenshots/` - Selenium artifacts
+
+**Location Decision Tree**
+
+Creating a test?
+  → Permanent parser/webapp test? → `webapp/tests/test_*.py`
+  → Quick experiment/validation? → `tests/test_*.py` (gitignored)
+  → CI/CD smoke test? → `tools/smoke_*.py`
+
+Creating documentation?
+  → Official feature/architecture doc? → `docs/FEATURES/`, `docs/CORE/`
+  → Temporary working notes? → `docs/temp/` (add to .gitignore if not exists)
+  → Session summary? → `docs/session-logs/`
+
+Creating a utility?
+  → Parser helper (CSV, NER, tables)? → `webapp/parser/utils/*.py`
+  → Webapp helper (auth, validators)? → `webapp/tools/*.py`
+  → Dev tool (smoke test, screenshot)? → `tools/*.py`
+  → Build/install script? → `scripts/*.sh` or `scripts/*.py`
+
+**Agent Execution Context**
+
+When running through an agent or subagent:
+- **Default cwd**: Repository root (`html_Parser_prototype/`)
+- **Avoid creating files at root** - always use proper subdirectories
+- **Check .gitignore** before creating test/temp files
+- **Use relative paths** from root: `webapp/tests/`, `docs/temp/`, `tools/tmp/`
+- **Never assume** files will be gitignored - verify first
+
+**Common Mistakes to Avoid**
+- ❌ Creating `test_*.py` at root (use `tests/` or `webapp/tests/`)
+- ❌ Creating `*.md` docs at root (use `docs/` or `docs/temp/`)
+- ❌ Creating utility scripts at root (use `tools/` or `scripts/`)
+- ❌ Creating folders like `tmp/`, `temp/`, `scratch/` at root
+- ❌ Leaving experimental files scattered (centralize in `tests/` or `tools/tmp/`)
+
+**Before Creating Any File:**
+1. Determine category: test, doc, tool, parser code, webapp code?
+2. Check appropriate subdirectory from rules above
+3. Verify gitignore status if temporary/experimental
+4. Use proper naming conventions (`test_*.py`, `smoke_*.py`, etc.)
+5. Never create at root unless it's a top-level config/entry point
 
 **NEW: Database Comparison (Jan 2026)**
 - URLs are now checked against Google Sheets + warehouse DB BEFORE parsing to avoid re-processing finalized data
-- See [DATABASE_COMPARISON.md](../docs/FEATURES/DATABASE_COMPARISON.md) for details
+- See [DATABASE_COMPARISON.md]`(../docs/FEATURES/DATABASE_COMPARISON.md)` for details
 - Controlled via `skip_database_check` kwarg (default: False = checks enabled)
 - URLs with existing data are marked `status="skipped_data_exists"` in `.processed_urls`
 
@@ -14,7 +142,7 @@
 - Selenium is now a **strategic NLP training data collector**, not just CAPTCHA fallback
 - Enabled by default (`ENABLE_SELENIUM_FALLBACK=true`) to capture entity-rich data from Cloudflare-protected government sites
 - New logs: `selenium_ner_training.jsonl`, `captcha_resolution_log.jsonl`, `captcha_transition_log.jsonl`
-- See [SELENIUM_NLP_INTEGRATION.md](../docs/FEATURES/SELENIUM_NLP_INTEGRATION.md) for architecture and Phase 2 roadmap
+- See [SELENIUM_NLP_INTEGRATION.md]`(../docs/FEATURES/SELENIUM_NLP_INTEGRATION.md)` for architecture and Phase 2 roadmap
 
 **Workflow (keep edits minimal)**
 - Locate the handler/format/state router before adding logic; reuse helpers in `utils/shared_logic.py`, `Context_Integration`, and `handlers/shared` instead of ad-hoc code.

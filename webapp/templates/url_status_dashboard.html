@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Status Dashboard - Smart Elections Parser</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ballot_lens_modern.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/quality_dashboard.css') }}">
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/chart.umd.js') }}"></script>
+    <style nonce="{{ g.csp_nonce }}">
+        .url-status-dashboard {
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+        
+        .dashboard-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text-strong);
+        }
+        
+        .dashboard-actions {
+            display: flex;
+            gap: 1rem;
+        }
+        
+        .filters {
+            background: var(--surface-1);
+            border: 1px solid var(--border-weak);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            min-width: 150px;
+        }
+        
+        .filter-group label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-subtle);
+        }
+        
+        .filter-group input,
+        .filter-group select {
+            padding: 0.5rem;
+            border: 1px solid var(--border-weak);
+            border-radius: var(--radius-sm);
+            background: var(--surface-0);
+            color: var(--text-strong);
+            font-size: 0.9rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: var(--surface-1);
+            border: 1px solid var(--border-weak);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .stat-card.success .stat-value {
+            color: var(--accent-success);
+        }
+        
+        .stat-card.error .stat-value {
+            color: var(--accent-danger);
+        }
+        
+        .stat-card.pending .stat-value {
+            color: var(--text-muted);
+        }
+        
+        .stat-card.production .stat-value {
+            color: #6ba5b0;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .chart-card {
+            background: var(--surface-1);
+            border: 1px solid var(--border-weak);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+        }
+        
+        .chart-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-strong);
+            margin-bottom: 1rem;
+        }
+        
+        .table-container {
+            background: var(--surface-1);
+            border: 1px solid var(--border-weak);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+        
+        .table-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-weak);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .table-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-strong);
+        }
+        
+        .table-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .url-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .url-table thead {
+            background: var(--surface-2);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .url-table th {
+            padding: 1rem;
+            text-align: left;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-strong);
+            border-bottom: 2px solid var(--border-weak);
+        }
+        
+        .url-table td {
+            padding: 0.75rem 1rem;
+            font-size: 0.9rem;
+            color: var(--text-subtle);
+            border-top: 1px solid var(--border-weak);
+        }
+        
+        .url-table tbody tr:hover {
+            background: var(--surface-2);
+        }
+        
+        .url-cell {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .url-cell a {
+            color: var(--accent-primary);
+            text-decoration: none;
+        }
+        
+        .url-cell a:hover {
+            text-decoration: underline;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        
+        .status-badge.success {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-success);
+        }
+        
+        .status-badge.fail,
+        .status-badge.error {
+            background: rgba(235, 79, 67, 0.2);
+            color: var(--accent-danger);
+        }
+        
+        .status-badge.pending {
+            background: rgba(148, 163, 184, 0.2);
+            color: var(--text-muted);
+        }
+        
+        .status-badge.partial,
+        .status-badge.cancelled {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--accent-warning);
+        }
+        
+        .status-badge.skipped_data_exists {
+            background: rgba(107, 165, 176, 0.2);
+            color: #6ba5b0;
+        }
+        
+        .production-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .production-badge.yes {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-success);
+        }
+        
+        .production-badge.no {
+            background: rgba(148, 163, 184, 0.2);
+            color: var(--text-muted);
+        }
+        
+        .btn-action {
+            padding: 0.25rem 0.75rem;
+            border: 1px solid var(--border-weak);
+            border-radius: var(--radius-sm);
+            background: var(--surface-2);
+            color: var(--text-strong);
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+        
+        .btn-action:hover {
+            background: var(--surface-3);
+            border-color: var(--accent-primary);
+        }
+        
+        .btn-action.primary {
+            background: var(--accent-primary);
+            color: #fff;
+            border-color: var(--accent-primary);
+        }
+        
+        .btn-action.primary:hover {
+            background: var(--accent-2);
+        }
+        
+        .loading-indicator {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+        }
+        
+        .spinner {
+            width: 3rem;
+            height: 3rem;
+            border: 0.3rem solid var(--surface-3);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            padding: 1.5rem;
+            border-top: 1px solid var(--border-weak);
+        }
+        
+        .pagination-info {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="url-status-dashboard">
+        <div class="dashboard-header">
+            <h1 class="dashboard-title">🔗 URL Status Dashboard</h1>
+            <div class="dashboard-actions">
+                <button class="btn-action" id="refreshBtn">🔄 Refresh</button>
+                <button class="btn-action" id="exportBtn">📥 Export CSV</button>
+                <button class="btn-action primary" id="backToParserBtn">← Back to Parser</button>
+            </div>
+        </div>
+        
+        <!-- Filters -->
+        <div class="filters">
+            <div class="filter-group">
+                <label for="statusFilter">Status:</label>
+                <select id="statusFilter">
+                    <option value="">All Statuses</option>
+                    <option value="success">✅ Success</option>
+                    <option value="fail">❌ Failed</option>
+                    <option value="error">⚠️ Error</option>
+                    <option value="pending">⏳ Pending</option>
+                    <option value="partial">🔸 Partial</option>
+                    <option value="cancelled">⏹️ Cancelled</option>
+                    <option value="skipped_data_exists">⏭️ Skipped (Exists)</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label for="stateFilter">State:</label>
+                <input type="text" id="stateFilter" placeholder="e.g., Arizona">
+            </div>
+            
+            <div class="filter-group">
+                <label for="countyFilter">County:</label>
+                <input type="text" id="countyFilter" placeholder="e.g., Maricopa">
+            </div>
+            
+            <div class="filter-group">
+                <label for="fromDateFilter">From Date:</label>
+                <input type="date" id="fromDateFilter">
+            </div>
+            
+            <div class="filter-group">
+                <label for="toDateFilter">To Date:</label>
+                <input type="date" id="toDateFilter">
+            </div>
+            
+            <div class="filter-group">
+                <label for="limitFilter">Limit:</label>
+                <input type="number" id="limitFilter" min="10" max="1000" value="100">
+            </div>
+            
+            <div class="filter-group" style="justify-content: flex-end;">
+                <label>&nbsp;</label>
+                <button class="btn-action primary" id="applyFiltersBtn">Apply Filters</button>
+            </div>
+        </div>
+        
+        <!-- Summary Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalCount">-</div>
+                <div class="stat-label">Total URLs</div>
+            </div>
+            <div class="stat-card success">
+                <div class="stat-value" id="successCount">-</div>
+                <div class="stat-label">Parsed (Success)</div>
+            </div>
+            <div class="stat-card error">
+                <div class="stat-value" id="failedCount">-</div>
+                <div class="stat-label">Failed / Error</div>
+            </div>
+            <div class="stat-card pending">
+                <div class="stat-value" id="pendingCount">-</div>
+                <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat-card production">
+                <div class="stat-value" id="productionCount">-</div>
+                <div class="stat-label">In Production</div>
+            </div>
+        </div>
+        
+        <!-- Charts -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3 class="chart-title">Status Breakdown</h3>
+                <canvas id="statusPieChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">Top States by Pending URLs</h3>
+                <canvas id="statesBarChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- URL Table -->
+        <div class="table-container">
+            <div class="table-header">
+                <h3 class="table-title">URL Details</h3>
+                <div class="table-actions">
+                    <span class="pagination-info" id="tableInfo">Loading...</span>
+                </div>
+            </div>
+            
+            <div id="loadingIndicator" class="loading-indicator">
+                <div class="spinner"></div>
+                <p>Loading URL status data...</p>
+            </div>
+            
+            <div id="tableWrapper" style="display: none; max-height: 600px; overflow-y: auto;">
+                <table class="url-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">#</th>
+                            <th>URL</th>
+                            <th>Label</th>
+                            <th>Parser Status</th>
+                            <th>Production</th>
+                            <th>Last Processed</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="urlTableBody">
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="pagination" id="paginationControls" style="display: none;">
+                <button class="btn-action" id="prevPageBtn">← Previous</button>
+                <span class="pagination-info" id="paginationInfo"></span>
+                <button class="btn-action" id="nextPageBtn">Next →</button>
+            </div>
+        </div>
+    </div>
+    
+    <script nonce="{{ g.csp_nonce }}">
+        let currentOffset = 0;
+        let currentLimit = 100;
+        let currentFilters = {};
+        let statusPieChart = null;
+        let statesBarChart = null;
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            loadDashboardData();
+        });
+        
+        function setupEventListeners() {
+            document.getElementById('applyFiltersBtn').addEventListener('click', () => {
+                currentOffset = 0;
+                loadDashboardData();
+            });
+            
+            document.getElementById('refreshBtn').addEventListener('click', () => {
+                loadDashboardData();
+            });
+            
+            document.getElementById('exportBtn').addEventListener('click', exportToCSV);
+            
+            document.getElementById('backToParserBtn').addEventListener('click', () => {
+                window.location.href = '/ballot_lens';
+            });
+            
+            document.getElementById('prevPageBtn').addEventListener('click', () => {
+                if (currentOffset > 0) {
+                    currentOffset -= currentLimit;
+                    loadDashboardData();
+                }
+            });
+            
+            document.getElementById('nextPageBtn').addEventListener('click', () => {
+                currentOffset += currentLimit;
+                loadDashboardData();
+            });
+        }
+        
+        function loadDashboardData() {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const tableWrapper = document.getElementById('tableWrapper');
+            
+            loadingIndicator.style.display = 'block';
+            tableWrapper.style.display = 'none';
+            
+            // Build query string with filters
+            const params = new URLSearchParams();
+            
+            const statusFilter = document.getElementById('statusFilter').value;
+            const stateFilter = document.getElementById('stateFilter').value;
+            const countyFilter = document.getElementById('countyFilter').value;
+            const fromDate = document.getElementById('fromDateFilter').value;
+            const toDate = document.getElementById('toDateFilter').value;
+            const limit = parseInt(document.getElementById('limitFilter').value) || 100;
+            
+            if (statusFilter) params.append('status', statusFilter);
+            if (stateFilter) params.append('state', stateFilter);
+            if (countyFilter) params.append('county', countyFilter);
+            if (fromDate) params.append('from_date', fromDate);
+            if (toDate) params.append('to_date', toDate);
+            params.append('limit', limit);
+            params.append('offset', currentOffset);
+            
+            currentLimit = limit;
+            currentFilters = {
+                status: statusFilter,
+                state: stateFilter,
+                county: countyFilter,
+                from_date: fromDate,
+                to_date: toDate
+            };
+            
+            fetch(`/api/url_status?${params.toString()}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        updateStatCards(data);
+                        updateCharts(data);
+                        updateTable(data);
+                        updatePagination(data);
+                        
+                        loadingIndicator.style.display = 'none';
+                        tableWrapper.style.display = 'block';
+                        document.getElementById('paginationControls').style.display = 'flex';
+                    } else {
+                        throw new Error(data.error || 'Failed to load data');
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading dashboard data:', err);
+                    loadingIndicator.innerHTML = `<p style="color: var(--accent-danger);">Error: ${err.message}</p>`;
+                });
+        }
+        
+        function updateStatCards(data) {
+            const statusBreakdown = data.status_breakdown || {};
+            
+            document.getElementById('totalCount').textContent = data.total || 0;
+            document.getElementById('successCount').textContent = statusBreakdown.success || 0;
+            document.getElementById('failedCount').textContent = (statusBreakdown.fail || 0) + (statusBreakdown.error || 0);
+            document.getElementById('pendingCount').textContent = statusBreakdown.pending || 0;
+            
+            // Count production URLs (use reconciled canonical_status)
+            const productionCount = data.entries.filter(e => e.canonical_status === 'production').length;
+            document.getElementById('productionCount').textContent = productionCount;
+            
+            document.getElementById('tableInfo').textContent = `Showing ${data.entries.length} of ${data.filtered} filtered (${data.total} total)`;
+        }
+        
+        function updateCharts(data) {
+            const statusBreakdown = data.status_breakdown || {};
+            
+            // Status Pie Chart
+            const pieCtx = document.getElementById('statusPieChart');
+            if (statusPieChart) statusPieChart.destroy();
+            
+            statusPieChart = new Chart(pieCtx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(statusBreakdown).map(s => s.charAt(0).toUpperCase() + s.slice(1)),
+                    datasets: [{
+                        data: Object.values(statusBreakdown),
+                        backgroundColor: [
+                            '#10b981', // success - green
+                            '#eb4f43', // fail - red
+                            '#f59e0b', // error - orange
+                            '#94a3b8', // pending - gray
+                            '#6ba5b0', // skipped - blue
+                            '#fbbf24', // partial/cancelled - yellow
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-strong')
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // States Bar Chart (top 10 states by pending count)
+            const statesPending = {};
+            data.entries.forEach(entry => {
+                if (entry.parser_status === 'pending' && entry.state) {
+                    statesPending[entry.state] = (statesPending[entry.state] || 0) + 1;
+                }
+            });
+            
+            const sortedStates = Object.entries(statesPending)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            const barCtx = document.getElementById('statesBarChart');
+            if (statesBarChart) statesBarChart.destroy();
+            
+            statesBarChart = new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: sortedStates.map(s => s[0]),
+                    datasets: [{
+                        label: 'Pending URLs',
+                        data: sortedStates.map(s => s[1]),
+                        backgroundColor: '#45818e'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-strong')
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-strong')
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updateTable(data) {
+            const tbody = document.getElementById('urlTableBody');
+            tbody.innerHTML = '';
+            
+            data.entries.forEach((entry, index) => {
+                const tr = document.createElement('tr');
+                
+                // Number
+                const tdNum = document.createElement('td');
+                tdNum.textContent = currentOffset + index + 1;
+                tr.appendChild(tdNum);
+                
+                // URL
+                const tdUrl = document.createElement('td');
+                tdUrl.className = 'url-cell';
+                const urlLink = document.createElement('a');
+                urlLink.href = entry.url;
+                urlLink.target = '_blank';
+                urlLink.rel = 'noopener noreferrer';
+                urlLink.textContent = entry.url;
+                urlLink.title = entry.url;
+                tdUrl.appendChild(urlLink);
+                tr.appendChild(tdUrl);
+                
+                // Label
+                const tdLabel = document.createElement('td');
+                tdLabel.className = 'url-cell';
+                tdLabel.textContent = entry.label || '-';
+                tdLabel.title = entry.label || '-';
+                tr.appendChild(tdLabel);
+                
+                // === Reconciled Status (PRIMARY) ===
+                const tdCanonical = document.createElement('td');
+                const canonicalBadge = document.createElement('span');
+                const statusInfo = entry.status_info || {};
+                canonicalBadge.className = `status-badge ${statusInfo.badge_class || 'secondary'}`;
+                canonicalBadge.textContent = statusInfo.icon ? `${statusInfo.icon} ${statusInfo.label}` : getStatusLabel(entry.canonical_status);
+                canonicalBadge.title = `Authority: ${statusInfo.authority || 'unknown'} | Parser: ${entry.parser_status}`;
+                tdCanonical.appendChild(canonicalBadge);
+                tr.appendChild(tdCanonical);
+                
+                // Production Status
+                const tdProd = document.createElement('td');
+                const prodBadge = document.createElement('span');
+                // If canonical status is 'production', it's definitive
+                let isProd = entry.canonical_status === 'production';
+                prodBadge.className = `production-badge ${isProd ? 'yes' : 'no'}`;
+                prodBadge.textContent = isProd ? `📦 ${entry.production_source || 'finalized'}` : '○ Not Prod';
+                tdProd.appendChild(prodBadge);
+                tr.appendChild(tdProd);
+                
+                // Last Processed
+                const tdDate = document.createElement('td');
+                if (entry.last_processed) {
+                    const date = new Date(entry.last_processed);
+                    tdDate.textContent = date.toLocaleDateString();
+                } else {
+                    tdDate.textContent = '-';
+                }
+                tr.appendChild(tdDate);
+                
+                // Actions (only show parse button if appropriate)
+                const tdActions = document.createElement('td');
+                const shouldShowParseBtn = [
+                    'pending', 'fail', 'error', 'download_needed'
+                ].includes(entry.canonical_status) && entry.canonical_status !== 'production';
+                
+                if (shouldShowParseBtn) {
+                    const reParseBtn = document.createElement('button');
+                    reParseBtn.className = 'btn-action primary';
+                    reParseBtn.textContent = '🔄 Parse';
+                    reParseBtn.title = `Re-parse this URL (Current: ${entry.canonical_status})`;
+                    reParseBtn.onclick = () => reParseUrl(entry.url);
+                    tdActions.appendChild(reParseBtn);
+                } else if (entry.canonical_status !== 'pending' && entry.canonical_status !== 'production') {
+                    // Show status reason for non-parse-able statuses
+                    const statusReason = document.createElement('span');
+                    statusReason.className = 'status-note';
+                    statusReason.textContent = `(${entry.canonical_status})`;
+                    tdActions.appendChild(statusReason);
+                }
+                tr.appendChild(tdActions);
+                
+                tbody.appendChild(tr);
+            });
+        }
+        
+        function updatePagination(data) {
+            const paginationInfo = document.getElementById('paginationInfo');
+            const prevBtn = document.getElementById('prevPageBtn');
+            const nextBtn = document.getElementById('nextPageBtn');
+            
+            const start = currentOffset + 1;
+            const end = Math.min(currentOffset + data.entries.length, data.filtered);
+            paginationInfo.textContent = `${start}-${end} of ${data.filtered}`;
+            
+            prevBtn.disabled = currentOffset === 0;
+            nextBtn.disabled = currentOffset + data.entries.length >= data.filtered;
+        }
+        
+        function getStatusLabel(status) {
+            const labels = {
+                'success': '✅ Success',
+                'fail': '❌ Failed',
+                'error': '⚠️ Error',
+                'pending': '⏳ Pending',
+                'partial': '🔸 Partial',
+                'cancelled': '⏹️ Cancelled',
+                'skipped_data_exists': '⏭️ Skipped'
+            };
+            return labels[status] || status;
+        }
+        
+        function reParseUrl(url) {
+            if (confirm(`Re-parse this URL?\n\n${url}`)) {
+                // Navigate to ballot_lens with this URL pre-filled
+                window.location.href = `/ballot_lens?url=${encodeURIComponent(url)}`;
+            }
+        }
+        
+        function exportToCSV() {
+            // Build export URL with current filters
+            const params = new URLSearchParams();
+            Object.entries(currentFilters).forEach(([key, value]) => {
+                if (value) params.append(key, value);
+            });
+            params.append('limit', 10000); // Export all filtered results
+            params.append('format', 'csv');
+            
+            window.open(`/api/url_status/export?${params.toString()}`, '_blank');
+        }
+    </script>
+</body>
+</html>

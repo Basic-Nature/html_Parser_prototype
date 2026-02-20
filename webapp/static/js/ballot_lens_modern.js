@@ -7583,6 +7583,7 @@ const UrlListManager = (() => {
 
       if (!response.ok) {
         console.warn('[UrlListManager] Failed to fetch state/county mappings:', response.status);
+        mappingsFetched = true; // Don't retry on auth failure
         return;
       }
 
@@ -7591,12 +7592,20 @@ const UrlListManager = (() => {
         stateCountyMappings.states = data.states || [];
         stateCountyMappings.counties = data.counties || {};
         mappingsFetched = true;
-        console.log('[UrlListManager] Loaded authoritative mappings:', data.total_states, 'states,', data.total_counties, 'counties');
+        
+        if (data.total_states === 0 && data.note) {
+          // Graceful degradation: no auth, using URL-based fallback
+          console.log('[UrlListManager] Using URL-based state/county detection (no auth)');
+        } else {
+          console.log('[UrlListManager] Loaded authoritative mappings:', data.total_states, 'states,', data.total_counties, 'counties');
+        }
       } else {
         console.warn('[UrlListManager] State/county mappings fetch failed:', data.error);
+        mappingsFetched = true; // Don't retry
       }
     } catch (error) {
       console.warn('[UrlListManager] Error fetching state/county mappings:', error);
+      mappingsFetched = true; // Don't retry
     }
   }
 
@@ -9978,6 +9987,421 @@ document.addEventListener('DOMContentLoaded', () => {
     // Connect socket to receive broadcast events (e.g., health_socket_test)
     if (!socket.connected) {
       socket.connect();
+    }
+
+    // ========== WORKLIST IMPORT MODAL ==========
+    const importWorklistBtn = document.getElementById('importWorklistBtn');
+    const importWorklistModal = document.getElementById('importWorklistModal');
+    const worklistTableBody = document.getElementById('worklistTableBody');
+    const worklistLoadingIndicator = document.getElementById('worklistLoadingIndicator');
+    const worklistErrorAlert = document.getElementById('worklistErrorAlert');
+    const worklistErrorMessage = document.getElementById('worklistErrorMessage');
+    const worklistTableContainer = document.getElementById('worklistTableContainer');
+    const worklistSelectionControls = document.getElementById('worklistSelectionControls');
+    const selectAllWorklistBtn = document.getElementById('selectAllWorklistBtn');
+    const clearWorklistSelectionBtn = document.getElementById('clearWorklistSelectionBtn');
+    const selectAllWorklistCheckbox = /** @type {HTMLInputElement | null} */ (document.getElementById('selectAllWorklistCheckbox'));
+    const importSelectedUrlsBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById('importSelectedUrlsBtn'));
+    const worklistSelectionCount = document.getElementById('worklistSelectionCount');
+
+    let worklistData = [];
+    let urlValidationCache = {};
+
+    /**
+     * Open worklist import modal and fetch data
+     */
+    function openWorklistModal() {
+      if (!importWorklistModal) return;
+      
+      // Reset state
+      worklistData = [];
+      urlValidationCache = {};
+      if (worklistTableBody) worklistTableBody.innerHTML = '';
+      if (worklistErrorAlert) worklistErrorAlert.classList.add('hidden');
+      if (worklistTableContainer) worklistTableContainer.classList.add('hidden');
+      if (worklistSelectionControls) worklistSelectionControls.classList.add('hidden');
+      if (worklistLoadingIndicator) worklistLoadingIndicator.classList.remove('hidden');
+      if (importSelectedUrlsBtn) importSelectedUrlsBtn.disabled = true;
+      
+      // Show modal
+      importWorklistModal.classList.remove('hidden');
+      
+      // Fetch worklist data
+      fetch('/api/election_data/worklist/overview')
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          return res.json();
+        })
+        .then(data => {
+          if (worklistLoadingIndicator) worklistLoadingIndicator.classList.add('hidden');
+          
+          if (!data.success || !Array.isArray(data.urls)) {
+            throw new Error(data.error || 'Invalid response format');
+          }
+          
+          worklistData = data.urls;
+          populateWorklistTable(worklistData);
+          
+          if (worklistTableContainer) worklistTableContainer.classList.remove('hidden');
+          if (worklistSelectionControls) worklistSelectionControls.classList.remove('hidden');
+        })
+        .catch(err => {
+          console.error('[Worklist Import] Fetch error:', err);
+          if (worklistLoadingIndicator) worklistLoadingIndicator.classList.add('hidden');
+          if (worklistErrorMessage) worklistErrorMessage.textContent = err.message;
+          if (worklistErrorAlert) worklistErrorAlert.classList.remove('hidden');
+        });
+    }
+
+    /**
+     * Populate worklist table with rows
+     */
+    function populateWorklistTable(data) {
+      if (!worklistTableBody) return;
+      
+      worklistTableBody.innerHTML = '';
+      
+      if (!data || data.length === 0) {
+        worklistTableBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No worklist entries found</td></tr>';
+        return;
+      }
+      
+      data.forEach((row, index) => {
+        const tr = document.createElement('tr');
+        tr.dataset.rowIndex = index;
+        
+        // Checkbox
+        const tdCheckbox = document.createElement('td');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'worklist-row-checkbox';
+        checkbox.dataset.rowIndex = index;
+        checkbox.addEventListener('change', updateSelectionCount);
+        tdCheckbox.appendChild(checkbox);
+        tr.appendChild(tdCheckbox);
+        
+        // Priority
+        const tdPriority = document.createElement('td');
+        tdPriority.textContent = row.Priority || '-';
+        tdPriority.className = 'text-center';
+        tr.appendChild(tdPriority);
+        
+        // State
+        const tdState = document.createElement('td');
+        tdState.textContent = row.State || '-';
+        tr.appendChild(tdState);
+        
+        // Race
+        const tdRace = document.createElement('td');
+        tdRace.textContent = row.Race || '-';
+        tdRace.style.maxWidth = '200px';
+        tdRace.style.overflow = 'hidden';
+        tdRace.style.textOverflow = 'ellipsis';
+        tdRace.style.whiteSpace = 'nowrap';
+        tdRace.title = row.Race || '-';
+        tr.appendChild(tdRace);
+        
+        // Year
+        const tdYear = document.createElement('td');
+        tdYear.textContent = row.Year || '-';
+        tdYear.className = 'text-center';
+        tr.appendChild(tdYear);
+        
+        // Status placeholder (will be populated after validation)
+        const tdStatus = document.createElement('td');
+        tdStatus.className = 'worklist-status-cell';
+        tdStatus.innerHTML = '<span class="badge bg-secondary">Checking...</span>';
+        tr.appendChild(tdStatus);
+        
+        // Download 1
+        const tdDownload1 = document.createElement('td');
+        if (row['Download 1']) {
+          const link = document.createElement('a');
+          link.href = row['Download 1'];
+          link.textContent = 'Link 1';
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.className = 'text-primary';
+          tdDownload1.appendChild(link);
+        } else {
+          tdDownload1.textContent = '-';
+        }
+        tr.appendChild(tdDownload1);
+        
+        // Download 2
+        const tdDownload2 = document.createElement('td');
+        if (row['Download 2']) {
+          const link = document.createElement('a');
+          link.href = row['Download 2'];
+          link.textContent = 'Link 2';
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.className = 'text-primary';
+          tdDownload2.appendChild(link);
+        } else {
+          tdDownload2.textContent = '-';
+        }
+        tr.appendChild(tdDownload2);
+        
+        // Source Link
+        const tdSourceLink = document.createElement('td');
+        if (row['Source Link']) {
+          const link = document.createElement('a');
+          link.href = row['Source Link'];
+          link.textContent = 'Source';
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.className = 'text-primary';
+          tdSourceLink.appendChild(link);
+        } else {
+          tdSourceLink.textContent = '-';
+        }
+        tr.appendChild(tdSourceLink);
+        
+        worklistTableBody.appendChild(tr);
+      });
+      
+      // Validate URLs after populating table
+      validateWorklistUrls();
+    }
+
+    /**
+     * Extract all unique URLs from worklist data
+     */
+    function extractWorklistUrls(data) {
+      const urls = new Set();
+      
+      data.forEach(row => {
+        if (row['Download 1']) urls.add(row['Download 1'].trim());
+        if (row['Download 2']) urls.add(row['Download 2'].trim());
+        if (row['Source Link']) urls.add(row['Source Link'].trim());
+      });
+      
+      return Array.from(urls).filter(url => url.length > 0);
+    }
+
+    /**
+     * Validate worklist URLs against existing finalized data
+     */
+    let validateUrlsTimeout = null;
+    function validateWorklistUrls() {
+      // Debounce validation calls
+      clearTimeout(validateUrlsTimeout);
+      validateUrlsTimeout = setTimeout(() => {
+        const urls = extractWorklistUrls(worklistData);
+        
+        if (urls.length === 0) return;
+        
+        fetch('/api/validate_urls', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ urls: urls })
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success && Array.isArray(data.results)) {
+              // Cache validation results
+              data.results.forEach(result => {
+                urlValidationCache[result.url] = result;
+              });
+              
+              // Update status badges in table
+              updateWorklistTableStatuses();
+            }
+          })
+          .catch(err => {
+            console.error('[Worklist Import] Validation error:', err);
+          });
+      }, 500);
+    }
+
+    /**
+     * Update status badges in worklist table based on validation results
+     */
+    function updateWorklistTableStatuses() {
+      if (!worklistTableBody) return;
+      
+      const rows = worklistTableBody.querySelectorAll('tr');
+      rows.forEach(row => {
+        const rowIndex = parseInt(row.dataset.rowIndex, 10);
+        if (isNaN(rowIndex)) return;
+        
+        const rowData = worklistData[rowIndex];
+        if (!rowData) return;
+        
+        const statusCell = row.querySelector('.worklist-status-cell');
+        if (!statusCell) return;
+        
+        // Check all 3 URL columns
+        const urls = [
+          rowData['Download 1'],
+          rowData['Download 2'],
+          rowData['Source Link']
+        ].filter(url => url && url.trim());
+        
+        if (urls.length === 0) {
+          statusCell.innerHTML = '<span class="badge bg-secondary">No URLs</span>';
+          return;
+        }
+        
+        // Check if any URL exists in finalized data
+        let hasFinalized = false;
+        let hasDuplicate = false;
+        let metadata = null;
+        
+        for (const url of urls) {
+          const result = urlValidationCache[url.trim()];
+          if (result && result.exists) {
+            hasFinalized = true;
+            metadata = result.metadata;
+            if (result.source === 'google_sheets') hasDuplicate = true;
+            break;
+          }
+        }
+        
+        if (hasFinalized) {
+          const source = metadata && metadata.state ? `${metadata.state}` : 'Existing data';
+          const tooltip = metadata ? `State: ${metadata.state || 'N/A'}, County: ${metadata.county || 'N/A'}, Contest: ${metadata.contest || 'N/A'}` : source;
+          statusCell.innerHTML = `<span class="badge bg-success" title="${tooltip}">✓ Finalized</span>`;
+        } else if (hasDuplicate) {
+          statusCell.innerHTML = '<span class="badge bg-warning text-dark" title="Duplicate entry">⚠ Duplicate</span>';
+        } else {
+          statusCell.innerHTML = '<span class="badge bg-secondary" title="New URL, ready to parse">○ New</span>';
+        }
+      });
+    }
+
+    /**
+     * Update selection count display
+     */
+    function updateSelectionCount() {
+      const checkboxes = /** @type {NodeListOf<HTMLInputElement>} */ (document.querySelectorAll('.worklist-row-checkbox'));
+      const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+      
+      if (worklistSelectionCount) {
+        worklistSelectionCount.textContent = `${checkedCount} selected`;
+      }
+      
+      if (importSelectedUrlsBtn) {
+        importSelectedUrlsBtn.disabled = checkedCount === 0;
+      }
+      
+      // Update select all checkbox state
+      if (selectAllWorklistCheckbox) {
+        selectAllWorklistCheckbox.checked = checkedCount > 0 && checkedCount === checkboxes.length;
+        selectAllWorklistCheckbox.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+      }
+    }
+
+    /**
+     * Select all worklist rows
+     */
+    function selectAllWorklistRows() {
+      const checkboxes = /** @type {NodeListOf<HTMLInputElement>} */ (document.querySelectorAll('.worklist-row-checkbox'));
+      checkboxes.forEach(cb => { cb.checked = true; });
+      updateSelectionCount();
+    }
+
+    /**
+     * Clear all worklist selections
+     */
+    function clearWorklistSelection() {
+      const checkboxes = /** @type {NodeListOf<HTMLInputElement>} */ (document.querySelectorAll('.worklist-row-checkbox'));
+      checkboxes.forEach(cb => { cb.checked = false; });
+      updateSelectionCount();
+    }
+
+    /**
+     * Import selected URLs to the URL input field
+     */
+    function importSelectedUrls() {
+      const checkboxes = /** @type {NodeListOf<HTMLInputElement>} */ (document.querySelectorAll('.worklist-row-checkbox:checked'));
+      const selectedUrls = new Set();
+      
+      checkboxes.forEach(cb => {
+        const rowIndex = parseInt(cb.dataset.rowIndex, 10);
+        if (isNaN(rowIndex)) return;
+        
+        const rowData = worklistData[rowIndex];
+        if (!rowData) return;
+        
+        // Add all 3 URL columns
+        if (rowData['Download 1']) selectedUrls.add(rowData['Download 1'].trim());
+        if (rowData['Download 2']) selectedUrls.add(rowData['Download 2'].trim());
+        if (rowData['Source Link']) selectedUrls.add(rowData['Source Link'].trim());
+      });
+      
+      if (selectedUrls.size === 0) {
+        console.warn('[Worklist Import] No URLs selected');
+        return;
+      }
+      
+      // Get current URLs from input field
+      const urlInput = /** @type {HTMLTextAreaElement | null} */ (document.getElementById('urls'));
+      if (!urlInput) {
+        console.error('[Worklist Import] URL input field not found');
+        return;
+      }
+      
+      const currentUrls = urlInput.value.split('\n').map(u => u.trim()).filter(u => u.length > 0);
+      const mergedUrls = new Set([...currentUrls, ...selectedUrls]);
+      
+      // Update input field
+      urlInput.value = Array.from(mergedUrls).join('\n');
+      
+      // Close modal
+      if (importWorklistModal) importWorklistModal.classList.add('hidden');
+      
+      // Show success toast
+      if (typeof showToast === 'function') {
+        showToast(`Added ${selectedUrls.size} URLs from worklist`, 'success');
+      }
+      
+      console.log(`[Worklist Import] Added ${selectedUrls.size} URLs to input field`);
+    }
+
+    // Event listeners
+    if (importWorklistBtn) {
+      importWorklistBtn.addEventListener('click', openWorklistModal);
+    }
+
+    if (selectAllWorklistBtn) {
+      selectAllWorklistBtn.addEventListener('click', selectAllWorklistRows);
+    }
+
+    if (clearWorklistSelectionBtn) {
+      clearWorklistSelectionBtn.addEventListener('click', clearWorklistSelection);
+    }
+
+    if (selectAllWorklistCheckbox) {
+      selectAllWorklistCheckbox.addEventListener('change', (e) => {
+        const checkboxes = /** @type {NodeListOf<HTMLInputElement>} */ (document.querySelectorAll('.worklist-row-checkbox'));
+        const target = /** @type {HTMLInputElement} */ (e.target);
+        checkboxes.forEach(cb => { cb.checked = target.checked; });
+        updateSelectionCount();
+      });
+    }
+
+    if (importSelectedUrlsBtn) {
+      importSelectedUrlsBtn.addEventListener('click', importSelectedUrls);
+    }
+
+    // Close modal on backdrop click or close button
+    if (importWorklistModal) {
+      importWorklistModal.addEventListener('click', (e) => {
+        if (e.target === importWorklistModal) {
+          importWorklistModal.classList.add('hidden');
+        }
+      });
+
+      const closeButtons = importWorklistModal.querySelectorAll('[data-action="modal-hide"]');
+      closeButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          importWorklistModal.classList.add('hidden');
+        });
+      });
     }
   
   console.log('[Parser UI] Initialization complete');

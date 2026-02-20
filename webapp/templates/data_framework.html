@@ -13,6 +13,8 @@
           data-curated-url="{{ url_for('api_data_framework_curated') }}"
           data-priority-url="{{ url_for('api_data_framework_warehouse_status') }}"
           data-preview-url="{{ url_for('api_data_framework_preview') }}"
+          data-dblite-finalized-url="{{ url_for('api_election_data_db_lite_finalized') }}"
+          data-dblite-downballot-url="{{ url_for('api_election_data_db_lite_down_ballot') }}"
           {% if csrf_token %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
     <!-- Bootstrap -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
@@ -24,6 +26,7 @@
         <a href="{{ url_for('data_framework') }}" class="active">Data Framework</a>
         <a href="{{ url_for('ballot_lens') }}">Run Parser</a>
         <a href="{{ url_for('history') }}">History</a>
+      <a href="{{ url_for('worklist') }}">Worklist</a>
         <a href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer">About</a>
     </nav>
     <div class="container-main">
@@ -110,6 +113,11 @@
               </header>
               <div class="framework-panel-body">
                 <div class="viz-filters" aria-label="Visualization filters">
+                  <label for="vizDatasetSelect" class="viz-label">Dataset</label>
+                  <select id="vizDatasetSelect" aria-label="Visualization dataset">
+                    <option value="finalized" selected>Finalized (DB-Lite)</option>
+                    <option value="down_ballot">Down-ballot (DB-Lite)</option>
+                  </select>
                   <label for="vizYearSelect" class="viz-label">Year</label>
                   <select id="vizYearSelect" aria-label="Visualization year"></select>
                   <label for="vizStateSelect" class="viz-label">State</label>
@@ -132,8 +140,22 @@
                     <option value="">All parties</option>
                     <option value="Dem">Dem</option>
                     <option value="Rep">Rep</option>
+                    <option value="Lib">Lib</option>
+                    <option value="Grn">Grn</option>
+                    <option value="Ind">Ind</option>
+                    <option value="Nonpart">Nonpart</option>
+                    <option value="Write-In">Write-In</option>
                     <option value="Other">Other</option>
                   </select>
+                </div>
+                <div class="viz-playback-controls" aria-label="Visualization playback controls">
+                  <button type="button" class="btn action" id="vizPrevStateBtn" aria-label="Previous state">◀ Prev</button>
+                  <button type="button" class="btn action" id="vizAutoToggleBtn" aria-label="Pause or start auto cycling">Pause</button>
+                  <button type="button" class="btn action" id="vizNextStateBtn" aria-label="Next state">Next ▶</button>
+                  <label class="viz-overlay-toggle" for="vizDropoffOverlayToggle">
+                    <input id="vizDropoffOverlayToggle" type="checkbox" aria-label="Overlay drop-off data">
+                    <span>Overlay drop-off</span>
+                  </label>
                 </div>
                 <div class="viz-auto-hint" id="vizAutoHint" aria-live="polite">Auto-rotate paused</div>
                 <div class="viz-preview-status" id="vizPreviewStatus" aria-live="polite"></div>
@@ -180,12 +202,33 @@
                           <option value="Rep">Rep</option>
                           <option value="Other">Other</option>
                         </select>
+                        <label for="dropoffScaleSelect" class="focus-label">Scale</label>
+                        <select id="dropoffScaleSelect" aria-label="Drop-off scale">
+                          <option value="absolute" selected>Absolute</option>
+                          <option value="adjusted">Adjusted (small county safe)</option>
+                        </select>
+                        <label for="dropoffCountyLimitSelect" class="focus-label">County view</label>
+                        <select id="dropoffCountyLimitSelect" aria-label="County view limit">
+                          <option value="25">Top 25</option>
+                          <option value="50" selected>Top 50</option>
+                          <option value="100">Top 100</option>
+                          <option value="all">All counties</option>
+                        </select>
+                        <label for="dropoffOrderSelect" class="focus-label">County order</label>
+                        <select id="dropoffOrderSelect" aria-label="County ordering strategy">
+                          <option value="turnout_weighted" selected>Turnout-weighted</option>
+                          <option value="absolute">Absolute delta</option>
+                          <option value="alphabetical">Alphabetical</option>
+                        </select>
                         <div class="dropoff-toggle" role="group" aria-label="Drop-off metric">
                           <button type="button" class="btn action is-active" id="dropoffMetricPercent">Percent</button>
                           <button type="button" class="btn action" id="dropoffMetricRaw">Raw votes</button>
                         </div>
                       </div>
-                      <div class="dropoff-chart" id="dropoffChart" aria-live="polite"></div>
+                      <div class="dropoff-chart" id="dropoffChart" aria-live="polite">
+                        <div class="dropoff-graph" id="dropoffChartVotes"></div>
+                        <div class="dropoff-graph" id="dropoffChartPercent"></div>
+                      </div>
                       <div class="dropoff-summary" id="dropoffSummary">Select a county to see drop-off totals.</div>
                     </div>
                   </article>
@@ -240,6 +283,17 @@
                         </div>
                     </div>
                     <div class="warehouse-status-strip" id="warehousePriorityStatus" aria-live="polite"></div>
+                    <div class="warehouse-priority-controls" aria-label="Priority focus">
+                      <label for="priorityStateSelect" class="sr-only">Priority state</label>
+                      <select id="priorityStateSelect" aria-label="Priority state">
+                        <option value="">All states</option>
+                      </select>
+                      <label for="priorityYearSelect" class="sr-only">Priority year</label>
+                      <select id="priorityYearSelect" aria-label="Priority year">
+                        <option value="">All years</option>
+                      </select>
+                      <div class="warehouse-priority-meta" id="warehousePriorityMeta" aria-live="polite"></div>
+                    </div>
 
                     <table id="data-table" class="neon-grid" aria-live="polite">
                         <thead>
@@ -305,17 +359,20 @@
           </section>
 
           <aside class="framework-column framework-column-right" aria-label="Ghost framework placeholder">
-            <article class="framework-panel ghost-panel">
+            <article class="framework-panel ghost-panel" id="ghostPanel">
               <header class="framework-panel-header">
                 <div>
                   <h2>Future Expansion</h2>
                   <p class="framework-panel-subtitle">Placeholder for dynamic data visualizations and analytics.</p>
                 </div>
-                <div class="framework-panel-badges">
-                  <span class="badge badge-ghost">Coming soon</span>
+                <div class="framework-panel-actions">
+                  <div class="framework-panel-badges">
+                    <span class="badge badge-ghost">Coming soon</span>
+                  </div>
+                  <button id="ghostPanelToggle" type="button" class="btn action" aria-label="Minimize placeholder">−</button>
                 </div>
               </header>
-              <div class="framework-panel-body">
+              <div class="framework-panel-body ghost-panel-body" id="ghostPanelBody">
                 <div class="ghost-content">
                   <p>This space is reserved for:</p>
                   <ul>
