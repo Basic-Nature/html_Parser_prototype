@@ -5,7 +5,13 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from ..utils.browser_utils import SCROLL_METRIC_KEYS, autoscroll_until_stable
+from ..utils.browser_utils import (
+    SCROLL_METRIC_KEYS,
+    autoscroll_until_stable,
+    safe_click_with_retry,
+    safe_get_attribute,
+    safe_inner_text,
+)
 from ..utils.html_scanner import scan_html_for_context
 from ..utils.logger_singleton import logger
 from .keyword_bias import load_keyword_bias
@@ -111,9 +117,26 @@ class NavigationInstructionRunner:
             if action == "wait_for_selector":
                 selector = step.get("selector")
                 timeout = step.get("timeout_ms")
+                optional = bool(step.get("optional"))
                 if selector:
                     with self._page_lock:
-                        page.wait_for_selector(selector, timeout=timeout)
+                        wait_ok = False
+                        last_wait_error = None
+                        for candidate in self._selector_candidates(selector):
+                            try:
+                                page.wait_for_selector(candidate, timeout=timeout)
+                                wait_ok = True
+                                break
+                            except Exception as wait_exc:
+                                last_wait_error = wait_exc
+                        if not wait_ok:
+                            if optional:
+                                self._record_trace(trace, action, "skipped", selector=selector, reason="optional_step_not_found")
+                                return None
+                            if self._should_soft_skip_selector_failure(selector) and self._has_results_ready(page):
+                                self._record_trace(trace, action, "skipped", selector=selector, reason="results_already_ready")
+                                return None
+                            raise RuntimeError(last_wait_error or f"wait_for_selector failed for {selector}")
                     self._record_trace(trace, action, "ok", selector=selector, timeout_ms=timeout)
             elif action == "wait_for_load_state":
                 state = step.get("state") or "networkidle"
@@ -123,9 +146,34 @@ class NavigationInstructionRunner:
                 self._record_trace(trace, action, "ok", state=state, timeout_ms=timeout)
             elif action == "click":
                 selector = step.get("selector")
+                optional = bool(step.get("optional"))
                 if selector:
                     with self._page_lock:
-                        page.click(selector, timeout=step.get("timeout_ms"))
+                        click_ok = False
+                        for candidate in self._selector_candidates(selector):
+                            click_ok = safe_click_with_retry(
+                                page=page,
+                                selector=candidate,
+                                max_retries=4,
+                                timeout=step.get("timeout_ms") or 8000,
+                                delay_between=0.25,
+                                scroll_into_view=True,
+                                soft_fail=optional,
+                                session_id=session_id,
+                                logger=logger,
+                            )
+                            if click_ok:
+                                break
+                        if not click_ok:
+                            click_ok = self._click_by_text_discovery(page, selector, session_id)
+                        if not click_ok:
+                            if optional:
+                                self._record_trace(trace, action, "skipped", selector=selector, reason="optional_step_not_found")
+                                return None
+                            if self._should_soft_skip_selector_failure(selector) and self._has_results_ready(page):
+                                self._record_trace(trace, action, "skipped", selector=selector, reason="results_already_ready")
+                                return None
+                            raise RuntimeError(f"click failed for selector: {selector}")
                     wait_after = step.get("wait_after_ms")
                     if wait_after:
                         with self._page_lock:
@@ -206,6 +254,85 @@ class NavigationInstructionRunner:
             })
             self._record_trace(trace, action, "error", error=str(exc))
         return None
+
+    def _selector_candidates(self, selector: str) -> List[str]:
+        candidates = [selector]
+        lowered = selector.lower()
+        if "county" in lowered:
+            candidates.extend([
+                "button:has-text('County'), [role='tab']:has-text('County'), a:has-text('County'), [aria-label*='County' i], [title*='County' i]",
+                "text=/.*County.*/i",
+            ])
+        if "precinct" in lowered:
+            candidates.extend([
+                "button:has-text('Precinct'), [role='tab']:has-text('Precinct'), a:has-text('Precinct'), [aria-label*='Precinct' i], [title*='Precinct' i]",
+                "text=/.*Precinct.*/i",
+            ])
+        seen = set()
+        deduped: List[str] = []
+        for cand in candidates:
+            if cand and cand not in seen:
+                seen.add(cand)
+                deduped.append(cand)
+        return deduped
+
+    @staticmethod
+    def _should_soft_skip_selector_failure(selector: str) -> bool:
+        lowered = (selector or "").lower()
+        return ("county" in lowered) or ("precinct" in lowered)
+
+    def _has_results_ready(self, page) -> bool:
+        try:
+            checks = [
+                "table, [role='table']",
+                "a[href*='export'], a[href$='.csv'], a[href$='.json'], a[href$='.pdf'], a[href$='.xlsx'], a[href$='.xls']",
+                "button:has-text('Download'), a:has-text('Download')",
+            ]
+            for selector in checks:
+                try:
+                    loc = page.locator(selector)
+                    if hasattr(loc, "count") and loc.count() > 0:
+                        return True
+                except Exception:
+                    continue
+            return False
+        except Exception:
+            return False
+
+    def _click_by_text_discovery(self, page, selector: str, session_id: Optional[str]) -> bool:
+        lowered = (selector or "").lower()
+        tokens: List[str] = []
+        if "county" in lowered:
+            tokens.append("county")
+        if "precinct" in lowered:
+            tokens.append("precinct")
+        if not tokens:
+            return False
+        try:
+            elements = page.query_selector_all("button, [role='tab'], a, [aria-label], [title]") or []
+        except Exception:
+            elements = []
+        for element in elements:
+            try:
+                text_value = (safe_inner_text(element, logger) or "").strip().lower()
+                aria_value = (safe_get_attribute(element, "aria-label", logger) or "").strip().lower()
+                title_value = (safe_get_attribute(element, "title", logger) or "").strip().lower()
+                haystack = " ".join([text_value, aria_value, title_value])
+                if any(token in haystack for token in tokens):
+                    if safe_click_with_retry(
+                        page=page,
+                        element=element,
+                        max_retries=3,
+                        timeout=7000,
+                        delay_between=0.2,
+                        scroll_into_view=True,
+                        session_id=session_id,
+                        logger=logger,
+                    ):
+                        return True
+            except Exception:
+                continue
+        return False
 
     def _run_parallel(self, steps, page, context, coordinator, session_id, trace):
         if not steps:
@@ -293,7 +420,18 @@ class NavigationInstructionRunner:
                 with self._page_lock:
                     handle = page.query_selector(selector)
                     if handle:
-                        handle.click()
+                        clicked = safe_click_with_retry(
+                            page=page,
+                            element=handle,
+                            max_retries=4,
+                            timeout=max_wait_ms or 8000,
+                            delay_between=0.25,
+                            scroll_into_view=True,
+                            session_id=session_id,
+                            logger=logger,
+                        )
+                        if not clicked:
+                            raise RuntimeError(f"keyword bias click failed: {selector}")
                         if max_wait_ms:
                             page.wait_for_timeout(max_wait_ms)
                         if autoscroll_ms:

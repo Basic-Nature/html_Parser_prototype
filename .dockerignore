@@ -1,0 +1,45 @@
+# Keep build context minimal and prevent secret/config leakage
+.git
+.github
+.vscode
+.idea
+
+# Local/runtime secrets and env files
+.env
+.env.*
+.env.template
+google_service_account.json
+*_service_account.json
+credentials.json
+
+# Python caches/artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local virtual envs
+.venv/
+venv/
+env/
+
+# Runtime data and generated outputs
+input/
+output/
+uploads/
+tmp/
+cache/
+*.log
+*.csv
+*.pdf
+
+# Local/auxiliary assets not needed in image build context
+docs/
+tests/
+tools/debug_headless_output/
+tools/screenshots/
+hint-report/
+node_modules/

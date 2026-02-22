@@ -51,10 +51,10 @@
                 <a href="{{ url_for('worklist') }}" class="nav-link" title="Smart Elections Worklist">Worklist</a>
                 <a href="/history" class="nav-link" title="Run History">History</a>
                 <a href="/quick_reference" class="nav-link" title="Quick Reference Guide">Reference</a>
-                <!-- Overflow "More" toggle (populated by JS when links overflow) -->
-                <button id="btnNavMore" class="nav-more-toggle" aria-haspopup="true" aria-controls="navMoreDropdown" aria-expanded="false" title="More" aria-label="More navigation">⋯</button>
-                <div id="navMoreDropdown" class="nav-more-dropdown" role="menu" aria-hidden="true" tabindex="-1" data-anchor-id="btnNavMore" hidden></div>
               </div>
+              <!-- Overflow "More" toggle & dropdown (positioned outside navbar-links to escape parent display:none on mobile) -->
+              <button id="btnNavMore" class="nav-more-toggle" aria-haspopup="true" aria-controls="navMoreDropdown" aria-expanded="false" title="More" aria-label="More navigation">⋯</button>
+              <div id="navMoreDropdown" class="nav-more-dropdown" role="menu" aria-hidden="true" tabindex="-1" data-anchor-id="btnNavMore" hidden></div>
               <div class="navbar-actions">
                 <!-- Mobile sidebar toggle (shown on small screens) -->
                 <button type="button" id="sidebarToggleBtn" class="sidebar-toggle btn-icon" aria-label="Toggle menu" title="Menu">☰</button>
@@ -113,6 +113,7 @@
               <div class="results-actions">
                 <input type="text" id="searchResults" class="search-box" placeholder="Search results...">
                 <button type="button" class="btn-primary" id="btnRefreshResults" aria-label="Refresh results">🔄 Refresh</button>
+                <button type="button" class="btn-sm" id="btnToggleBlockedResults" aria-label="Toggle blocked-risk results">Show Blocked</button>
               </div>
               <div class="pulse-loader hidden" id="pulseLoader" aria-live="polite" aria-busy="true" aria-hidden="true">
                 <div class="pulse-loader-card">

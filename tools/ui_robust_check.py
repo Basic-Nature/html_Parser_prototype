@@ -134,12 +134,14 @@ def check_element_visible(page, selector, timeout=5000):
         return False, {"error": str(e)}
 
 
-def test_critical_elements(page, result):
+def test_critical_elements(page, result, viewport_type):
     """Test that critical UI elements exist."""
+    left_toggle_optional = viewport_type == "desktop"
+
     critical = [
         ("btnRunParser2", "Run Button", False),
         ("btnCancel", "Cancel Button", False),
-        ("sidebarToggleBtn", "Left Sidebar Toggle", False),
+        ("sidebarToggleBtn", "Left Sidebar Toggle", left_toggle_optional),
         ("btnToggleRightSidebar", "Right Sidebar Toggle", False),
         ("sidebar", "Left Sidebar", False),
         ("btnNavMore", "Nav More Button", True),  # May be hidden responsively
@@ -156,7 +158,7 @@ def test_critical_elements(page, result):
                 result.add_test(f"Element: {name}", True, {
                     "selector": selector,
                     "visible": visible,
-                    "responsive": "may be hidden on larger viewports"
+                    "responsive": "visibility may vary by viewport"
                 })
             else:
                 # Must be visible
@@ -298,6 +300,214 @@ def test_console_errors(page, console_msgs, result):
     })
 
 
+def test_log_object_normalization(page, result):
+    """Ensure object-shaped log payloads render as JSON text, not [object Object]."""
+    try:
+        probe = page.evaluate("""() => {
+            if (typeof addLog !== 'function' || typeof state === 'undefined' || !Array.isArray(state.logs)) {
+                return { ok: false, reason: 'addLog/state unavailable' };
+            }
+            const beforeLen = state.logs.length;
+            addLog({
+                level: 'INFO',
+                type: 'summary',
+                message: { total: 1, success: true },
+                session_id: 'sess_ui_robust_check'
+            });
+            const afterLen = state.logs.length;
+            const last = state.logs[afterLen - 1] || {};
+            const msg = String(last.message || '');
+            return {
+                ok: true,
+                beforeLen,
+                afterLen,
+                message: msg,
+                includesObjectMarker: msg.includes('[object Object]'),
+                includesJsonKey: msg.includes('"total"') || msg.includes('total')
+            };
+        }""")
+
+        passed = bool(
+            probe.get("ok")
+            and probe.get("afterLen", 0) > probe.get("beforeLen", 0)
+            and not probe.get("includesObjectMarker")
+            and probe.get("includesJsonKey")
+        )
+        result.add_test("Log Object Normalization", passed, probe)
+    except Exception as e:
+        result.add_test("Log Object Normalization", False, {"error": str(e)})
+
+
+def test_prompt_dedupe_after_submit(page, result):
+    """Ensure identical prompt is suppressed after user submits a response once."""
+    try:
+        probe = page.evaluate("""() => {
+            if (typeof handlePromptLog !== 'function') {
+                return { ok: false, reason: 'handlePromptLog unavailable' };
+            }
+
+            try {
+                if (typeof currentSessionId !== 'undefined') {
+                    currentSessionId = 'sess_ui_prompt_dedupe';
+                }
+            } catch (e) {}
+
+            const payload = {
+                type: 'prompt',
+                session_id: 'sess_ui_prompt_dedupe',
+                message: '[PROMPT] Enter URL indices (e.g., 1,3-5):',
+                context: {
+                    title: 'URL Selection',
+                    options: ['url-one', 'url-two', 'url-three'],
+                    message: 'Pick URL index'
+                }
+            };
+
+            handlePromptLog(payload);
+
+            const modal = document.getElementById('promptModal');
+            const input = document.getElementById('promptInput');
+            const submitBtn = document.getElementById('btnSubmitPrompt');
+            if (!modal || !input || !submitBtn) {
+                return { ok: false, reason: 'prompt modal controls missing' };
+            }
+
+            const visibleAfterFirst = !modal.classList.contains('hidden');
+            input.value = '2';
+            submitBtn.click();
+
+            const hiddenAfterSubmit = modal.classList.contains('hidden');
+            handlePromptLog(payload);
+            const visibleAfterDuplicate = !modal.classList.contains('hidden');
+
+            return {
+                ok: true,
+                visibleAfterFirst,
+                hiddenAfterSubmit,
+                visibleAfterDuplicate,
+                duplicateSuppressed: !visibleAfterDuplicate
+            };
+        }""")
+
+        passed = bool(
+            probe.get("ok")
+            and probe.get("visibleAfterFirst")
+            and probe.get("hiddenAfterSubmit")
+            and probe.get("duplicateSuppressed")
+        )
+        result.add_test("Prompt Dedupe After Submit", passed, probe)
+    except Exception as e:
+        result.add_test("Prompt Dedupe After Submit", False, {"error": str(e)})
+
+
+def test_blocked_toggle_behavior(page, result):
+    """Ensure blocked results are hidden by default and shown when toggled."""
+    try:
+        probe = page.evaluate("""() => {
+            const grid = document.getElementById('resultsGrid');
+            const toggleBtn = document.getElementById('btnToggleBlockedResults');
+            if (!grid || !toggleBtn) {
+                return { ok: false, reason: 'results grid or blocked toggle button missing' };
+            }
+            if (typeof renderResults !== 'function' || typeof state === 'undefined' || !state || !state.filters) {
+                return { ok: false, reason: 'renderResults/state unavailable' };
+            }
+
+            const originalResults = Array.isArray(state.results) ? state.results.slice() : [];
+            const originalShowBlocked = !!state.filters.showBlocked;
+
+            try {
+                state.results = [
+                    {
+                        id: 'ui-risk-1',
+                        name: 'Blocked Risk Result',
+                        type: 'csv',
+                        rows: 5,
+                        columns: 3,
+                        confidence: 70,
+                        state: 'CA',
+                        county: 'Alameda',
+                        handler: 'test',
+                        timestamp: Date.now(),
+                        source_url: 'https://example.test/blocked',
+                        preview: 'blocked preview',
+                        riskTier: 'block',
+                        riskSubTier: 'stop',
+                        riskAction: 'REQUIRE_CONFIRMATION'
+                    },
+                    {
+                        id: 'ui-risk-2',
+                        name: 'Warn Risk Result',
+                        type: 'csv',
+                        rows: 6,
+                        columns: 3,
+                        confidence: 83,
+                        state: 'CA',
+                        county: 'Alameda',
+                        handler: 'test',
+                        timestamp: Date.now(),
+                        source_url: 'https://example.test/warn',
+                        preview: 'warn preview',
+                        riskTier: 'warn',
+                        riskSubTier: 'pass',
+                        riskAction: 'MONITOR_CLOSELY'
+                    }
+                ];
+
+                state.filters.showBlocked = false;
+                renderResults();
+
+                const countHidden = grid.querySelectorAll('.result-card').length;
+                const hiddenContainsBlocked = Array.from(grid.querySelectorAll('.card-name')).some((el) =>
+                    String(el.textContent || '').includes('Blocked Risk Result')
+                );
+                const labelBefore = String(toggleBtn.textContent || '').trim();
+
+                toggleBtn.click();
+                const countShown = grid.querySelectorAll('.result-card').length;
+                const shownContainsBlocked = Array.from(grid.querySelectorAll('.card-name')).some((el) =>
+                    String(el.textContent || '').includes('Blocked Risk Result')
+                );
+                const labelAfterShow = String(toggleBtn.textContent || '').trim();
+
+                toggleBtn.click();
+                const countAfterHide = grid.querySelectorAll('.result-card').length;
+                const labelAfterHide = String(toggleBtn.textContent || '').trim();
+
+                return {
+                    ok: true,
+                    countHidden,
+                    hiddenContainsBlocked,
+                    labelBefore,
+                    countShown,
+                    shownContainsBlocked,
+                    labelAfterShow,
+                    countAfterHide,
+                    labelAfterHide
+                };
+            } finally {
+                state.results = originalResults;
+                state.filters.showBlocked = originalShowBlocked;
+                renderResults();
+            }
+        }""")
+
+        passed = bool(
+            probe.get("ok")
+            and probe.get("countHidden") == 1
+            and not probe.get("hiddenContainsBlocked")
+            and probe.get("labelBefore") == "Show Blocked"
+            and probe.get("countShown") == 2
+            and probe.get("shownContainsBlocked")
+            and probe.get("labelAfterShow") == "Hide Blocked"
+            and probe.get("countAfterHide") == 1
+            and probe.get("labelAfterHide") == "Show Blocked"
+        )
+        result.add_test("Blocked Toggle Behavior", passed, probe)
+    except Exception as e:
+        result.add_test("Blocked Toggle Behavior", False, {"error": str(e)})
+
+
 def main():
     parser = argparse.ArgumentParser(description="Robust UI headless check")
     parser.add_argument("--url", default=os.environ.get("PARSER_URL", "http://127.0.0.1:5000/ballot_lens"), help="URL to test")
@@ -336,13 +546,16 @@ def main():
                 sys.exit(2)
             
             # Run tests
-            test_critical_elements(page, result)
+            test_critical_elements(page, result, args.viewport)
             test_sidebar_toggle(page, result, args.viewport)
             
             if args.viewport == "mobile":
                 test_mobile_sidebar(page, result)
             
             test_console_errors(page, console_msgs, result)
+            test_log_object_normalization(page, result)
+            test_prompt_dedupe_after_submit(page, result)
+            test_blocked_toggle_behavior(page, result)
             
             # Save artifacts
             result.diagnostics["artifacts"] = save_debug_artifacts(page, args.output, "final")
@@ -363,7 +576,7 @@ def main():
     print()
     
     for test in result.tests:
-        status = "✓ PASS" if test["passed"] else "✗ FAIL"
+        status = "[PASS]" if test["passed"] else "[FAIL]"
         print(f"{status} | {test['name']}")
         if not test["passed"] and test.get("details"):
             print(f"     └─ {test['details']}")
@@ -371,7 +584,7 @@ def main():
     if result.warnings:
         print("\nWarnings:")
         for warning in result.warnings:
-            print(f"  ⚠ {warning}")
+            print(f"  [WARNING] {warning}")
     
     print()
     print(f"Total Tests: {len(result.tests)}")
@@ -383,10 +596,10 @@ def main():
     
     # Exit with appropriate code
     if result.all_passed():
-        print("\n✅ All tests passed!")
+        print("\n[SUCCESS] All tests passed!")
         sys.exit(0)
     else:
-        print("\n❌ Some tests failed. Check artifacts for details.")
+        print("\n[FAILURE] Some tests failed. Check artifacts for details.")
         print("\nFull results JSON:")
         print(json.dumps(result.__dict__, indent=2, default=str))
         sys.exit(1)

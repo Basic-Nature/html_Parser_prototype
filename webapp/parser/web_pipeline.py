@@ -220,6 +220,9 @@ def process_urls_for_web(
         "message": f"Session started for {session_id}",
         "session_id": session_id
     })
+    
+    # Track if run_summary was emitted
+    run_summary_emitted = False
 
     try:
         urls = kwargs.pop("urls", None)
@@ -693,6 +696,7 @@ def process_urls_for_web(
                 results['confidence_metrics'] = conf_metrics
 
                 report_path = save_pipeline_report(session_id, results, errors=[])
+                run_summary_emitted = True
                 if emit_func:
                     try:
                         emit_func({
@@ -722,6 +726,61 @@ def process_urls_for_web(
             "traceback": traceback.format_exc()
         })
     finally:
+        logger.info({
+            "level": "INFO",
+            "type": "cleanup",
+            "message": f"[Cleanup] Finally block executing. run_summary_emitted={run_summary_emitted}, emit_func={'present' if emit_func else 'None'}",
+            "session_id": session_id
+        })
+        # Emit minimal run_summary if not already emitted
+        if emit_func and not run_summary_emitted:
+            try:
+                logger.info({
+                    "level": "INFO",
+                    "type": "fallback",
+                    "message": "[FallbackReport] Generating minimal pipeline report (run_summary not emitted during processing)",
+                    "session_id": session_id
+                })
+                # Try to load processed_urls for minimal status
+                from .Context_Integration.context_organizer import ContextOrganizer
+                organizer = ContextOrganizer()
+                processed_urls = organizer.get_processed_urls() or []
+                status_counts = {}
+                for entry in processed_urls[-20:]:  # Last 20 for efficiency
+                    status = entry.get("status", "unknown")
+                    status_counts[status] = status_counts.get(status, 0) + 1
+                
+                minimal_results = {
+                    "total_entries": len(processed_urls),
+                    "status_counts": status_counts,
+                    "sample_recent": processed_urls[-5:] if processed_urls else [],
+                    "errors": [],
+                    "flagged_count": 0,
+                    "confidence_metrics": {"count": 0},
+                }
+                
+                report_path = save_pipeline_report(session_id, minimal_results, errors=[])
+                logger.info({
+                    "level": "INFO",
+                    "type": "fallback",
+                    "message": f"[FallbackReport] Report saved: {report_path}",
+                    "session_id": session_id
+                })
+                emit_func({
+                    "type": "run_summary",
+                    "session_id": session_id,
+                    "summary": minimal_results,
+                    "report_path": report_path,
+                    "timestamp": time.time(),
+                })
+            except Exception as e:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "fallback",
+                    "message": f"[FallbackReport] Failed to emit fallback report: {e}",
+                    "session_id": session_id
+                })
+        
         # --- Clean up multi-tenant isolation on session end ---
         if principal and principal_source:
             try:

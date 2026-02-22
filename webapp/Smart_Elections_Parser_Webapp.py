@@ -190,6 +190,22 @@ from webapp.parser.web_pipeline import (
     process_urls_for_web,
 )
 
+_DOWNLOAD_READY_SESSIONS: set[str] = set()
+_DOWNLOAD_READY_LOCK = threading.Lock()
+
+def _emit_download_ready(session_id: str, payload: dict, *, force: bool = False) -> bool:
+    if not session_id:
+        return False
+    with _DOWNLOAD_READY_LOCK:
+        if session_id in _DOWNLOAD_READY_SESSIONS and not force:
+            return False
+        _DOWNLOAD_READY_SESSIONS.add(session_id)
+    try:
+        socketio.emit('download_ready', payload, room=session_id)
+        return True
+    except Exception:
+        return False
+
 # Health task security controls
 ENABLE_HEALTH_TASKS = os.environ.get("ENABLE_HEALTH_TASKS", "false").lower() in {"1", "true", "yes"}
 HEALTH_TASK_TOKEN = os.environ.get("HEALTH_TASK_TOKEN")
@@ -1812,6 +1828,32 @@ def socketio_emit_func(line):
         if sid:
             store_log(sid, obj)
             socketio.emit('parser_output', obj, room=sid)
+            if obj.get("type") == "run_summary":
+                report_path = obj.get("report_path")
+                if isinstance(report_path, str) and report_path:
+                    try:
+                        rel_path = os.path.relpath(report_path, str(OUTPUT_DIR)).replace("\\", "/")
+                        filename = os.path.basename(report_path)
+                        _emit_download_ready(sid, {
+                            "session_id": sid,
+                            "filename": filename,
+                            "output_path": rel_path,
+                            "root": "output",
+                            "size": None,
+                            "source": "pipeline_report",
+                        }, force=True)
+                    except Exception:
+                        pass
+            msg_lower = str(obj.get("message", "")).lower()
+            if "selector 'table" in msg_lower and "found" in msg_lower:
+                _emit_download_ready(sid, {
+                    "session_id": sid,
+                    "filename": None,
+                    "output_path": None,
+                    "root": "output",
+                    "size": None,
+                    "source": "table_detected",
+                })
         else:
             socketio.emit('parser_output', obj)
     except Exception:
@@ -8005,6 +8047,68 @@ def handle_ballot_lens(data=None) -> None:
     # --- Launch parser in a dedicated thread ---
     def worker_wrapper():
         start_time = time.time()
+        output_dir = Path(OUTPUT_DIR)
+        download_ready_emitted = threading.Event()
+        watcher_stop = threading.Event()
+
+        def _snapshot_output_artifacts() -> dict[str, float]:
+            artifacts: dict[str, float] = {}
+            try:
+                if not output_dir.exists():
+                    return artifacts
+                exts = {".csv", ".xlsx", ".xls", ".json", ".pdf"}
+                for path in output_dir.rglob("*"):
+                    try:
+                        if not path.is_file():
+                            continue
+                        if path.suffix.lower() not in exts:
+                            continue
+                        rel = str(path.relative_to(output_dir)).replace("\\", "/")
+                        artifacts[rel] = path.stat().st_mtime
+                    except Exception:
+                        continue
+            except Exception:
+                return artifacts
+            return artifacts
+
+        artifacts_before = _snapshot_output_artifacts()
+
+        def _output_watcher() -> None:
+            while not watcher_stop.is_set() and not download_ready_emitted.is_set():
+                time.sleep(2)
+                artifacts_after = _snapshot_output_artifacts()
+                new_artifacts = [
+                    rel for rel in artifacts_after.keys()
+                    if rel not in artifacts_before
+                ]
+                if not new_artifacts:
+                    new_artifacts = [
+                        rel for rel, mtime in artifacts_after.items()
+                        if mtime >= (start_time - 1.0)
+                    ]
+                if not new_artifacts:
+                    continue
+                newest_rel = max(new_artifacts, key=lambda rel: artifacts_after.get(rel, 0.0))
+                newest_abs = output_dir / newest_rel
+                try:
+                    size = newest_abs.stat().st_size
+                except Exception:
+                    size = None
+                try:
+                    _emit_download_ready(session_id, {
+                        "session_id": session_id,
+                        "filename": os.path.basename(newest_rel),
+                        "output_path": newest_rel,
+                        "root": "output",
+                        "size": size,
+                        "source": "pipeline_output",
+                    })
+                    download_ready_emitted.set()
+                except Exception:
+                    continue
+
+        watcher_thread = threading.Thread(target=_output_watcher, daemon=True)
+        watcher_thread.start()
         session_manager.bind_thread_id(threading.get_ident(), session_id)
         status = "error"  # Default to error
         err = None
@@ -8030,6 +8134,39 @@ def handle_ballot_lens(data=None) -> None:
                 "message": "Parser run completed.",
                 "session_id": session_id
             })
+            try:
+                artifacts_after = _snapshot_output_artifacts()
+                new_artifacts = [
+                    rel for rel in artifacts_after.keys()
+                    if rel not in artifacts_before
+                ]
+                if not new_artifacts:
+                    new_artifacts = [
+                        rel for rel, mtime in artifacts_after.items()
+                        if mtime >= (start_time - 1.0)
+                    ]
+                if new_artifacts and not download_ready_emitted.is_set():
+                    newest_rel = max(new_artifacts, key=lambda rel: artifacts_after.get(rel, 0.0))
+                    newest_abs = output_dir / newest_rel
+                    size = None
+                    try:
+                        size = newest_abs.stat().st_size
+                    except Exception:
+                        size = None
+                    try:
+                        _emit_download_ready(session_id, {
+                            "session_id": session_id,
+                            "filename": os.path.basename(newest_rel),
+                            "output_path": newest_rel,
+                            "root": "output",
+                            "size": size,
+                            "source": "pipeline_output",
+                        })
+                        download_ready_emitted.set()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             status = "ok"
             err = None
         except Exception as e:
@@ -8042,6 +8179,7 @@ def handle_ballot_lens(data=None) -> None:
             status = "error"
             err = str(e)
         finally:
+            watcher_stop.set()
             duration_ms = int((time.time() - start_time)*1000)
             log_run_event({
                 "type": "end",

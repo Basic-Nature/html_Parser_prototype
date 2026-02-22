@@ -87,7 +87,7 @@ class RiskGateEvaluator:
             raise ValueError("tier_boundary_warn_log must be ∈ [0, 1]")
         if not (0.0 <= self.config.tier_boundary_block_warn <= 1.0):
             raise ValueError("tier_boundary_block_warn must be ∈ [0, 1]")
-        if self.config.tier_boundary_wan_log >= self.config.tier_boundary_block_wan:
+        if self.config.tier_boundary_warn_log >= self.config.tier_boundary_block_warn:
             raise ValueError(
                 "tier_boundary_warn_log must be < tier_boundary_block_warn"
             )

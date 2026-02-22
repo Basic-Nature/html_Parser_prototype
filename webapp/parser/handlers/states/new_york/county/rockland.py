@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING
+from pathlib import Path
 
 from playwright.sync_api import Page
 
@@ -23,6 +24,131 @@ if TYPE_CHECKING:
 BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
 context_cache = {}
 accepted_buttons_cache = {}
+
+DEBUG_OUTPUT_DIR = Path("tools") / "debug_headless_output"
+
+TOGGLE_KEYWORDS = {
+    "election_district": {
+        "view results by election district": 5.0,
+        "results by election district": 4.0,
+        "election district": 3.5,
+        "by election district": 3.0,
+        "district results": 2.5,
+        "district": 1.0,
+    },
+    "vote_method": {
+        "vote method": 4.0,
+        "method": 1.5,
+        "ballot type": 1.0,
+    },
+}
+
+KEYWORD_VOCAB = {
+    "contest": {
+        "president": 4.0,
+        "vice president": 4.0,
+        "county clerk": 3.5,
+        "court": 3.0,
+        "judge": 3.0,
+        "proposition": 2.5,
+        "amendment": 2.5,
+        "referendum": 2.5,
+        "ballot question": 2.0,
+    },
+    "precinct": {
+        "ward": 2.5,
+        "district": 2.5,
+        "precinct": 2.5,
+        "election district": 3.0,
+        "ed": 1.0,
+    },
+    "candidate": {
+        "candidate": 1.0,
+        "vote": 1.0,
+        "votes": 1.0,
+        "percentage": 1.0,
+        "party": 1.0,
+        "democratic": 1.5,
+        "republican": 1.5,
+        "conservative": 1.0,
+        "working families": 1.0,
+        "independence": 1.0,
+        "write-in": 1.0,
+    },
+}
+
+def _write_debug_html(session_id: str | None, html: str) -> None:
+    try:
+        DEBUG_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        suffix = session_id or "session"
+        out_path = DEBUG_OUTPUT_DIR / f"rockland_debug_{suffix}.html"
+        out_path.write_text(html, encoding="utf-8")
+    except Exception:
+        pass
+
+def _score_keyword_match(text: str, weights: dict[str, float]) -> float:
+    if not text:
+        return 0.0
+    lowered = text.lower()
+    score = 0.0
+    for key, weight in weights.items():
+        if key in lowered:
+            score += weight
+    return score
+
+def _extract_button_label(element) -> str:
+    try:
+        label = element.inner_text() or ""
+    except Exception:
+        label = ""
+    if not label:
+        try:
+            label = element.get_attribute("aria-label") or ""
+        except Exception:
+            label = ""
+    if not label:
+        try:
+            label = element.get_attribute("title") or ""
+        except Exception:
+            label = ""
+    return label.strip()
+
+def _fallback_button_search(page: Page, weights: dict[str, float]) -> dict:
+    try:
+        candidates = page.locator(BUTTON_SELECTORS)
+        best = None
+        best_score = 0.0
+        for i in range(min(candidates.count(), 80)):
+            element = candidates.nth(i)
+            label = _extract_button_label(element)
+            if not label:
+                continue
+            score = _score_keyword_match(label, weights)
+            if score > best_score:
+                best = {"element_handle": element, "label": label, "selector": None}
+                best_score = score
+        if best and best_score >= 2.5:
+            return best
+    except Exception:
+        pass
+    return {}
+
+def _score_keyword_groups(text: str, vocab: dict[str, dict[str, float]]) -> dict[str, float]:
+    scores = {}
+    for group, weights in vocab.items():
+        scores[group] = _score_keyword_match(text, weights)
+    return scores
+
+def _flatten_panel_text(panel: dict) -> str:
+    parts = []
+    heading = safe_get(panel, "panel_heading", "")
+    if heading:
+        parts.append(str(heading))
+    for table in safe_get(panel, "tables", []):
+        html = safe_get(table, "table_html", "")
+        if html:
+            parts.append(str(html))
+    return " ".join(parts)
 
 def parse(page: Page = None, html_context: dict = None, coordinator: "ContextCoordinator" = None, context=None, session_id=None, logger=logger, **kwargs) -> tuple:
     """
@@ -122,6 +248,8 @@ def parse(page: Page = None, html_context: dict = None, coordinator: "ContextCoo
                 prompt_user_for_button=prompt.prompt_user_for_button,
                 learning_mode=True,
             )
+            if not btn1 or "element_handle" not in btn1:
+                btn1 = _fallback_button_search(page, TOGGLE_KEYWORDS["election_district"]) or btn1
             if btn1 and "element_handle" in btn1:
                 element = btn1["element_handle"]
                 # Only click if not already clicked by coordinator (learning mode)
@@ -140,7 +268,7 @@ def parse(page: Page = None, html_context: dict = None, coordinator: "ContextCoo
                 else:
                     logger.debug(f"[yellow][DEBUG] Button '{btn1.get('label', '')}' was already clicked by learning mode.[/yellow]")
             else:
-                logger.error(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
+                logger.warning(f"[yellow][WARNING] No suitable '{toggle_name}' button found; continuing without toggle.[/yellow]")
 
             logger.debug(f"[DEBUG] Finished toggle first button: {toggle_name}")
 
@@ -159,6 +287,8 @@ def parse(page: Page = None, html_context: dict = None, coordinator: "ContextCoo
                 prompt_user_for_button=prompt.prompt_user_for_button,
                 learning_mode=True,
             )
+            if not btn2 or "element_handle" not in btn2:
+                btn2 = _fallback_button_search(page, TOGGLE_KEYWORDS["vote_method"]) or btn2
             if btn2 and "element_handle" in btn2:
                 element = btn2["element_handle"]
                 # Only click if not already clicked by coordinator (learning mode)
@@ -177,7 +307,7 @@ def parse(page: Page = None, html_context: dict = None, coordinator: "ContextCoo
                 else:
                     logger.debug(f"[yellow][DEBUG] Button '{btn2.get('label', '')}' was already clicked by learning mode.[/yellow]")
             else:
-                logger.error(f"[red][ERROR] No suitable '{toggle_name2}' button could be clicked.[/red]")
+                logger.warning(f"[yellow][WARNING] No suitable '{toggle_name2}' button found; continuing without toggle.[/yellow]")
             logger.debug(f"[DEBUG] Finished toggle second button: {toggle_name2}")
 
             # --- Only autoscroll once, after all toggles ---
@@ -186,8 +316,7 @@ def parse(page: Page = None, html_context: dict = None, coordinator: "ContextCoo
 
             # --- 9. Extract ballot items using DOM scan and context/NLP ---
             html = page.content()
-            with open("rockland_debug.html", "w", encoding="utf-8") as f:
-                f.write(html)
+            _write_debug_html(str(session_id) if session_id is not None else None, html)
 
             # Use the context coordinator and scan_html_for_context to extract everything
             context_result = scan_html_for_context(
@@ -241,6 +370,8 @@ def parse(page: Page = None, html_context: dict = None, coordinator: "ContextCoo
                 all_panel_rows = []
                 all_panel_headers = set()
                 for panel in panels:
+                    panel_text = _flatten_panel_text(panel)
+                    keyword_scores = _score_keyword_groups(panel_text, KEYWORD_VOCAB)
                     panel_fields = {
                         "panel_heading": panel.get("panel_heading"),
                         "Precinct": panel.get("Precinct"),
@@ -250,6 +381,7 @@ def parse(page: Page = None, html_context: dict = None, coordinator: "ContextCoo
                         "ml_confidence": panel.get("ml_confidence"),
                         "association_log": panel.get("association_log"),
                         "panel_ml_label": panel.get("panel_tag"),
+                        "keyword_scores": keyword_scores,
                     }
                     for table in safe_get(panel, "tables", []):
                         table_fields = {

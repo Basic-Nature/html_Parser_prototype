@@ -4,7 +4,7 @@ import tempfile
 import time
 from difflib import get_close_matches
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import parse_qs, unquote, urljoin, urlparse
+from urllib.parse import parse_qs, unquote, urljoin, urlparse, urlsplit, urlunsplit
 
 import requests
 
@@ -14,6 +14,7 @@ from ..handlers import fec_handler
 from ..handlers.formats import csv_handler, json_handler, pdf_handler, txt_handler, xlsx_handler
 from .browser_utils import (
     safe_click,
+    safe_click_with_retry,
     safe_content,
     safe_context_library,
     safe_context_result,
@@ -294,11 +295,25 @@ def _browser_headers(page, referer: str) -> dict:
     }
     
 def _build_download_url(base_url: str, href: str) -> str:
-    """Resolve href against base_url safely."""
+    """Resolve href against base_url safely, normalizing redundant slashes."""
     try:
-        return urljoin(base_url or "", href or "")
+        # Strip leading // from href to prevent protocol-relative URL issues
+        normalized_href = re.sub(r"^/+", "/", href or "")
+        resolved = urljoin(base_url or "", normalized_href)
+        return _normalize_download_url(resolved)
     except Exception:
         return (href or "")
+
+def _normalize_download_url(resolved_url: str) -> str:
+    """Collapse redundant slashes in the path while keeping scheme/host intact."""
+    try:
+        parts = urlsplit(resolved_url)
+        if not parts.scheme or not parts.netloc:
+            return resolved_url
+        path = re.sub(r"/{2,}", "/", parts.path or "")
+        return urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
+    except Exception:
+        return resolved_url
 
 def _cookies_header_from_page(page) -> dict:
     """Return {'Cookie': 'k=v; ...'} header synthesized from Playwright page.context cookies."""
@@ -406,7 +421,7 @@ def _expose_download_interfaces(page, session_id: Optional[str] = None) -> None:
                 should_click = True
             if not should_click:
                 continue
-            if safe_click(element, logger):
+            if safe_click_with_retry(page=page, element=element, max_retries=4, timeout=8000, delay_between=0.25, scroll_into_view=True, session_id=session_id, logger=logger):
                 safe_wait_for_timeout(page, 250, logger)
                 seen.add(identifier)
                 logger.info({
@@ -993,6 +1008,43 @@ def prompt_and_handle_download(
         try:
             if page is not None and hasattr(page, "context") and hasattr(page.context, "request"):
                 resp = page.context.request.get(resolved_url, headers=hdrs, timeout=60_000)
+                # If 403/404, retry with fallback URLs
+                if getattr(resp, "status", 999) in (403, 404):
+                    logger.warning({
+                        "level": "WARNING",
+                        "type": "download",
+                        "message": f"HTTP {getattr(resp, 'status', 'unknown')} via Playwright for {resolved_url}, trying fallbacks...",
+                        "session_id": session_id
+                    })
+                    from .download_utils import _retry_step_back_url
+                    fallback_urls = _retry_step_back_url(resolved_url)
+                    for fallback_url in fallback_urls:
+                        logger.info({
+                            "level": "INFO",
+                            "type": "download",
+                            "message": f"Retrying: {fallback_url}",
+                            "session_id": session_id
+                        })
+                        try:
+                            resp = page.context.request.get(fallback_url, headers=hdrs, timeout=60_000)
+                            if getattr(resp, "ok", False):
+                                logger.info({
+                                    "level": "INFO",
+                                    "type": "download",
+                                    "message": f"Fallback succeeded: {fallback_url}",
+                                    "session_id": session_id
+                                })
+                                resolved_url = fallback_url  # Update canonical URL
+                                break
+                        except Exception as e:
+                            logger.debug({
+                                "level": "DEBUG",
+                                "type": "download",
+                                "message": f"Fallback {fallback_url} failed: {e}",
+                                "session_id": session_id
+                            })
+                            continue
+                
                 if getattr(resp, "ok", False):
                     from ..config import INPUT_DIR
                     ensure_input_directory()

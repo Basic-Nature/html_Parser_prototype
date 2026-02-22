@@ -52,27 +52,53 @@ const QAPanel = (() => {
   // ============================================
 
   /**
+    * @typedef {Object} QAMetadata
+    * @property {string} [source_url]
+    * @property {string} [handler_name]
+    * @property {string} [state_abbr]
+    * @property {string} [state]
+    * @property {string} [county_name]
+    * @property {string} [county]
+    * @property {number|string} [election_year]
+    * @property {string} [contest_name]
+    * @property {string} [contest]
+    * @property {number|string} [contestant_count]
+    * @property {number|string} [data_row_count]
+    * @property {number|string} [extraction_confidence]
+    * @property {number|string} [trust_score]
+    * @property {Array<any>} [headers]
+    * @property {Array<Array<any>>} [rows]
+    * @property {Array<Array<any>>} [data_rows]
+    */
+
+    /**
    * Classify parsed data as DL1 with auto QA checks
-   * @param {Object} metadata - Election metadata
-   * @param {string} metadata.contest - Contest name
-   * @param {string} metadata.state - State code
-   * @param {string} metadata.county - County name
-   * @param {Array} [metadata.headers] - Column headers
-   * @param {Array<Array>} [metadata.rows] - Data rows
+   * @param {QAMetadata} metadata - Election metadata
    * @returns {Promise<QAStatus>}
    */
   async function classifyAsQL1(metadata) {
     try {
+      const requestBody = {
+        source_url: metadata.source_url || '',
+        handler_name: metadata.handler_name || 'ballot_lens_ui',
+        state_abbr: (metadata.state_abbr || metadata.state || '').toString().toUpperCase() || 'N/A',
+        county_name: metadata.county_name || metadata.county || '',
+        election_year: Number(metadata.election_year || new Date().getFullYear()),
+        contest_name: metadata.contest_name || metadata.contest || 'Unknown Contest',
+        contestant_count: Number(metadata.contestant_count || 0),
+        data_row_count: Number(metadata.data_row_count || (Array.isArray(metadata.rows) ? metadata.rows.length : 0) || 0),
+        extraction_confidence: Number(metadata.extraction_confidence || 0),
+        trust_score: Number(metadata.trust_score || 0),
+        headers: Array.isArray(metadata.headers) ? metadata.headers : [],
+        data_rows: Array.isArray(metadata.data_rows)
+          ? metadata.data_rows
+          : (Array.isArray(metadata.rows) ? metadata.rows : []),
+      };
+
       const response = await fetch('/api/data-assurance/parse-and-classify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          metadata: metadata,
-          parsed_data: {
-            headers: metadata.headers || [],
-            rows: metadata.rows || [],
-          },
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -92,8 +118,15 @@ const QAPanel = (() => {
         throw new Error(`API error: ${errorDetail}`);
       }
 
+      const rawStatus = await response.json();
       /** @type {QAStatus} */
-      const status = await response.json();
+      const status = {
+        ...rawStatus,
+        detected_issues: Array.isArray(rawStatus?.detected_issues)
+          ? rawStatus.detected_issues
+          : (Array.isArray(rawStatus?.issues) ? rawStatus.issues : []),
+        created_at: rawStatus?.created_at || new Date().toISOString(),
+      };
       
       // Cache the result
       if (status && status.dataset_id) {
@@ -158,7 +191,7 @@ const QAPanel = (() => {
       if (!response.ok) throw new Error(`API error: ${response.statusText}`);
       
       const data = await response.json();
-      return data.pending_reviews || [];
+      return data.entries || [];
     } catch (error) {
       console.error('[QA] Failed to fetch pending reviews:', error);
       return [];
@@ -413,15 +446,17 @@ const QAPanel = (() => {
     /**
      * Classify parsed data and inject QA panel into result card
      * @param {HTMLElement} cardElement - Result card element
-     * @param {Object} metadata - Parse metadata
-     * @returns {Promise<void>}
+     * @param {QAMetadata} metadata - Parse metadata
+     * @returns {Promise<QAStatus>}
      */
     async classifyAndInject(cardElement, metadata) {
       try {
         const qaStatus = await classifyAsQL1(metadata);
         injectQAPanelIntoCard(cardElement, qaStatus, initiatePromotion);
+        return qaStatus;
       } catch (error) {
         console.error('[QA] Classify and inject failed:', error);
+        throw error;
       }
     },
 

@@ -322,6 +322,7 @@ class CalculusRiskEvaluator:
         suspicious_pattern_count: int = 0,
         outlier_record_count: int = 0,
         integrity_flags: Optional[List[str]] = None,
+        fallback_verification_score: Optional[float] = None,
         previous_scores: Optional[RiskGateScores] = None,
         time_delta: float = 1.0
     ) -> Tuple[RiskGateScores, DerivativeGates, SubTierClassification]:
@@ -343,7 +344,8 @@ class CalculusRiskEvaluator:
             total_records=total_records,
             suspicious_pattern_count=suspicious_pattern_count,
             outlier_record_count=outlier_record_count,
-            integrity_flags=integrity_flags
+            integrity_flags=integrity_flags,
+            fallback_verification_score=fallback_verification_score,
         )
         
         # Step 2: Derivative gates (6 dimensions)

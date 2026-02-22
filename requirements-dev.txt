@@ -7,7 +7,6 @@ python-dotenv>=1.2.1
 pytest>=9.0.2 
 pytest-cov>=4.0.0
 pytest-mock>=3.10.0
-dotenv>=0.1.0
 dotenv-linter>=0.1.0
 # For local development, install the full requirements-dev.txt; for production, use requirements.txt
 # JS/Markdown tooling lives in package.json; install Node/npm and run `npm install` separately.

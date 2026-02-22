@@ -17,17 +17,17 @@
     "steps": [
       {
         "action": "wait_for_selector",
-        "selector": "text=View results by election district",
+        "selector": "text=View results by election district, button:has-text('View results by election district'), [role='tab']:has-text('View results by election district'), a:has-text('View results by election district')",
         "timeout_ms": 12000
       },
       {
         "action": "click",
-        "selector": "text=View results by election district",
+        "selector": "text=View results by election district, button:has-text('View results by election district'), [role='tab']:has-text('View results by election district'), a:has-text('View results by election district')",
         "wait_after_ms": 750
       },
       {
         "action": "click",
-        "selector": "text=Vote Method",
+        "selector": "text=Vote Method, button:has-text('Vote Method'), [role='tab']:has-text('Vote Method'), a:has-text('Vote Method')",
         "wait_after_ms": 750
       },
       {
@@ -125,12 +125,14 @@
       {
         "action": "wait_for_selector",
         "selector": "button[aria-controls*='download']",
-        "timeout_ms": 7000
+        "timeout_ms": 7000,
+        "optional": true
       },
       {
         "action": "click",
         "selector": "button[aria-controls*='download']",
-        "wait_after_ms": 400
+        "wait_after_ms": 400,
+        "optional": true
       },
       {
         "action": "parallel",
@@ -167,12 +169,12 @@
     "steps": [
       {
         "action": "wait_for_selector",
-        "selector": "button:has-text('Precinct'), [role='tab']:has-text('Precinct')",
+        "selector": "button:has-text('Precinct'), [role='tab']:has-text('Precinct'), a:has-text('Precinct'), [aria-label*='Precinct' i], [title*='Precinct' i]",
         "timeout_ms": 8000
       },
       {
         "action": "click",
-        "selector": "button:has-text('Precinct'), [role='tab']:has-text('Precinct')",
+        "selector": "button:has-text('Precinct'), [role='tab']:has-text('Precinct'), a:has-text('Precinct'), [aria-label*='Precinct' i], [title*='Precinct' i]",
         "wait_after_ms": 650
       },
       {
@@ -214,17 +216,17 @@
     "steps": [
       {
         "action": "wait_for_selector",
-        "selector": "button:has-text('County'), [role='tab']:has-text('County')",
+        "selector": "button:has-text('County'), [role='tab']:has-text('County'), a:has-text('County'), [aria-label*='County' i], [title*='County' i]",
         "timeout_ms": 8000
       },
       {
         "action": "click",
-        "selector": "button:has-text('County'), [role='tab']:has-text('County')",
+        "selector": "button:has-text('County'), [role='tab']:has-text('County'), a:has-text('County'), [aria-label*='County' i], [title*='County' i]",
         "wait_after_ms": 500
       },
       {
         "action": "click",
-        "selector": "button:has-text('Precinct'), [role='tab']:has-text('Precinct')",
+        "selector": "button:has-text('Precinct'), [role='tab']:has-text('Precinct'), a:has-text('Precinct'), [aria-label*='Precinct' i], [title*='Precinct' i]",
         "wait_after_ms": 650
       },
       {

@@ -36,6 +36,12 @@ var __QAIntegration;
 (function initQASocketIntegration() {
   'use strict';
 
+  const windowAny = /** @type {any} */ (window);
+
+  if (windowAny.__qaSocketIntegrationInitialized) {
+    return;
+  }
+
   // Wait for dependencies to load
   if (typeof socket === 'undefined') {
     console.warn('[QA Integration] Socket not available, deferring initialization');
@@ -54,6 +60,7 @@ var __QAIntegration;
   }
 
   const qaPanel = /** @type {QAPanelAPI} */ (/** @type {any} */ (window).QAPanel);
+  windowAny.__qaSocketIntegrationInitialized = true;
 
   console.log('[QA Integration] Initializing QA workflow integration');
 
@@ -173,7 +180,10 @@ var __QAIntegration;
       setTimeout(async () => {
         try {
           console.log(`[QA Integration] Classifying result ${resultId}...`);
-          await qaPanel.classifyAndInject(card, metadata);
+          const qaResult = await qaPanel.classifyAndInject(card, metadata);
+          if (!qaResult || !qaResult.dataset_id) {
+            throw new Error('QA classification returned no dataset_id');
+          }
           classifiedResults.add(resultId);
           classifiedCount++;
           console.log(`[QA Integration] Successfully classified ${resultId} (${classifiedCount}/${resultCards.length})`);

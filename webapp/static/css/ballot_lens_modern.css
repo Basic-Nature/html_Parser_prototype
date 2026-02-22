@@ -2576,10 +2576,40 @@ th {
   .flagged-modal-content { max-height: 92vh; }
   
   /* Navbar adjustments */
-  .navbar-content { flex-wrap: wrap; gap: 8px; }
-  .navbar-actions { width: 100%; justify-content: flex-end; gap: 6px; }
+  .navbar-content { 
+    flex-wrap: wrap; 
+    gap: 8px;
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+  .navbar-title { order: -1; flex-shrink: 0; }
+  .navbar-actions { 
+    width: 100%; 
+    justify-content: flex-end; 
+    gap: 6px;
+    order: 2;
+  }
   .navbar-links { display: none; }
-  .nav-more-toggle { display: inline-flex; }
+  .nav-more-toggle { 
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    align-items: center; 
+    justify-content: center;
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 1.2rem;
+    order: 1;
+    flex-shrink: 0;
+    height: 40px;
+  }
+  .nav-more-toggle:hover { background: var(--bg-tertiary); }
+  .nav-more-dropdown { order: 3; }
   .pipeline-hint { margin-top: 6px; font-size: 0.9rem; }
   
   /* Drawer toolbar and actions */

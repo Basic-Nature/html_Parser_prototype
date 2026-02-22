@@ -2997,6 +2997,33 @@ class ContextCoordinator(object):
             logger.error("[ContextCoordinator.extract_dates] Error: %s", e)
             return [] if not first_only else None
 
+    def ingest_ocr_text(self, text: str, source: str | None = None) -> dict:
+        """Extract deterministic OCR hints for context integration."""
+        if not isinstance(text, str) or not text.strip():
+            return {}
+        collapsed = " ".join(text.split())
+        excerpt = collapsed[:2000]
+
+        entities = self.extract_entities(text) or []
+        locations = self.extract_locations(text) or []
+        dates = self.extract_dates(text) or []
+
+        fields = {
+            "states": self.extract_field("states", text=text),
+            "election_types": self.extract_field("election_types", text=text),
+            "precincts": self.extract_field("precincts", text=text),
+            "party": self.extract_field("party", text=text),
+        }
+
+        return {
+            "source": source or "ocr",
+            "text_excerpt": excerpt,
+            "entities": entities[:40],
+            "locations": locations[:40],
+            "dates": dates[:20],
+            "fields": fields,
+        }
+
     def extract_field(self, field_type, text=None, context=None, extra=None):
         """
         Unified extraction for all field types (party, panel, tables, precincts, states, election_types, years, buttons).

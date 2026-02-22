@@ -87,6 +87,171 @@ if CACHE_RESET and PROCESSED_URLS_FILE.exists():
 _navigation_store = NavigationRecipeStore()
 NAVIGATION_RUNNER = NavigationInstructionRunner(_navigation_store)
 _CAPTCHA_DETECTION_COUNTS: Dict[str, int] = defaultdict(int)
+_RISK_PREVIOUS_BY_SESSION: Dict[str, Any] = {}
+
+
+def _normalize_unit_interval(value: Any, *, assume_percent_if_gt_one: bool = True) -> float | None:
+    try:
+        if value is None:
+            return None
+        num = float(value)
+        if assume_percent_if_gt_one and num > 1.0:
+            num = num / 100.0
+        return max(0.0, min(1.0, num))
+    except Exception:
+        return None
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None or value == "":
+            return default
+        return int(value)
+    except Exception:
+        return default
+
+
+def _apply_risk_assessment(
+    headers: list[str],
+    data: list[dict],
+    metadata: dict,
+    *,
+    session_id: str | None = None,
+    trust_score: float | int | None = None,
+) -> dict:
+    if not isinstance(metadata, dict):
+        return metadata
+
+    try:
+        from .health.health_config import RISK_GATES_CONFIG
+        from .health.risk_gates import RiskGateConfig
+        from .health.risk_gates_calculus import CalculusRiskEvaluator
+
+        quality = metadata.get("quality_metrics") if isinstance(metadata.get("quality_metrics"), dict) else {}
+        audit = metadata.get("audit_signals") if isinstance(metadata.get("audit_signals"), dict) else {}
+
+        extraction_confidence = _normalize_unit_interval(
+            quality.get("extraction_confidence", metadata.get("extraction_confidence")),
+            assume_percent_if_gt_one=True,
+        )
+        if extraction_confidence is None:
+            extraction_confidence = _normalize_unit_interval(
+                metadata.get("confidence"),
+                assume_percent_if_gt_one=True,
+            )
+        if extraction_confidence is None:
+            extraction_confidence = 0.0
+
+        total_records = max(
+            _safe_int(metadata.get("row_count"), 0),
+            len(data) if isinstance(data, list) else 0,
+            1,
+        )
+        ground_truth_matches = _safe_int(metadata.get("ground_truth_matches"), None)
+        if ground_truth_matches is None:
+            ground_truth_matches = _safe_int(metadata.get("dl1_matches"), 0)
+
+        suspicious_pattern_count = max(
+            _safe_int(metadata.get("suspicious_pattern_count"), 0),
+            _safe_int(audit.get("semantic_mismatch_count"), 0),
+        )
+        outlier_record_count = max(
+            _safe_int(metadata.get("outlier_record_count"), 0),
+            _safe_int(metadata.get("anomaly_count"), 0),
+            _safe_int(audit.get("anomaly_count"), 0),
+        )
+
+        fallback_verification_score = _normalize_unit_interval(
+            metadata.get("verification_gate", metadata.get("verification_score")),
+            assume_percent_if_gt_one=True,
+        )
+        if fallback_verification_score is None:
+            fallback_verification_score = _normalize_unit_interval(
+                trust_score,
+                assume_percent_if_gt_one=True,
+            )
+
+        config = RiskGateConfig(
+            weight_confidence=float(RISK_GATES_CONFIG.get("weight_confidence", 0.33)),
+            weight_verification=float(RISK_GATES_CONFIG.get("weight_verification", 0.33)),
+            weight_anomaly=float(RISK_GATES_CONFIG.get("weight_anomaly", 0.34)),
+            tier_boundary_warn_log=float(RISK_GATES_CONFIG.get("tier_boundary_warn_log", 0.45)),
+            tier_boundary_block_warn=float(RISK_GATES_CONFIG.get("tier_boundary_block_warn", 0.72)),
+            verification_match_threshold=float(RISK_GATES_CONFIG.get("verification_match_threshold", 0.8)),
+            anomaly_pattern_weight=float(RISK_GATES_CONFIG.get("anomaly_pattern_weight", 0.4)),
+            anomaly_outlier_weight=float(RISK_GATES_CONFIG.get("anomaly_outlier_weight", 0.6)),
+        )
+
+        previous_scores = None
+        if session_id:
+            previous_scores = _RISK_PREVIOUS_BY_SESSION.get(session_id)
+
+        evaluator = CalculusRiskEvaluator(config=config)
+
+        scores, derivatives, sub_tier = evaluator.evaluate_with_derivatives(
+            extraction_confidence=extraction_confidence,
+            ground_truth_matches=ground_truth_matches,
+            total_records=total_records,
+            suspicious_pattern_count=suspicious_pattern_count,
+            outlier_record_count=outlier_record_count,
+            integrity_flags=metadata.get("integrity_flags") if isinstance(metadata.get("integrity_flags"), list) else None,
+            fallback_verification_score=fallback_verification_score,
+            previous_scores=previous_scores,
+            time_delta=1.0,
+        )
+
+        if session_id:
+            _RISK_PREVIOUS_BY_SESSION[session_id] = scores
+
+        risk_assessment = {
+            "risk_tier": scores.risk_tier,
+            "risk_sub_tier": sub_tier.sub_tier,
+            "action": sub_tier.action,
+            "composite_suspicion": round(scores.composite_suspicion, 6),
+            "tier_confidence": round(scores.tier_confidence, 6),
+            "gates": {
+                "confidence": round(scores.confidence_gate, 6),
+                "verification": round(scores.verification_gate, 6),
+                "anomaly": round(scores.anomaly_gate, 6),
+            },
+            "derivatives": {
+                "d_confidence_dt": round(derivatives.d_confidence_dt, 6),
+                "d_verification_dt": round(derivatives.d_verification_dt, 6),
+                "d_anomaly_dt": round(derivatives.d_anomaly_dt, 6),
+                "slope_toward_warn": round(derivatives.slope_toward_warn, 6),
+                "slope_toward_block": round(derivatives.slope_toward_block, 6),
+                "convergence_stability": round(derivatives.convergence_stability, 6),
+            },
+            "inputs": {
+                "extraction_confidence": round(extraction_confidence, 6),
+                "ground_truth_matches": ground_truth_matches,
+                "total_records": total_records,
+                "suspicious_pattern_count": suspicious_pattern_count,
+                "outlier_record_count": outlier_record_count,
+                "trust_score": trust_score,
+            },
+        }
+
+        metadata["risk_assessment"] = risk_assessment
+        metadata["risk_tier"] = scores.risk_tier
+        metadata["risk_sub_tier"] = sub_tier.sub_tier
+        metadata["risk_action"] = sub_tier.action
+
+        logger.info({
+            "level": "INFO",
+            "type": "risk_gates",
+            "message": f"[RiskGates] tier={scores.risk_tier} sub_tier={sub_tier.sub_tier} action={sub_tier.action}",
+            "session_id": session_id,
+            "risk_assessment": risk_assessment,
+        })
+    except Exception as exc:
+        logger.warning({
+            "level": "WARNING",
+            "type": "risk_gates",
+            "message": f"[RiskGates] assessment failed: {exc}",
+            "session_id": session_id,
+        })
+    return metadata
 
 
 def _close_browser_quietly(browser, session_id=None) -> None:
@@ -1651,6 +1816,7 @@ def orchestrate_url(
                         })
 
                         ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id, trust_factors=trust_factors, privilege_tier=privilege_tier)
+                        _apply_risk_assessment(headers, data, metadata, session_id=session_id, trust_score=trust_score)
                         stream_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
                         processed_meta = {}
                         if isinstance(metadata, dict):
@@ -1942,6 +2108,7 @@ def orchestrate_url(
             headers, data, contest, metadata = result
             if all([headers, data, contest, metadata]):
                 ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id, trust_factors=trust_factors, privilege_tier=privilege_tier)
+                _apply_risk_assessment(headers, data, metadata, session_id=session_id, trust_score=trust_score)
                 stream_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
                 mark_url_processed(target_url, status="success", session_id=session_id)
             else:
@@ -2253,6 +2420,7 @@ def orchestrate_url(
 
             if all([headers, data, contest, metadata]):
                 ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id, trust_factors=trust_factors, privilege_tier=privilege_tier)
+                _apply_risk_assessment(headers, data, metadata, session_id=session_id, trust_score=trust_score)
                 stream_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
                 output_file = metadata.get("output_file") if isinstance(metadata, dict) else None
                 if output_file:

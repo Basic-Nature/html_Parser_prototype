@@ -226,15 +226,15 @@ def run_self_check():
 
 
 def run_ballot_lens_check():
-    """Run the UI verification script (verify_modern_ui.py)."""
-    logger.info("[AUTOMATE] Running UI verification (verify_modern_ui.py)...")
+    """Run the Ballot Lens UI verification script (tools/ui_robust_check.py)."""
+    logger.info("[AUTOMATE] Running UI verification (tools/ui_robust_check.py)...")
     try:
         result = subprocess.run(
-            [sys.executable, "verify_modern_ui.py"],
+            [sys.executable, "tools/ui_robust_check.py", "--viewport", "desktop"],
             cwd=project_root,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=180,
         )
         logger.debug(f"[AUTOMATE] UI verification stdout: {result.stdout}")
         logger.debug(f"[AUTOMATE] UI verification stderr: {result.stderr}")
@@ -288,7 +288,7 @@ def main():
     parser.add_argument("--skip-tests", action="store_true", help="Skip automated tests")
     parser.add_argument("--skip-webapp-check", action="store_true", help="Skip webapp startup validation")
     parser.add_argument("--self-check", action="store_true", help="Run UI robust check (tools/ui_robust_check.py) after other checks")
-    parser.add_argument("--ballot-lens-check", action="store_true", help="Run UI verification (verify_modern_ui.py)")
+    parser.add_argument("--ballot-lens-check", action="store_true", help="Run UI verification (tools/ui_robust_check.py)")
     parser.add_argument("--pipeline-check", action="store_true", help="Run pipeline regression checker (scripts/pipeline_regression_check.py)")
 
     args = parser.parse_args()

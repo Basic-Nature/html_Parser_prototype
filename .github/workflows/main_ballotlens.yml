@@ -88,6 +88,17 @@ jobs:
             exit 1
           fi
 
+      - name: Guard against committed runtime env files
+        run: |
+          set -e
+          tracked_env=$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v -E '(^|/)\.env\.template$' || true)
+          if [ -n "$tracked_env" ]; then
+            echo "ERROR: runtime .env files are committed. Remove them and keep secrets in GitHub/Azure settings."
+            echo "$tracked_env"
+            exit 1
+          fi
+          echo "No committed runtime .env files detected."
+
       - name: Check webapp folder exists
         run: |
           if [ ! -d "webapp" ]; then

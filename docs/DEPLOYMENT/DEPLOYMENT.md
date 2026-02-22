@@ -33,7 +33,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # 4. Configure environment
-cp .env.example .env
+cp .env.template .env
 # Edit .env with your settings
 
 # 5. Run parser (CLI mode)
@@ -67,7 +67,7 @@ Poppler (for pdf2image)
 
 ### Credentials & Configuration
 
-- `.env` file with required keys (see `.env.example`)
+- `.env` file with required keys (copy from `.env.template`)
 - Optional: Azure credentials (for cloud deployment)
 - Optional: Client certificate (for QA endpoints)
 - Database connection string (if using external database)
@@ -149,6 +149,14 @@ AZURE_SUBSCRIPTION_ID=<subscription>
 AZURE_RESOURCE_GROUP=<group>
 AZURE_APP_SERVICE=<service>
 ```
+
+### Environment Split Policy (GitHub vs Azure)
+
+- Keep `.env.template` in GitHub as a schema-only template (no real secrets).
+- Never commit runtime `.env` files; use GitHub Secrets and Azure App Settings for production values.
+- Azure App Settings are the source of truth in production; local `.env` is for development only.
+- Container builds exclude `.env`/`.env.*`/`.env.template` via `.dockerignore` to avoid shipping local config.
+- CI deployment workflow fails if committed runtime `.env` files are detected.
 
 ### Flask Configuration
 

@@ -2638,6 +2638,24 @@ def scan_html_for_context(
         segments_with_attrs, target_url, context_library, coordinator, allow_duplicates, session_id, **kwargs
     )
 
+    # --- 4b. Optional OCR ingestion (text-only) ---
+    ocr_text = kwargs.get("ocr_text")
+    ocr_path = kwargs.get("ocr_path") or kwargs.get("ocr_text_path")
+    if not ocr_text and isinstance(ocr_path, str) and ocr_path:
+        try:
+            if os.path.exists(ocr_path):
+                with open(ocr_path, "r", encoding="utf-8", errors="replace") as f:
+                    ocr_text = f.read()
+        except Exception:
+            ocr_text = None
+    if ocr_text:
+        try:
+            ocr_context = coordinator.ingest_ocr_text(ocr_text, source=ocr_path or "ocr_text")
+            if ocr_context:
+                context_result["ocr_context"] = ocr_context
+        except Exception:
+            pass
+
     # --- 4a. Election Types Extraction from ballot_types ---
     election_types = []
     for seg in _extract_segments_by_label(segments_with_attrs, "ballot_types"):
@@ -2790,6 +2808,22 @@ def scan_html_for_context(
     context_result = _enrich_and_validate_context(
         context_result, page_hash, html, context_cache, coordinator, debug
     )
+
+    # --- 10. Context digest (for diagnostics + UI) ---
+    digest = _build_context_digest(context_result, page_url, selector_log)
+    context_result["context_digest"] = digest
+    emit_func = kwargs.get("emit_func")
+    _write_context_digest(digest, session_id)
+    if callable(emit_func) and session_id:
+        try:
+            emit_func({
+                "type": "context_digest",
+                "session_id": session_id,
+                "digest": digest,
+                "timestamp": time.time(),
+            })
+        except Exception:
+            pass
 
     return context_result
 
@@ -3352,3 +3386,216 @@ def _enrich_and_validate_context(
     sync_type_and_election_types(context_result, fallback_types=best_election_types, fallback_type=best_type)
 
     return context_result
+
+def _extract_heading_text(heading: Any) -> str:
+    if isinstance(heading, str):
+        return heading.strip()
+    if isinstance(heading, dict):
+        for key in ("text", "label", "heading", "raw_html", "html"):
+            val = safe_get(heading, key, None)
+            if isinstance(val, str) and val.strip():
+                return _extract_clean_text(val)
+    return ""
+
+def _build_model_signals(context_result: Dict[str, Any]) -> Dict[str, Any]:
+    segments = safe_get(context_result, "tagged_segments_with_attrs", []) or []
+    if not isinstance(segments, list):
+        segments = []
+
+    label_counter: Counter = Counter()
+    confidences: List[float] = []
+    confidence_buckets = {"low": 0, "medium": 0, "high": 0}
+
+    for seg in segments:
+        if not isinstance(seg, dict):
+            continue
+        label = str(safe_get(seg, "ml_label", "unknown") or "unknown").strip().lower()
+        label_counter[label] += 1
+
+        conf_raw = safe_get(seg, "ml_confidence", None)
+        try:
+            if conf_raw is not None:
+                conf = float(conf_raw)
+                if conf < 0:
+                    conf = 0.0
+                elif conf > 1:
+                    conf = 1.0
+                confidences.append(conf)
+                if conf < 0.4:
+                    confidence_buckets["low"] += 1
+                elif conf < 0.7:
+                    confidence_buckets["medium"] += 1
+                else:
+                    confidence_buckets["high"] += 1
+        except Exception:
+            continue
+
+    total_segments = len(segments)
+    total_labeled = sum(v for k, v in label_counter.items() if k not in {"unknown", "ignore"})
+    unknown_count = label_counter.get("unknown", 0)
+    ignore_count = label_counter.get("ignore", 0)
+
+    if confidences:
+        conf_min = float(min(confidences))
+        conf_max = float(max(confidences))
+        conf_avg = float(sum(confidences) / len(confidences))
+        conf_median = float(np.median(np.array(confidences, dtype=float)))
+    else:
+        conf_min = conf_max = conf_avg = conf_median = 0.0
+
+    labels_top = [
+        {"label": label, "count": count}
+        for label, count in label_counter.most_common(15)
+    ]
+
+    return {
+        "segment_count": total_segments,
+        "labeled_segment_count": total_labeled,
+        "unknown_segment_count": unknown_count,
+        "ignore_segment_count": ignore_count,
+        "label_distribution": labels_top,
+        "confidence": {
+            "count": len(confidences),
+            "min": conf_min,
+            "max": conf_max,
+            "avg": conf_avg,
+            "median": conf_median,
+            "buckets": confidence_buckets,
+        },
+        "review_signals": {
+            "segments_needing_review": len(safe_get(context_result, "segments_needing_review", []) or []),
+            "pattern_kb_matches": len(safe_get(context_result, "pattern_kb_matches", []) or []),
+        },
+    }
+
+DIGEST_SCHEMA_VERSION = "1.1"
+DIGEST_TRENDS_FILE = "context_digest_trends.json"
+DIGEST_TRENDS_MAX_ITEMS = 120
+
+def _build_context_digest(context_result: Dict[str, Any], page_url: str, selector_log: Set[str]) -> Dict[str, Any]:
+    contests = safe_get(context_result, "contests", []) or []
+    headings = safe_get(context_result, "headings", []) or []
+    panels = safe_get(context_result, "panels", []) or []
+    tables = safe_get(context_result, "tables", []) or []
+    ocr_context = safe_get(context_result, "ocr_context", {}) or {}
+    model_signals = _build_model_signals(context_result)
+
+    panel_coverage = []
+    for panel in panels:
+        heading = ""
+        if isinstance(panel, dict):
+            heading = str(panel.get("panel_heading") or panel.get("heading") or "").strip()
+            scores = panel.get("keyword_scores") if isinstance(panel.get("keyword_scores"), dict) else {}
+            table_count = len(panel.get("tables") or []) if isinstance(panel.get("tables"), list) else 0
+        else:
+            scores = {}
+            table_count = 0
+        if heading or scores:
+            panel_coverage.append({
+                "heading": heading or "(unlabeled panel)",
+                "keyword_scores": scores,
+                "table_count": table_count,
+            })
+        if len(panel_coverage) >= 12:
+            break
+
+    top_headings = []
+    for heading in headings:
+        text = _extract_heading_text(heading)
+        if text:
+            top_headings.append(text)
+        if len(top_headings) >= 10:
+            break
+
+    contest_samples = []
+    for contest in contests:
+        if isinstance(contest, dict):
+            title = safe_get(contest, "title", "") or safe_get(contest, "contest", "")
+        else:
+            title = str(contest)
+        title = str(title).strip()
+        if title:
+            contest_samples.append(title)
+        if len(contest_samples) >= 5:
+            break
+
+    return {
+        "schema_version": DIGEST_SCHEMA_VERSION,
+        "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "page_url": page_url,
+        "counts": {
+            "contests": len(contests),
+            "panels": len(panels),
+            "tables": len(tables),
+            "headings": len(headings),
+        },
+        "top_headings": top_headings,
+        "contest_samples": contest_samples,
+        "selector_sample": sorted(list(selector_log))[:20],
+        "ocr_present": bool(ocr_context),
+        "ocr_fields": safe_get(ocr_context, "fields", {}) if ocr_context else {},
+        "panel_coverage": panel_coverage,
+        "model_signals": model_signals,
+    }
+
+def _update_digest_trends(out_dir: str, digest: Dict[str, Any], session_id: Optional[str]) -> None:
+    trends_path = os.path.join(out_dir, DIGEST_TRENDS_FILE)
+    existing: List[Dict[str, Any]] = []
+    try:
+        if os.path.exists(trends_path):
+            with open(trends_path, "rb") as f:
+                raw = f.read()
+            loaded = orjson.loads(raw) if raw else []
+            if isinstance(loaded, list):
+                existing = [x for x in loaded if isinstance(x, dict)]
+    except Exception:
+        existing = []
+
+    model_signals = safe_get(digest, "model_signals", {}) or {}
+    confidence = safe_get(model_signals, "confidence", {}) or {}
+    review_signals = safe_get(model_signals, "review_signals", {}) or {}
+    segment_count = int(safe_get(model_signals, "segment_count", 0) or 0)
+    unknown_count = int(safe_get(model_signals, "unknown_segment_count", 0) or 0)
+    unknown_ratio = float(unknown_count / segment_count) if segment_count > 0 else 0.0
+
+    trend_entry = {
+        "schema_version": DIGEST_SCHEMA_VERSION,
+        "session_id": session_id,
+        "generated_at": safe_get(digest, "generated_at", datetime.datetime.utcnow().isoformat() + "Z"),
+        "page_url": safe_get(digest, "page_url", ""),
+        "counts": safe_get(digest, "counts", {}),
+        "panel_count": len(safe_get(digest, "panel_coverage", []) or []),
+        "segment_count": segment_count,
+        "unknown_segment_count": unknown_count,
+        "unknown_ratio": unknown_ratio,
+        "labeled_segment_count": int(safe_get(model_signals, "labeled_segment_count", 0) or 0),
+        "confidence": {
+            "count": safe_get(confidence, "count", 0),
+            "avg": safe_get(confidence, "avg", 0.0),
+            "median": safe_get(confidence, "median", 0.0),
+            "buckets": safe_get(confidence, "buckets", {}),
+        },
+        "review_signals": {
+            "segments_needing_review": safe_get(review_signals, "segments_needing_review", 0),
+            "pattern_kb_matches": safe_get(review_signals, "pattern_kb_matches", 0),
+        },
+    }
+
+    existing.append(trend_entry)
+    if len(existing) > DIGEST_TRENDS_MAX_ITEMS:
+        existing = existing[-DIGEST_TRENDS_MAX_ITEMS:]
+
+    with open(trends_path, "wb") as f:
+        f.write(orjson.dumps(existing, option=orjson.OPT_INDENT_2))
+
+def _write_context_digest(digest: Dict[str, Any], session_id: Optional[str]) -> None:
+    try:
+        out_dir = os.path.join("tools", "debug_headless_output")
+        os.makedirs(out_dir, exist_ok=True)
+        suffix = session_id or hashlib.sha256(safe_encode(str(digest.get("page_url", "")))).hexdigest()[:10]
+        filename = os.path.join(out_dir, f"context_digest_{suffix}.json")
+        with open(filename, "wb") as f:
+            f.write(orjson.dumps(digest, option=orjson.OPT_INDENT_2))
+        _update_digest_trends(out_dir, digest, session_id)
+    except Exception:
+        pass

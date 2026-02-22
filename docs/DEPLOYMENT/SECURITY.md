@@ -78,6 +78,14 @@ LOG_DEDUPE_WINDOW_SEC=2.0
 SECURITY_LOG_DEDUPE_WINDOW_SEC=12.0
 ```
 
+### Environment Split Policy (GitHub vs Azure)
+
+- Keep `.env.template` in GitHub as a schema-only template (no real secrets).
+- Never commit runtime `.env` files; use GitHub Secrets and Azure App Settings for production values.
+- Azure App Settings are the source of truth in production; local `.env` is for development only.
+- Container builds exclude `.env`/`.env.*`/`.env.template` via `.dockerignore` to avoid shipping local config.
+- CI deployment workflow fails if committed runtime `.env` files are detected.
+
 ### Security Defaults
 
 | Setting | Development | Production |
@@ -186,6 +194,7 @@ Guarded ingestion behavior:
 ### Pre-Deployment
 
 - [ ] Generate or obtain client certificate(s)
+- [ ] Confirm no runtime `.env` files are committed (only `.env.template` should be tracked)
 - [ ] Verify certificate validity (not expired, proper chain)
 - [ ] Convert to PKCS12 for browser use if needed
 - [ ] Store private key securely (Azure Key Vault recommended)

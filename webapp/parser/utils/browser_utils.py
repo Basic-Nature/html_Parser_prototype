@@ -142,6 +142,12 @@ def safe_inner_text(obj: Optional[ElementType | PageType], logger=logger) -> str
     try:
         # NEW: support Locator directly
         if isinstance(obj, (SyncLocator, AsyncLocator)):
+            try:
+                count = obj.count()
+                if isinstance(count, int) and count > 1:
+                    return obj.first.inner_text()
+            except Exception:
+                pass
             return obj.inner_text()
         if isinstance(obj, (SyncElementHandle, AsyncElementHandle)):
             return obj.inner_text()
@@ -266,6 +272,17 @@ def safe_is_enabled(element: Optional[ElementType], logger=logger) -> bool:
 def safe_click(element: Optional[ElementType], logger=logger) -> bool:
     """Safely click a Playwright element."""
     try:
+        if element is None:
+            return False
+        if safe_click_with_retry(
+            element=element,
+            max_retries=3,
+            timeout=7000,
+            delay_between=0.35,
+            scroll_into_view=True,
+            logger=logger,
+        ):
+            return True
         if hasattr(element, "click"):
             element.click()
             return True
@@ -331,6 +348,7 @@ def safe_click_with_retry(
     timeout: int = 30000,
     delay_between: float = 0.6,
     scroll_into_view: bool = True,
+    soft_fail: bool = False,
     session_id: Optional[str] = None,
     logger=logger,
 ) -> bool:
@@ -344,6 +362,27 @@ def safe_click_with_retry(
         return False
 
     last_exc = None
+
+    def _try_js_click(target) -> bool:
+        if page is None or not hasattr(page, "evaluate"):
+            return False
+        try:
+            handle = target
+            if hasattr(target, "element_handle"):
+                try:
+                    handle = target.element_handle()
+                except Exception:
+                    handle = None
+            if handle is None:
+                return False
+            result = page.evaluate(
+                "el => { if (!el || !el.isConnected) return false; el.click(); return true; }",
+                handle,
+            )
+            return bool(result)
+        except Exception:
+            return False
+
     for attempt in range(1, max_retries + 1):
         try:
             el = element
@@ -405,6 +444,18 @@ def safe_click_with_retry(
                     return True
                 except Exception as e:
                     last_exc = e
+                    err_text = str(e).lower()
+                    if "intercepts pointer events" in err_text or "element is not attached" in err_text or "strict mode violation" in err_text:
+                        try:
+                            if hasattr(el, "click"):
+                                el.click(timeout=min(timeout, 5000), force=True)
+                                logger.info({"level": "INFO", "type": "browser", "message": f"Force-click succeeded (attempt {attempt}/{max_retries}).", "session_id": session_id})
+                                return True
+                        except Exception as force_exc:
+                            last_exc = force_exc
+                        if _try_js_click(el):
+                            logger.info({"level": "INFO", "type": "browser", "message": f"JS click fallback succeeded (attempt {attempt}/{max_retries}).", "session_id": session_id})
+                            return True
                     logger.warning({"level": "WARNING", "type": "browser", "message": f"Click attempt failed (attempt {attempt}/{max_retries}): {e}", "session_id": session_id})
                     # short backoff
                     time.sleep(delay_between)
@@ -421,7 +472,18 @@ def safe_click_with_retry(
             time.sleep(delay_between)
             continue
 
-    # If we reach here, all attempts failed — capture diagnostics
+    # If we reach here, all attempts failed.
+    if soft_fail:
+        logger.warning({
+            "level": "WARNING",
+            "type": "browser",
+            "message": f"All click attempts failed for selector={selector}; continuing due to soft_fail.",
+            "session_id": session_id,
+            "error": str(last_exc),
+        })
+        return False
+
+    # Hard failure path captures diagnostics.
     try:
         diags = capture_page_diagnostics(page, session_id=session_id, note=(selector or 'element_click').replace('/', '_'))
         logger.error({"level": "ERROR", "type": "browser", "message": f"All click attempts failed for selector={selector}; diagnostics captured.", "session_id": session_id, "diagnostics": diags, "error": str(last_exc)})

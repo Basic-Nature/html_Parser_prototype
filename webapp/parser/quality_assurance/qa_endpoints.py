@@ -47,7 +47,7 @@ def _require_qa_enabled(f):
 
 def _get_reviewer_principal() -> str | None:
     """Extract principal from request (must be authenticated)."""
-    principal, _ = extract_client_principal(request.headers)
+    principal, _, _ = extract_client_principal(request.headers)
     return principal
 
 

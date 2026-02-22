@@ -1245,7 +1245,7 @@ const SessionRestore = (() => {
 
   /**
    * Save a lightweight restore snapshot to sessionStorage.
-  * @param {any} _data
+   * @param {any} _data
    * @returns {void}
    */
   function saveState(_data) {
@@ -1456,6 +1456,7 @@ function initResultsPreviewBar() {
       
       const changed = count !== previousCount;
       const increased = count > previousCount && previousCount > 0;
+      const isLoading = !!(pulseLoader && !pulseLoader.classList.contains('hidden'));
 
       // Add "new results" indicator if count increased
       if (increased) {
@@ -1466,7 +1467,7 @@ function initResultsPreviewBar() {
         }, 5000);
       }
 
-      if (changed) {
+      if (changed && increased && !isLoading) {
         LiveMessenger.announce(`Results updated: ${count} item${count !== 1 ? 's' : ''} available.`, { focusTarget: increased ? previewBar : null });
       }
 
@@ -2391,6 +2392,7 @@ const socket = io({
 });
 
 let socketJoinRequested = false;
+let socketJoinConfirmed = false;
 
 function getJoinPayload() {
   return {
@@ -2498,11 +2500,31 @@ window.debugSocketIO = {
 
 socket.on('connect', () => {
   console.log('[Socket.IO] Connected:', socket.id);
+  socketJoinConfirmed = false;
   if (!socketJoinRequested) {
     socketJoinRequested = true;
     socket.emit('join', getJoinPayload());
   }
 });
+
+socket.on('joined', () => {
+  socketJoinConfirmed = true;
+});
+
+async function waitForJoinAck(timeoutMs = 3000) {
+  if (!socket || !socket.connected) return false;
+  if (socketJoinConfirmed) return true;
+  if (!socketJoinRequested) {
+    socketJoinRequested = true;
+    socket.emit('join', getJoinPayload());
+  }
+  const started = Date.now();
+  while ((Date.now() - started) < timeoutMs) {
+    if (socketJoinConfirmed) return true;
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  }
+  return socketJoinConfirmed;
+}
 
 /**
  * @typedef {{ session_id: string }} SessionIdPayload
@@ -2935,6 +2957,7 @@ const state = {
     confidence: 0,
     state: '',
     level: '',
+    showBlocked: false,
   },
   selectedResults: new Set(),
   currentFile: null,
@@ -3324,12 +3347,33 @@ function parseConfidenceClass(confidence) {
  */
 function addLog(logObj) {
   ErrorBoundary.safeExecute(() => {
+    const rawMessage = logObj && Object.prototype.hasOwnProperty.call(logObj, 'message')
+      ? logObj.message
+      : (logObj && Object.prototype.hasOwnProperty.call(logObj, 'msg') ? logObj.msg : null);
+
+    let messageText = '';
+    if (typeof rawMessage === 'string') {
+      messageText = rawMessage;
+    } else if (rawMessage !== null && typeof rawMessage !== 'undefined') {
+      try {
+        messageText = JSON.stringify(rawMessage);
+      } catch (e) {
+        messageText = String(rawMessage);
+      }
+    } else if (logObj && Object.prototype.hasOwnProperty.call(logObj, 'summary')) {
+      try {
+        messageText = JSON.stringify(logObj.summary);
+      } catch (e) {
+        messageText = String(logObj.summary);
+      }
+    }
+
     /** @type {LogRecord} */
     const normalized = {
-      timestamp: Number(logObj.timestamp || Date.now()),
-      level: String(logObj.level || 'INFO'),
-      type: String(logObj.type || 'info'),
-      message: String(logObj.message || ''),
+      timestamp: Number(logObj?.timestamp || Date.now()),
+      level: String(logObj?.level || 'INFO').toUpperCase(),
+      type: String(logObj?.type || logObj?.category || 'info'),
+      message: messageText,
       sessionId: logObj.session_id || currentSessionId || null,
     };
     
@@ -3474,6 +3518,10 @@ function buildHighlightedMessage(text, searchTerm) {
  */
 function createResultCard(result) {
   const confClass = parseConfidenceClass(result.confidence || 0);
+  const riskTier = String(result.riskTier || '').toLowerCase();
+  const riskSubTier = String(result.riskSubTier || '').toLowerCase();
+  const riskBadgeText = riskTier ? `RISK:${riskTier.toUpperCase()}${riskSubTier ? `/${riskSubTier.toUpperCase()}` : ''}` : '';
+  const riskTitle = result.riskAction ? ` title="${escapeHtml(String(result.riskAction))}"` : '';
   
   return `
     <div class="result-card" data-result-id="${result.id}">
@@ -3482,6 +3530,7 @@ function createResultCard(result) {
         <div class="card-title">
           <div class="card-name">${escapeHtml(result.name)}</div>
           <span class="card-type-badge">${result.type.toUpperCase()}</span>
+          ${riskBadgeText ? `<span class="card-type-badge"${riskTitle}>${riskBadgeText}</span>` : ''}
         </div>
       </div>
       
@@ -3509,6 +3558,9 @@ function createResultCard(result) {
 
 function renderResults() {
   const filtered = state.results.filter(r => {
+    if (!state.filters.showBlocked && String(r.riskTier || '').toLowerCase() === 'block') {
+      return false;
+    }
     if (state.filters.search && !r.name.toLowerCase().includes(state.filters.search.toLowerCase())) {
       return false;
     }
@@ -3520,9 +3572,24 @@ function renderResults() {
     }
     return true;
   });
-  // Attach non-inline handlers to comply with CSP (avoid inline attributes)
-  attachResultHandlers();
   
+
+  const grid = $('#resultsGrid');
+  const emptyState = $('#emptyState');
+  if (filtered.length === 0) {
+    grid.classList.add('hidden');
+    emptyState.classList.remove('hidden');
+    emptyState.classList.add('flex');
+  } else {
+    grid.classList.remove('hidden');
+    grid.innerHTML = filtered.map(r => createResultCard(r)).join('');
+    emptyState.classList.add('hidden');
+    emptyState.classList.remove('flex');
+  }
+
+  // Attach non-inline handlers after cards are rendered.
+  attachResultHandlers();
+}
 
 function attachResultHandlers() {
   // Preview buttons
@@ -3595,19 +3662,6 @@ function attachResultHandlers() {
     // Initialize checked state from `state.selectedResults` (guard element type)
     try { if (cb instanceof HTMLInputElement) cb.checked = state.selectedResults.has(id); } catch (e) {}
   });
-}
-  const grid = $('#resultsGrid');
-  const emptyState = $('#emptyState');
-  if (filtered.length === 0) {
-    grid.classList.add('hidden');
-    emptyState.classList.remove('hidden');
-    emptyState.classList.add('flex');
-  } else {
-    grid.classList.remove('hidden');
-    grid.innerHTML = filtered.map(r => createResultCard(r)).join('');
-    emptyState.classList.add('hidden');
-    emptyState.classList.remove('flex');
-  }
 }
 
 // ============================================
@@ -4119,6 +4173,11 @@ $$('#btnRunParser, #btnRunParser2').forEach(btn => {
     const socketOk = await ensureSocketForMutation('/ballot_lens');
     if (!socketOk) {
       showToast('Certificate required to run parser.', 'warning');
+      return;
+    }
+    const joinReady = await waitForJoinAck();
+    if (!joinReady) {
+      showToast('Session handshake not ready yet. Please try again.', 'warning');
       return;
     }
     const fileSourceEl = document.querySelector('input[name="fileSource"]:checked');
@@ -4787,7 +4846,7 @@ $('#btnBulkExport')?.addEventListener('click', () => {
   {
     const btn = $('#btnRefreshResults');
     if (btn) {
-      btn.addEventListener('click', (ev) => {
+      btn.addEventListener('click', async (ev) => {
         // Ignore synthetic/programmatic clicks; accept only user-initiated events
         try { if (ev && ev.isTrusted === false) return; } catch (e) { /* ignore */ }
         // Guard against accidental double-fire while an async refresh is in flight.
@@ -4796,13 +4855,16 @@ $('#btnBulkExport')?.addEventListener('click', () => {
         btn.classList.add('is-loading');
         // Slight delay on the toast to avoid blink perception on fast refreshes
         const toastTimer = setTimeout(() => showToast('Refreshing results...', 'info'), 180);
-        // In production, fetch updated results from API
-        setTimeout(() => {
+        try {
+          await loadRealData();
+          showToast('Results refreshed', 'success');
+        } catch (e) {
+          showToast('Refresh failed', 'warning');
+        } finally {
           btn.dataset.busy = '0';
           btn.classList.remove('is-loading');
           clearTimeout(toastTimer);
-          showToast('Results refreshed', 'success');
-        }, 420);
+        }
       });
     }
   }
@@ -4953,6 +5015,58 @@ let promptUsingModalManager = false;
 let promptTopLayerMutationCount = 0;
 let promptTopLayerLastTs = 0;
 let lastForceClearTs = 0;
+let activePromptFingerprint = null;
+const PROMPT_DEDUPE_WINDOW_MS = 120000;
+const seenPromptFingerprints = new Map();
+const answeredPromptFingerprints = new Map();
+
+function _prunePromptFingerprints(map) {
+  const now = Date.now();
+  map.forEach((ts, key) => {
+    if (!ts || (now - ts) > PROMPT_DEDUPE_WINDOW_MS) {
+      map.delete(key);
+    }
+  });
+}
+
+function _normalizePromptOptionsForFingerprint(options) {
+  if (!Array.isArray(options)) return [];
+  return options.slice(0, 30).map((opt) => {
+    const idx = String(opt?.index ?? opt?.value ?? '');
+    const label = String(opt?.label || '').trim().toLowerCase().slice(0, 120);
+    const meta = String(opt?.meta || '').trim().toLowerCase().slice(0, 80);
+    return `${idx}:${label}:${meta}`;
+  });
+}
+
+function _buildPromptFingerprint(sessionId, title, message, options) {
+  const sid = String(sessionId || currentSessionId || 'no-session');
+  const normalizedTitle = String(title || '').trim().toLowerCase().slice(0, 120);
+  const normalizedMessage = String(message || '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 220);
+  const normalizedOptions = _normalizePromptOptionsForFingerprint(options).join('|');
+  return `${sid}::${normalizedTitle}::${normalizedMessage}::${normalizedOptions}`;
+}
+
+function _shouldSuppressPromptFingerprint(fingerprint) {
+  if (!fingerprint) return false;
+  _prunePromptFingerprints(seenPromptFingerprints);
+  _prunePromptFingerprints(answeredPromptFingerprints);
+  if (activePromptFingerprint && activePromptFingerprint === fingerprint) return true;
+  if (answeredPromptFingerprints.has(fingerprint)) return true;
+  return false;
+}
+
+function _markPromptShown(fingerprint) {
+  if (!fingerprint) return;
+  _prunePromptFingerprints(seenPromptFingerprints);
+  seenPromptFingerprints.set(fingerprint, Date.now());
+}
+
+function _markPromptAnswered(fingerprint) {
+  if (!fingerprint) return;
+  _prunePromptFingerprints(answeredPromptFingerprints);
+  answeredPromptFingerprints.set(fingerprint, Date.now());
+}
 
 function ensurePromptModalAria(promptModal) {
   if (!promptModal) return;
@@ -5235,6 +5349,10 @@ function handlePromptLog(data) {
     /** @type {string} */
     let promptMessage = message || ctxMessage || '';
 
+    if (message && /prompt\s+response\s+received/i.test(message)) {
+      return;
+    }
+
     // DEBUG: Log what we're receiving
     console.debug('[handlePromptLog] Received data:', {
       messagePreview: message.substring(0, 100),
@@ -5281,12 +5399,20 @@ function handlePromptLog(data) {
     }
 
     if (isPrompt && (promptMessage || options.length)) {
+      const fingerprint = _buildPromptFingerprint(data?.session_id, ctx.title || 'Action required', promptMessage, options);
+      if (_shouldSuppressPromptFingerprint(fingerprint)) {
+        debugLog('[handlePromptLog] prompt suppressed by fingerprint', { fingerprint, sessionId: data?.session_id || currentSessionId });
+        return;
+      }
       console.debug('[handlePromptLog] Displaying prompt with', options.length, 'options');
       showPrompt({
         title: ctx.title || 'Action required',
         message: promptMessage,
         options,
         placeholder: ctx.placeholder,
+        dedupeKey: fingerprint,
+        source: 'parser_output',
+        sessionId: data?.session_id || currentSessionId,
       });
     }
   }, 'handlePromptLog');
@@ -5364,11 +5490,20 @@ function handleContestOptions(payload) {
     /** @type {string} */
     const message = ctx.message || 'Select a contest';
 
+    const fingerprint = _buildPromptFingerprint(payload?.session_id || currentSessionId, 'Select Contest', message, options);
+    if (_shouldSuppressPromptFingerprint(fingerprint)) {
+      debugLog('[handleContestOptions] prompt suppressed by fingerprint', { fingerprint, sessionId: payload?.session_id || currentSessionId });
+      return;
+    }
+
     showPrompt({
       title: 'Select Contest',
       message,
       options,
       placeholder: 'Search or click to choose',
+      dedupeKey: fingerprint,
+      source: 'contest_options',
+      sessionId: payload?.session_id || currentSessionId,
     });
   }, 'handleContestOptions');
 }
@@ -5758,9 +5893,13 @@ function updateSelectionSummary() {
   }, 'updateSelectionSummary');
 }
 
-function showPrompt({ title = 'Action required', message = '', options = [], placeholder = '' }) {
+function showPrompt({ title = 'Action required', message = '', options = [], placeholder = '', dedupeKey = '', source = 'unknown', sessionId = null }) {
   ErrorBoundary.safeExecute(() => {
     debugPerf('[perf] showPrompt', () => {
+      if (dedupeKey && _shouldSuppressPromptFingerprint(dedupeKey)) {
+        debugLog('[showPrompt] skipped duplicate prompt', { dedupeKey, source, sessionId: sessionId || currentSessionId });
+        return;
+      }
       try {
         if (typeof ModalRestoreBanner !== 'undefined') {
           ModalRestoreBanner.clear('prompt');
@@ -5777,7 +5916,9 @@ function showPrompt({ title = 'Action required', message = '', options = [], pla
         messagePreview: message.substring(0, 100),
         optionsCount: activePromptOptions.length,
         optionsSample: activePromptOptions.slice(0, 3),
-        placeholder
+        placeholder,
+        source,
+        sessionId: sessionId || currentSessionId,
       });
 
       if (promptTitleEl) {
@@ -5836,6 +5977,14 @@ function showPrompt({ title = 'Action required', message = '', options = [], pla
       } else if (promptInputEl) {
         promptInputEl.focus();
       }
+
+      if (dedupeKey) {
+        activePromptFingerprint = dedupeKey;
+        _markPromptShown(dedupeKey);
+      } else {
+        activePromptFingerprint = _buildPromptFingerprint(sessionId || currentSessionId, title, message, activePromptOptions);
+        _markPromptShown(activePromptFingerprint);
+      }
     });
   }, 'showPrompt');
 }
@@ -5871,6 +6020,13 @@ function submitPrompt(/** @type {string|number|undefined|null} */ forcedValue) {
       showToast('Please select an option or enter a response', 'warning');
       return;
     }
+
+    if (!currentSessionId) {
+      showToast('No active session. Please start or rejoin a session first.', 'warning');
+      return;
+    }
+
+    _markPromptAnswered(activePromptFingerprint);
 
     socket.emit('parser_prompt', /** @type {ParserPromptPayload} */ ({
       session_id: currentSessionId,
@@ -5967,6 +6123,7 @@ function hidePrompt(options) {
       selectedPromptOptions.clear();
       bundleExpandedState.clear();
     }
+    activePromptFingerprint = null;
   }, 'hidePrompt');
 }
 
@@ -6134,6 +6291,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const showShortcutsBtn = $('#btnShowKeyboardShortcuts');
   if (showShortcutsBtn) {
     showShortcutsBtn.addEventListener('click', () => KeyboardGuide.show());
+  }
+
+  const btnToggleBlockedResults = $('#btnToggleBlockedResults');
+  if (btnToggleBlockedResults) {
+    const updateBlockedLabel = () => {
+      btnToggleBlockedResults.textContent = state.filters.showBlocked ? 'Hide Blocked' : 'Show Blocked';
+    };
+    updateBlockedLabel();
+    btnToggleBlockedResults.addEventListener('click', () => {
+      state.filters.showBlocked = !state.filters.showBlocked;
+      updateBlockedLabel();
+      renderResults();
+    });
   }
 
   // Guard against leftover overlays on load/reconnect
@@ -6911,18 +7081,29 @@ async function loadRealData() {
     /**
      * @typedef {Object} WarehouseItem
      * @property {string|number} [id]
+     * @property {string} [batch_id]
      * @property {string} [contest]
+     * @property {string} [candidate]
+     * @property {number|string} [votes]
      * @property {string} [county]
      * @property {string} [format]
      * @property {number} [row_count]
      * @property {number} [column_count]
      * @property {number|string} [confidence_score]
+     * @property {number|string} [extraction_confidence]
+     * @property {number|string} [trust_score]
      * @property {string} [state]
      * @property {string} [handler_name]
+     * @property {string} [verification_status]
+     * @property {string} [dl_status]
      * @property {string|number|Date} [created_at]
+     * @property {string|number|Date} [processed_at]
+     * @property {string|number|Date} [extracted_at]
+     * @property {string|number|Date} [election_date]
      * @property {string} [source_url]
      * @property {string} [preview_html]
      * @property {string} [preview_text]
+     * @property {Record<string, any>|string} [metastats]
      */
 
     /**
@@ -6939,6 +7120,9 @@ async function loadRealData() {
      * @property {number} timestamp
      * @property {string} source_url
      * @property {string} preview
+    * @property {string} [riskTier]
+    * @property {string} [riskSubTier]
+    * @property {string} [riskAction]
      */
 
     /** @type {WarehouseItem[]} */
@@ -6947,29 +7131,231 @@ async function loadRealData() {
     /** @type {number} */
     const minConfidence = Number((state.filters && state.filters.confidence) || 0);
 
-    const mappedResults = warehouseItems.map((item, idx) => {
-      let confidence = null;
-      if (item.confidence_score !== undefined && item.confidence_score !== null && !Number.isNaN(Number(item.confidence_score))) {
-        confidence = Number(item.confidence_score);
-        // If service returns 0-1, scale to percentage; if already 0-100, keep as-is.
-        if (confidence <= 1) confidence = confidence * 100;
+    /**
+     * @param {any} value
+     * @returns {number|null}
+     */
+    function toNumberOrNull(value) {
+      if (value === null || value === undefined || value === '') return null;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    /**
+     * @param {any} item
+     * @returns {any}
+     */
+    function parseMeta(item) {
+      const meta = item && item.metastats;
+      if (!meta) return {};
+      if (typeof meta === 'string') {
+        try {
+          return JSON.parse(meta);
+        } catch (e) {
+          return {};
+        }
+      }
+      return (typeof meta === 'object') ? meta : {};
+    }
+
+    /**
+     * @param {any} status
+     * @returns {number}
+     */
+    function confidenceFromStatus(status) {
+      const v = String(status || '').toLowerCase();
+      if (v === 'verified' || v === 'dl2') return 90;
+      if (v === 'pending' || v === 'dl1') return 72;
+      if (v === 'rejected') return 30;
+      return 58;
+    }
+
+    /**
+     * @param {any} item
+     * @returns {number}
+     */
+    function resolveConfidence(item) {
+      const meta = parseMeta(item);
+      const qm = (meta && meta.quality_metrics && typeof meta.quality_metrics === 'object') ? meta.quality_metrics : {};
+      const candidates = [
+        item?.confidence_score,
+        item?.extraction_confidence,
+        item?.trust_score,
+        meta?.confidence_score,
+        meta?.extraction_confidence,
+        meta?.trust_score,
+        qm?.confidence_score,
+        qm?.extraction_confidence,
+        qm?.trust_score,
+      ];
+
+      for (const raw of candidates) {
+        const n = toNumberOrNull(raw);
+        if (n === null) continue;
+        const pct = n <= 1 ? n * 100 : n;
+        return Math.max(0, Math.min(100, pct));
       }
 
+      const base = confidenceFromStatus(item?.verification_status || meta?.verification_status || item?.dl_status);
+      const hasCandidate = !!(item?.candidate || meta?.candidate);
+      const hasVotes = toNumberOrNull(item?.votes) !== null;
+      const adjusted = base + (hasCandidate ? 6 : 0) + (hasVotes ? 6 : 0);
+      return Math.max(0, Math.min(100, adjusted));
+    }
+
+    /**
+     * @param {any} item
+     * @returns {number}
+     */
+    function resolveRowCount(item) {
+      const meta = parseMeta(item);
+      const fromItem = toNumberOrNull(item?.row_count);
+      const fromMeta = toNumberOrNull(meta?.row_count);
+      if (fromItem !== null && fromItem > 0) return fromItem;
+      if (fromMeta !== null && fromMeta > 0) return fromMeta;
+      return 1;
+    }
+
+    /**
+     * @param {any} item
+     * @returns {string}
+     */
+    function resolveType(item) {
+      const meta = parseMeta(item);
+      return String(item?.format || meta?.format || meta?.source_format || 'csv').toLowerCase();
+    }
+
+    /**
+     * @param {any} item
+     * @returns {number}
+     */
+    function resolveTimestamp(item) {
+      const candidates = [item?.created_at, item?.processed_at, item?.extracted_at, item?.election_date];
+      for (const raw of candidates) {
+        if (!raw) continue;
+        const t = new Date(raw).getTime();
+        if (!Number.isNaN(t)) return t;
+      }
+      return Date.now();
+    }
+
+    function riskRank(tier) {
+      const t = String(tier || '').toLowerCase();
+      if (t === 'block') return 3;
+      if (t === 'warn') return 2;
+      if (t === 'log') return 1;
+      return 0;
+    }
+
+    function resolveRisk(item) {
+      const meta = parseMeta(item);
+      const risk = (meta && typeof meta.risk_assessment === 'object') ? meta.risk_assessment : {};
+      const tier = String(
+        item?.risk_tier
+        || item?.riskTier
+        || risk?.risk_tier
+        || meta?.risk_tier
+        || ''
+      ).toLowerCase();
+      const subTier = String(
+        item?.risk_sub_tier
+        || item?.riskSubTier
+        || risk?.risk_sub_tier
+        || meta?.risk_sub_tier
+        || ''
+      ).toLowerCase();
+      const action = String(
+        item?.risk_action
+        || item?.riskAction
+        || risk?.action
+        || meta?.risk_action
+        || ''
+      );
+      return { tier, subTier, action };
+    }
+
+    /** @type {Map<string, any>} */
+    const grouped = new Map();
+    warehouseItems.forEach((item, idx) => {
+      const key = [
+        item?.batch_id || '',
+        item?.source_url || '',
+        item?.state || '',
+        item?.county || '',
+        item?.contest || '',
+        item?.election_date || '',
+      ].join('|') || `row-${idx}`;
+
+      const rowCount = resolveRowCount(item);
+      const confidence = resolveConfidence(item);
+      const risk = resolveRisk(item);
+      const ts = resolveTimestamp(item);
+      const existing = grouped.get(key);
+      if (!existing) {
+        grouped.set(key, {
+          id: String(item?.id || idx + 1),
+          name: item?.contest || item?.county || `Result #${idx + 1}`,
+          type: resolveType(item),
+          rows: rowCount,
+          columns: toNumberOrNull(item?.column_count) || 0,
+          confidenceSum: confidence,
+          confidenceSamples: 1,
+          confidence: confidence,
+          state: item?.state || 'N/A',
+          county: item?.county || '',
+          handler: item?.handler_name || 'warehouse',
+          timestamp: ts,
+          source_url: item?.source_url || '',
+          riskTier: risk.tier,
+          riskSubTier: risk.subTier,
+          riskAction: risk.action,
+          previewLines: [],
+        });
+      } else {
+        existing.rows += rowCount;
+        existing.columns = Math.max(existing.columns || 0, toNumberOrNull(item?.column_count) || 0);
+        existing.confidenceSum += confidence;
+        existing.confidenceSamples += 1;
+        existing.confidence = existing.confidenceSum / existing.confidenceSamples;
+        existing.timestamp = Math.max(existing.timestamp || 0, ts);
+        if (riskRank(risk.tier) > riskRank(existing.riskTier)) {
+          existing.riskTier = risk.tier;
+          existing.riskSubTier = risk.subTier;
+          existing.riskAction = risk.action;
+        }
+      }
+
+      const card = grouped.get(key);
+      if (card && card.previewLines.length < 3) {
+        const candidate = item?.candidate ? String(item.candidate) : '';
+        const votes = toNumberOrNull(item?.votes);
+        if (candidate && votes !== null) {
+          card.previewLines.push(`${candidate}: ${votes.toLocaleString()}`);
+        }
+      }
+    });
+
+    const mappedResults = Array.from(grouped.values()).map((r) => {
+      const preview = r.previewLines.length ? r.previewLines.join(' • ') : '(No preview available)';
       return {
-        id: String(item.id || idx + 1),
-        name: item.contest || item.county || `Result #${idx + 1}`,
-        type: (item.format || 'csv').toLowerCase(),
-        rows: item.row_count || 0,
-        columns: item.column_count || 0,
-        confidence: confidence === null ? 0 : confidence,
-        state: item.state || 'N/A',
-        county: item.county || '',
-        handler: item.handler_name || 'unknown',
-        timestamp: item.created_at ? new Date(item.created_at).getTime() : Date.now(),
-        source_url: item.source_url || '',
-        preview: item.preview_html || item.preview_text || '(No preview available)',
+        id: r.id,
+        name: r.name,
+        type: r.type,
+        rows: r.rows,
+        columns: r.columns,
+        confidence: Math.max(0, Math.min(100, r.confidence || 0)),
+        state: r.state,
+        county: r.county,
+        handler: r.handler,
+        timestamp: r.timestamp,
+        source_url: r.source_url,
+        riskTier: r.riskTier,
+        riskSubTier: r.riskSubTier,
+        riskAction: r.riskAction,
+        preview,
       };
-    }).filter(r => (r.confidence || 0) >= minConfidence);
+    }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .filter(r => (r.confidence || 0) >= minConfidence);
 
     state.results = mappedResults;
 
@@ -7059,8 +7445,8 @@ const ThemeManager = (() => {
   return {
     init,
     toggleTheme,
+    setTheme,
     getCurrentTheme,
-    setTheme
   };
 })();
 
@@ -7073,44 +7459,43 @@ const SwipeHandler = (() => {
   let touchStartY = 0;
   let touchStartTime = 0;
   let isSwiping = false;
-  
-  const SWIPE_THRESHOLD = 50; // Minimum distance for a swipe
+  const SWIPE_THRESHOLD = 50; // Minimum swipe distance (pixels)
   const SWIPE_TIME_LIMIT = 300; // Maximum time for a swipe (ms)
   const SWIPE_VELOCITY_THRESHOLD = 0.3; // Minimum velocity (pixels/ms)
-  
+
   /**
    * Handle touch start event
    * @param {TouchEvent} e
-  * @param {HTMLElement} _sidebar
+   * @param {HTMLElement} _sidebar
    */
   function handleTouchStart(e, _sidebar) {
     if (!e.touches || e.touches.length === 0) return;
-    
+
     const touch = e.touches[0];
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;
     touchStartTime = Date.now();
     isSwiping = false;
   }
-  
+
   /**
    * Handle touch move event
    * @param {TouchEvent} e
-  * @param {HTMLElement} _sidebar
+   * @param {HTMLElement} _sidebar
    */
   function handleTouchMove(e, _sidebar) {
     if (!e.touches || e.touches.length === 0) return;
-    
+
     const touch = e.touches[0];
     const deltaX = touch.clientX - touchStartX;
     const deltaY = touch.clientY - touchStartY;
-    
+
     // Detect if this is a horizontal swipe (not vertical scroll)
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
       isSwiping = true;
     }
   }
-  
+
   /**
    * Handle touch end event
    * @param {TouchEvent} e
@@ -7119,21 +7504,21 @@ const SwipeHandler = (() => {
    */
   function handleTouchEnd(e, sidebar, sidebarType) {
     if (!isSwiping) return;
-    
+
     const touch = e.changedTouches && e.changedTouches[0];
     if (!touch) return;
-    
+
     const deltaX = touch.clientX - touchStartX;
     const deltaY = touch.clientY - touchStartY;
     const deltaTime = Date.now() - touchStartTime;
     const velocity = Math.abs(deltaX) / deltaTime;
-    
+
     // Check if it's a valid swipe
     const isHorizontalSwipe = Math.abs(deltaX) > Math.abs(deltaY);
     const meetsThreshold = Math.abs(deltaX) > SWIPE_THRESHOLD;
     const withinTimeLimit = deltaTime < SWIPE_TIME_LIMIT;
     const meetsVelocity = velocity > SWIPE_VELOCITY_THRESHOLD;
-    
+
     if (isHorizontalSwipe && (meetsThreshold || meetsVelocity) && withinTimeLimit) {
       // Right sidebar: swipe right to close
       if (sidebarType === 'right' && deltaX > 0) {
@@ -7144,48 +7529,48 @@ const SwipeHandler = (() => {
         closeSidebar(sidebar);
       }
     }
-    
+
     // Reset
     isSwiping = false;
   }
-  
+
   /**
    * Close a sidebar
    * @param {HTMLElement} sidebar
    */
   function closeSidebar(sidebar) {
     if (!sidebar) return;
-    
+
     sidebar.classList.remove('open', 'sidebar-open', 'centered-tool-window');
     document.body.classList.remove('no-scroll', 'sidebar-right-open');
-    
+
     // Update toggle button aria-expanded
     const toggleBtn = document.getElementById('btnToggleRightSidebar');
     if (toggleBtn) {
       toggleBtn.setAttribute('aria-expanded', 'false');
     }
   }
-  
+
   /**
    * Initialize swipe handlers for sidebars
    */
   function init() {
     const rightSidebar = document.querySelector('.sidebar-right');
     const leftSidebar = document.querySelector('.sidebar-left');
-    
+
     if (rightSidebar instanceof HTMLElement) {
       rightSidebar.addEventListener('touchstart', (e) => handleTouchStart(/** @type {TouchEvent} */(e), rightSidebar), { passive: true });
       rightSidebar.addEventListener('touchmove', (e) => handleTouchMove(/** @type {TouchEvent} */(e), rightSidebar), { passive: true });
       rightSidebar.addEventListener('touchend', (e) => handleTouchEnd(/** @type {TouchEvent} */(e), rightSidebar, 'right'), { passive: true });
     }
-    
+
     if (leftSidebar instanceof HTMLElement) {
       leftSidebar.addEventListener('touchstart', (e) => handleTouchStart(/** @type {TouchEvent} */(e), leftSidebar), { passive: true });
       leftSidebar.addEventListener('touchmove', (e) => handleTouchMove(/** @type {TouchEvent} */(e), leftSidebar), { passive: true });
       leftSidebar.addEventListener('touchend', (e) => handleTouchEnd(/** @type {TouchEvent} */(e), leftSidebar, 'left'), { passive: true });
     }
   }
-  
+
   return {
     init
   };

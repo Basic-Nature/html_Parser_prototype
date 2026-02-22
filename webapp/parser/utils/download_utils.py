@@ -5,8 +5,9 @@ from __future__ import annotations
 # Download utility functions for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
 import os
+import re
 from datetime import datetime
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlsplit, urlunsplit
 
 import orjson
 import requests
@@ -41,6 +42,47 @@ def load_download_manifest():
             except Exception:
                 continue
     return manifest
+
+def _normalize_download_url(url: str) -> str:
+    """Collapse redundant slashes in path while preserving scheme/host."""
+    try:
+        parts = urlsplit(url)
+        if not parts.scheme or not parts.netloc:
+            return url
+        path = re.sub(r"/{2,}", "/", parts.path or "")
+        return urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
+    except Exception:
+        return url
+
+def _retry_step_back_url(original_url: str) -> list[str]:
+    """Generate fallback URLs by removing trailing slash or stepping back path segments."""
+    candidates = []
+    try:
+        parts = urlsplit(original_url)
+        path = parts.path or ""
+        # 1) Remove trailing slash if present
+        if path.endswith("/") and len(path) > 1:
+            trimmed = path.rstrip("/")
+            candidates.append(urlunsplit((parts.scheme, parts.netloc, trimmed, parts.query, parts.fragment)))
+        # 2) Step back one segment (e.g., /GA/105369/ -> /GA/)
+        segments = [s for s in path.split("/") if s]
+        if len(segments) > 1:
+            parent = "/" + "/".join(segments[:-1]) + "/"
+            candidates.append(urlunsplit((parts.scheme, parts.netloc, parent, parts.query, parts.fragment)))
+        # 3) Step back one more if possible
+        if len(segments) > 0:
+            parent2 = "/" + "/".join(segments[:-1]) if len(segments) > 1 else "/"
+            candidates.append(urlunsplit((parts.scheme, parts.netloc, parent2, parts.query, parts.fragment)))
+    except Exception:
+        pass
+    # Deduplicate while preserving order
+    seen = set()
+    deduped = []
+    for c in candidates:
+        if c != original_url and c not in seen:
+            seen.add(c)
+            deduped.append(c)
+    return deduped
 
 def update_download_manifest(entry):
     """Append a new entry to the download manifest."""
@@ -83,6 +125,8 @@ def download_file(
     filename = (filename_override or os.path.basename(href) or "download").strip()
     save_path = os.path.join(INPUT_DIR, filename)
     file_url = urljoin(page_url, href)
+    # Normalize URL: collapse redundant slashes
+    file_url = _normalize_download_url(file_url)
     logger.info(f"[DEBUG][download_file] page_url={page_url}, href={href}, file_url={file_url}, save_path={save_path}")
     if is_already_downloaded(file_url, save_path, check_hash=check_hash):
         logger.info(f"[DOWNLOAD] Skipping already downloaded file: {filename}")
@@ -94,6 +138,23 @@ def download_file(
             raise ValueError(f"Blocked download URL: {reason}")
 
         response = requests.get(file_url, headers=headers or {}, stream=True, allow_redirects=True, timeout=30)
+        
+        # If 403/404, retry with fallback candidates
+        if response.status_code in (403, 404):
+            logger.warning(f"[DOWNLOAD] HTTP {response.status_code} for {file_url}, trying fallback URLs...")
+            fallback_urls = _retry_step_back_url(file_url)
+            for fallback_url in fallback_urls:
+                logger.info(f"[DOWNLOAD] Retrying: {fallback_url}")
+                try:
+                    response = requests.get(fallback_url, headers=headers or {}, stream=True, allow_redirects=True, timeout=30)
+                    if response.status_code < 400:
+                        logger.info(f"[DOWNLOAD] Fallback succeeded: {fallback_url}")
+                        file_url = fallback_url  # Update canonical URL for manifest
+                        break
+                except Exception as e:
+                    logger.debug(f"[DOWNLOAD] Fallback {fallback_url} failed: {e}")
+                    continue
+        
         response.raise_for_status()
 
         if len(response.history or []) > URL_MAX_REDIRECTS:
