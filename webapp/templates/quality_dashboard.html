@@ -11,6 +11,10 @@
 <body>
     <div class="dashboard-container">
         <h1>📊 Quality Metrics Dashboard</h1>
+        <div class="d-flex flex-wrap gap-2 mb-3" aria-label="Operator navigation">
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('index') }}">Back to Dashboard</a>
+            <a class="btn btn-sm btn-outline-info" href="{{ url_for('health_dashboard') }}" title="Health dashboard loads in preview mode unless authenticated.">Health Preview (Read-only)</a>
+        </div>
         
         <!-- Filters -->
         <div class="filters">
@@ -64,8 +68,99 @@
             </div>
         </div>
         
-        <!-- Export Button -->
-        <button class="export-btn" id="exportBtn">📥 Export Dataset (CSV)</button>
+        <!-- Integrity Monitoring Section -->
+        <div class="integrity-section">
+            <div class="section-header">
+                <h2>🔍 ML/NLP Integrity Monitor</h2>
+                <div class="integrity-controls">
+                    <button class="btn-icon" id="reloadIntegrityBtn" title="Refresh integrity data">🔄</button>
+                    <button class="btn-icon" id="exportIntegrityBtn" title="Export integrity report">📥</button>
+                    <button class="btn-icon" id="configThresholdsBtn" title="Configure alert thresholds">⚙️</button>
+                </div>
+            </div>
+            
+            <!-- Integrity Stats -->
+            <div class="integrity-stats-grid">
+                <div class="integrity-stat-card">
+                    <div class="stat-value" id="integrityStatus">-</div>
+                    <div class="stat-label">Status</div>
+                </div>
+                <div class="integrity-stat-card">
+                    <div class="stat-value" id="trendCount">-</div>
+                    <div class="stat-label">Trend Entries</div>
+                </div>
+                <div class="integrity-stat-card">
+                    <div class="stat-value" id="alertCount">-</div>
+                    <div class="stat-label">Active Alerts</div>
+                </div>
+                <div class="integrity-stat-card">
+                    <div class="stat-value" id="lastAnalysis">-</div>
+                    <div class="stat-label">Last Analysis</div>
+                </div>
+            </div>
+            
+            <!-- Active Alerts -->
+            <div class="alerts-container" id="alertsContainer" style="display: none;">
+                <h3>Active Alerts</h3>
+                <div id="alertsList"></div>
+            </div>
+            
+            <!-- Sparkline Charts -->
+            <div class="sparklines-grid">
+                <div class="sparkline-card">
+                    <h4>Confidence Trend</h4>
+                    <canvas id="confidenceSparkline" class="sparkline-canvas"></canvas>
+                    <div class="sparkline-stats">
+                        <span id="confCurrent">-</span>
+                        <span id="confDelta" class="delta">-</span>
+                    </div>
+                </div>
+                <div class="sparkline-card">
+                    <h4>Unknown Ratio Trend</h4>
+                    <canvas id="unknownSparkline" class="sparkline-canvas"></canvas>
+                    <div class="sparkline-stats">
+                        <span id="unknownCurrent">-</span>
+                        <span id="unknownDelta" class="delta">-</span>
+                    </div>
+                </div>
+                <div class="sparkline-card">
+                    <h4>Segments Review Trend</h4>
+                    <canvas id="reviewSparkline" class="sparkline-canvas"></canvas>
+                    <div class="sparkline-stats">
+                        <span id="reviewCurrent">-</span>
+                        <span id="reviewDelta" class="delta">-</span>
+                    </div>
+                </div>
+                <div class="sparkline-card">
+                    <h4>Pattern KB Matches</h4>
+                    <canvas id="kbSparkline" class="sparkline-canvas"></canvas>
+                    <div class="sparkline-stats">
+                        <span id="kbCurrent">-</span>
+                        <span id="kbDelta" class="delta">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Historical Comparison -->
+            <div class="historical-comparison">
+                <h3>Historical Comparison</h3>
+                <div class="comparison-controls">
+                    <select id="compareBaselineSelect">
+                        <option value="">Select baseline session...</option>
+                    </select>
+                    <select id="compareTargetSelect">
+                        <option value="">Select target session...</option>
+                    </select>
+                    <button id="compareBtn" class="btn-primary">Compare</button>
+                </div>
+                <div id="comparisonResults" style="display: none;"></div>
+            </div>
+        </div>
+        
+        <!-- Export Buttons -->
+        <div class="export-buttons">
+            <button class="export-btn" id="exportBtn">📥 Export Quality Metrics (CSV)</button>
+        </div>
         
         <!-- Charts -->
         <div class="charts-grid">
@@ -110,6 +205,47 @@
                     <tr><td colspan="8" class="data-table-loading">Loading...</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+    
+    <!-- Threshold Configuration Modal -->
+    <div class="modal-overlay" id="thresholdModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⚙️ Alert Threshold Configuration</h3>
+                <button class="modal-close" id="closeThresholdModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="threshold-group">
+                    <label for="confDropThreshold">Confidence Drop Threshold:</label>
+                    <input type="number" id="confDropThreshold" step="0.01" min="0" max="1" value="0.08">
+                    <span class="threshold-hint">Alert when confidence avg drops by at least this amount</span>
+                </div>
+                <div class="threshold-group">
+                    <label for="unknownSpikeThreshold">Unknown Spike Threshold:</label>
+                    <input type="number" id="unknownSpikeThreshold" step="0.01" min="0" max="1" value="0.10">
+                    <span class="threshold-hint">Alert when unknown ratio increases by at least this amount</span>
+                </div>
+                <div class="threshold-group">
+                    <label for="reviewSpikeThreshold">Review Spike Threshold:</label>
+                    <input type="number" id="reviewSpikeThreshold" step="0.1" min="0" value="5.0">
+                    <span class="threshold-hint">Alert when segments needing review increases by at least this amount</span>
+                </div>
+                <div class="threshold-group">
+                    <label for="baselineWindow">Baseline Window Size:</label>
+                    <input type="number" id="baselineWindow" min="1" max="100" value="30">
+                    <span class="threshold-hint">Number of sessions to use for baseline</span>
+                </div>
+                <div class="threshold-group">
+                    <label for="recentWindow">Recent Window Size:</label>
+                    <input type="number" id="recentWindow" min="1" max="20" value="5">
+                    <span class="threshold-hint">Number of recent sessions to compare</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="saveThresholdsBtn" class="btn-primary">Save & Reanalyze</button>
+                <button id="cancelThresholdsBtn" class="btn-secondary">Cancel</button>
+            </div>
         </div>
     </div>
     

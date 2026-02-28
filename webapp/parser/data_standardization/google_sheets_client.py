@@ -256,13 +256,19 @@ class GoogleSheetsElectionClient:
             logger.error(f"✗ Failed to initialize Google Sheets client: {e}")
             raise
     
-    def fetch_sheet(self, sheet_name: str, skip_header: bool = True) -> SheetFetchResult:
+    def fetch_sheet(
+        self,
+        sheet_name: str,
+        skip_header: bool = True,
+        header_row_index: int = 0,
+    ) -> SheetFetchResult:
         """
         Fetch data from a sheet.
         
         Args:
             sheet_name: Name of sheet (case-insensitive)
-            skip_header: Whether to skip first row (assumed to be headers)
+            skip_header: Whether to treat one row as header and skip it from records
+            header_row_index: 0-based row index to use as headers when skip_header=True
             
         Returns:
             SheetFetchResult with records and metadata
@@ -322,12 +328,30 @@ class GoogleSheetsElectionClient:
                 )
             
             # Extract headers
-            headers = rows[0] if rows else []
-            data_rows = rows[1:] if skip_header and len(rows) > 1 else rows
+            if skip_header:
+                safe_header_idx = max(0, min(header_row_index, len(rows) - 1))
+                raw_headers = rows[safe_header_idx] if rows else []
+                data_rows = rows[safe_header_idx + 1:] if len(rows) > safe_header_idx + 1 else []
+            else:
+                raw_headers = rows[0] if rows else []
+                data_rows = rows
+
+            # Normalize and deduplicate header names
+            headers = []
+            seen_headers: Dict[str, int] = {}
+            for idx, header in enumerate(raw_headers):
+                normalized = str(header).strip() if header is not None else ''
+                if not normalized:
+                    normalized = f'column_{idx + 1}'
+                count = seen_headers.get(normalized, 0)
+                seen_headers[normalized] = count + 1
+                if count > 0:
+                    normalized = f'{normalized}_{count + 1}'
+                headers.append(normalized)
             
             # Convert rows to dictionaries
             records = []
-            for row_idx, row in enumerate(data_rows, start=2):  # Start at 2 (after header)
+            for row_idx, row in enumerate(data_rows, start=(header_row_index + 2)):  # 1-based sheet row number
                 # Pad row with empty strings to match header length
                 padded_row = row + [''] * (len(headers) - len(row))
                 
@@ -458,4 +482,47 @@ def fetch_worklist_overview(
     """
     client = get_worklist_client(credentials_json)
     overview_name = sheet_name or os.getenv("GOOGLE_SHEETS_WORKLIST_OVERVIEW_SHEET", "Overview")
-    return client.fetch_sheet(overview_name)
+
+    expected_header_tokens = {
+        'step 1',
+        'step 2',
+        'source link',
+        'download 1',
+        'download 2',
+        'pre-qc auto-check',
+        'run pre-check',
+        'standardization process',
+        'work in progress - dl2',
+        'priority',
+    }
+
+    best_result: Optional[SheetFetchResult] = None
+    best_score = -1
+
+    for header_idx in (1, 0, 2, 3, 4):
+        candidate = client.fetch_sheet(overview_name, header_row_index=header_idx)
+        if not candidate.success:
+            continue
+
+        sample_keys = set()
+        if candidate.records:
+            sample_keys = {str(k).strip().lower() for k in candidate.records[0].keys()}
+        header_match_score = len(sample_keys.intersection(expected_header_tokens))
+
+        # Prefer better schema match; break ties by higher row count.
+        weighted_score = (header_match_score * 10000) + candidate.row_count
+        if weighted_score > best_score:
+            best_score = weighted_score
+            best_result = candidate
+
+    if best_result is None:
+        return SheetFetchResult(
+            success=False,
+            sheet_name=overview_name,
+            records=[],
+            row_count=0,
+            fetch_time=datetime.utcnow(),
+            error='Failed to parse overview sheet with any supported header row',
+        )
+
+    return best_result

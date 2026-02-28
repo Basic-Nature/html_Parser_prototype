@@ -2944,6 +2944,177 @@ socket.on('session_deleted', /** @param {SessionDeletedPayload} data */ (data) =
   }, 'socket:session_deleted');
 });
 
+/**
+ * @typedef {Object} IntegritySignalPayload
+ * @property {string} session_id
+ * @property {number} timestamp
+ * @property {IntegritySignal} signal
+ */
+
+/**
+ * @typedef {Object} IntegritySignal
+ * @property {string} status - 'ok' | 'alert' | 'insufficient_data' | 'error'
+ * @property {number} [entry_count]
+ * @property {number} [baseline_window]
+ * @property {number} [recent_window]
+ * @property {IntegrityMetrics} [baseline]
+ * @property {IntegrityMetrics} [recent]
+ * @property {IntegrityDeltas} [deltas]
+ * @property {IntegrityAlert[]} [alerts]
+ * @property {string} [error]
+ */
+
+/**
+ * @typedef {Object} IntegrityMetrics
+ * @property {number} confidence_avg
+ * @property {number} unknown_ratio
+ * @property {number} segments_review
+ * @property {number} pattern_kb_matches
+ */
+
+/**
+ * @typedef {Object} IntegrityDeltas
+ * @property {number} confidence_avg_delta
+ * @property {number} unknown_ratio_delta
+ * @property {number} segments_review_delta
+ * @property {number} pattern_kb_matches_delta
+ */
+
+/**
+ * @typedef {Object} IntegrityAlert
+ * @property {string} type - 'confidence_drop' | 'unknown_spike' | 'review_spike'
+ * @property {string} severity - 'warning'
+ * @property {string} message
+ */
+
+socket.on('integrity_signal', /** @param {IntegritySignalPayload} data */ (data) => {
+  ErrorBoundary.safeExecute(() => {
+    console.info('[Integrity Signal]', data);
+    /** @type {IntegritySignal} */
+    const signal = data.signal || /** @type {IntegritySignal} */ ({status: 'error', error: 'Missing signal'});
+    
+    // Display alerts as toasts
+    if (signal.status === 'alert' && Array.isArray(signal.alerts)) {
+      signal.alerts.forEach(alert => {
+        showToast(`ML/NLP Alert: ${alert.message}`, 'warning', 8000);
+      });
+    }
+    
+    // Update integrity diagnostics panel
+    updateIntegrityPanel(signal, data.session_id);
+    
+    // Route to manual review if segments_review spike
+    if (signal.status === 'alert' && signal.deltas && signal.deltas.segments_review_delta >= 5.0) {
+      // Store flag for potential manual review routing
+      /** @type {any} */ (window).__integrityReviewNeeded = true;
+      /** @type {any} */ (window).__integritySessionId = data.session_id;
+      showToast('High-priority review needed - segments flagged for manual correction', 'warning', 10000);
+    }
+  }, 'socket:integrity_signal');
+});
+
+/**
+ * Update the integrity diagnostics panel with latest drift metrics
+ * @param {IntegritySignal} signal
+ * @param {string} sessionId
+ */
+function updateIntegrityPanel(signal, sessionId) {
+  let panel = document.getElementById('integrityDiagnosticsPanel');
+  if (!panel) {
+    // Create panel if it doesn't exist
+    panel = document.createElement('div');
+    panel.id = 'integrityDiagnosticsPanel';
+    panel.className = 'integrity-panel';
+    const container = document.querySelector('.dashboard-row') || document.body;
+    const firstCard = container.querySelector('.artifact-card');
+    if (firstCard && firstCard.parentNode) {
+      firstCard.parentNode.insertBefore(panel, firstCard.nextSibling);
+    } else {
+      container.appendChild(panel);
+    }
+  }
+  
+  let html = '<div class="integrity-panel-header">';
+  html += '<div class="integrity-title">🔍 ML/NLP Integrity Monitor</div>';
+  
+  // Status badge
+  const statusClass = signal.status === 'ok' ? 'success' : signal.status === 'alert' ? 'warning' : 'info';
+  html += `<span class="badge badge-${statusClass}">${escapeHtml(signal.status)}</span>`;
+  html += '</div>';
+  
+  html += '<div class="integrity-panel-body">';
+  
+  if (signal.status === 'insufficient_data') {
+    html += '<p class="integrity-message">Accumulating baseline data... (need 2+ sessions for trend analysis)</p>';
+  } else if (signal.status === 'error') {
+    html += `<p class="integrity-message error">Error: ${escapeHtml(signal.error || 'Unknown error')}</p>`;
+  } else if (signal.status === 'ok' || signal.status === 'alert') {
+    // Display metrics
+    /** @type {IntegrityMetrics} */
+    const baseline = signal.baseline || /** @type {IntegrityMetrics} */ ({confidence_avg: 0, unknown_ratio: 0, segments_review: 0, pattern_kb_matches: 0});
+    /** @type {IntegrityMetrics} */
+    const recent = signal.recent || /** @type {IntegrityMetrics} */ ({confidence_avg: 0, unknown_ratio: 0, segments_review: 0, pattern_kb_matches: 0});
+    /** @type {IntegrityDeltas} */
+    const deltas = signal.deltas || /** @type {IntegrityDeltas} */ ({confidence_avg_delta: 0, unknown_ratio_delta: 0, segments_review_delta: 0, pattern_kb_matches_delta: 0});
+    
+    html += '<div class="integrity-metrics">';
+    html += '<div class="metric-row">';
+    html += '<span class="metric-label">Confidence Avg:</span>';
+    html += `<span class="metric-value">${Number(recent.confidence_avg || 0).toFixed(3)}</span>`;
+    if (deltas.confidence_avg_delta) {
+      const deltaClass = deltas.confidence_avg_delta < 0 ? 'negative' : 'positive';
+      html += `<span class="metric-delta ${deltaClass}">${deltas.confidence_avg_delta > 0 ? '+' : ''}${Number(deltas.confidence_avg_delta).toFixed(3)}</span>`;
+    }
+    html += '</div>';
+    
+    html += '<div class="metric-row">';
+    html += '<span class="metric-label">Unknown Ratio:</span>';
+    html += `<span class="metric-value">${Number(recent.unknown_ratio || 0).toFixed(3)}</span>`;
+    if (deltas.unknown_ratio_delta) {
+      const deltaClass = deltas.unknown_ratio_delta > 0 ? 'negative' : 'positive';
+      html += `<span class="metric-delta ${deltaClass}">${deltas.unknown_ratio_delta > 0 ? '+' : ''}${Number(deltas.unknown_ratio_delta).toFixed(3)}</span>`;
+    }
+    html += '</div>';
+    
+    html += '<div class="metric-row">';
+    html += '<span class="metric-label">Segments Review:</span>';
+    html += `<span class="metric-value">${Number(recent.segments_review || 0).toFixed(1)}</span>`;
+    if (deltas.segments_review_delta) {
+      const deltaClass = deltas.segments_review_delta > 0 ? 'negative' : 'positive';
+      html += `<span class="metric-delta ${deltaClass}">${deltas.segments_review_delta > 0 ? '+' : ''}${Number(deltas.segments_review_delta).toFixed(1)}</span>`;
+    }
+    html += '</div>';
+    
+    html += '<div class="metric-row">';
+    html += '<span class="metric-label">Pattern KB Matches:</span>';
+    html += `<span class="metric-value">${Number(recent.pattern_kb_matches || 0).toFixed(1)}</span>`;
+    if (deltas.pattern_kb_matches_delta) {
+      const deltaClass = deltas.pattern_kb_matches_delta < 0 ? 'negative' : 'positive';
+      html += `<span class="metric-delta ${deltaClass}">${deltas.pattern_kb_matches_delta > 0 ? '+' : ''}${Number(deltas.pattern_kb_matches_delta).toFixed(1)}</span>`;
+    }
+    html += '</div>';
+    html += '</div>'; // End metrics
+    
+    // Alert details (expandable)
+    if (signal.status === 'alert' && Array.isArray(signal.alerts) && signal.alerts.length) {
+      html += '<div class="integrity-alerts mt-2">';
+      html += `<details><summary>Alerts (${signal.alerts.length})</summary>`;
+      html += '<ul class="alert-list">';
+      signal.alerts.forEach(alert => {
+        const icon = alert.type === 'confidence_drop' ? '📉' : alert.type === 'unknown_spike' ? '❓' : '📋';
+        html += `<li class="alert-item"><span class="alert-icon">${icon}</span>${escapeHtml(alert.message)}</li>`;
+      });
+      html += '</ul></details>';
+      html += '</div>';
+    }
+    
+    html += `<div class="integrity-footer mt-2"><small class="muted">Baseline: ${signal.baseline_window || 0} sessions | Recent: ${signal.recent_window || 0} sessions | Total: ${signal.entry_count || 0}</small></div>`;
+  }
+  
+  html += '</div>'; // End body
+  panel.innerHTML = html;
+}
+
 // ============================================
 // State Management
 // ============================================

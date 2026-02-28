@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const dbLiteFinalizedUrl = cfgEl?.dataset?.dbliteFinalizedUrl || '/api/election_data/db_lite/finalized?limit=2000';
   const dbLiteDownBallotUrl = cfgEl?.dataset?.dbliteDownballotUrl || '/api/election_data/db_lite/down_ballot?limit=2000';
   const worklistOverviewUrl = '/api/election_data/worklist/overview';
+  const statesCountiesUrl = '/api/election_data/states_counties';
   const csrfToken = cfgEl?.dataset?.csrfToken || null;
 
   // ---------- Elements ----------
@@ -80,7 +81,10 @@ document.addEventListener('DOMContentLoaded', () => {
     vizPanel: document.getElementById('vizPanel'),
     vizFilters: document.querySelector('.viz-filters'),
     vizDataset: document.getElementById('vizDatasetSelect'),
+    vizPlaybackBadge: document.getElementById('vizPlaybackBadge'),
+    vizScopeBadge: document.getElementById('vizScopeBadge'),
     vizPreviewStatus: document.getElementById('vizPreviewStatus'),
+    vizCountyScopeBadge: document.getElementById('vizCountyScopeBadge'),
     dropoffDrawer: document.getElementById('dropoffDrawer'),
     dropoffDrawerToggle: document.getElementById('dropoffDrawerToggle'),
     dropoffDrawerOverlay: document.getElementById('dropoffDrawerOverlay'),
@@ -88,9 +92,6 @@ document.addEventListener('DOMContentLoaded', () => {
     vizState: document.getElementById('vizStateSelect'),
     vizCounty: document.getElementById('vizCountySelect'),
     vizContest: document.getElementById('vizContestSelect'),
-    vizTopRace: document.getElementById('vizTopRaceSelect'),
-    vizTopRaceCount: document.getElementById('vizTopRaceCountSelect'),
-    vizParty: document.getElementById('vizPartySelect'),
     vizPrevStateBtn: document.getElementById('vizPrevStateBtn'),
     vizAutoToggleBtn: document.getElementById('vizAutoToggleBtn'),
     vizNextStateBtn: document.getElementById('vizNextStateBtn'),
@@ -152,14 +153,15 @@ document.addEventListener('DOMContentLoaded', () => {
   let curatedState = '';
   let curatedCounty = '';
   let vizRows = [];
+  let warehouseVizRows = [];
   let dbLiteFinalizedRows = [];
   let dbLiteDownBallotRows = [];
+  let finalizedMetadata = { states: [], counties: {}, years: [], contests: [] };
   let vizDataset = 'finalized';
   let vizYear = '';
   let vizState = '';
   let vizCounty = '';
   let vizContest = '';
-  let vizParty = '';
   let vizAutoTimer = null;
   let vizTopRaces = [];
   let vizAutoIndex = 0;
@@ -168,6 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let vizAutoOrder = [];
   let vizAutoPaused = false;
   let vizOverlayEnabled = false;
+  let vizStatusBase = '';
   let previewActive = false;
   let previewMode = 'idle';
   let previewTimer = null;
@@ -196,7 +199,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const MAX_VISIBLE_COLS = 200;
   const MAX_ROWS_EXPORT = 200000; // safeguard client memory for CSV
   const SKELETON_ROWS = 6;
-  const VIZ_TOP_COUNT_KEY = 'df_viz_top_count';
   const COMPACT_TABLE_KEY = 'df_table_compact';
   const COMPACT_AUTO_THRESHOLD = 300;
   const PRIORITY_REFRESH_MS = 60000;
@@ -206,8 +208,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const DROPOFF_ORDER_KEY = 'df_dropoff_order_strategy';
   const DROPOFF_SCALE_KEY = 'df_dropoff_scale_mode';
   const DROPOFF_COUNTY_LIMIT_KEY = 'df_dropoff_county_limit';
+  const VIZ_FILTER_SNAPSHOT_KEY = 'df_viz_filter_snapshot_v1';
+  const WAREHOUSE_STATUS_SNAPSHOT_KEY = 'df_warehouse_status_snapshot_v1';
+  const VIZ_MODE_HELP_DISMISSED_KEY = 'df_viz_mode_help_dismissed_v1';
   const VIZ_DATASET_FINALIZED = 'finalized';
   const VIZ_DATASET_DOWN_BALLOT = 'down_ballot';
+  const VIZ_DATASET_WAREHOUSE = 'warehouse_core';
   const DEFAULT_VISIBLE_COLUMNS = ['state', 'county', 'contest', 'candidate', 'party', 'votes'];
 
   // ---------- Utilities ----------
@@ -448,6 +454,53 @@ document.addEventListener('DOMContentLoaded', () => {
     return parts.join(' | ');
   }
 
+  function readWarehouseStatusSnapshot() {
+    try {
+      const raw = window.localStorage?.getItem(WAREHOUSE_STATUS_SNAPSHOT_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      return parsed;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function writeWarehouseStatusSnapshot(payload) {
+    if (!payload || typeof payload !== 'object') return;
+    try {
+      const snapshot = {
+        payload,
+        captured_at: new Date().toISOString(),
+      };
+      window.localStorage?.setItem(WAREHOUSE_STATUS_SNAPSHOT_KEY, JSON.stringify(snapshot));
+    } catch (err) {
+      // Ignore storage write errors.
+    }
+  }
+
+  function applyPriorityPayload(payload, fromCache = false) {
+    if (!payload) return false;
+    if (payload.error || payload.available === false) {
+      const msg = payload.error || 'Priority tracker unavailable.';
+      setPriorityStatus(msg, 'error');
+      setPriorityMeta('');
+      return false;
+    }
+    hydratePriorityStates(payload);
+    hydratePriorityYears(payload);
+    lastPriorityPayload = payload;
+    const summary = formatPrioritySummary(payload);
+    const statusText = fromCache
+      ? `${summary || 'Priority snapshot loaded.'} (cached)`
+      : (summary || 'Priority tracker ready.');
+    setPriorityStatus(statusText, payload.missing_total ? 'info' : 'ok');
+    const baseMeta = formatPriorityMeta(payload);
+    const suffix = fromCache ? ' | Source: cached snapshot' : '';
+    setPriorityMeta(`${baseMeta}${suffix}`);
+    return true;
+  }
+
   async function fetchPriorityStatus() {
     if (!priorityUrl) return;
     try {
@@ -456,29 +509,25 @@ document.addEventListener('DOMContentLoaded', () => {
       if (priorityYear) url.searchParams.set('year', priorityYear);
       const response = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
       if (!response.ok) {
+        const cached = readWarehouseStatusSnapshot();
+        if (cached?.payload && applyPriorityPayload(cached.payload, true)) return;
         setPriorityStatus('Priority tracker unavailable.', 'error');
         setPriorityMeta('');
         return;
       }
       const payload = await response.json().catch(() => null);
       if (!payload) {
+        const cached = readWarehouseStatusSnapshot();
+        if (cached?.payload && applyPriorityPayload(cached.payload, true)) return;
         setPriorityStatus('Priority tracker unavailable.', 'error');
         setPriorityMeta('');
         return;
       }
-      if (payload.error || payload.available === false) {
-        const msg = payload.error || 'Priority tracker unavailable.';
-        setPriorityStatus(msg, 'error');
-        setPriorityMeta('');
-        return;
-      }
-      hydratePriorityStates(payload);
-      hydratePriorityYears(payload);
-      lastPriorityPayload = payload;
-      const summary = formatPrioritySummary(payload);
-      setPriorityStatus(summary || 'Priority tracker ready.', payload.missing_total ? 'info' : 'ok');
-      setPriorityMeta(formatPriorityMeta(payload));
+      writeWarehouseStatusSnapshot(payload);
+      applyPriorityPayload(payload, false);
     } catch (err) {
+      const cached = readWarehouseStatusSnapshot();
+      if (cached?.payload && applyPriorityPayload(cached.payload, true)) return;
       setPriorityStatus('Priority tracker unavailable.', 'error');
       setPriorityMeta('');
     }
@@ -589,23 +638,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function loadVizTopCountPreference() {
-    if (!(el.vizTopRaceCount instanceof HTMLSelectElement)) return;
-    try {
-      const stored = window.localStorage?.getItem(VIZ_TOP_COUNT_KEY);
-      if (!stored) return;
-      const count = parseInt(stored, 10);
-      if (!Number.isFinite(count)) return;
-      const option = Array.from(el.vizTopRaceCount.options).find(opt => Number(opt.value) === count);
-      if (option) {
-        el.vizTopRaceCount.value = option.value;
-        vizTopRaceCount = count;
-      }
-    } catch (err) {
-      // Ignore storage read errors.
-    }
-  }
-
   function loadVizOverlayPreference() {
     try {
       const stored = window.localStorage?.getItem(VIZ_OVERLAY_KEY);
@@ -630,6 +662,27 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (err) {
       // Ignore storage read errors.
+    }
+  }
+
+  function setVizModeHelpCollapsed(collapsed, persist = true) {
+    const helpEl = document.getElementById('vizModeHelp');
+    if (!helpEl) return;
+    helpEl.classList.toggle('is-collapsed', !!collapsed);
+    if (!persist) return;
+    try {
+      window.localStorage?.setItem(VIZ_MODE_HELP_DISMISSED_KEY, collapsed ? 'true' : 'false');
+    } catch (err) {
+      // Ignore storage write errors.
+    }
+  }
+
+  function loadVizModeHelpPreference() {
+    try {
+      const dismissed = window.localStorage?.getItem(VIZ_MODE_HELP_DISMISSED_KEY) === 'true';
+      setVizModeHelpCollapsed(dismissed, false);
+    } catch (err) {
+      setVizModeHelpCollapsed(false, false);
     }
   }
 
@@ -720,7 +773,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (el.vizYear) el.vizYear.innerHTML = '';
     if (el.vizContest) el.vizContest.innerHTML = '';
-    if (el.vizTopRace) el.vizTopRace.innerHTML = '';
     vizRows = [];
     vizYear = '';
     vizContest = '';
@@ -880,11 +932,48 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.appendChild(tr);
       });
     } else {
+      const hasCountyFocus = !!vizCounty || new Set(sorted.map(row => normalizeCountyKey(row.county))).size <= 1;
+      if (hasCountyFocus) {
+        const focusHeaders = ['Candidate', 'Party', 'Votes', 'County/District'];
+        headRow.innerHTML = '';
+        focusHeaders.forEach(label => {
+          const th = document.createElement('th');
+          th.textContent = label;
+          headRow.appendChild(th);
+        });
+        sorted
+          .slice()
+          .sort((a, b) => (Number(b.votes || 0) || 0) - (Number(a.votes || 0) || 0))
+          .slice(0, 18)
+          .forEach(row => {
+            const tr = document.createElement('tr');
+            const partyBucket = normalizePartyBucket(row.party || row.ballot_party || '');
+            const partyLabel = partyBucket === 'writein' ? 'Write-In' : (row.party || row.ballot_party || 'Other');
+            const candidateLabel = row.candidate || 'Unspecified Candidate';
+            const cells = [
+              candidateLabel,
+              partyLabel,
+              Number(row.votes || 0) || 0,
+              row.county || '—',
+            ];
+            cells.forEach(value => {
+              const td = document.createElement('td');
+              td.textContent = renderValue(value);
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+        table.appendChild(tbody);
+        el.vizTable.appendChild(table);
+        return;
+      }
+
       const grouped = new Map();
       sorted.forEach(row => {
-        const countyKey = String(row.county || '—').trim() || '—';
+        const countyLabel = String(row.county || '—').trim() || '—';
+        const countyKey = normalizeCountyKey(countyLabel) || '—';
         const entry = grouped.get(countyKey) || {
-          county: countyKey,
+          county: countyLabel,
           dem: 0,
           rep: 0,
           other: 0,
@@ -929,137 +1018,294 @@ document.addEventListener('DOMContentLoaded', () => {
     el.vizTable.appendChild(table);
   }
 
+  function setVizOverlayEnabled(enabled, persist = true) {
+    vizOverlayEnabled = !!enabled;
+    if (el.vizDropoffOverlayToggle instanceof HTMLInputElement) {
+      el.vizDropoffOverlayToggle.checked = vizOverlayEnabled;
+    }
+    if (!persist) return;
+    try {
+      window.localStorage?.setItem(VIZ_OVERLAY_KEY, String(vizOverlayEnabled));
+    } catch (err) {
+      // Ignore storage write errors.
+    }
+  }
+
+  function syncVizOverlayAvailability() {
+    const canOverlay = vizDataset === VIZ_DATASET_FINALIZED && Array.isArray(dropoffData) && dropoffData.length > 0;
+    if (el.vizDropoffOverlayToggle instanceof HTMLInputElement) {
+      el.vizDropoffOverlayToggle.disabled = !canOverlay;
+    }
+    if (!canOverlay && vizOverlayEnabled) {
+      setVizOverlayEnabled(false);
+    }
+  }
+
+  function getUniqueValues(rows, getter) {
+    return Array.from(new Set((rows || []).map(getter).filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b)));
+  }
+
+  function normalizeCountyKey(value) {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function getUniqueCountyValues(rows, getter) {
+    const byKey = new Map();
+    (rows || []).forEach(row => {
+      const rawValue = String(getter(row) || '').trim();
+      if (!rawValue) return;
+      const normalizedKey = normalizeCountyKey(rawValue);
+      if (!normalizedKey) return;
+      if (!byKey.has(normalizedKey)) {
+        byKey.set(normalizedKey, rawValue);
+      }
+    });
+    return Array.from(byKey.values()).sort((a, b) => String(a).localeCompare(String(b)));
+  }
+
+  function getRowsForYear(rows, year) {
+    if (!year) return rows;
+    return rows.filter(row => getRowYear(row) === year);
+  }
+
+  function getRowsForYearState(rows, year, state) {
+    const byYear = getRowsForYear(rows, year);
+    if (!state) return byYear;
+    return byYear.filter(row => String(row.state || '') === String(state));
+  }
+
+  function getRowsForYearStateCounty(rows, year, state, county) {
+    const byYearState = getRowsForYearState(rows, year, state);
+    if (!county) return byYearState;
+    return byYearState.filter(row => String(row.county || '') === String(county));
+  }
+
+  function setSelectOptions(selectEl, values, preferredValue = '', allowEmpty = false, emptyLabel = 'All') {
+    if (!(selectEl instanceof HTMLSelectElement)) return '';
+    const normalizedValues = Array.from(new Set((values || []).filter(Boolean).map(v => String(v))));
+    const previous = preferredValue || selectEl.value || '';
+    selectEl.innerHTML = '';
+
+    if (allowEmpty) {
+      const emptyOpt = document.createElement('option');
+      emptyOpt.value = '';
+      emptyOpt.textContent = emptyLabel;
+      selectEl.appendChild(emptyOpt);
+    }
+
+    normalizedValues.forEach(value => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = value;
+      selectEl.appendChild(opt);
+    });
+
+    const fallback = allowEmpty ? '' : (normalizedValues[0] || '');
+    const nextValue = normalizedValues.includes(previous) ? previous : fallback;
+    if (nextValue) {
+      selectEl.value = nextValue;
+    } else if (allowEmpty) {
+      selectEl.value = '';
+    }
+    selectEl.disabled = !normalizedValues.length && !allowEmpty;
+    return selectEl.value || '';
+  }
+
+  function readVizSnapshots() {
+    try {
+      const raw = window.localStorage?.getItem(VIZ_FILTER_SNAPSHOT_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (err) {
+      return {};
+    }
+  }
+
+  function writeVizSnapshot(dataset, payload) {
+    if (!dataset || !payload) return;
+    try {
+      const snapshots = readVizSnapshots();
+      snapshots[dataset] = {
+        ...payload,
+        updatedAt: new Date().toISOString(),
+      };
+      window.localStorage?.setItem(VIZ_FILTER_SNAPSHOT_KEY, JSON.stringify(snapshots));
+    } catch (err) {
+      // Ignore storage write errors.
+    }
+  }
+
+  function getVizSnapshot(dataset) {
+    const snapshots = readVizSnapshots();
+    return snapshots && typeof snapshots === 'object' ? snapshots[dataset] : null;
+  }
+
+  function hydrateVizFiltersFromSnapshot(dataset) {
+    const snapshot = getVizSnapshot(dataset);
+    if (!snapshot) return false;
+    const options = snapshot.options || {};
+    const selection = snapshot.selection || {};
+
+    if (el.vizYear instanceof HTMLSelectElement) {
+      vizYear = setSelectOptions(el.vizYear, options.years || [], selection.vizYear);
+    }
+    if (el.vizState instanceof HTMLSelectElement) {
+      vizState = setSelectOptions(el.vizState, options.states || [], selection.vizState);
+    }
+    if (el.vizCounty instanceof HTMLSelectElement) {
+      vizCounty = setSelectOptions(el.vizCounty, options.counties || [], selection.vizCounty, true, 'All counties');
+    }
+    if (el.vizContest instanceof HTMLSelectElement) {
+      vizContest = setSelectOptions(el.vizContest, options.contests || [], selection.vizContest);
+    }
+    return true;
+  }
+
+  function saveCurrentVizSnapshot(rows) {
+    if (!Array.isArray(rows) || !rows.length) return;
+    const years = Array.from(new Set(rows.map(row => getRowYear(row)).filter(Boolean))).sort((a, b) => Number(b) - Number(a));
+    const states = getUniqueValues(getRowsForYear(rows, vizYear), row => row.state);
+    const counties = getUniqueValues(getRowsForYearState(rows, vizYear, vizState), row => row.county);
+    const contests = getUniqueValues(getRowsForYearStateCounty(rows, vizYear, vizState, vizCounty), row => row.contest);
+
+    writeVizSnapshot(vizDataset, {
+      rowCount: rows.length,
+      options: {
+        years,
+        states,
+        counties,
+        contests,
+        topRaces: Array.isArray(vizTopRaces) ? [...vizTopRaces] : [],
+      },
+      selection: {
+        vizYear,
+        vizState,
+        vizCounty,
+        vizContest,
+      },
+    });
+  }
+
   function setVizFilters(rows) {
     vizTopRaces = [];
-    // Populate Year dropdown
-    const years = Array.from(new Set(rows.map(row => getRowYear(row)).filter(Boolean)))
-      .filter(Boolean)
-      .sort((a, b) => Number(b) - Number(a));
+    const computedYears = Array.from(new Set(rows.map(row => getRowYear(row)).filter(Boolean))).sort((a, b) => Number(b) - Number(a));
+    const useMetadataOptions = !previewActive;
+    const years = (useMetadataOptions && vizDataset === VIZ_DATASET_FINALIZED && Array.isArray(finalizedMetadata.years) && finalizedMetadata.years.length)
+      ? finalizedMetadata.years.map(String)
+      : computedYears;
     if (el.vizYear instanceof HTMLSelectElement) {
-      el.vizYear.innerHTML = '';
-      years.forEach(year => {
-        const opt = document.createElement('option');
-        opt.value = year;
-        opt.textContent = year;
-        el.vizYear.appendChild(opt);
-      });
+      vizYear = setSelectOptions(el.vizYear, years, vizYear);
+    } else if (!years.includes(vizYear)) {
       vizYear = years[0] || '';
-      if (vizYear) el.vizYear.value = vizYear;
     }
 
-    // Populate State dropdown based on selected year
     updateVizStates();
-
-    const contests = Array.from(new Set(rows.map(row => row.contest).filter(Boolean))).sort();
-    if (el.vizContest instanceof HTMLSelectElement) {
-      el.vizContest.innerHTML = '';
-      contests.forEach(contest => {
-        const opt = document.createElement('option');
-        opt.value = contest;
-        opt.textContent = contest;
-        el.vizContest.appendChild(opt);
-      });
-    }
-
-    updateTopRaces();
-
-    if (!contests.includes(vizContest)) {
-      vizContest = vizTopRaces[0] || contests[0] || '';
-    }
-    if (el.vizContest instanceof HTMLSelectElement && vizContest) {
-      el.vizContest.value = vizContest;
-    }
-    if (el.vizTopRace instanceof HTMLSelectElement && vizContest) {
-      el.vizTopRace.value = vizContest;
-    }
-
-    if (el.vizParty instanceof HTMLSelectElement) {
-      vizParty = el.vizParty.value || '';
-    }
-
-    if (el.vizTopRaceCount instanceof HTMLSelectElement) {
-      vizTopRaceCount = Math.max(1, parseInt(el.vizTopRaceCount.value, 10) || 5);
-    }
 
     if (!vizAutoLocked) {
       startVizAutoRotation();
     }
+
+    syncVizOverlayAvailability();
+    saveCurrentVizSnapshot(rows);
   }
 
   function updateVizStates() {
-    // Filter rows by selected year, then extract unique states from warehouse data
-    const scopeRows = vizYear
-      ? vizRows.filter(row => getRowYear(row) === vizYear)
-      : vizRows;
-    // Extract states from PostgreSQL warehouse data (ensure sync with database)
-    const states = Array.from(new Set(scopeRows.map(row => row.state).filter(Boolean))).sort();
+    const scopeRows = getRowsForYear(vizRows, vizYear);
+    const computedStates = getUniqueValues(scopeRows, row => row.state);
+    const useMetadataOptions = !previewActive;
+    const states = (useMetadataOptions && vizDataset === VIZ_DATASET_FINALIZED && Array.isArray(finalizedMetadata.states) && finalizedMetadata.states.length)
+      ? finalizedMetadata.states
+      : computedStates;
     if (el.vizState instanceof HTMLSelectElement) {
-      el.vizState.innerHTML = '';
-      states.forEach(state => {
-        const opt = document.createElement('option');
-        opt.value = state;
-        opt.textContent = state;
-        el.vizState.appendChild(opt);
-      });
-      if (states.length && !states.includes(vizState)) {
-        vizState = states[0];
-      }
-      if (vizState) el.vizState.value = vizState;
+      vizState = setSelectOptions(el.vizState, states, vizState);
+    } else if (!states.includes(vizState)) {
+      vizState = states[0] || '';
     }
     updateVizCounties();
   }
 
   function updateVizCounties() {
-    // Filter rows by year + state, then extract unique counties from warehouse data
-    const scopeRows = vizYear && vizState
-      ? vizRows.filter(row => 
-          getRowYear(row) === vizYear &&
-          row.state === vizState
-        )
-      : vizYear
-        ? vizRows.filter(row => getRowYear(row) === vizYear)
-        : vizRows;
-    // Extract counties from PostgreSQL warehouse data (cascading filter from state)
-    const counties = Array.from(new Set(scopeRows.map(row => row.county).filter(Boolean))).sort();
+    const scopeRows = getRowsForYearState(vizRows, vizYear, vizState);
+    const computedCounties = getUniqueCountyValues(scopeRows, row => row.county);
+    const useMetadataOptions = !previewActive;
+    const mappedCounties = (useMetadataOptions && vizDataset === VIZ_DATASET_FINALIZED && vizState && finalizedMetadata.counties && finalizedMetadata.counties[vizState])
+      ? finalizedMetadata.counties[vizState]
+      : [];
+    const counties = mappedCounties.length
+      ? getUniqueCountyValues(mappedCounties.map(name => ({ name })), item => item.name)
+      : computedCounties;
     if (el.vizCounty instanceof HTMLSelectElement) {
-      el.vizCounty.innerHTML = '';
-      counties.forEach(county => {
-        const opt = document.createElement('option');
-        opt.value = county;
-        opt.textContent = county;
-        el.vizCounty.appendChild(opt);
-      });
-      if (counties.length && !counties.includes(vizCounty)) {
-        vizCounty = counties[0];
-      }
-      if (vizCounty) el.vizCounty.value = vizCounty;
+      vizCounty = setSelectOptions(el.vizCounty, counties, vizCounty, true, 'All counties');
+    } else if (!counties.includes(vizCounty)) {
+      vizCounty = '';
     }
+
+    updateTopRaces();
   }
 
   function updateTopRaces() {
+    const contestScopeRows = getRowsForYearStateCounty(vizRows, vizYear, vizState, vizCounty);
+    const fallbackScopeRows = contestScopeRows.length
+      ? contestScopeRows
+      : getRowsForYearState(vizRows, vizYear, vizState);
     const contestTotals = {};
-    const scopeRows = vizYear
-      ? vizRows.filter(row => getRowYear(row) === vizYear)
-      : vizRows;
-    scopeRows.forEach(row => {
+    fallbackScopeRows.forEach(row => {
       if (!row.contest) return;
       contestTotals[row.contest] = (contestTotals[row.contest] || 0) + (Number(row.votes) || 0);
     });
-    const topRaces = Object.entries(contestTotals)
+
+    const contestsByVotes = Object.entries(contestTotals)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, vizTopRaceCount);
-    vizTopRaces = topRaces.map(entry => entry[0]);
-    if (el.vizTopRace instanceof HTMLSelectElement) {
-      el.vizTopRace.innerHTML = '';
-      topRaces.forEach(([contest]) => {
-        const opt = document.createElement('option');
-        opt.value = contest;
-        opt.textContent = contest;
-        el.vizTopRace.appendChild(opt);
-      });
+      .map(entry => entry[0]);
+    const useMetadataOptions = !previewActive;
+    const metadataContests = (useMetadataOptions && vizDataset === VIZ_DATASET_FINALIZED && Array.isArray(finalizedMetadata.contests))
+      ? finalizedMetadata.contests
+      : [];
+    const contestOptions = metadataContests.length ? metadataContests : contestsByVotes;
+
+    if (el.vizContest instanceof HTMLSelectElement) {
+      vizContest = setSelectOptions(el.vizContest, contestOptions, vizContest);
+    } else if (!contestOptions.includes(vizContest)) {
+      vizContest = contestOptions[0] || '';
     }
+
+    const stateScopeRows = getRowsForYearState(vizRows, vizYear, vizState);
+    const topTotals = {};
+    stateScopeRows.forEach(row => {
+      if (!row.contest) return;
+      topTotals[row.contest] = (topTotals[row.contest] || 0) + (Number(row.votes) || 0);
+    });
+
+    vizTopRaces = Object.entries(topTotals)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, vizTopRaceCount)
+      .map(entry => entry[0]);
+    if (!vizTopRaces.length) {
+      vizTopRaces = contestsByVotes;
+    }
+
     if (vizTopRaces.length && !vizTopRaces.includes(vizContest)) {
       setVizContest(vizTopRaces[0]);
+    }
+  }
+
+  function ensureVizSelectionHasData() {
+    if (!vizRows.length) return;
+    let filtered = applyVizFilters(vizRows);
+    if (filtered.length) return;
+
+    updateVizStates();
+    filtered = applyVizFilters(vizRows);
+    if (filtered.length) return;
+
+    const fallbackRows = getRowsForYearState(vizRows, vizYear, vizState);
+    const fallbackContest = fallbackRows[0]?.contest || '';
+    if (fallbackContest) {
+      vizContest = fallbackContest;
+      if (el.vizContest instanceof HTMLSelectElement) {
+        el.vizContest.value = fallbackContest;
+      }
     }
   }
 
@@ -1072,13 +1318,10 @@ document.addEventListener('DOMContentLoaded', () => {
       filtered = filtered.filter(row => row.state === vizState);
     }
     if (vizCounty) {
-      filtered = filtered.filter(row => row.county === vizCounty);
+      filtered = filtered.filter(row => normalizeCountyKey(row.county) === normalizeCountyKey(vizCounty));
     }
     if (vizContest) {
       filtered = filtered.filter(row => row.contest === vizContest);
-    }
-    if (vizParty) {
-      filtered = filtered.filter(row => normalizePartyBucket(row.party) === normalizePartyBucket(vizParty));
     }
     return filtered;
   }
@@ -1092,19 +1335,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function refreshViz() {
+    ensureVizSelectionHasData();
     const filtered = applyVizFilters(vizRows);
     renderVizChart(filtered);
     renderVizTable(filtered);
+    saveCurrentVizSnapshot(vizRows);
+    updateVizModeBadges();
+    renderVizStatus();
   }
 
-  function setVizContest(value, syncTopRace = true) {
+  function setVizContest(value) {
     if (!value) return;
     vizContest = value;
     if (el.vizContest instanceof HTMLSelectElement) {
       el.vizContest.value = value;
-    }
-    if (syncTopRace && el.vizTopRace instanceof HTMLSelectElement) {
-      el.vizTopRace.value = value;
     }
     refreshViz();
   }
@@ -1116,7 +1360,6 @@ document.addEventListener('DOMContentLoaded', () => {
       el.vizYear.value = value;
     }
     updateVizStates();
-    updateTopRaces();
     refreshViz();
   }
 
@@ -1131,10 +1374,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setVizCounty(value) {
-    if (!value) return;
-    vizCounty = value;
+    vizCounty = value || '';
     if (el.vizCounty instanceof HTMLSelectElement) {
-      el.vizCounty.value = value;
+      el.vizCounty.value = vizCounty;
     }
     refreshViz();
   }
@@ -1145,8 +1387,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el.vizDataset instanceof HTMLSelectElement) {
       el.vizDataset.value = value;
     }
+    if (vizDataset !== VIZ_DATASET_FINALIZED) {
+      setVizOverlayEnabled(false);
+    }
     const sourceRows = getVizSourceRows();
     applyVizDatasetRows(sourceRows);
+    syncVizOverlayAvailability();
+    updateVizModeBadges();
+    renderVizStatus();
   }
 
   function stopVizAutoRotation() {
@@ -1234,7 +1482,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (topContest) {
       vizContest = topContest;
       if (el.vizContest instanceof HTMLSelectElement) el.vizContest.value = topContest;
-      if (el.vizTopRace instanceof HTMLSelectElement) el.vizTopRace.value = topContest;
     }
     refreshViz();
   }
@@ -1252,17 +1499,50 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateVizAutoToggleLabel() {
     if (!el.vizAutoToggleBtn) return;
     el.vizAutoToggleBtn.textContent = vizAutoPaused ? 'Start' : 'Pause';
+    updateVizModeBadges();
+    renderVizStatus();
+  }
+
+  function getVizPlaybackLabel() {
+    if (vizAutoPaused) return 'Paused';
+    if (vizAutoLocked) return 'Manual';
+    return 'Auto';
+  }
+
+  function getVizScopeLabel() {
+    return vizCounty ? 'County focus' : 'All counties';
+  }
+
+  function updateVizModeBadges() {
+    if (el.vizPlaybackBadge) {
+      el.vizPlaybackBadge.textContent = `Playback: ${getVizPlaybackLabel()}`;
+    }
+    if (el.vizScopeBadge) {
+      el.vizScopeBadge.textContent = `Scope: ${getVizScopeLabel()}`;
+    }
+    if (el.vizCountyScopeBadge) {
+      el.vizCountyScopeBadge.textContent = vizCounty ? `County: ${vizCounty}` : 'All counties';
+      el.vizCountyScopeBadge.classList.toggle('is-focused', !!vizCounty);
+    }
+  }
+
+  function renderVizStatus() {
+    if (!el.vizPreviewStatus) return;
+    const baseText = vizStatusBase || 'Visualization ready';
+    el.vizPreviewStatus.textContent = `${baseText} • Scope: ${getVizScopeLabel()} • Playback: ${getVizPlaybackLabel()}`;
   }
 
   function setPreviewStatus(text) {
-    if (!el.vizPreviewStatus) return;
-    el.vizPreviewStatus.textContent = text || '';
+    vizStatusBase = text || '';
+    renderVizStatus();
   }
 
   function setPreviewState(active) {
     if (el.vizPanel) {
       el.vizPanel.classList.toggle('is-previewing', !!active);
     }
+    updateVizModeBadges();
+    renderVizStatus();
   }
 
   function ghostPreviewPanels() {
@@ -1309,7 +1589,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const sourceRows = getVizSourceRows();
     if (sourceRows.length) {
       applyVizDatasetRows(sourceRows);
-      const label = vizDataset === VIZ_DATASET_DOWN_BALLOT ? 'DB-Lite Down-Ballot' : 'DB-Lite Finalized';
+      const label = vizDataset === VIZ_DATASET_DOWN_BALLOT
+        ? 'DB-Lite Down-Ballot'
+        : vizDataset === VIZ_DATASET_WAREHOUSE
+          ? 'Warehouse SQL Core'
+          : 'DB-Lite Finalized';
       setPreviewStatus(`${label} • ${sourceRows.length} rows`);
       ghostPreviewPanels();
       return;
@@ -1321,7 +1605,14 @@ document.addEventListener('DOMContentLoaded', () => {
       clearVisualization();
       return;
     }
-    vizRows = rows;
+    vizRows = rows
+      .map(mapWarehouseVizRecord)
+      .filter(Boolean);
+    if (!vizRows.length) {
+      setPreviewStatus('Preview rows could not be normalized for visualization.');
+      clearVisualization();
+      return;
+    }
     setVizFilters(vizRows);
     refreshViz();
     ghostPreviewPanels();
@@ -1422,19 +1713,39 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  function mapWarehouseVizRecord(record) {
+    if (!record || typeof record !== 'object') return null;
+    return {
+      dataset_type: VIZ_DATASET_WAREHOUSE,
+      state: record.state || record.State || '',
+      county: record.county || record['County/District'] || record.County || '',
+      contest: record.contest || record.office || record.Office || record.race || '',
+      candidate: record.candidate || record.Candidate || record['Ballot Candidate Name'] || '',
+      party: record.party || record.Party || record['Ballot Party'] || '',
+      votes: parseNumeric(record.votes || record['Total Votes'] || record.total_votes || 0),
+      uncategorized_votes: parseNumeric(record.uncategorized_votes || record['Uncategorized Votes'] || 0),
+      year: extractYearFromValue(record.year || record.election_date || record.timestamp || record.date || '')
+    };
+  }
+
   function getVizSourceRows() {
-    return vizDataset === VIZ_DATASET_DOWN_BALLOT ? dbLiteDownBallotRows : dbLiteFinalizedRows;
+    if (vizDataset === VIZ_DATASET_DOWN_BALLOT) return dbLiteDownBallotRows;
+    if (vizDataset === VIZ_DATASET_WAREHOUSE) return warehouseVizRows;
+    return dbLiteFinalizedRows;
   }
 
   function applyVizDatasetRows(rows) {
     vizRows = Array.isArray(rows) ? rows : [];
     if (!vizRows.length) {
+      hydrateVizFiltersFromSnapshot(vizDataset);
+      syncVizOverlayAvailability();
       clearVisualization();
       return;
     }
     vizAutoLocked = false;
     setVizFilters(vizRows);
     refreshViz();
+    syncVizOverlayAvailability();
   }
 
   function updateVisualizationFromCurated(item) {
@@ -1553,28 +1864,102 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  async function fetchFinalizedMetadata() {
+    if (!statesCountiesUrl) return;
+    try {
+      const response = await fetch(statesCountiesUrl, { headers: { 'Accept': 'application/json' } });
+      if (!response.ok) return;
+      const payload = await response.json().catch(() => null);
+      if (!payload || payload.success === false) return;
+      finalizedMetadata = {
+        states: Array.isArray(payload.states) ? payload.states : [],
+        counties: payload.counties && typeof payload.counties === 'object' ? payload.counties : {},
+        years: Array.isArray(payload.years) ? payload.years.map(String) : [],
+        contests: Array.isArray(payload.contests) ? payload.contests : [],
+      };
+    } catch (err) {
+      // best-effort only
+    }
+  }
+
+  async function refreshFinalizedSliceForSelection() {
+    if (vizDataset !== VIZ_DATASET_FINALIZED) return;
+    try {
+      const url = new URL('/api/election_data/db_lite/finalized', window.location.origin);
+      url.searchParams.set('limit', '2000');
+      if (vizState) url.searchParams.set('state', vizState);
+      if (vizYear) url.searchParams.set('year', vizYear);
+      if (vizCounty) url.searchParams.set('county', vizCounty);
+      if (vizContest) url.searchParams.set('contest', vizContest);
+
+      const response = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+      if (!response.ok) return;
+      const payload = await response.json().catch(() => null);
+      if (!payload || payload.success === false) return;
+      const records = Array.isArray(payload.records) ? payload.records : [];
+      const rows = records.map(mapDbLiteFinalizedRecord).filter(Boolean);
+      if (!rows.length) return;
+      dbLiteFinalizedRows = rows;
+      applyVizDatasetRows(dbLiteFinalizedRows);
+      setPreviewStatus(`DB-Lite Finalized • ${payload.filtered_count || rows.length} filtered rows`);
+    } catch (err) {
+      // best-effort only
+    }
+  }
+
   async function fetchDbLiteFinalized() {
     const result = await fetchDbLiteDataset(dbLiteFinalizedUrl, mapDbLiteFinalizedRecord);
     dbLiteFinalizedRows = result.ok ? result.rows : [];
+    if (result.ok && dbLiteFinalizedRows.length) {
+      writeVizSnapshot(VIZ_DATASET_FINALIZED, {
+        rowCount: dbLiteFinalizedRows.length,
+        options: {
+          years: Array.from(new Set(dbLiteFinalizedRows.map(row => getRowYear(row)).filter(Boolean))).sort((a, b) => Number(b) - Number(a))
+        },
+        selection: {
+          vizYear,
+          vizState,
+          vizCounty,
+          vizContest,
+        },
+      });
+    }
     if (result.ok && vizDataset === VIZ_DATASET_FINALIZED && !curatedSelection) {
       applyVizDatasetRows(dbLiteFinalizedRows);
       setPreviewStatus(`DB-Lite Finalized • ${result.rowCount || dbLiteFinalizedRows.length} rows`);
     }
+    syncVizOverlayAvailability();
   }
 
   async function fetchDbLiteDownBallot() {
     const result = await fetchDbLiteDataset(dbLiteDownBallotUrl, mapDbLiteDownBallotRecord);
     dbLiteDownBallotRows = result.ok ? result.rows : [];
+    if (result.ok && dbLiteDownBallotRows.length) {
+      writeVizSnapshot(VIZ_DATASET_DOWN_BALLOT, {
+        rowCount: dbLiteDownBallotRows.length,
+        options: {
+          years: Array.from(new Set(dbLiteDownBallotRows.map(row => getRowYear(row)).filter(Boolean))).sort((a, b) => Number(b) - Number(a))
+        },
+        selection: {
+          vizYear,
+          vizState,
+          vizCounty,
+          vizContest,
+        },
+      });
+    }
     loadDropoffData();
     if (result.ok && vizDataset === VIZ_DATASET_DOWN_BALLOT && !curatedSelection) {
       applyVizDatasetRows(dbLiteDownBallotRows);
       setPreviewStatus(`DB-Lite Down-Ballot • ${result.rowCount || dbLiteDownBallotRows.length} rows`);
     }
+    syncVizOverlayAvailability();
   }
 
   function loadDropoffData() {
     dropoffData = Array.isArray(dbLiteDownBallotRows) ? [...dbLiteDownBallotRows] : [];
     hydrateDropoffSelectors(dropoffData);
+    syncVizOverlayAvailability();
   }
 
   function getDropoffRowsForControls(rows = dropoffData) {
@@ -1944,11 +2329,13 @@ document.addEventListener('DOMContentLoaded', () => {
       (async () => {
         try {
           const fetchInit = { method: 'POST', body: fd };
+          const hdrs = new Headers();
+          hdrs.append('Accept', 'application/json');
+          hdrs.append('X-Requested-With', 'XMLHttpRequest');
           if (csrfToken) {
-            const hdrs = new Headers();
             hdrs.append('X-CSRFToken', csrfToken);
-            fetchInit.headers = hdrs;
           }
+          fetchInit.headers = hdrs;
           
           // Use AuthUtils for certificate-aware fetch (upload requires cert)
           const winAny = (typeof window !== 'undefined') ? /** @type {any} */ (window) : null;
@@ -2410,6 +2797,9 @@ document.addEventListener('DOMContentLoaded', () => {
       vizAutoLocked = true;
       stopVizAutoRotation();
       setVizDataset(tgt.value || VIZ_DATASET_FINALIZED);
+      if ((tgt.value || VIZ_DATASET_FINALIZED) === VIZ_DATASET_FINALIZED) {
+        refreshFinalizedSliceForSelection();
+      }
       updateVizAutoToggleLabel();
     }
   });
@@ -2421,6 +2811,9 @@ document.addEventListener('DOMContentLoaded', () => {
       stopVizAutoRotation();
       hideVizHint();
       setVizYear(tgt.value);
+      if (vizDataset === VIZ_DATASET_FINALIZED) {
+        refreshFinalizedSliceForSelection();
+      }
       updateVizAutoToggleLabel();
     }
   });
@@ -2432,6 +2825,9 @@ document.addEventListener('DOMContentLoaded', () => {
       stopVizAutoRotation();
       hideVizHint();
       setVizState(tgt.value);
+      if (vizDataset === VIZ_DATASET_FINALIZED) {
+        refreshFinalizedSliceForSelection();
+      }
       updateVizAutoToggleLabel();
     }
   });
@@ -2443,24 +2839,9 @@ document.addEventListener('DOMContentLoaded', () => {
       stopVizAutoRotation();
       hideVizHint();
       setVizCounty(tgt.value);
-      updateVizAutoToggleLabel();
-    }
-  });
-
-  el.vizTopRaceCount?.addEventListener('change', e => {
-    const tgt = e.target;
-    if (tgt instanceof HTMLSelectElement) {
-      vizTopRaceCount = Math.max(1, parseInt(tgt.value, 10) || 5);
-      vizAutoLocked = true;
-      stopVizAutoRotation();
-      hideVizHint();
-      try {
-        window.localStorage?.setItem(VIZ_TOP_COUNT_KEY, String(vizTopRaceCount));
-      } catch (err) {
-        // Ignore storage write errors.
+      if (vizDataset === VIZ_DATASET_FINALIZED) {
+        refreshFinalizedSliceForSelection();
       }
-      updateTopRaces();
-      refreshViz();
       updateVizAutoToggleLabel();
     }
   });
@@ -2472,29 +2853,9 @@ document.addEventListener('DOMContentLoaded', () => {
       stopVizAutoRotation();
       hideVizHint();
       setVizContest(tgt.value);
-      updateVizAutoToggleLabel();
-    }
-  });
-
-  el.vizTopRace?.addEventListener('change', e => {
-    const tgt = e.target;
-    if (tgt instanceof HTMLSelectElement) {
-      vizAutoLocked = true;
-      stopVizAutoRotation();
-      hideVizHint();
-      setVizContest(tgt.value);
-      updateVizAutoToggleLabel();
-    }
-  });
-
-  el.vizParty?.addEventListener('change', e => {
-    const tgt = e.target;
-    if (tgt instanceof HTMLSelectElement) {
-      vizParty = tgt.value || '';
-      vizAutoLocked = true;
-      stopVizAutoRotation();
-      hideVizHint();
-      refreshViz();
+      if (vizDataset === VIZ_DATASET_FINALIZED) {
+        refreshFinalizedSliceForSelection();
+      }
       updateVizAutoToggleLabel();
     }
   });
@@ -2537,12 +2898,7 @@ document.addEventListener('DOMContentLoaded', () => {
   el.vizDropoffOverlayToggle?.addEventListener('change', e => {
     const tgt = e.target;
     if (tgt instanceof HTMLInputElement) {
-      vizOverlayEnabled = !!tgt.checked;
-      try {
-        window.localStorage?.setItem(VIZ_OVERLAY_KEY, String(vizOverlayEnabled));
-      } catch (err) {
-        // Ignore storage write errors.
-      }
+      setVizOverlayEnabled(!!tgt.checked);
       refreshViz();
     }
   });
@@ -2703,6 +3059,26 @@ document.addEventListener('DOMContentLoaded', () => {
           : [];
         if (!Array.isArray(rawData)) rawData = [];
 
+        warehouseVizRows = rawData.map(mapWarehouseVizRecord).filter(Boolean);
+        if (warehouseVizRows.length) {
+          writeVizSnapshot(VIZ_DATASET_WAREHOUSE, {
+            rowCount: warehouseVizRows.length,
+            options: {
+              years: Array.from(new Set(warehouseVizRows.map(row => getRowYear(row)).filter(Boolean))).sort((a, b) => Number(b) - Number(a))
+            },
+            selection: {
+              vizYear,
+              vizState,
+              vizCounty,
+              vizContest,
+            },
+          });
+          if (vizDataset === VIZ_DATASET_WAREHOUSE && !curatedSelection) {
+            applyVizDatasetRows(warehouseVizRows);
+            setPreviewStatus(`Warehouse SQL Core • ${warehouseVizRows.length} rows`);
+          }
+        }
+
         if (!compactPreferenceSet && rawData.length) {
           setCompactTable(rawData.length >= COMPACT_AUTO_THRESHOLD);
         }
@@ -2742,9 +3118,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- Init ----------
   initPipelineSteps();
-  loadVizTopCountPreference();
   loadVizOverlayPreference();
   loadVizPlaybackPreference();
+  loadVizModeHelpPreference();
   loadCompactPreference();
   loadDropoffDrawerPreference();
   loadDropoffPreferences();
@@ -2766,12 +3142,26 @@ document.addEventListener('DOMContentLoaded', () => {
   if (el.vizDropoffOverlayToggle instanceof HTMLInputElement && window.localStorage?.getItem(VIZ_OVERLAY_KEY) === null) {
     vizOverlayEnabled = !!el.vizDropoffOverlayToggle.checked;
   }
+  const cachedWarehouseStatus = readWarehouseStatusSnapshot();
+  if (cachedWarehouseStatus?.payload) {
+    applyPriorityPayload(cachedWarehouseStatus.payload, true);
+  }
+  updateVizModeBadges();
+  renderVizStatus();
   updateVizAutoToggleLabel();
+
+  if (el.vizPanel) {
+    el.vizPanel.addEventListener('pointerdown', () => {
+      setVizModeHelpCollapsed(true, true);
+    }, { once: true });
+  }
+
   startPreviewCycle('idle');
   fetchWorklistOverview();
   fetchPriorityStatus();
   window.setInterval(fetchPriorityStatus, PRIORITY_REFRESH_MS);
   fetchCuratedDatasets();
+  fetchFinalizedMetadata();
   fetchDbLiteFinalized();
   fetchDbLiteDownBallot();
   loadDropoffData();

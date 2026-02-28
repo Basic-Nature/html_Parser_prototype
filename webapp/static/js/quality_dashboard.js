@@ -1,5 +1,15 @@
 let allMetrics = [];
 let charts = {};
+let integrityData = null;
+let integrityCharts = {};
+let dismissedAlerts = new Set();
+let thresholds = {
+    confDropThreshold: 0.08,
+    unknownSpikeThreshold: 0.10,
+    reviewSpikeThreshold: 5.0,
+    baselineWindow: 30,
+    recentWindow: 5
+};
 
 // Load metrics from API
 async function loadMetrics() {
@@ -304,3 +314,424 @@ document.getElementById('limitFilter').addEventListener('change', loadMetrics);
 
 // Initial load
 loadMetrics();
+loadIntegrityData();
+
+// ============================================
+// Integrity Monitoring Functions
+// ============================================
+
+// Load integrity trend data
+async function loadIntegrityData() {
+    try {
+        // Load trend file
+        const trendsResponse = await fetch('/api/integrity_trends');
+        if (!trendsResponse.ok) {
+            throw new Error(`Integrity trends request failed: ${trendsResponse.status}`);
+        }
+        const trendsData = await trendsResponse.json();
+        
+        // Compute current integrity signal
+        const signalResponse = await fetch('/api/integrity_signal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(thresholds)
+        });
+        if (!signalResponse.ok) {
+            throw new Error(`Integrity signal request failed: ${signalResponse.status}`);
+        }
+        const signalData = await signalResponse.json();
+        
+        integrityData = {
+            trends: trendsData.trends || [],
+            signal: signalData.signal || {}
+        };
+        
+        updateIntegrityDashboard();
+    } catch (error) {
+        console.error('Failed to load integrity data:', error);
+        document.getElementById('integrityStatus').textContent = 'Error';
+    }
+}
+
+// Update integrity dashboard components
+function updateIntegrityDashboard() {
+    updateIntegrityStats();
+    updateAlerts();
+    updateSparklines();
+    updateComparisonSelects();
+}
+
+// Update integrity stats
+function updateIntegrityStats() {
+    const signal = integrityData.signal;
+    const trends = integrityData.trends;
+    
+    // Status
+    const statusEl = document.getElementById('integrityStatus');
+    statusEl.textContent = signal.status || '-';
+    statusEl.className = 'stat-value';
+    if (signal.status === 'ok') statusEl.style.color = '#10b981';
+    else if (signal.status === 'alert') statusEl.style.color = '#f59e0b';
+    else if (signal.status === 'error') statusEl.style.color = '#ef4444';
+    else statusEl.style.color = '#60a5fa';
+    
+    // Trend count
+    document.getElementById('trendCount').textContent = signal.entry_count || trends.length || '-';
+    
+    // Alert count
+    const alerts = (signal.alerts || []).filter(a => !dismissedAlerts.has(a.type));
+    document.getElementById('alertCount').textContent = alerts.length;
+    
+    // Last analysis
+    const lastEntry = trends.length > 0 ? trends[trends.length - 1] : null;
+    const lastTimestamp = lastEntry?.timestamp || lastEntry?.generated_at;
+    if (lastTimestamp) {
+        const date = new Date(lastTimestamp);
+        document.getElementById('lastAnalysis').textContent = date.toLocaleString();
+    } else {
+        document.getElementById('lastAnalysis').textContent = '-';
+    }
+}
+
+// Update active alerts
+function updateAlerts() {
+    const alerts = (integrityData.signal.alerts || []).filter(a => !dismissedAlerts.has(a.type));
+    const container = document.getElementById('alertsContainer');
+    const listEl = document.getElementById('alertsList');
+    
+    if (alerts.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+    
+    container.style.display = 'block';
+    listEl.innerHTML = '';
+    
+    alerts.forEach(alert => {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert-item';
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'alert-content';
+        
+        const typeDiv = document.createElement('div');
+        typeDiv.className = 'alert-type';
+        const icons = {
+            confidence_drop: '📉',
+            unknown_spike: '❓',
+            review_spike: '📋'
+        };
+        typeDiv.textContent = `${icons[alert.type] || '⚠️'} ${alert.type.replace(/_/g, ' ')}`;
+        
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'alert-message';
+        msgDiv.textContent = alert.message;
+        
+        contentDiv.appendChild(typeDiv);
+        contentDiv.appendChild(msgDiv);
+        
+        const dismissBtn = document.createElement('button');
+        dismissBtn.className = 'alert-dismiss';
+        dismissBtn.textContent = 'Dismiss';
+        dismissBtn.onclick = () => dismissAlert(alert.type);
+        
+        alertDiv.appendChild(contentDiv);
+        alertDiv.appendChild(dismissBtn);
+        listEl.appendChild(alertDiv);
+    });
+}
+
+// Dismiss alert
+function dismissAlert(alertType) {
+    dismissedAlerts.add(alertType);
+    updateAlerts();
+    updateIntegrityStats();
+}
+
+// Update sparkline charts
+function updateSparklines() {
+    const trends = integrityData.trends || [];
+    if (trends.length === 0) return;
+    
+    const recent = integrityData.signal.recent || {};
+    const deltas = integrityData.signal.deltas || {};
+    
+    // Confidence sparkline
+    const confData = trends.map(t => t.confidence?.avg || 0);
+    updateSparkline('confidenceSparkline', confData, '#a78bfa');
+    document.getElementById('confCurrent').textContent = (recent.confidence_avg || 0).toFixed(3);
+    updateDeltaDisplay('confDelta', deltas.confidence_avg_delta);
+    
+    // Unknown ratio sparkline
+    const unknownData = trends.map(t => t.unknown_ratio || 0);
+    updateSparkline('unknownSparkline', unknownData, '#f59e0b');
+    document.getElementById('unknownCurrent').textContent = (recent.unknown_ratio || 0).toFixed(3);
+    updateDeltaDisplay('unknownDelta', deltas.unknown_ratio_delta);
+    
+    // Segments review sparkline
+    const reviewData = trends.map(t => t.review_signals?.segments_needing_review || 0);
+    updateSparkline('reviewSparkline', reviewData, '#ef4444');
+    document.getElementById('reviewCurrent').textContent = (recent.segments_review || 0).toFixed(1);
+    updateDeltaDisplay('reviewDelta', deltas.segments_review_delta);
+    
+    // Pattern KB matches sparkline
+    const kbData = trends.map(t => t.review_signals?.pattern_kb_matches || 0);
+    updateSparkline('kbSparkline', kbData, '#10b981');
+    document.getElementById('kbCurrent').textContent = (recent.pattern_kb_matches || 0).toFixed(1);
+    updateDeltaDisplay('kbDelta', deltas.pattern_kb_matches_delta);
+}
+
+// Update single sparkline chart
+function updateSparkline(canvasId, data, color) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    
+    if (integrityCharts[canvasId]) {
+        integrityCharts[canvasId].destroy();
+    }
+    
+    integrityCharts[canvasId] = new (/** @type {any} */ (window).Chart)(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map((_, i) => i),
+            datasets: [{
+                data: data,
+                borderColor: color,
+                backgroundColor: `${color}20`,
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: { display: false },
+                y: { display: false }
+            }
+        }
+    });
+}
+
+// Update delta display
+function updateDeltaDisplay(elementId, delta) {
+    const el = document.getElementById(elementId);
+    if (!el || delta == null) {
+        if (el) el.textContent = '-';
+        return;
+    }
+    
+    const formatted = (delta >= 0 ? '+' : '') + delta.toFixed(3);
+    el.textContent = formatted;
+    el.className = 'delta';
+    if (Math.abs(delta) < 0.001) {
+        el.classList.add('neutral');
+    } else if (delta > 0) {
+        el.classList.add('negative');
+    } else {
+        el.classList.add('positive');
+    }
+}
+
+// Update comparison select dropdowns
+function updateComparisonSelects() {
+    const trends = integrityData.trends || [];
+    const baselineSelect = /** @type {HTMLSelectElement} */ (document.getElementById('compareBaselineSelect'));
+    const targetSelect = /** @type {HTMLSelectElement} */ (document.getElementById('compareTargetSelect'));
+    
+    if (!baselineSelect || !targetSelect) return;
+    
+    // Clear existing options
+    baselineSelect.innerHTML = '<option value="">Select baseline session...</option>';
+    targetSelect.innerHTML = '<option value="">Select target session...</option>';
+    
+    trends.forEach((trend, index) => {
+        const timestamp = trend.timestamp || trend.generated_at || `Entry ${index}`;
+        const option1 = document.createElement('option');
+        option1.value = String(index);
+        option1.textContent = timestamp;
+        baselineSelect.appendChild(option1);
+        
+        const option2 = document.createElement('option');
+        option2.value = String(index);
+        option2.textContent = timestamp;
+        targetSelect.appendChild(option2);
+    });
+}
+
+// Compare two sessions
+function compareSessions() {
+    const baselineSelect = /** @type {HTMLSelectElement} */ (document.getElementById('compareBaselineSelect'));
+    const targetSelect = /** @type {HTMLSelectElement} */ (document.getElementById('compareTargetSelect'));
+    const resultsDiv = document.getElementById('comparisonResults');
+    
+    if (!baselineSelect || !targetSelect || !resultsDiv) return;
+    
+    const baselineIdx = parseInt(baselineSelect.value);
+    const targetIdx = parseInt(targetSelect.value);
+    
+    if (isNaN(baselineIdx) || isNaN(targetIdx)) {
+        resultsDiv.style.display = 'none';
+        return;
+    }
+    
+    const trends = integrityData.trends || [];
+    const baseline = trends[baselineIdx];
+    const target = trends[targetIdx];
+    
+    if (!baseline || !target) return;
+    
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = `
+        <div class="comparison-diff">
+            <div class="diff-item">
+                <div class="diff-label">Confidence Avg</div>
+                <div class="diff-values">
+                    <span class="diff-baseline">${(baseline.confidence?.avg || 0).toFixed(3)}</span>
+                    <span class="diff-arrow">→</span>
+                    <span class="diff-target">${(target.confidence?.avg || 0).toFixed(3)}</span>
+                </div>
+            </div>
+            <div class="diff-item">
+                <div class="diff-label">Unknown Ratio</div>
+                <div class="diff-values">
+                    <span class="diff-baseline">${(baseline.unknown_ratio || 0).toFixed(3)}</span>
+                    <span class="diff-arrow">→</span>
+                    <span class="diff-target">${(target.unknown_ratio || 0).toFixed(3)}</span>
+                </div>
+            </div>
+            <div class="diff-item">
+                <div class="diff-label">Segments Review</div>
+                <div class="diff-values">
+                    <span class="diff-baseline">${(baseline.review_signals?.segments_needing_review || 0).toFixed(1)}</span>
+                    <span class="diff-arrow">→</span>
+                    <span class="diff-target">${(target.review_signals?.segments_needing_review || 0).toFixed(1)}</span>
+                </div>
+            </div>
+            <div class="diff-item">
+                <div class="diff-label">Pattern KB Matches</div>
+                <div class="diff-values">
+                    <span class="diff-baseline">${(baseline.review_signals?.pattern_kb_matches || 0).toFixed(1)}</span>
+                    <span class="diff-arrow">→</span>
+                    <span class="diff-target">${(target.review_signals?.pattern_kb_matches || 0).toFixed(1)}</span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Export integrity report
+function exportIntegrityReport() {
+    const report = {
+        exported_at: new Date().toISOString(),
+        thresholds: thresholds,
+        signal: integrityData.signal,
+        trends: integrityData.trends
+    };
+    
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `integrity_report_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// Export integrity report as CSV
+function exportIntegrityCsv() {
+    const trends = integrityData.trends || [];
+    const csvRows = [];
+    const headers = ['timestamp', 'confidence_avg', 'confidence_median', 'unknown_ratio', 'segments_review', 'pattern_kb_matches', 'segment_count', 'unknown_segment_count'];
+    csvRows.push(headers.join(','));
+    
+    trends.forEach(t => {
+        const row = [
+            t.timestamp || '',
+            t.confidence?.avg || '',
+            t.confidence?.median || '',
+            t.unknown_ratio || '',
+            t.review_signals?.segments_needing_review || '',
+            t.review_signals?.pattern_kb_matches || '',
+            t.segment_count || '',
+            t.unknown_segment_count || ''
+        ];
+        csvRows.push(row.join(','));
+    });
+    
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `integrity_trends_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ============================================
+// Event Listeners for Integrity Features
+// ============================================
+
+// Reload integrity data
+document.getElementById('reloadIntegrityBtn')?.addEventListener('click', loadIntegrityData);
+
+// Export integrity report (toggle between JSON and CSV)
+let exportFormat = 'json';
+document.getElementById('exportIntegrityBtn')?.addEventListener('click', () => {
+    if (exportFormat === 'json') {
+        exportIntegrityReport();
+        exportFormat = 'csv';
+    } else {
+        exportIntegrityCsv();
+        exportFormat = 'json';
+    }
+});
+
+// Configure thresholds
+document.getElementById('configThresholdsBtn')?.addEventListener('click', () => {
+    const modal = document.getElementById('thresholdModal');
+    if (modal) {
+        // Populate current values
+        (/** @type {HTMLInputElement} */ (document.getElementById('confDropThreshold'))).value = String(thresholds.confDropThreshold);
+        (/** @type {HTMLInputElement} */ (document.getElementById('unknownSpikeThreshold'))).value = String(thresholds.unknownSpikeThreshold);
+        (/** @type {HTMLInputElement} */ (document.getElementById('reviewSpikeThreshold'))).value = String(thresholds.reviewSpikeThreshold);
+        (/** @type {HTMLInputElement} */ (document.getElementById('baselineWindow'))).value = String(thresholds.baselineWindow);
+        (/** @type {HTMLInputElement} */ (document.getElementById('recentWindow'))).value = String(thresholds.recentWindow);
+        
+        modal.style.display = 'flex';
+    }
+});
+
+// Close threshold modal
+document.getElementById('closeThresholdModal')?.addEventListener('click', () => {
+    const modal = document.getElementById('thresholdModal');
+    if (modal) modal.style.display = 'none';
+});
+
+document.getElementById('cancelThresholdsBtn')?.addEventListener('click', () => {
+    const modal = document.getElementById('thresholdModal');
+    if (modal) modal.style.display = 'none';
+});
+
+// Save thresholds
+document.getElementById('saveThresholdsBtn')?.addEventListener('click', () => {
+    thresholds.confDropThreshold = parseFloat((/** @type {HTMLInputElement} */ (document.getElementById('confDropThreshold'))).value);
+    thresholds.unknownSpikeThreshold = parseFloat((/** @type {HTMLInputElement} */ (document.getElementById('unknownSpikeThreshold'))).value);
+    thresholds.reviewSpikeThreshold = parseFloat((/** @type {HTMLInputElement} */ (document.getElementById('reviewSpikeThreshold'))).value);
+    thresholds.baselineWindow = parseInt((/** @type {HTMLInputElement} */ (document.getElementById('baselineWindow'))).value);
+    thresholds.recentWindow = parseInt((/** @type {HTMLInputElement} */ (document.getElementById('recentWindow'))).value);
+    
+    const modal = document.getElementById('thresholdModal');
+    if (modal) modal.style.display = 'none';
+    
+    // Reload with new thresholds
+    loadIntegrityData();
+});
+
+// Compare sessions
+document.getElementById('compareBtn')?.addEventListener('click', compareSessions);

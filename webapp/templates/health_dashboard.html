@@ -23,9 +23,26 @@
             <a class="btn btn-outline-primary mt-3 mt-md-0" href="{{ url_for('index') }}">Back to Dashboard</a>
         </div>
 
+        {% if health_controls_enabled %}
         <div class="alert alert-info shadow-sm" data-health-alert role="status">
             Queue any task below to run the corresponding Python module (exactly as the CLI would). Logs stream back here for quick triage.
         </div>
+        {% else %}
+        <div class="alert alert-warning shadow-sm" data-health-alert role="status">
+            {% if health_state_reason == 'health_tasks_disabled' %}
+                Health task execution is currently disabled by environment policy. This page is visible in read-only mode.
+            {% elif health_state_reason == 'health_token_missing' %}
+                Health task token is not configured. Task execution is unavailable until environment secrets are set.
+            {% elif health_state_reason == 'health_token_mismatch' %}
+                Health task authentication is required. You can preview this page, but task execution is locked until authenticated.
+            {% else %}
+                Health task execution is currently unavailable. This page is visible in read-only mode.
+            {% endif %}
+            <div class="mt-2">
+                <a class="btn btn-sm btn-outline-dark" href="{{ health_auth_url }}">Authenticate for Health Tasks</a>
+            </div>
+        </div>
+        {% endif %}
 
         <section class="row g-4" data-task-list>
             {% for task in task_definitions %}
@@ -38,7 +55,8 @@
                             <button
                                 class="btn {{ 'btn-outline-danger' if task.danger else 'btn-outline-success' }} mt-3"
                                 data-task-key="{{ task.key }}"
-                                data-task-label="{{ task.label }}">
+                                data-task-label="{{ task.label }}"
+                                {% if not health_controls_enabled %}disabled aria-disabled="true"{% endif %}>
                                 {{ 'Run (High Impact)' if task.danger else 'Run Task' }}
                             </button>
                         </div>
@@ -52,7 +70,7 @@
                 <h2 class="h4 mb-0">Recent Runs</h2>
                 <div class="d-flex gap-2">
                     <button class="btn btn-sm btn-outline-secondary" type="button" data-refresh-health-tasks>Refresh</button>
-                    <button class="btn btn-sm btn-outline-info" type="button" data-socket-test-broadcast>Broadcast Socket Test</button>
+                    <button class="btn btn-sm btn-outline-info" type="button" data-socket-test-broadcast {% if not health_controls_enabled %}disabled aria-disabled="true"{% endif %}>Broadcast Socket Test</button>
                 </div>
             </div>
             <div class="table-responsive">
@@ -132,14 +150,16 @@
         <footer class="mt-5 text-center text-muted small">
             <div class="mb-2">
                 <strong>Public Health Endpoint</strong>: <code>{{ url_for('health') }}</code> (no auth required)<br>
-                <span class="small">Protected Dashboard</span>: Requires <code>ENABLE_HEALTH_TASKS=true</code>
+                <span class="small">Protected Dashboard</span>: Requires client certificate + valid <code>HEALTH_TASK_TOKEN</code>
             </div>
         </footer>
     </div>
 
     <div id="healthTaskConfig"
-         data-initial='{{ initial_tasks|tojson|safe }}'
-         data-runtime='{{ runtime_hints|tojson|safe }}'></div>
+        data-initial='{{ initial_tasks|tojson|safe }}'
+        data-runtime='{{ runtime_hints|tojson|safe }}'
+        data-health-enabled='{{ "true" if health_controls_enabled else "false" }}'
+        data-health-reason='{{ health_state_reason or "" }}'></div>
 
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>

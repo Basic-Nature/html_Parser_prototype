@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import os
 import socket
+from typing import Any, Callable, Generator, Tuple 
 
 # ============================================
 # SocketIO Configuration: Threading Framework
@@ -62,6 +63,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import asyncio
 from threading import Event, Thread
 from typing import Callable, Tuple
 from urllib.parse import urlparse, urlunparse
@@ -208,10 +210,17 @@ def _emit_download_ready(session_id: str, payload: dict, *, force: bool = False)
 
 # Health task security controls
 ENABLE_HEALTH_TASKS = os.environ.get("ENABLE_HEALTH_TASKS", "false").lower() in {"1", "true", "yes"}
-HEALTH_TASK_TOKEN = os.environ.get("HEALTH_TASK_TOKEN")
+HEALTH_TASK_TOKEN = (os.environ.get("HEALTH_TASK_TOKEN") or "").strip()
+GUARDED_INGESTION_KEY = (os.environ.get("GUARDED_INGESTION_KEY") or "").strip()
 
-# Certificate gating for mutation endpoints (optional mTLS in App Service)
-REQUIRE_CERT_FOR_MUTATIONS = os.environ.get("REQUIRE_CERT_FOR_MUTATIONS", "true").lower() in {"1", "true", "yes"}
+if not GUARDED_INGESTION_KEY:
+    raise RuntimeError("GUARDED_INGESTION_KEY must be configured for ingestion security.")
+
+if ENABLE_HEALTH_TASKS and not HEALTH_TASK_TOKEN:
+    raise RuntimeError("HEALTH_TASK_TOKEN must be configured when ENABLE_HEALTH_TASKS is enabled.")
+
+# Certificate gating for mutation endpoints (always enforced)
+REQUIRE_CERT_FOR_MUTATIONS = True
 
 # Local, non-DB monitoring log for DB usage/events
 DB_MONITOR_FILE = LOG_DIR / "db_monitor.jsonl"
@@ -285,43 +294,46 @@ def _is_local_request() -> bool:
 
 
 def _guarded_ingestion_allowed(action: str) -> tuple[bool, str]:
-    if DEPLOY_ENV == "local" and _is_local_request():
-        return True, "local_bypass"
-    guarded_key = (os.environ.get("GUARDED_INGESTION_KEY") or "").strip()
-    if not guarded_key:
+    if not GUARDED_INGESTION_KEY:
         return False, "guard_key_missing"
     token_hdr = (request.headers.get("X-Guarded-Ingestion-Key") or request.headers.get("X-Guarded-Key") or "").strip()
-    if token_hdr and hmac.compare_digest(token_hdr, guarded_key):
+    if token_hdr and hmac.compare_digest(token_hdr, GUARDED_INGESTION_KEY):
         return True, "guard_header"
     auth_hdr = (request.headers.get("Authorization") or "").strip()
     if auth_hdr.lower().startswith("bearer "):
         try:
             bearer = auth_hdr.split(None, 1)[1].strip()
-            if hmac.compare_digest(bearer, guarded_key):
+            if hmac.compare_digest(bearer, GUARDED_INGESTION_KEY):
                 return True, "guard_bearer"
         except Exception:
             pass
     return False, "guard_key_invalid"
 
 
-def _cert_required_response(reason: str):
+def _request_wants_json() -> bool:
     accept = request.headers.get("Accept", "") or ""
-    wants_json = (request.path or "").startswith("/api/") or "application/json" in accept or request.is_json
+    xhr = (request.headers.get("X-Requested-With", "") or "").lower() == "xmlhttprequest"
+    sec_fetch_dest = (request.headers.get("Sec-Fetch-Dest", "") or "").lower()
+    if (request.path or "").startswith("/api/"):
+        return True
+    if request.is_json or "application/json" in accept.lower():
+        return True
+    if xhr:
+        return True
+    if sec_fetch_dest == "empty":
+        return True
+    return False
+
+
+def _cert_required_response(reason: str):
+    wants_json = _request_wants_json()
     if wants_json:
-        return jsonify({"error": "certificate_required", "reason": reason}), 401
-    return (
-        render_template(
-            "auth_welcome.html",
-            principal=None,
-            principal_source=None,
-            cert_metadata=None,
-            session_id=None,
-            require_cert=True,
-            auth_reason=reason,
-            target_url=request.url,
-        ),
-        401,
-    )
+        return jsonify({
+            "error": "certificate_required",
+            "reason": reason,
+            "auth_url": url_for("auth_welcome", next=request.url),
+        }), 401
+    return redirect(url_for("auth_welcome", next=request.url))
 
 
 def _require_client_cert(reason: str):
@@ -563,24 +575,31 @@ _HEALTH_TASK_LOG_LIMIT = 20000
 def _require_health_auth():
     """Guard health endpoints with enable flag and optional bearer token."""
     if not ENABLE_HEALTH_TASKS:
-        return False, (jsonify({"error": "Health tasks disabled"}), 403)
+        return False, (jsonify({"error": "Health tasks disabled", "reason": "health_tasks_disabled"}), 403)
 
-    if HEALTH_TASK_TOKEN:
-        auth_header = request.headers.get("Authorization", "") or ""
-        token = None
-        if auth_header.lower().startswith("bearer "):
-            token = auth_header.split(" ", 1)[1].strip()
-        if not token:
-            token = request.args.get("token", "")
-        if token and hmac.compare_digest(token, HEALTH_TASK_TOKEN):
-            return True, None
-        return False, (jsonify({"error": "Unauthorized"}), 401)
+    if not HEALTH_TASK_TOKEN:
+        return False, (jsonify({"error": "Health task token not configured", "reason": "health_token_missing"}), 503)
 
-    return True, None
+    auth_header = request.headers.get("Authorization", "") or ""
+    token = None
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        token = request.args.get("token", "")
+    if token and hmac.compare_digest(token, HEALTH_TASK_TOKEN):
+        return True, None
+    return False, (jsonify({
+        "error": "Unauthorized",
+        "reason": "health_token_mismatch",
+        "auth_url": url_for("auth_welcome", next=request.url),
+    }), 401)
 
 
-def _health_auth_response():
+def _health_auth_response(for_html: bool = False):
     allowed, resp = _require_health_auth()
+    if not allowed and for_html:
+        if isinstance(resp, tuple) and len(resp) > 1 and resp[1] in {401, 403, 503}:
+            return redirect(url_for("auth_welcome", next=request.url))
     return None if allowed else resp
 
 
@@ -4035,10 +4054,31 @@ def api_data_framework_exports():
 
 
 @app.route("/health_dashboard", methods=["GET"])
-def health_dashboard_page():
-    auth_error = _health_auth_response()
-    if auth_error:
-        return auth_error
+def health_dashboard():
+    allowed, resp = _require_health_auth()
+    health_controls_enabled = bool(allowed)
+    health_state_reason = None
+    if not allowed:
+        status_code = None
+        reason_code = None
+        if isinstance(resp, tuple) and len(resp) > 1:
+            status_code = resp[1]
+            payload = resp[0]
+            try:
+                if hasattr(payload, "get_json"):
+                    payload_json = payload.get_json(silent=True) or {}
+                    reason_code = payload_json.get("reason")
+            except Exception:
+                reason_code = None
+        if status_code == 403:
+            health_state_reason = reason_code or "health_tasks_disabled"
+        elif status_code == 503:
+            health_state_reason = reason_code or "health_token_missing"
+        elif status_code == 401:
+            health_state_reason = reason_code or "health_token_mismatch"
+        else:
+            return resp
+
     runtime_hints = {
         "async_mode": _SOCKETIO_ASYNC_MODE,
         "async_framework": "threading (native Python)",
@@ -4051,7 +4091,10 @@ def health_dashboard_page():
         task_definitions=_public_health_task_definitions(),
         runtime_hints=runtime_hints,
         socketio_client_config=SOCKETIO_CLIENT_CONFIG,
-        initial_tasks=_get_health_tasks(),
+        initial_tasks=_get_health_tasks() if health_controls_enabled else [],
+        health_controls_enabled=health_controls_enabled,
+        health_state_reason=health_state_reason,
+        health_auth_url=url_for("auth_welcome", next=request.url),
     )
 
 
@@ -4384,9 +4427,6 @@ def api_quick_copy_clear():
 @app.route("/download_fs")
 def download_fs():
     """Enhanced filesystem download with integrity verification."""
-    import asyncio
-    import os
-    from pathlib import Path
     
     root = (request.args.get("root") or "").lower().strip()
     subpath = (request.args.get("path") or "").strip().replace("\\", "/")
@@ -5283,8 +5323,6 @@ def download_input_file(filename) -> str:
 @app.route("/download/output/<filename>")
 def download_output_file(filename) -> str:
     """Enhanced download with integrity verification and cache deduplication."""
-    import asyncio
-    from pathlib import Path
     
     # Get principal for deduplication
     principal, principal_source, _ = get_request_principal()
@@ -5761,6 +5799,158 @@ def quality_dashboard():
     """Quality metrics visualization dashboard."""
     return render_template("quality_dashboard.html")
 
+
+def _load_integrity_trends() -> tuple[list[dict[str, Any]], str, bool]:
+    """Load integrity trends from primary file locations with cached fallback.
+
+    Returns: (trends, source_path, from_cache)
+    """
+
+    repo_root = Path(__file__).resolve().parent.parent
+
+    candidate_paths = [
+        repo_root / "tools" / "debug_headless_output" / "context_digest_trends.json",
+        repo_root / "webapp" / "parser" / "Context_Integration" / "Context_Library" / "log" / "context_digest_trends.json",
+    ]
+    cache_path = repo_root / "tools" / "tmp" / "integrity_trends_last.json"
+
+    def _normalize_trends(raw: Any) -> list[dict[str, Any]]:
+        if isinstance(raw, dict):
+            raw = raw.get("trends", [])
+        if not isinstance(raw, list):
+            return []
+
+        normalized: list[dict[str, Any]] = []
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            if "timestamp" not in entry and entry.get("generated_at"):
+                entry = {**entry, "timestamp": entry.get("generated_at")}
+            normalized.append(entry)
+        return normalized
+
+    for path in candidate_paths:
+        if not path.exists():
+            continue
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                loaded = json.load(handle)
+            trends = _normalize_trends(loaded)
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(trends), encoding="utf-8")
+            return trends, str(path), False
+        except Exception as exc:
+            logger.warning(f"Failed reading integrity trends from {path}: {exc}")
+
+    if cache_path.exists():
+        try:
+            cached_raw = json.loads(cache_path.read_text(encoding="utf-8"))
+            trends = _normalize_trends(cached_raw)
+            return trends, str(cache_path), True
+        except Exception as exc:
+            logger.warning(f"Failed reading integrity trends cache: {exc}")
+
+    return [], "", False
+
+@app.route("/api/integrity_trends", methods=["GET"])
+def api_integrity_trends():
+    """API endpoint for context digest trends data."""
+    try:
+        trends, source, from_cache = _load_integrity_trends()
+        return jsonify({
+            "trends": trends,
+            "count": len(trends),
+            "source": source,
+            "from_cache": from_cache,
+        })
+    except Exception as e:
+        logger.error(f"Failed to load integrity trends: {e}")
+        return jsonify({"error": "Failed to load trends", "trends": [], "count": 0}), 500
+
+@app.route("/api/integrity_signal", methods=["POST"])
+def api_integrity_signal():
+    """API endpoint to compute integrity signal with custom thresholds."""
+
+    # Get custom thresholds from request
+    thresholds = request.get_json() or {}
+    conf_drop_threshold = thresholds.get("confDropThreshold", 0.08)
+    unknown_spike_threshold = thresholds.get("unknownSpikeThreshold", 0.1)
+    review_spike_threshold = thresholds.get("reviewSpikeThreshold", 5.0)
+    baseline_window = int(thresholds.get("baselineWindow", 30) or 30)
+    recent_window = int(thresholds.get("recentWindow", 5) or 5)
+    
+    try:
+        trends, source, from_cache = _load_integrity_trends()
+        if len(trends) < 2:
+            return jsonify({
+                "signal": {
+                    "status": "insufficient_data",
+                    "entry_count": len(trends),
+                    "alerts": [],
+                },
+                "source": source,
+                "from_cache": from_cache,
+            })
+
+        # Lazy import to avoid circular deps
+        from tools.analyze_context_digest_trends import compute_integrity_signal
+
+        repo_root = Path(__file__).resolve().parent.parent
+        trend_file_path = repo_root / "tools" / "tmp" / "integrity_trends_working.json"
+        trend_file_path.parent.mkdir(parents=True, exist_ok=True)
+        trend_file_path.write_text(json.dumps(trends), encoding="utf-8")
+        signal = compute_integrity_signal(
+            trend_file=trend_file_path,
+            window=baseline_window,
+            recent=recent_window,
+            conf_drop_threshold=conf_drop_threshold,
+            unknown_spike_threshold=unknown_spike_threshold,
+            review_spike_threshold=review_spike_threshold,
+        )
+
+        return jsonify({"signal": signal, "source": source, "from_cache": from_cache})
+    except Exception as e:
+        logger.error(f"Failed to compute integrity signal: {e}")
+        return jsonify({"error": "Failed to compute signal", "signal": {"status": "error", "alerts": []}}), 500
+
+@app.route("/api/integrity_export", methods=["GET"])
+def api_integrity_export():
+    """API endpoint to export integrity report as JSON."""
+
+    try:
+        trends, source, from_cache = _load_integrity_trends()
+        if not trends:
+            return jsonify({"error": "No trends data available"}), 404
+
+        # Compute signal
+        from tools.analyze_context_digest_trends import compute_integrity_signal
+        repo_root = Path(__file__).resolve().parent.parent
+        trend_file_path = repo_root / "tools" / "tmp" / "integrity_trends_working.json"
+        trend_file_path.parent.mkdir(parents=True, exist_ok=True)
+        trend_file_path.write_text(json.dumps(trends), encoding="utf-8")
+        signal = compute_integrity_signal(trend_file=trend_file_path)
+
+        # Build report
+        report = {
+            "exported_at": datetime.now().isoformat(),
+            "source": source,
+            "from_cache": from_cache,
+            "thresholds": {
+                "confDropThreshold": 0.08,
+                "unknownSpikeThreshold": 0.1,
+                "reviewSpikeThreshold": 5.0,
+                "baselineWindow": 30,
+                "recentWindow": 5
+            },
+            "signal": signal,
+            "trends": trends
+        }
+
+        return jsonify(report)
+    except Exception as e:
+        logger.error(f"Failed to export integrity report: {e}")
+        return jsonify({"error": "Failed to export report"}), 500
+
 @app.route("/url_status_dashboard")
 def url_status_dashboard():
     """URL processing status dashboard with production comparison."""
@@ -5775,8 +5965,6 @@ def quick_reference_page():
 @app.route("/api/quality_metrics", methods=["GET"])
 def api_quality_metrics():
     """API endpoint for quality metrics data."""
-    import json
-    from pathlib import Path
     
     # Query parameters for filtering
     handler_filter = request.args.get("handler")
@@ -5930,7 +6118,8 @@ def auth_welcome():
 @app.route("/upload/input", methods=["POST"])
 @_rate_limit("5/minute")
 def upload_to_input() -> str:
-    file = request.files.get("file")
+    wants_json = _request_wants_json()
+    file = request.files.get("file") or request.files.get("csv_file") or request.files.get("data_file")
     cert_resp = _require_client_cert("upload_input")
     if cert_resp:
         return cert_resp
@@ -5948,6 +6137,8 @@ def upload_to_input() -> str:
             "message": f"Upload blocked by guarded ingestion gate: {guard_reason}",
             "session_id": None,
         })
+        if wants_json:
+            return jsonify({"success": False, "error": "Guarded ingestion key required."}), 403
         flash("Upload blocked: guarded ingestion key required.", "danger")
         return redirect(request.referrer or url_for("ballot_lens"))
     # Gate uploads: require client principal or ADMIN_JWT_TOKEN fallback
@@ -5984,19 +6175,26 @@ def upload_to_input() -> str:
         except Exception as e:
             logger.error({"level": "ERROR", "type": "upload", "message": f"Quarantine save failed: {e}"})
             flash("Failed to save upload.", "danger")
+        if wants_json:
+            return jsonify({"success": False, "error": "Upload quarantined: verified principal required."}), 403
         return redirect(request.referrer or url_for("ballot_lens"))
 
     ok, saved_name, err_path = _save_uploaded_file(file, str(INPUT_DIR), session_id=None)
     if ok and saved_name:
+        if wants_json:
+            return jsonify({"success": True, "filename": saved_name, "destination": "input"})
         flash(f"File '{saved_name}' uploaded to input folder.", "success")
     else:
+        if wants_json:
+            return jsonify({"success": False, "error": saved_name or "Invalid file type or no file selected."}), 400
         flash(saved_name or "Invalid file type or no file selected.", "danger")
     return redirect(request.referrer or url_for("ballot_lens"))
 
 @app.route("/upload/output", methods=["POST"])
 @_rate_limit("5/minute")
 def upload_to_output() -> str:
-    file = request.files.get("file")
+    wants_json = _request_wants_json()
+    file = request.files.get("file") or request.files.get("csv_file") or request.files.get("data_file")
     cert_resp = _require_client_cert("upload_output")
     if cert_resp:
         return cert_resp
@@ -6014,6 +6212,8 @@ def upload_to_output() -> str:
             "message": f"Upload blocked by guarded ingestion gate: {guard_reason}",
             "session_id": None,
         })
+        if wants_json:
+            return jsonify({"success": False, "error": "Guarded ingestion key required."}), 403
         flash("Upload blocked: guarded ingestion key required.", "danger")
         return redirect(request.referrer or url_for("ballot_lens"))
     principal, _, _ = get_request_principal()
@@ -6048,18 +6248,25 @@ def upload_to_output() -> str:
         except Exception as e:
             logger.error({"level": "ERROR", "type": "upload", "message": f"Quarantine save failed: {e}"})
             flash("Failed to save upload.", "danger")
+        if wants_json:
+            return jsonify({"success": False, "error": "Upload quarantined: verified principal required."}), 403
         return redirect(request.referrer or url_for("ballot_lens"))
 
     ok, saved_name, err_path = _save_uploaded_file(file, str(OUTPUT_DIR), session_id=None)
     if ok and saved_name:
+        if wants_json:
+            return jsonify({"success": True, "filename": saved_name, "destination": "output"})
         flash(f"File '{saved_name}' uploaded to output folder.", "success")
     else:
+        if wants_json:
+            return jsonify({"success": False, "error": saved_name or "Invalid file type or no file selected."}), 400
         flash(saved_name or "Invalid file type or no file selected.", "danger")
     return redirect(request.referrer or url_for("ballot_lens"))
 
 @app.route("/upload/uploads", methods=["POST"])
 @_rate_limit("5/minute")
 def upload_to_uploads() -> str:
+    wants_json = _request_wants_json()
     file = request.files.get("data_file") or request.files.get("file")
     cert_resp = _require_client_cert("upload_uploads")
     if cert_resp:
@@ -6072,6 +6279,8 @@ def upload_to_uploads() -> str:
             "message": f"Upload blocked by guarded ingestion gate: {guard_reason}",
             "session_id": None,
         })
+        if wants_json:
+            return jsonify({"success": False, "error": "Guarded ingestion key required."}), 403
         flash("Upload blocked: guarded ingestion key required.", "danger")
         return redirect(request.referrer or url_for("ballot_lens"))
     principal, _, _ = get_request_principal()
@@ -6109,6 +6318,8 @@ def upload_to_uploads() -> str:
         except Exception as e:
             logger.error({"level": "ERROR", "type": "upload", "message": f"Quarantine save failed: {e}"})
             flash("Failed to save upload.", "danger")
+        if wants_json:
+            return jsonify({"success": False, "error": "Upload quarantined: verified principal required."}), 403
         return redirect(request.referrer or url_for("ballot_lens"))
 
     ok, saved_name, err_path = _save_uploaded_file(file, str(UPLOADS_DIR), session_id=None)
@@ -6146,8 +6357,12 @@ def upload_to_uploads() -> str:
         except Exception as e:
             logger.warning(f"Failed to parse filename metadata: {e}")
         
+        if wants_json:
+            return jsonify({"success": True, "filename": saved_name, "destination": "uploads"})
         flash(f"File '{saved_name}' uploaded to uploads folder.", "success")
     else:
+        if wants_json:
+            return jsonify({"success": False, "error": saved_name or "Invalid file type or no file selected."}), 400
         flash(saved_name or "Invalid file type or no file selected.", "danger")
     return redirect(request.referrer or url_for("ballot_lens"))
 
@@ -6264,6 +6479,119 @@ def api_election_data_worklist():
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
         return jsonify({"error": "Unauthorized"}), 403
+
+    def _overview_status_to_workflow(value: str) -> str:
+        text = (value or '').strip().lower()
+        if not text:
+            return 'step_1'
+        if 'prod loaded' in text or 'completed' in text or 'final' in text:
+            return 'completed'
+        if 'qc2' in text or 'step 4' in text:
+            return 'step_4'
+        if 'qc1' in text or 'step 3' in text:
+            return 'step_3'
+        if 'dl2' in text or 'step 2' in text:
+            return 'step_2'
+        if 'dl1' in text or 'step 1' in text:
+            return 'step_1'
+        return 'step_2'
+
+    def _is_truthy(value: str) -> bool:
+        return str(value or '').strip().lower() in ('true', 'yes', 'y', '1', 'pass', 'passed', 'done')
+
+    def _derive_stage_status(is_complete: bool, owner: str) -> str:
+        if is_complete:
+            return 'ready_for_qc'
+        if str(owner or '').strip():
+            return 'in_progress'
+        return 'pending'
+
+    def _build_worklist_from_overview(limit: int):
+        from webapp.parser.data_standardization.google_sheets_client import fetch_worklist_overview
+
+        overview = fetch_worklist_overview()
+        if not overview.success:
+            return None, overview.error or 'Failed to fetch worklist overview'
+
+        state_filter = (request.args.get('state') or '').strip().lower()
+        year_filter = (request.args.get('year') or '').strip()
+        status_filter = (request.args.get('status') or '').strip().lower()
+
+        rows = []
+        for idx, row in enumerate(overview.records, start=1):
+            source_url = (
+                row.get('Source Link')
+                or row.get('Step 1')
+                or row.get('Source URL')
+                or row.get('URL')
+                or ''
+            )
+            dl1_value = row.get('Download 1') or row.get('Step 2') or ''
+            dl2_value = row.get('Download 2') or row.get('0.00%') or ''
+            preqc_value = row.get('Run Pre-Check') or row.get('Pre-QC Auto-check') or ''
+            status_text = row.get('Status') or row.get('Work in Progress - DL2') or row.get('Standardization Process') or ''
+
+            dl1_owner = row.get('Work in Progress - DL1') or row.get('DL1 Owner') or ''
+            dl2_owner = row.get('Work in Progress - DL2') or row.get('DL2 Owner') or ''
+            qc1_owner = row.get('QC1 Owner') or ''
+            qc2_owner = row.get('QC2 Owner') or ''
+
+            dl1_complete = _is_truthy(row.get('DL1 Complete')) or _is_truthy(dl1_value)
+            dl2_complete = _is_truthy(row.get('DL2 Complete')) or _is_truthy(dl2_value)
+
+            race_id = (
+                row.get('QC ID')
+                or row.get('RACE ID')
+                or row.get('Race ID')
+                or row.get('race_id')
+                or f'overview_{idx}'
+            )
+
+            preqc_norm = str(preqc_value).strip().lower()
+            preqc_details = str(row.get('Pre-QC Results') or '').strip().lower()
+            if _is_truthy(preqc_norm) or 'passed' in preqc_details:
+                preqc_result = 'passed'
+            elif 'fail' in preqc_details or 'discrep' in preqc_details:
+                preqc_result = 'review_needed'
+            else:
+                preqc_result = 'pending'
+
+            year_value = str(row.get('Year') or '').strip()
+            state_value = str(row.get('State') or '').strip()
+            workflow_status = _overview_status_to_workflow(status_text)
+            if workflow_status == 'step_1' and dl2_complete:
+                workflow_status = 'step_2'
+
+            if state_filter and state_value.lower() != state_filter:
+                continue
+            if year_filter and year_filter != year_value:
+                continue
+            if status_filter and workflow_status.lower() != status_filter:
+                continue
+
+            rows.append({
+                'id': idx,
+                'race_id': str(race_id),
+                'year': int(year_value) if year_value.isdigit() else (year_value or None),
+                'state': state_value,
+                'county': row.get('County') or row.get('County/District') or '',
+                'office': row.get('Race') or row.get('Office') or row.get('Contest') or '',
+                'source_url': source_url,
+                'dl1_assigned_to': dl1_owner,
+                'dl1_status': _derive_stage_status(dl1_complete, dl1_owner),
+                'dl2_assigned_to': dl2_owner,
+                'dl2_status': _derive_stage_status(dl2_complete, dl2_owner),
+                'preqc_result': preqc_result,
+                'qc1_assigned_to': qc1_owner,
+                'qc1_status': row.get('QC1 Status') or ('completed' if workflow_status in ('step_4', 'completed') else 'pending'),
+                'qc1_selected_dl': row.get('QC1 Selected DL') or None,
+                'qc2_assigned_to': qc2_owner,
+                'qc2_status': row.get('QC2 Status') or ('completed' if workflow_status == 'completed' else 'pending'),
+                'workflow_status': workflow_status,
+                'updated_at': None,
+            })
+
+        return rows[:limit], None
     
     try:
         from sqlalchemy import create_engine
@@ -6324,6 +6652,22 @@ def api_election_data_worklist():
             session.close()
     
     except Exception as e:
+        err_msg = str(e)
+        if 'no such table: download_records' in err_msg.lower():
+            try:
+                limit = min(int(request.args.get('limit', 100)), 500)
+                worklist, fallback_error = _build_worklist_from_overview(limit)
+                if worklist is not None:
+                    return jsonify({
+                        'success': True,
+                        'total': len(worklist),
+                        'records': worklist,
+                        'source': 'google_sheets_overview_fallback',
+                        'warning': 'SQL worklist table not initialized; returning overview fallback data',
+                    }), 200
+                return jsonify({'success': False, 'error': fallback_error}), 500
+            except Exception as fallback_exc:
+                logger.error(f"Worklist fallback failed: {fallback_exc}")
         logger.error(f"Error fetching worklist: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -6385,6 +6729,10 @@ def api_election_data_db_lite_finalized():
 
     Query params:
     - limit: max records (default 200)
+    - state: optional state filter
+    - year: optional year filter
+    - county: optional county/district filter
+    - contest: optional office/contest filter
     """
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
@@ -6394,18 +6742,41 @@ def api_election_data_db_lite_finalized():
         from webapp.parser.data_standardization.google_sheets_client import get_election_data_client
 
         limit = min(int(request.args.get('limit', 200)), 2000)
+        state_filter = (request.args.get('state') or '').strip().lower()
+        year_filter = (request.args.get('year') or '').strip()
+        county_filter = (request.args.get('county') or '').strip().lower()
+        contest_filter = (request.args.get('contest') or '').strip().lower()
         client = get_election_data_client()
         result = client.fetch_finalized_data()
 
         if not result.success:
             return jsonify({'success': False, 'error': result.error or 'Failed to fetch sheet'}), 500
 
-        records = result.records[:limit]
+        records = result.records
+
+        if state_filter:
+            records = [r for r in records if (str(r.get('State') or '').strip().lower() == state_filter)]
+        if year_filter:
+            records = [r for r in records if year_filter in str(r.get('Year') or '')]
+        if county_filter:
+            records = [
+                r for r in records
+                if str(r.get('County/District') or r.get('County') or '').strip().lower() == county_filter
+            ]
+        if contest_filter:
+            records = [
+                r for r in records
+                if str(r.get('Office') or r.get('Contest') or '').strip().lower() == contest_filter
+            ]
+
+        filtered_count = len(records)
+        records = records[:limit]
 
         return jsonify({
             'success': True,
             'sheet_name': result.sheet_name,
             'row_count': result.row_count,
+            'filtered_count': filtered_count,
             'records': records,
         }), 200
     except ValueError as e:
@@ -6605,6 +6976,8 @@ def api_election_data_states_counties():
 
         # Build normalized state-to-county mappings
         state_counties = defaultdict(set)
+        years_set = set()
+        contests_set = set()
         
         for record in result.records:
             state = record.get('State', '').strip()
@@ -6615,6 +6988,14 @@ def api_election_data_states_counties():
                 state_normalized = state.title()
                 county_normalized = county.title()
                 state_counties[state_normalized].add(county_normalized)
+
+            year_value = str(record.get('Year', '')).strip()
+            if year_value:
+                years_set.add(year_value)
+
+            contest_value = str(record.get('Office', '') or record.get('Contest', '')).strip()
+            if contest_value:
+                contests_set.add(contest_value)
 
         # Convert to sorted lists for consistent ordering
         states_list = sorted(state_counties.keys())
@@ -6629,6 +7010,8 @@ def api_election_data_states_counties():
             'success': True,
             'states': states_list,
             'counties': counties_dict,
+            'years': sorted(list(years_set), reverse=True),
+            'contests': sorted(list(contests_set)),
             'total_states': len(states_list),
             'total_counties': total_counties,
         }), 200
@@ -6930,6 +7313,38 @@ def api_election_data_stats():
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
         return jsonify({"error": "Unauthorized"}), 403
+
+    def _build_stats_from_overview() -> dict:
+        from webapp.parser.data_standardization.google_sheets_client import fetch_worklist_overview
+
+        overview = fetch_worklist_overview()
+        if not overview.success:
+            return {
+                'total_races': 0,
+                'dl1_ready': 0,
+                'dl2_ready': 0,
+                'preqc_passed': 0,
+                'qc1_pending': 0,
+                'qc2_pending': 0,
+                'production_records': 0,
+            }
+
+        rows = overview.records
+        preqc_passed = 0
+        for row in rows:
+            value = str(row.get('Run Pre-Check') or row.get('Pre-QC Auto-check') or '').strip().lower()
+            if value in ('true', 'yes', 'pass', 'passed'):
+                preqc_passed += 1
+
+        return {
+            'total_races': len(rows),
+            'dl1_ready': sum(1 for r in rows if str(r.get('Download 1') or r.get('Step 2') or '').strip()),
+            'dl2_ready': sum(1 for r in rows if str(r.get('Download 2') or r.get('0.00%') or '').strip()),
+            'preqc_passed': preqc_passed,
+            'qc1_pending': 0,
+            'qc2_pending': 0,
+            'production_records': 0,
+        }
     
     try:
         from sqlalchemy import create_engine, func
@@ -6972,6 +7387,18 @@ def api_election_data_stats():
             session.close()
     
     except Exception as e:
+        err_msg = str(e)
+        if 'no such table: download_records' in err_msg.lower():
+            try:
+                stats = _build_stats_from_overview()
+                return jsonify({
+                    'success': True,
+                    'stats': stats,
+                    'source': 'google_sheets_overview_fallback',
+                    'warning': 'SQL worklist table not initialized; returning overview-derived stats',
+                }), 200
+            except Exception as fallback_exc:
+                logger.error(f"Stats fallback failed: {fallback_exc}")
         logger.error(f"Error fetching stats: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 

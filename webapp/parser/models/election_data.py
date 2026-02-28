@@ -5,12 +5,50 @@ Defines schema for election results with staging, validation, and production tie
 
 from datetime import datetime
 from enum import Enum as PyEnum
+from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
-from sqlalchemy import Enum as SQLEnum
+from sqlalchemy import Boolean as _Boolean
+from sqlalchemy import Column
+from sqlalchemy import DateTime as _DateTime
+from sqlalchemy import Enum as _SQLEnumType
+from sqlalchemy import Float as _Float
+from sqlalchemy import ForeignKey, Index
+from sqlalchemy import Integer as _Integer
+from sqlalchemy import String as _String
+from sqlalchemy import Text as _Text
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+
+
+def Integer(*args: Any, **kwargs: Any):
+    return Column(_Integer, *args, **kwargs)
+
+
+def String(length: int | None = None, *args: Any, **kwargs: Any):
+    if length is None:
+        return Column(_String, *args, **kwargs)
+    return Column(_String(length), *args, **kwargs)
+
+
+def Text(*args: Any, **kwargs: Any):
+    return Column(_Text, *args, **kwargs)
+
+
+def Boolean(*args: Any, **kwargs: Any):
+    return Column(_Boolean, *args, **kwargs)
+
+
+def DateTime(*args: Any, **kwargs: Any):
+    return Column(_DateTime, *args, **kwargs)
+
+
+def Float(*args: Any, **kwargs: Any):
+    return Column(_Float, *args, **kwargs)
+
+
+def SQLEnum(enum_class: Any, *args: Any, **kwargs: Any):
+    return Column(_SQLEnumType(enum_class), *args, **kwargs)
 
 
 class DataQualityTier(PyEnum):

@@ -46,15 +46,15 @@
             </a>
             <a class="feature" href="{{ url_for('quality_dashboard') }}" data-bs-toggle="tooltip" title="View extraction quality metrics and performance analytics.">
                 <h3>Quality Metrics</h3>
-                <p>Monitor extraction confidence, data quality trends, and handler performance with interactive charts and detailed analytics.</p>
+                <p>Monitor extraction confidence, data quality trends, and handler performance with interactive charts and detailed analytics, then open Health Preview (read-only) for operator task visibility.</p>
             </a>
             <a class="feature" href="{{ url_for('history') }}" data-bs-toggle="tooltip" title="Audit prior changes and restore snapshots.">
                 <h3>Change History</h3>
                 <p>View the full history of URL hint changes and parser configuration updates for transparency and auditability.</p>
             </a>
-            <a class="feature" href="{{ url_for('health_dashboard_page') }}" data-bs-toggle="tooltip" title="Internal health monitoring: queue maintenance tasks and review system logs.">
-              <h3>Health Dashboard</h3>
-              <p>Trigger manual correction, pipeline health runs, and retraining jobs from one console with live log streaming.</p>
+            <a class="feature" href="{{ url_for('health_dashboard') }}" data-bs-toggle="tooltip" title="Health preview is read-only unless authenticated.">
+                <h3>Health Dashboard</h3>
+                <p>Preview health status and recent runs in read-only mode; authenticated operators can execute maintenance and retraining tasks.</p>
             </a>
             <a class="feature" href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer" data-bs-toggle="tooltip" title="Project overview and contribution guide.">
                 <h3>About & Docs</h3>

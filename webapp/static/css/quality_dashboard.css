@@ -165,3 +165,418 @@
 .td-truncate-200 {
     max-width: 200px;
 }
+.data-table-heading {
+    padding: 1.5rem 1.5rem 1rem;
+    margin: 0;
+    color: var(--text-primary, #e2e8f0);
+}
+
+/* ============================================
+   Integrity Monitoring Section
+   ============================================ */
+
+.integrity-section {
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.08), rgba(17, 24, 39, 0.6));
+    border: 1px solid rgba(147, 51, 234, 0.55);
+    border-radius: 12px;
+    padding: 2rem;
+    margin: 2rem 0;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.section-header h2 {
+    margin: 0;
+    color: var(--text-primary, #e2e8f0);
+    font-size: 1.5rem;
+}
+
+.integrity-controls {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.btn-icon {
+    background: rgba(147, 51, 234, 0.2);
+    border: 1px solid rgba(147, 51, 234, 0.5);
+    color: var(--text-primary, #e2e8f0);
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.2s;
+}
+
+.btn-icon:hover {
+    background: rgba(147, 51, 234, 0.3);
+    border-color: rgba(147, 51, 234, 0.7);
+    transform: translateY(-1px);
+}
+
+.integrity-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.integrity-stat-card {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(147, 51, 234, 0.3);
+    border-radius: 8px;
+    padding: 1.25rem;
+    text-align: center;
+}
+
+.integrity-stat-card .stat-value {
+    font-size: 1.75rem;
+    color: #a78bfa;
+}
+
+.alerts-container {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.alerts-container h3 {
+    margin: 0 0 1rem 0;
+    color: #fca5a5;
+}
+
+.alert-item {
+    background: rgba(0, 0, 0, 0.3);
+    border-left: 3px solid #ef4444;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.alert-item:last-child {
+    margin-bottom: 0;
+}
+
+.alert-content {
+    flex: 1;
+}
+
+.alert-type {
+    font-weight: 600;
+    color: #fca5a5;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+}
+
+.alert-message {
+    color: var(--text-secondary, #94a3b8);
+    margin-top: 0.25rem;
+}
+
+.alert-dismiss {
+    background: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+    padding: 0.375rem 0.75rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+}
+
+.alert-dismiss:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+}
+
+.sparklines-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.sparkline-card {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(147, 51, 234, 0.3);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.sparkline-card h4 {
+    margin: 0 0 0.75rem 0;
+    color: var(--text-primary, #e2e8f0);
+    font-size: 0.95rem;
+}
+
+.sparkline-canvas {
+    width: 100%;
+    height: 80px;
+    margin-bottom: 0.75rem;
+}
+
+.sparkline-stats {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.875rem;
+}
+
+.sparkline-stats span:first-child {
+    color: #a78bfa;
+    font-weight: 600;
+}
+
+.delta {
+    font-family: monospace;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.delta.positive {
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.15);
+}
+
+.delta.negative {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+}
+
+.delta.neutral {
+    color: var(--text-secondary, #94a3b8);
+    background: rgba(100, 116, 139, 0.15);
+}
+
+.historical-comparison {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(147, 51, 234, 0.3);
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.historical-comparison h3 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary, #e2e8f0);
+}
+
+.comparison-controls {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.comparison-controls select {
+    flex: 1;
+    min-width: 200px;
+    padding: 0.5rem;
+    border-radius: 4px;
+    border: 1px solid rgba(147, 51, 234, 0.5);
+    background: rgba(0, 0, 0, 0.4);
+    color: var(--text-primary, #e2e8f0);
+}
+
+.btn-primary {
+    background: #9333ea;
+    color: white;
+    padding: 0.5rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.btn-primary:hover {
+    background: #7c3aed;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--text-primary, #e2e8f0);
+    padding: 0.5rem 1.5rem;
+    border: 1px solid rgba(147, 51, 234, 0.5);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+    background: rgba(147, 51, 234, 0.2);
+}
+
+.comparison-results {
+    margin-top: 1rem;
+}
+
+.comparison-diff {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.diff-item {
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 6px;
+    padding: 1rem;
+}
+
+.diff-label {
+    color: var(--text-secondary, #94a3b8);
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+}
+
+.diff-values {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.diff-baseline,
+.diff-target {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.diff-baseline {
+    color: #60a5fa;
+}
+
+.diff-target {
+    color: #a78bfa;
+}
+
+.diff-arrow {
+    color: var(--text-secondary, #94a3b8);
+    font-size: 1.5rem;
+}
+
+/* ============================================
+   Threshold Configuration Modal
+   ============================================ */
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: linear-gradient(135deg, #1a232a, #0f1419);
+    border: 1px solid rgba(147, 51, 234, 0.5);
+    border-radius: 12px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid rgba(147, 51, 234, 0.3);
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: var(--text-primary, #e2e8f0);
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    color: var(--text-primary, #e2e8f0);
+    font-size: 2rem;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.modal-close:hover {
+    background: rgba(147, 51, 234, 0.2);
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.threshold-group {
+    margin-bottom: 1.5rem;
+}
+
+.threshold-group:last-child {
+    margin-bottom: 0;
+}
+
+.threshold-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary, #e2e8f0);
+    font-weight: 600;
+}
+
+.threshold-group input {
+    width: 100%;
+    padding: 0.625rem;
+    border-radius: 4px;
+    border: 1px solid rgba(147, 51, 234, 0.5);
+    background: rgba(0, 0, 0, 0.4);
+    color: var(--text-primary, #e2e8f0);
+    font-size: 1rem;
+}
+
+.threshold-hint {
+    display: block;
+    margin-top: 0.375rem;
+    color: var(--text-secondary, #94a3b8);
+    font-size: 0.8rem;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    border-top: 1px solid rgba(147, 51, 234, 0.3);
+}
+
+.export-buttons {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}

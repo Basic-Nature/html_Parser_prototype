@@ -2824,6 +2824,30 @@ def scan_html_for_context(
             })
         except Exception:
             pass
+    
+    # --- 11. Integrity signal (trend deltas for ML/NLP drift alerts) ---
+    if callable(emit_func) and session_id:
+        try:
+            # Lazily import analyzer to avoid circular imports and heavy startup cost
+            from tools.analyze_context_digest_trends import compute_integrity_signal
+            
+            signal = compute_integrity_signal(
+                trend_file="tools/debug_headless_output/context_digest_trends.json",
+                window=30,
+                recent=5,
+                conf_drop_threshold=0.08,
+                unknown_spike_threshold=0.10,
+                review_spike_threshold=5.0,
+            )
+            emit_func({
+                "type": "integrity_signal",
+                "session_id": session_id,
+                "signal": signal,
+                "timestamp": time.time(),
+            })
+        except Exception:
+            # Don't fail the pipeline if integrity signal computation fails
+            pass
 
     return context_result
 

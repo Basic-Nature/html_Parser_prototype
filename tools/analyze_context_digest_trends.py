@@ -192,5 +192,76 @@ def main() -> int:
     return 0
 
 
+def compute_integrity_signal(
+    trend_file: str | Path = "tools/debug_headless_output/context_digest_trends.json",
+    window: int = 30,
+    recent: int = 5,
+    conf_drop_threshold: float = 0.08,
+    unknown_spike_threshold: float = 0.10,
+    review_spike_threshold: float = 5.0,
+) -> dict[str, Any]:
+    """Compute integrity signal from trend deltas.
+    
+    Returns dict with baseline, recent, deltas, alerts, status.
+    Safe to call inline during pipeline execution.
+    """
+    try:
+        trends = _load_trends(Path(trend_file))
+        if len(trends) < 2:
+            return {
+                "status": "insufficient_data",
+                "entry_count": len(trends),
+                "alerts": [],
+            }
+        
+        baseline_slice, recent_slice = _slice_baseline_and_recent(trends, max(1, window), max(1, recent))
+        baseline = _extract_metrics(baseline_slice)
+        recent = _extract_metrics(recent_slice)
+        
+        deltas = {
+            "confidence_avg_delta": recent["confidence_avg"] - baseline["confidence_avg"],
+            "unknown_ratio_delta": recent["unknown_ratio"] - baseline["unknown_ratio"],
+            "segments_review_delta": recent["segments_review"] - baseline["segments_review"],
+            "pattern_kb_matches_delta": recent["pattern_kb_matches"] - baseline["pattern_kb_matches"],
+        }
+        
+        alerts = []
+        if deltas["confidence_avg_delta"] <= -abs(conf_drop_threshold):
+            alerts.append({
+                "type": "confidence_drop",
+                "severity": "warning",
+                "message": f"Confidence avg dropped by {abs(deltas['confidence_avg_delta']):.3f}",
+            })
+        if deltas["unknown_ratio_delta"] >= abs(unknown_spike_threshold):
+            alerts.append({
+                "type": "unknown_spike",
+                "severity": "warning",
+                "message": f"Unknown ratio increased by {deltas['unknown_ratio_delta']:.3f}",
+            })
+        if deltas["segments_review_delta"] >= abs(review_spike_threshold):
+            alerts.append({
+                "type": "review_spike",
+                "severity": "warning",
+                "message": f"Segments needing review increased by {deltas['segments_review_delta']:.2f}",
+            })
+        
+        return {
+            "entry_count": len(trends),
+            "baseline_window": len(baseline_slice),
+            "recent_window": len(recent_slice),
+            "baseline": baseline,
+            "recent": recent,
+            "deltas": deltas,
+            "alerts": alerts,
+            "status": "alert" if alerts else "ok",
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "alerts": [],
+        }
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

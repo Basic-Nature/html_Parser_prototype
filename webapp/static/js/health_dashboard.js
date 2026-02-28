@@ -10,6 +10,8 @@
   const socketTestButton = document.querySelector("[data-socket-test-broadcast]");
   const alertBox = document.querySelector("[data-health-alert]");
   const defaultAlert = alertBox ? alertBox.textContent.trim() : "";
+    const healthEnabled = String(configEl.dataset.healthEnabled || "true").toLowerCase() === "true";
+    const healthReason = String(configEl.dataset.healthReason || "").trim();
 
   const parseJson = (value) => {
       if (!value) {
@@ -115,6 +117,10 @@
   };
 
   const startTask = async (button) => {
+      if (!healthEnabled) {
+          pushAlert("Health task execution is disabled in this environment.", "warning");
+          return;
+      }
       const key = button.dataset.taskKey;
       if (!key) {
           return;
@@ -155,6 +161,13 @@
   };
 
   const fetchTasks = async (announce = false) => {
+      if (!healthEnabled) {
+          renderTasks(parseJson(configEl.dataset.initial));
+          if (announce) {
+              pushAlert("Read-only mode: task execution is disabled.", "warning");
+          }
+          return;
+      }
       try {
           const resp = await fetch("/api/health_tasks");
           if (!resp.ok) {
@@ -179,6 +192,10 @@
   }
   if (socketTestButton instanceof HTMLButtonElement) {
       socketTestButton.addEventListener("click", async () => {
+          if (!healthEnabled) {
+              pushAlert("Read-only mode: socket test broadcast is disabled.", "warning");
+              return;
+          }
           socketTestButton.disabled = true;
           try {
               const winAny = (typeof window !== 'undefined') ? /** @type {any} */ (window) : null;
@@ -205,6 +222,15 @@
 
   // Render any initial payload embedded by the server.
   renderTasks(parseJson(configEl.dataset.initial));
+
+  if (!healthEnabled) {
+      if (healthReason === "health_tasks_disabled") {
+          pushAlert("Read-only mode: health tasks are disabled by policy.", "warning");
+      } else if (healthReason === "health_token_missing") {
+          pushAlert("Read-only mode: HEALTH_TASK_TOKEN is missing in environment configuration.", "warning");
+      }
+      return;
+  }
 
   // Begin polling every 7 seconds for updates.
   fetchTasks(false);

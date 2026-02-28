@@ -237,7 +237,6 @@ jobs:
               CSP_MODE="STRICT" \
               GUARDED_INGESTION_KEY="${{ secrets.GUARDED_INGESTION_KEY }}" \
               REQUIRE_CERT_FOR_MUTATIONS="True" \
-              ENABLE_HEALTH_TASKS="false" \
               HEALTH_TASK_TOKEN="${{ secrets.HEALTH_TASK_TOKEN }}" \
               ALLOW_DEV_NO_PRINCIPAL="false" \
               DEV_MODE="false" \

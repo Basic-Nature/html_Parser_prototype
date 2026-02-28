@@ -22,12 +22,11 @@
 </head>
 <body>
     <nav class="navbar">
-        <a href="{{ url_for('index') }}">Dashboard</a>
-        <a href="{{ url_for('data_framework') }}" class="active">Data Framework</a>
-        <a href="{{ url_for('ballot_lens') }}">Run Parser</a>
-        <a href="{{ url_for('history') }}">History</a>
-      <a href="{{ url_for('worklist') }}">Worklist</a>
-        <a href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer">About</a>
+        <a href="{{ url_for('index') }}" class="nav-link" title="Main">Dashboard</a>
+        <a href="{{ url_for('data_framework') }}" class="active" title="Current Page">Data Framework</a>
+        <a href="{{ url_for('ballot_lens') }}" class="nav-link" title="Run Parser">Run Parser</a>
+        <a href="{{ url_for('health_dashboard') }}" class="nav-link" title="Health preview is read-only unless authenticated">Health</a>
+        <a href="{{ url_for('quality_dashboard') }}" class="nav-link" title="Quality Dashboard">Quality</a>
     </nav>
     <div class="container-main">
         <h1>
@@ -104,49 +103,40 @@
                   <p class="framework-panel-subtitle">Graphs and highlight tables for the selected dataset.</p>
                 </div>
                 <div class="framework-panel-actions">
-                  <div class="framework-panel-badges">
-                    <span class="badge badge-ghost">Interactive</span>
-                    <span class="badge badge-ghost">Focused</span>
+                  <div class="viz-dataset-switch" aria-label="Visualization dataset switcher">
+                    <label for="vizDatasetSelect" class="viz-label">Dataset</label>
+                    <select id="vizDatasetSelect" aria-label="Visualization dataset">
+                      <option value="finalized" selected>Finalized (DB-Lite)</option>
+                      <option value="down_ballot">Down-ballot (DB-Lite)</option>
+                      <option value="warehouse_core">Warehouse (SQL Core)</option>
+                    </select>
                   </div>
+                  <div class="framework-panel-badges">
+                    <span class="badge badge-ghost" id="vizPlaybackBadge">Playback: Auto</span>
+                    <span class="badge badge-ghost" id="vizScopeBadge">Scope: All counties</span>
+                  </div>
+                  <span class="viz-mode-help" id="vizModeHelp" aria-live="polite" title="Changing filters or using Prev/Next sets Manual mode; selecting Start resumes Auto mode.">Auto switches to Manual when filters or Prev/Next are used. Select Start to resume Auto.</span>
                   <button id="dropoffDrawerToggle" type="button" class="btn action drawer-toggle" aria-expanded="false" aria-controls="dropoffDrawer">Drop-off</button>
                 </div>
               </header>
               <div class="framework-panel-body">
                 <div class="viz-filters" aria-label="Visualization filters">
-                  <label for="vizDatasetSelect" class="viz-label">Dataset</label>
-                  <select id="vizDatasetSelect" aria-label="Visualization dataset">
-                    <option value="finalized" selected>Finalized (DB-Lite)</option>
-                    <option value="down_ballot">Down-ballot (DB-Lite)</option>
-                  </select>
-                  <label for="vizYearSelect" class="viz-label">Year</label>
-                  <select id="vizYearSelect" aria-label="Visualization year"></select>
-                  <label for="vizStateSelect" class="viz-label">State</label>
-                  <select id="vizStateSelect" aria-label="Visualization state"></select>
-                  <label for="vizCountySelect" class="viz-label">County</label>
-                  <select id="vizCountySelect" aria-label="Visualization county"></select>
-                  <label for="vizContestSelect" class="viz-label">Contest</label>
-                  <select id="vizContestSelect" aria-label="Visualization contest"></select>
-                  <label for="vizTopRaceSelect" class="viz-label">Top races</label>
-                  <select id="vizTopRaceSelect" aria-label="Top races"></select>
-                  <label for="vizTopRaceCountSelect" class="viz-label">Top count</label>
-                  <select id="vizTopRaceCountSelect" aria-label="Top races count">
-                    <option value="3">Top 3</option>
-                    <option value="5" selected>Top 5</option>
-                    <option value="8">Top 8</option>
-                    <option value="10">Top 10</option>
-                  </select>
-                  <label for="vizPartySelect" class="viz-label">Party</label>
-                  <select id="vizPartySelect" aria-label="Visualization party">
-                    <option value="">All parties</option>
-                    <option value="Dem">Dem</option>
-                    <option value="Rep">Rep</option>
-                    <option value="Lib">Lib</option>
-                    <option value="Grn">Grn</option>
-                    <option value="Ind">Ind</option>
-                    <option value="Nonpart">Nonpart</option>
-                    <option value="Write-In">Write-In</option>
-                    <option value="Other">Other</option>
-                  </select>
+                  <div class="viz-filter-group">
+                    <label for="vizYearSelect" class="viz-label">Year</label>
+                    <select id="vizYearSelect" aria-label="Visualization year"></select>
+                  </div>
+                  <div class="viz-filter-group">
+                    <label for="vizStateSelect" class="viz-label">State</label>
+                    <select id="vizStateSelect" aria-label="Visualization state"></select>
+                  </div>
+                  <div class="viz-filter-group">
+                    <label for="vizCountySelect" class="viz-label viz-label-with-badge">County <span class="viz-scope-badge" id="vizCountyScopeBadge" aria-live="polite">All counties</span></label>
+                    <select id="vizCountySelect" aria-label="Visualization county"></select>
+                  </div>
+                  <div class="viz-filter-group">
+                    <label for="vizContestSelect" class="viz-label">Contest</label>
+                    <select id="vizContestSelect" aria-label="Visualization contest"></select>
+                  </div>
                 </div>
                 <div class="viz-playback-controls" aria-label="Visualization playback controls">
                   <button type="button" class="btn action" id="vizPrevStateBtn" aria-label="Previous state">◀ Prev</button>

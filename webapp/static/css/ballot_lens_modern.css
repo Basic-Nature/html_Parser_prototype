@@ -4992,6 +4992,194 @@ code {
 }
 
 /* ============================================
+   Integrity Diagnostics Panel
+   ============================================ */
+
+.integrity-panel {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.08), rgba(17, 24, 39, 0.6));
+  border: 1px solid rgba(147, 51, 234, 0.55);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  margin: var(--spacing-md) 0;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+  position: relative;
+  overflow: hidden;
+}
+
+.integrity-panel::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(120deg, rgba(147, 51, 234, 0.35), rgba(168, 85, 247, 0.08));
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+}
+
+.integrity-panel:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+}
+
+.integrity-panel:hover::before {
+  opacity: 0.85;
+}
+
+.integrity-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+  position: relative;
+  z-index: 1;
+}
+
+.integrity-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.integrity-panel-body {
+  position: relative;
+  z-index: 1;
+}
+
+.integrity-message {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.integrity-message.error {
+  color: var(--accent-danger);
+}
+
+.integrity-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--spacing-md);
+  align-items: center;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid rgba(147, 51, 234, 0.4);
+}
+
+.metric-label {
+  font-size: 0.875rem;
+  color: var(--text-muted-strong);
+  font-weight: 500;
+}
+
+.metric-value {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+  min-width: 60px;
+}
+
+.metric-delta {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  text-align: right;
+  min-width: 70px;
+}
+
+.metric-delta.positive {
+  color: var(--accent-success);
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.metric-delta.negative {
+  color: var(--accent-danger);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.integrity-alerts {
+  margin-top: var(--spacing-sm);
+}
+
+.integrity-alerts details {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.integrity-alerts summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent-warning);
+  font-size: 0.875rem;
+  padding: var(--spacing-xs) 0;
+}
+
+.alert-list {
+  list-style: none;
+  padding: var(--spacing-xs) 0 0 0;
+  margin: 0;
+}
+
+.alert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.alert-item:first-child {
+  border-top: none;
+}
+
+.alert-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.integrity-footer {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.badge-success {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--accent-success);
+  border: 1px solid var(--accent-success);
+}
+
+.badge-warning {
+  background: rgba(251, 146, 60, 0.2);
+  color: var(--accent-warning);
+  border: 1px solid var(--accent-warning);
+}
+
+.badge-info {
+  background: rgba(37, 99, 235, 0.2);
+  color: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+}
+
+/* ============================================
    Responsive Design
    ============================================ */
 
