@@ -191,9 +191,91 @@ from webapp.parser.web_pipeline import (
     cancellation_manager,
     process_urls_for_web,
 )
+from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socket_handler
+from webapp.parser.routes import (
+    create_data_framework_blueprint,
+    create_election_data_blueprint,
+    create_fec_data_assurance_blueprint,
+    create_file_io_blueprint,
+    create_health_blueprint,
+    create_observability_blueprint,
+    create_prometheus_metrics_blueprint,
+    create_public_pages_blueprint,
+    create_session_orchestration_blueprint,
+    create_ui_navigation_blueprint,
+    create_utility_admin_blueprint,
+    create_url_library_blueprint,
+)
 
 _DOWNLOAD_READY_SESSIONS: set[str] = set()
 _DOWNLOAD_READY_LOCK = threading.Lock()
+
+_API_LATENCY_CACHE_LOCK = threading.Lock()
+_API_LATENCY_CACHE: dict[str, dict[str, Any]] = {
+    "warehouse_coverage": {"expires_at": 0.0, "payload": None},
+    "states_counties": {"expires_at": 0.0, "payload": None},
+}
+
+
+def _int_env(name: str, default: int, *, minimum: int = 0) -> int:
+    try:
+        return max(minimum, int(os.environ.get(name, str(default))))
+    except Exception:
+        return default
+
+
+WAREHOUSE_COVERAGE_CACHE_TTL_SEC = _int_env("WAREHOUSE_COVERAGE_CACHE_TTL_SEC", 60, minimum=1)
+STATES_COUNTIES_CACHE_TTL_SEC = _int_env("STATES_COUNTIES_CACHE_TTL_SEC", 180, minimum=1)
+API_LATENCY_WARN_MS = _int_env("API_LATENCY_WARN_MS", 1000, minimum=0)
+
+
+def _clone_payload(payload: Any) -> Any:
+    if payload is None:
+        return None
+    try:
+        return orjson.loads(orjson.dumps(payload))
+    except Exception:
+        return payload
+
+
+def _get_ttl_cache_payload(cache_key: str) -> Any:
+    now = time.time()
+    with _API_LATENCY_CACHE_LOCK:
+        slot = _API_LATENCY_CACHE.get(cache_key)
+        if not isinstance(slot, dict):
+            return None
+        if float(slot.get("expires_at") or 0.0) <= now:
+            return None
+        return _clone_payload(slot.get("payload"))
+
+
+def _set_ttl_cache_payload(cache_key: str, payload: Any, ttl_sec: int) -> None:
+    now = time.time()
+    with _API_LATENCY_CACHE_LOCK:
+        _API_LATENCY_CACHE[cache_key] = {
+            "expires_at": now + max(1, int(ttl_sec)),
+            "payload": _clone_payload(payload),
+        }
+
+
+def _log_endpoint_latency(endpoint_name: str, started_at: float, *, cache_hit: bool = False, context: dict[str, Any] | None = None) -> None:
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    payload = {
+        "level": "WARNING" if elapsed_ms >= API_LATENCY_WARN_MS else "DEBUG",
+        "type": "performance",
+        "message": f"Endpoint latency: {endpoint_name} {elapsed_ms}ms",
+        "session_id": None,
+        "endpoint": endpoint_name,
+        "latency_ms": elapsed_ms,
+        "cache_hit": bool(cache_hit),
+    }
+    if isinstance(context, dict):
+        payload.update(context)
+
+    if elapsed_ms >= API_LATENCY_WARN_MS:
+        logger.warning(payload)
+    else:
+        logger.debug(payload)
 
 def _emit_download_ready(session_id: str, payload: dict, *, force: bool = False) -> bool:
     if not session_id:
@@ -471,7 +553,6 @@ if ENABLE_PROMETHEUS:
     try:
         from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 
-        @app.route('/metrics')
         def metrics():
             try:
                 data = generate_latest(REGISTRY)
@@ -485,7 +566,6 @@ if ENABLE_PROMETHEUS:
 
         # --- Test-only route to increment metrics for deterministic tests ---
         if TEST_METRICS_ROUTE_ENABLED:
-            @app.route('/test/metrics/increment', methods=['POST'])
             def test_metrics_increment():
                 try:
                     from webapp.parser.utils.metrics_prom import increment_test_counter
@@ -496,6 +576,34 @@ if ENABLE_PROMETHEUS:
                     return jsonify({"success": True, "message": "Test counter incremented."})
                 except Exception as e:
                     return jsonify({"success": False, "error": str(e)}), 500
+
+        metrics_handlers = {
+            "metrics": metrics,
+        }
+        if TEST_METRICS_ROUTE_ENABLED:
+            metrics_handlers["test_metrics_increment"] = test_metrics_increment
+
+        app.config["_PROMETHEUS_METRICS_ROUTE_HANDLERS"] = metrics_handlers
+
+        try:
+            app.register_blueprint(
+                create_prometheus_metrics_blueprint(
+                    include_test_increment=bool(TEST_METRICS_ROUTE_ENABLED),
+                )
+            )
+            logger.info({
+                "level": "INFO",
+                "type": "metrics",
+                "message": "Prometheus metrics routes blueprint registered",
+                "session_id": None,
+            })
+        except Exception as e:
+            logger.warning({
+                "level": "WARNING",
+                "type": "metrics",
+                "message": f"Failed to register Prometheus metrics blueprint: {e}",
+                "session_id": None,
+            })
     except Exception:
         try:
             logger.info({"level": "INFO", "type": "metrics", "message": "Prometheus client not available; /metrics disabled."})
@@ -839,6 +947,263 @@ except Exception as e:
         "message": f"Failed to register Data Assurance blueprint: {e}",
         "session_id": None
     })
+
+# Register Data Framework routes Blueprint
+try:
+    app.register_blueprint(create_data_framework_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Data Framework routes blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register Data Framework routes blueprint: {e}",
+        "session_id": None
+    })
+
+# Register Health routes Blueprint
+try:
+    app.register_blueprint(create_health_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Health routes blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register Health routes blueprint: {e}",
+        "session_id": None
+    })
+
+# Register URL library routes Blueprint
+try:
+    app.register_blueprint(create_url_library_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "URL library routes blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register URL library routes blueprint: {e}",
+        "session_id": None
+    })
+
+# Register Election Data workflow routes Blueprint
+try:
+    app.register_blueprint(create_election_data_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Election Data workflow routes blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register Election Data workflow routes blueprint: {e}",
+        "session_id": None
+    })
+
+# Register Utility/Admin routes Blueprint
+try:
+    app.register_blueprint(create_utility_admin_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Utility/Admin routes blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register Utility/Admin routes blueprint: {e}",
+        "session_id": None
+    })
+
+# Register Observability routes Blueprint
+try:
+    app.register_blueprint(create_observability_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Observability routes blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register Observability routes blueprint: {e}",
+        "session_id": None
+    })
+
+# Register File I/O routes Blueprint
+try:
+    app.register_blueprint(create_file_io_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "File I/O routes blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register File I/O routes blueprint: {e}",
+        "session_id": None
+    })
+
+# Register UI/Navigation routes Blueprint
+try:
+    app.register_blueprint(create_ui_navigation_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "UI/Navigation routes blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register UI/Navigation routes blueprint: {e}",
+        "session_id": None
+    })
+
+# Register Public Pages routes Blueprint
+try:
+    app.register_blueprint(create_public_pages_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Public Pages routes blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register Public Pages routes blueprint: {e}",
+        "session_id": None
+    })
+
+# Register Session Orchestration routes Blueprint
+try:
+    app.register_blueprint(create_session_orchestration_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Session Orchestration routes blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register Session Orchestration routes blueprint: {e}",
+        "session_id": None
+    })
+
+# Register FEC/Data Assurance routes Blueprint
+try:
+    app.register_blueprint(create_fec_data_assurance_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "FEC/Data Assurance routes blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register FEC/Data Assurance routes blueprint: {e}",
+        "session_id": None
+    })
+
+
+def _register_legacy_endpoint_aliases(app: Flask) -> None:
+    """Backfill un-namespaced endpoint aliases for legacy url_for calls."""
+
+    alias_map = {
+        "index": "public_pages_routes.index",
+        "auth_welcome": "public_pages_routes.auth_welcome",
+        "ballot_lens": "public_pages_routes.ballot_lens",
+        "data_framework": "data_framework_routes.data_framework",
+        "health_dashboard": "health_routes.health_dashboard",
+        "history": "file_io_routes.history",
+        "quality_dashboard": "ui_navigation_routes.quality_dashboard",
+        "api_warehouse_election_results": "election_data_routes.api_warehouse_election_results",
+        "worklist": "public_pages_routes.worklist",
+        "upload_to_uploads": "file_io_routes.upload_to_uploads",
+        "upload_to_input": "file_io_routes.upload_to_input",
+        "upload_to_output": "file_io_routes.upload_to_output",
+        "site_webmanifest": "ui_navigation_routes.site_webmanifest",
+    }
+
+    endpoint_index: dict[str, list[str]] = {}
+    for endpoint_name in app.view_functions.keys():
+        if "." not in endpoint_name:
+            continue
+        suffix = endpoint_name.rsplit(".", 1)[-1]
+        endpoint_index.setdefault(suffix, []).append(endpoint_name)
+
+    for suffix, candidates in endpoint_index.items():
+        if suffix in alias_map:
+            continue
+        if len(candidates) == 1:
+            alias_map[suffix] = candidates[0]
+
+    for legacy_endpoint, namespaced_endpoint in alias_map.items():
+        if legacy_endpoint in app.view_functions:
+            continue
+
+        target_view = app.view_functions.get(namespaced_endpoint)
+        if target_view is None:
+            logger.debug({
+                "level": "DEBUG",
+                "type": "status",
+                "message": f"Legacy endpoint alias skipped (target missing): {legacy_endpoint} -> {namespaced_endpoint}",
+                "session_id": None,
+            })
+            continue
+
+        target_rules = [rule for rule in app.url_map.iter_rules() if rule.endpoint == namespaced_endpoint]
+        if not target_rules:
+            logger.debug({
+                "level": "DEBUG",
+                "type": "status",
+                "message": f"Legacy endpoint alias skipped (no rules): {legacy_endpoint} -> {namespaced_endpoint}",
+                "session_id": None,
+            })
+            continue
+
+        for target_rule in target_rules:
+            methods = sorted(m for m in target_rule.methods if m not in {"HEAD", "OPTIONS"})
+            app.add_url_rule(
+                target_rule.rule,
+                endpoint=legacy_endpoint,
+                view_func=target_view,
+                defaults=target_rule.defaults,
+                methods=methods or None,
+            )
+
+
+_register_legacy_endpoint_aliases(app)
 
 # 3. Session & State Management
 session_manager = SessionManager()
@@ -1848,18 +2213,38 @@ def socketio_emit_func(line):
             store_log(sid, obj)
             socketio.emit('parser_output', obj, room=sid)
             if obj.get("type") == "run_summary":
+                artifacts = obj.get("artifacts") if isinstance(obj.get("artifacts"), dict) else {}
+                artifact_candidates: list[tuple[str, str]] = []
+                if artifacts:
+                    for kind in ("csv", "xlsx", "metadata", "other"):
+                        paths = artifacts.get(kind)
+                        if not isinstance(paths, list):
+                            continue
+                        for rel in paths:
+                            if isinstance(rel, str) and rel.strip():
+                                artifact_candidates.append((kind, rel.replace("\\", "/")))
                 report_path = obj.get("report_path")
                 if isinstance(report_path, str) and report_path:
                     try:
                         rel_path = os.path.relpath(report_path, str(OUTPUT_DIR)).replace("\\", "/")
-                        filename = os.path.basename(report_path)
+                        artifact_candidates.append(("report", rel_path))
+                    except Exception:
+                        pass
+                if artifact_candidates:
+                    preferred_order = {"csv": 0, "xlsx": 1, "report": 2, "metadata": 3, "other": 4}
+                    selected_kind, selected_rel = sorted(
+                        artifact_candidates,
+                        key=lambda item: (preferred_order.get(item[0], 99), item[1]),
+                    )[0]
+                    try:
                         _emit_download_ready(sid, {
                             "session_id": sid,
-                            "filename": filename,
-                            "output_path": rel_path,
+                            "filename": os.path.basename(selected_rel),
+                            "output_path": selected_rel,
                             "root": "output",
                             "size": None,
-                            "source": "pipeline_report",
+                            "source": f"pipeline_{selected_kind}",
+                            "artifacts": artifacts,
                         }, force=True)
                     except Exception:
                         pass
@@ -1957,7 +2342,6 @@ def get_all_file_lists() -> dict:
         "uploaded_files": os.listdir(UPLOADS_DIR),
     }
 
-@app.get("/api/session/enums")
 def get_session_enums() -> Response:
     """Expose session state/phase enumerations for the front-end."""
     return jsonify(export_session_enums())
@@ -2477,11 +2861,9 @@ def log_db_monitor_event(event: dict) -> None:
         pass
 
 # Routes
-@app.route("/")
 def index() -> str:
     return render_template("index.html")
 
-@app.route("/api/urls", methods=["GET", "POST"])
 @_rate_limit("30/minute")
 def api_urls():
     urls_file = str(URL_LIST_FILE)
@@ -2627,7 +3009,6 @@ def api_urls():
         return jsonify({"urls": [], "error": "internal"}), 500
 
 
-@app.route("/api/urls/parse", methods=["POST"])
 @_rate_limit("60/minute")
 def api_urls_parse():
     """
@@ -2703,7 +3084,6 @@ def api_urls_parse():
         return jsonify({"success": False, "error": "internal"}), 500
 
 
-@app.route("/api/urls/training_data", methods=["GET"])
 @_rate_limit("30/minute")
 def api_urls_training_data():
     """
@@ -2784,7 +3164,6 @@ def api_urls_training_data():
         return jsonify({"success": False, "error": "internal"}), 500
 
 
-@app.route("/api/urls/parse_all", methods=["POST"])
 @_rate_limit("10/hour")
 def api_urls_parse_all():
     """
@@ -2853,7 +3232,6 @@ def api_urls_parse_all():
         return jsonify({"success": False, "error": str(exc)}), 500
 
 
-@app.route("/api/filename/parse", methods=["POST"])
 @_rate_limit("60/minute")
 def api_filename_parse():
     """
@@ -2981,7 +3359,6 @@ def _build_output_lookup_match(url: str, entry: dict) -> dict | None:
     }
 
 
-@app.route("/api/outputs/lookup", methods=["GET"])
 def api_outputs_lookup():
     raw_url = safe_strip(request.args.get("url", ""))
     if not raw_url:
@@ -3049,7 +3426,88 @@ def _get_warehouse_columns(engine) -> set[str]:
     return {col.get("name") for col in cols if col.get("name")}
 
 
-@app.route("/api/warehouse/match", methods=["GET"])
+def _collect_url_reference_hint(url: str) -> dict:
+    hint: dict[str, Any] = {
+        "url": url,
+        "parsed": {},
+        "output_match": None,
+        "warehouse": {"row_count": 0, "latest_election_date": None},
+        "production": {"exists": False, "source": None},
+    }
+
+    try:
+        parsed = parse_url_simple(url)
+        if isinstance(parsed, dict):
+            keep_keys = (
+                "state",
+                "county",
+                "contest_type",
+                "year",
+                "office",
+                "is_federal",
+            )
+            hint["parsed"] = {k: parsed.get(k) for k in keep_keys if parsed.get(k) not in (None, "")}
+    except Exception:
+        pass
+
+    try:
+        processed = load_processed_urls()
+        entry = processed.get(url) if isinstance(processed, dict) else None
+        if isinstance(entry, dict):
+            match = _build_output_lookup_match(url, entry)
+            if isinstance(match, dict):
+                hint["output_match"] = {
+                    "output_folder": match.get("output_folder"),
+                    "contest": match.get("contest"),
+                    "state": match.get("state"),
+                    "county": match.get("county"),
+                    "handler": match.get("handler"),
+                }
+    except Exception:
+        pass
+
+    try:
+        from webapp.parser.utils.database_comparison import check_existing_finalized_data
+
+        exists, source, metadata = check_existing_finalized_data(url, session_id=None)
+        hint["production"] = {
+            "exists": bool(exists),
+            "source": source,
+            "state": safe_get(metadata or {}, "state", None),
+            "county": safe_get(metadata or {}, "county", None),
+            "contest": safe_get(metadata or {}, "contest", None),
+        }
+    except Exception:
+        pass
+
+    try:
+        ensure_db_tables()
+        engine = get_engine()
+        columns = _get_warehouse_columns(engine)
+        if "source_url" in columns:
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text(
+                        """
+                        SELECT COUNT(*) AS row_count,
+                               MAX(election_date) AS latest_election_date
+                        FROM warehouse_election_results
+                        WHERE source_url = :url
+                        """
+                    ),
+                    {"url": url},
+                ).mappings().first()
+            if row:
+                hint["warehouse"] = {
+                    "row_count": int(row.get("row_count") or 0),
+                    "latest_election_date": str(row.get("latest_election_date")) if row.get("latest_election_date") else None,
+                }
+    except Exception:
+        pass
+
+    return hint
+
+
 def api_warehouse_match():
     raw_url = safe_strip(request.args.get("url", ""))
     if not raw_url:
@@ -3137,7 +3595,6 @@ def api_warehouse_match():
         return jsonify({"matches": [], "url": url, "error": "Warehouse match query failed"}), 500
 
 
-@app.route("/api/warehouse/export", methods=["GET"])
 def api_warehouse_export():
     raw_url = safe_strip(request.args.get("url", ""))
     if not raw_url:
@@ -3191,9 +3648,14 @@ def api_warehouse_export():
     response.headers["Content-Disposition"] = "attachment; filename=warehouse_export.csv"
     return response
 
-@app.route("/api/warehouse/coverage", methods=["GET"])
 def api_warehouse_coverage():
     """Return coverage summary: all state/county combinations in warehouse and those missing DL1/DL2"""
+    started_at = time.perf_counter()
+    cached_payload = _get_ttl_cache_payload("warehouse_coverage")
+    if isinstance(cached_payload, dict):
+        _log_endpoint_latency("/api/warehouse/coverage", started_at, cache_hit=True)
+        return jsonify(cached_payload)
+
     ensure_db_tables()
     engine = get_engine()
     columns = _get_warehouse_columns(engine)
@@ -3211,44 +3673,37 @@ def api_warehouse_coverage():
 
     try:
         with engine.connect() as conn:
-            # Get all state/county combinations in warehouse
-            query = """
-                SELECT DISTINCT state, county, COUNT(*) as row_count
+            pair_query = """
+                SELECT state, county, COUNT(*) AS row_count
                 FROM warehouse_election_results
                 WHERE state IS NOT NULL AND county IS NOT NULL
                 GROUP BY state, county
             """
-            result = conn.execute(text(query))
-            covered_rows = result.mappings().all()
-            covered = [{"state": row["state"], "county": row["county"], "row_count": row["row_count"]} for row in covered_rows]
+            covered_rows = conn.execute(text(pair_query)).mappings().all()
+            covered = [
+                {"state": row["state"], "county": row["county"], "row_count": row["row_count"]}
+                for row in covered_rows
+            ]
             
-            # Get all unique states and counties
             state_query = """
                 SELECT DISTINCT state FROM warehouse_election_results 
                 WHERE state IS NOT NULL
                 ORDER BY state
             """
-            all_states_result = conn.execute(text(state_query))
-            all_states = [row[0] for row in all_states_result]
+            all_states = [row[0] for row in conn.execute(text(state_query))]
             
-            # Get total row count for health check
             count_query = "SELECT COUNT(*) as cnt FROM warehouse_election_results"
-            count_result = conn.execute(text(count_query))
-            total_rows = count_result.mappings().first()["cnt"]
-        
-        # Build all_counties map: state -> list of counties
-        all_counties = {}
-        for state in all_states:
-            with engine.connect() as conn:
-                county_query = """
-                    SELECT DISTINCT county FROM warehouse_election_results
-                    WHERE state = :state AND county IS NOT NULL
-                    ORDER BY county
-                """
-                result = conn.execute(text(county_query), {"state": state})
-                all_counties[state] = [row[0] for row in result]
-        
-        return jsonify({
+            total_rows = conn.execute(text(count_query)).mappings().first()["cnt"]
+
+        all_counties: dict[str, list[str]] = {state: [] for state in all_states}
+        for row in covered_rows:
+            state = row.get("state")
+            county = row.get("county")
+            if not isinstance(state, str) or not isinstance(county, str):
+                continue
+            all_counties.setdefault(state, []).append(county)
+
+        payload = {
             "covered": covered,
             "all_states": all_states,
             "all_counties": all_counties,
@@ -3258,7 +3713,19 @@ def api_warehouse_coverage():
                 "total_state_county_pairs": len(covered),
                 "warehouse_healthy": total_rows > 0
             }
-        })
+        }
+        _set_ttl_cache_payload("warehouse_coverage", payload, WAREHOUSE_COVERAGE_CACHE_TTL_SEC)
+        _log_endpoint_latency(
+            "/api/warehouse/coverage",
+            started_at,
+            cache_hit=False,
+            context={
+                "total_rows": int(total_rows or 0),
+                "states": len(all_states),
+                "pairs": len(covered),
+            },
+        )
+        return jsonify(payload)
     except Exception as exc:
         logger.warning({
             "level": "WARNING",
@@ -3268,7 +3735,19 @@ def api_warehouse_coverage():
         })
         return jsonify({"error": "Warehouse coverage query failed", "covered": [], "all_states": [], "all_counties": {}}), 500
 
-@app.route("/data_framework", methods=["GET"])
+
+app.config["_URL_LIBRARY_ROUTE_HANDLERS"] = {
+    "api_urls": api_urls,
+    "api_urls_parse": api_urls_parse,
+    "api_urls_training_data": api_urls_training_data,
+    "api_urls_parse_all": api_urls_parse_all,
+    "api_filename_parse": api_filename_parse,
+    "api_outputs_lookup": api_outputs_lookup,
+    "api_warehouse_match": api_warehouse_match,
+    "api_warehouse_export": api_warehouse_export,
+    "api_warehouse_coverage": api_warehouse_coverage,
+}
+
 def data_framework():
     return render_template("data_framework.html", data_api_url=DATA_API_URL)
 
@@ -3481,7 +3960,6 @@ def _fetch_preview_rows(conn, state: str | None, county: str | None, contest: st
     return [dict(row) for row in rows]
 
 
-@app.route("/api/data_framework/preview", methods=["GET"])
 def api_data_framework_preview():
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
@@ -3601,7 +4079,6 @@ def api_data_framework_preview():
     return jsonify(payload)
 
 
-@app.route("/api/data_framework/scaffold", methods=["GET"])
 def api_data_framework_scaffold():
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
@@ -3615,7 +4092,6 @@ def api_data_framework_scaffold():
     return jsonify(payload)
 
 
-@app.route("/api/data_framework/scaffold.csv", methods=["GET"])
 def api_data_framework_scaffold_csv():
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
@@ -3640,7 +4116,6 @@ def api_data_framework_scaffold_csv():
     return resp
 
 
-@app.route("/api/data_framework/curated", methods=["GET"])
 def api_data_framework_curated():
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
@@ -3654,7 +4129,6 @@ def api_data_framework_curated():
     return jsonify(payload)
 
 
-@app.route("/api/data_framework/warehouse_status", methods=["GET"])
 def api_data_framework_warehouse_status():
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
@@ -4004,7 +4478,6 @@ def api_data_framework_warehouse_status():
         return jsonify({"error": "Warehouse status query failed"}), 500
 
 
-@app.route("/api/data_framework/exports", methods=["GET"])
 def api_data_framework_exports():
     """Return daily manifest or fallback to NDJSON exports; read-only endpoint for UI backfill."""
     principal, _, _ = get_request_principal()
@@ -4053,7 +4526,6 @@ def api_data_framework_exports():
     return jsonify({"date": date_str, "count": len(items), "generated_at": generated_at, "items": items})
 
 
-@app.route("/health_dashboard", methods=["GET"])
 def health_dashboard():
     allowed, resp = _require_health_auth()
     health_controls_enabled = bool(allowed)
@@ -4098,7 +4570,6 @@ def health_dashboard():
     )
 
 
-@app.route("/api/health_tasks", methods=["GET"])
 def api_list_health_tasks():
     auth_error = _health_auth_response()
     if auth_error:
@@ -4106,7 +4577,6 @@ def api_list_health_tasks():
     return jsonify({"tasks": _get_health_tasks()})
 
 
-@app.route("/api/health_tasks", methods=["POST"])
 def api_start_health_task():
     auth_error = _health_auth_response()
     if auth_error:
@@ -4124,7 +4594,6 @@ def api_start_health_task():
     return jsonify({"task": record})
 
 
-@app.route("/api/health_tasks/<task_id>", methods=["GET"])
 def api_health_task_detail(task_id: str):
     auth_error = _health_auth_response()
     if auth_error:
@@ -4135,7 +4604,6 @@ def api_health_task_detail(task_id: str):
     return jsonify({"task": record})
 
 
-@app.route("/api/health_socket_test", methods=["POST"])
 def api_health_socket_test():
     """Diagnostic endpoint for testing Socket.IO multi-instance propagation.
     Does not require client cert since it's a test/diagnostic tool.
@@ -4175,7 +4643,26 @@ def api_health_socket_test():
         return jsonify({"error": f"Socket test failed: {str(e)}"}), 500
 
 
-@app.route('/test/ui/prompt', methods=['POST'])
+app.config["_DATA_FRAMEWORK_ROUTE_HANDLERS"] = {
+    "data_framework": data_framework,
+    "api_data_framework_preview": api_data_framework_preview,
+    "api_data_framework_scaffold": api_data_framework_scaffold,
+    "api_data_framework_scaffold_csv": api_data_framework_scaffold_csv,
+    "api_data_framework_curated": api_data_framework_curated,
+    "api_data_framework_warehouse_status": api_data_framework_warehouse_status,
+    "api_data_framework_exports": api_data_framework_exports,
+}
+
+
+app.config["_HEALTH_ROUTE_HANDLERS"] = {
+    "health_dashboard": health_dashboard,
+    "api_list_health_tasks": api_list_health_tasks,
+    "api_start_health_task": api_start_health_task,
+    "api_health_task_detail": api_health_task_detail,
+    "api_health_socket_test": api_health_socket_test,
+}
+
+
 def test_ui_prompt():
     if not TEST_UI_ROUTES_ENABLED:
         return jsonify({"error": "Test UI routes disabled"}), 404
@@ -4226,7 +4713,12 @@ def test_ui_prompt():
 
     return jsonify({"success": True, "emitted": True, "session_id": session_id, "options": len(options)})
 
-@app.route("/api/fs/list", methods=["GET"])
+
+app.config["_SESSION_ORCHESTRATION_ROUTE_HANDLERS"] = {
+    "get_session_enums": get_session_enums,
+    "test_ui_prompt": test_ui_prompt,
+}
+
 def api_fs_list():
     root = (request.args.get("root") or "").lower().strip()
     subpath = (request.args.get("path") or "").strip().replace("\\", "/")
@@ -4272,11 +4764,9 @@ def api_fs_list():
         entries = []
     return jsonify({"root": root, "path": subpath, "entries": entries})
 
-@app.route("/api/list_dir", methods=["GET"])
 def api_list_dir_compat():
     return api_fs_list()
 
-@app.route("/api/fs/mkdir", methods=["POST"])
 def api_fs_mkdir():
     import os
     cert_resp = _require_client_cert("fs_mkdir")
@@ -4309,7 +4799,6 @@ def api_fs_mkdir():
         logger.error({"level":"ERROR","type":"browser","message":f"mkdir failed: {e}","session_id":None})
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route("/api/fs/delete", methods=["POST"])
 def api_fs_delete():
     cert_resp = _require_client_cert("fs_delete")
     if cert_resp:
@@ -4349,7 +4838,6 @@ def api_fs_delete():
         logger.error({"level":"ERROR","type":"browser","message":f"delete failed: {e}","session_id":None})
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route("/api/quick_copy", methods=["POST"])
 def api_quick_copy():
     cert_resp = _require_client_cert("quick_copy")
     if cert_resp:
@@ -4412,7 +4900,6 @@ def api_quick_copy():
         "filename": dest_name,
     })
 
-@app.route("/api/quick_copy/clear", methods=["POST"])
 def api_quick_copy_clear():
     cert_resp = _require_client_cert("quick_copy_clear")
     if cert_resp:
@@ -4424,7 +4911,6 @@ def api_quick_copy_clear():
     _cleanup_quick_copy_dir(session_id)
     return jsonify({"success": True})
 
-@app.route("/download_fs")
 def download_fs():
     """Enhanced filesystem download with integrity verification."""
     
@@ -4500,7 +4986,6 @@ def download_fs():
     return send_file(fpath, as_attachment=True)
 
 
-@app.route("/view_csv")
 def view_csv():
     import csv
     import html as _html
@@ -4738,7 +5223,6 @@ def _build_or_load_csv_index(csv_path: str, max_rows: int = 200000) -> tuple[int
         return None
 
 
-@app.route('/csv_locate')
 def csv_locate():
     """Return a viewer URL for a requested CSV row using an index (build on demand).
     Params: root, path, name, row (1-based data row index), page_size (optional)
@@ -4780,7 +5264,6 @@ def csv_locate():
     viewer = f"/view_csv?root={root}&path={subpath}&name={name}&page={page}&page_size={page_size}&highlight={row_i}"
     return jsonify({'viewer': viewer, 'page': page})
 
-@app.route("/favicon.ico")
 def favicon():
     static_root = app.static_folder or "static"
     static_root_abs = os.path.abspath(static_root)
@@ -4840,13 +5323,11 @@ def favicon():
     resp.headers.pop("X-XSS-Protection", None)
     return resp
 
-@app.route("/robots.txt")
 def robots_txt():
     return "User-agent: *\nDisallow: /", 200, {"Content-Type": "text/plain"}
 
 
 # Serve a small set of well-known app-specific files that some browsers/devtools request
-@app.route('/.well-known/appspecific/<path:filename>')
 def serve_well_known_appspecific(filename):
     try:
         # Serve from the static folder under .well-known/appspecific if present
@@ -4906,7 +5387,6 @@ def _compute_dropoff_items(rows: list[tuple], down_contest: str) -> list[dict]:
     items.sort(key=lambda item: (item.get("year") or 0, item.get("county") or ""), reverse=True)
     return items
 
-@app.route("/api/warehouse_election_results", methods=["GET"])
 def api_warehouse_election_results():
     """
     Query election results from warehouse and/or fixtures.
@@ -5277,7 +5757,6 @@ def api_warehouse_election_results():
     # Return merged results
     return jsonify({"items": all_results, "count": len(all_results), "data_source": data_source})
 
-@app.route("/delete/input/<filename>", methods=["POST"])
 def delete_input_file(filename) -> str:
     cert_resp = _require_client_cert("delete_input")
     if cert_resp:
@@ -5290,7 +5769,6 @@ def delete_input_file(filename) -> str:
         flash(f"File '{filename}' not found in input folder.", "danger")
     return redirect(request.referrer or url_for("ballot_lens"))
 
-@app.route("/delete/output/<filename>", methods=["POST"])
 def delete_output_file(filename) -> str:
     cert_resp = _require_client_cert("delete_output")
     if cert_resp:
@@ -5303,7 +5781,6 @@ def delete_output_file(filename) -> str:
         flash(f"File '{filename}' not found in output folder.", "danger")
     return redirect(request.referrer or url_for("ballot_lens"))
 
-@app.route("/delete/uploads/<filename>", methods=["POST"])
 def delete_upload_file(filename) -> str:
     cert_resp = _require_client_cert("delete_uploads")
     if cert_resp:
@@ -5316,11 +5793,9 @@ def delete_upload_file(filename) -> str:
         flash(f"File '{filename}' not found in uploads folder.", "danger")
     return redirect(request.referrer or url_for("ballot_lens"))
 
-@app.route("/download/input/<filename>")
 def download_input_file(filename) -> str:
     return send_from_directory(INPUT_DIR, filename, as_attachment=True)
 
-@app.route("/download/output/<filename>")
 def download_output_file(filename) -> str:
     """Enhanced download with integrity verification and cache deduplication."""
     
@@ -5402,11 +5877,9 @@ def download_output_file(filename) -> str:
         
     return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
 
-@app.route("/download/uploads/<filename>")
 def download_upload_file(filename) -> str:
     return send_from_directory(UPLOADS_DIR, filename, as_attachment=True)
 
-@app.route("/ballot_lens", methods=["GET", "POST"])
 def ballot_lens():
     try:
         qp_source = safe_lower(request.args.get("source", "")) if request.method == "GET" else ""
@@ -5451,13 +5924,11 @@ def ballot_lens():
         print(traceback.format_exc())
         return "Internal Server Error", 500
 
-@app.route("/ballot_lens_modern", methods=["GET"])
 def ballot_lens_modern():
     """Redirect to consolidated modern interface at /ballot_lens."""
     return redirect(url_for("ballot_lens"))
 
 
-@app.route("/worklist", methods=["GET"])
 def worklist():
     """
     Render the SMART Elections Worklist interface.
@@ -5476,7 +5947,6 @@ def worklist():
         return "Internal Server Error", 500
 
 
-@app.route("/api/validate_urls", methods=["POST"])
 def api_validate_urls():
     """
     Validate URLs against existing finalized data.
@@ -5550,7 +6020,6 @@ def api_validate_urls():
         return jsonify({"error": f"Validation failed: {str(e)}"}), 500
 
 
-@app.route("/api/url_status", methods=["GET"])
 def api_url_status():
     """
     Query processed URLs with filtering and production status.
@@ -5756,7 +6225,6 @@ def api_url_status():
         return jsonify({"error": f"Query failed: {str(e)}"}), 500
 
 
-@app.route("/site.webmanifest")
 def site_webmanifest():
     manifest = {
         "id": "/?src=pwa",
@@ -5794,7 +6262,6 @@ def site_webmanifest():
     resp.headers["ETag"] = etag
     return resp
 
-@app.route("/quality_dashboard")
 def quality_dashboard():
     """Quality metrics visualization dashboard."""
     return render_template("quality_dashboard.html")
@@ -5852,7 +6319,6 @@ def _load_integrity_trends() -> tuple[list[dict[str, Any]], str, bool]:
 
     return [], "", False
 
-@app.route("/api/integrity_trends", methods=["GET"])
 def api_integrity_trends():
     """API endpoint for context digest trends data."""
     try:
@@ -5867,7 +6333,6 @@ def api_integrity_trends():
         logger.error(f"Failed to load integrity trends: {e}")
         return jsonify({"error": "Failed to load trends", "trends": [], "count": 0}), 500
 
-@app.route("/api/integrity_signal", methods=["POST"])
 def api_integrity_signal():
     """API endpoint to compute integrity signal with custom thresholds."""
 
@@ -5913,7 +6378,6 @@ def api_integrity_signal():
         logger.error(f"Failed to compute integrity signal: {e}")
         return jsonify({"error": "Failed to compute signal", "signal": {"status": "error", "alerts": []}}), 500
 
-@app.route("/api/integrity_export", methods=["GET"])
 def api_integrity_export():
     """API endpoint to export integrity report as JSON."""
 
@@ -5951,18 +6415,25 @@ def api_integrity_export():
         logger.error(f"Failed to export integrity report: {e}")
         return jsonify({"error": "Failed to export report"}), 500
 
-@app.route("/url_status_dashboard")
 def url_status_dashboard():
     """URL processing status dashboard with production comparison."""
     return render_template("url_status_dashboard.html")
 
-@app.route("/quick-reference")
-@app.route("/quick_reference")
 def quick_reference_page():
     """Serve the Quick Reference guide with CSP-friendly headers and static CSS."""
     return render_template("quick_reference.html")
 
-@app.route("/api/quality_metrics", methods=["GET"])
+
+app.config["_UI_NAVIGATION_ROUTE_HANDLERS"] = {
+    "favicon": favicon,
+    "robots_txt": robots_txt,
+    "serve_well_known_appspecific": serve_well_known_appspecific,
+    "site_webmanifest": site_webmanifest,
+    "quality_dashboard": quality_dashboard,
+    "url_status_dashboard": url_status_dashboard,
+    "quick_reference_page": quick_reference_page,
+}
+
 def api_quality_metrics():
     """API endpoint for quality metrics data."""
     
@@ -6030,7 +6501,14 @@ def api_quality_metrics():
     
     return jsonify({"metrics": results, "count": len(results)})
 
-@app.route("/api/auth/certificate_info", methods=["GET"])
+
+app.config["_OBSERVABILITY_ROUTE_HANDLERS"] = {
+    "api_integrity_trends": api_integrity_trends,
+    "api_integrity_signal": api_integrity_signal,
+    "api_integrity_export": api_integrity_export,
+    "api_quality_metrics": api_quality_metrics,
+}
+
 def api_auth_certificate_info():
     """
     Return certificate metadata for the current session.
@@ -6071,7 +6549,80 @@ def api_auth_certificate_info():
     
     return jsonify(response)
 
-@app.route("/auth/welcome")
+
+def api_route_wrapper_monitor_snapshot():
+    cert_resp = _require_client_cert("route_wrapper_monitor_snapshot")
+    if cert_resp:
+        return cert_resp
+
+    principal, principal_source, _ = get_request_principal()
+    if not principal:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    monitor = app.config.get("_ROUTE_WRAPPER_MONITOR")
+    monitor_routes = monitor.get("routes", {}) if isinstance(monitor, dict) else {}
+
+    totals = {
+        "dispatch": 0,
+        "success": 0,
+        "failure": 0,
+        "route_count": 0,
+    }
+    clusters: dict[str, dict] = {}
+
+    if isinstance(monitor_routes, dict):
+        totals["route_count"] = len(monitor_routes)
+        for _, stats in monitor_routes.items():
+            if not isinstance(stats, dict):
+                continue
+            cluster = str(stats.get("cluster") or "unknown")
+            cluster_bucket = clusters.setdefault(cluster, {
+                "dispatch": 0,
+                "success": 0,
+                "failure": 0,
+                "routes": 0,
+            })
+            dispatch = int(stats.get("dispatch") or 0)
+            success = int(stats.get("success") or 0)
+            failure = int(stats.get("failure") or 0)
+            totals["dispatch"] += dispatch
+            totals["success"] += success
+            totals["failure"] += failure
+            cluster_bucket["dispatch"] += dispatch
+            cluster_bucket["success"] += success
+            cluster_bucket["failure"] += failure
+            cluster_bucket["routes"] += 1
+
+    return jsonify({
+        "success": True,
+        "monitor": {
+            "created_at": monitor.get("created_at") if isinstance(monitor, dict) else None,
+            "updated_at": monitor.get("updated_at") if isinstance(monitor, dict) else None,
+            "totals": totals,
+            "clusters": clusters,
+            "routes": monitor_routes,
+        },
+        "request_context": {
+            "principal": principal,
+            "principal_source": principal_source,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    })
+
+
+app.config["_UTILITY_ADMIN_ROUTE_HANDLERS"] = {
+    "api_fs_list": api_fs_list,
+    "api_list_dir_compat": api_list_dir_compat,
+    "api_fs_mkdir": api_fs_mkdir,
+    "api_fs_delete": api_fs_delete,
+    "api_quick_copy": api_quick_copy,
+    "api_quick_copy_clear": api_quick_copy_clear,
+    "api_validate_urls": api_validate_urls,
+    "api_url_status": api_url_status,
+    "api_auth_certificate_info": api_auth_certificate_info,
+    "api_route_wrapper_monitor_snapshot": api_route_wrapper_monitor_snapshot,
+}
+
 def auth_welcome():
     """
     Render the certificate authentication welcome screen.
@@ -6115,7 +6666,15 @@ def auth_welcome():
     )
 
 
-@app.route("/upload/input", methods=["POST"])
+app.config["_PUBLIC_PAGES_ROUTE_HANDLERS"] = {
+    "index": index,
+    "ballot_lens": ballot_lens,
+    "ballot_lens_modern": ballot_lens_modern,
+    "worklist": worklist,
+    "auth_welcome": auth_welcome,
+}
+
+
 @_rate_limit("5/minute")
 def upload_to_input() -> str:
     wants_json = _request_wants_json()
@@ -6190,7 +6749,6 @@ def upload_to_input() -> str:
         flash(saved_name or "Invalid file type or no file selected.", "danger")
     return redirect(request.referrer or url_for("ballot_lens"))
 
-@app.route("/upload/output", methods=["POST"])
 @_rate_limit("5/minute")
 def upload_to_output() -> str:
     wants_json = _request_wants_json()
@@ -6263,7 +6821,6 @@ def upload_to_output() -> str:
         flash(saved_name or "Invalid file type or no file selected.", "danger")
     return redirect(request.referrer or url_for("ballot_lens"))
 
-@app.route("/upload/uploads", methods=["POST"])
 @_rate_limit("5/minute")
 def upload_to_uploads() -> str:
     wants_json = _request_wants_json()
@@ -6366,15 +6923,15 @@ def upload_to_uploads() -> str:
         flash(saved_name or "Invalid file type or no file selected.", "danger")
     return redirect(request.referrer or url_for("ballot_lens"))
 
-@app.route("/health")
 def health() -> str:
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
-@app.route("/heartbeat")
+
+app.config["_HEALTH_ROUTE_HANDLERS"]["health"] = health
+
 def heartbeat() -> str:
     return {"status": "ok"}
 
-@app.route("/clear_history", methods=["POST"])
 def clear_history():
     try:
         if RUN_HISTORY_FILE.exists():
@@ -6384,7 +6941,6 @@ def clear_history():
         flash(f"Failed to clear history: {e}", "danger")
     return redirect(url_for("history"))
 
-@app.route("/history")
 def history() -> str:
     """
     Show recent parser runs (NOT override snapshots).
@@ -6427,7 +6983,6 @@ def history() -> str:
     ordered = sorted(aggregated.values(), key=_ts, reverse=True)
     return render_template("history.html", runs=ordered)
 
-@app.route("/rerun/<run_id>", methods=["POST"])
 def rerun_prior(run_id):
     """
     Trigger a rerun using the recorded source/output_bypass flags.
@@ -6458,6 +7013,26 @@ def rerun_prior(run_id):
     return redirect(url_for("ballot_lens", source=source))
 
 
+app.config["_FILE_IO_ROUTE_HANDLERS"] = {
+    "download_fs": download_fs,
+    "view_csv": view_csv,
+    "csv_locate": csv_locate,
+    "delete_input_file": delete_input_file,
+    "delete_output_file": delete_output_file,
+    "delete_upload_file": delete_upload_file,
+    "download_input_file": download_input_file,
+    "download_output_file": download_output_file,
+    "download_upload_file": download_upload_file,
+    "upload_to_input": upload_to_input,
+    "upload_to_output": upload_to_output,
+    "upload_to_uploads": upload_to_uploads,
+    "heartbeat": heartbeat,
+    "clear_history": clear_history,
+    "history": history,
+    "rerun_prior": rerun_prior,
+}
+
+
 # =====================================================================
 # 5. ELECTION DATA WORKFLOW - SMART Elections DL1/DL2 Pipeline
 # =====================================================================
@@ -6465,7 +7040,6 @@ def rerun_prior(run_id):
 # Role enforcement: DL1 ≠ DL2 ≠ QC1 ≠ QC2
 # Complete audit trail with chain of custody
 
-@app.route("/api/election_data/worklist", methods=["GET"])
 def api_election_data_worklist():
     """
     Get Worklist - all races with step-by-step status tracking.
@@ -6672,7 +7246,6 @@ def api_election_data_worklist():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route("/api/election_data/worklist/overview", methods=["GET"])
 def api_election_data_worklist_overview():
     """
     Fetch worklist overview data from Google Sheets.
@@ -6722,7 +7295,6 @@ def api_election_data_worklist_overview():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route("/api/election_data/db_lite/finalized", methods=["GET"])
 def api_election_data_db_lite_finalized():
     """
     Fetch Finalized Data sheet from SMART Elections Database-Lite.
@@ -6798,7 +7370,6 @@ def api_election_data_db_lite_finalized():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route("/api/election_data/db_lite/down_ballot", methods=["GET"])
 def api_election_data_db_lite_down_ballot():
     """
     Fetch Down-Ballot Calculations sheet from SMART Elections Database-Lite.
@@ -6847,7 +7418,6 @@ def api_election_data_db_lite_down_ballot():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route("/api/election_data/google_sheets/health", methods=["GET"])
 def api_election_data_google_sheets_health():
     """
     Verify Google Sheets access for worklist overview + DB-Lite sheets.
@@ -6926,7 +7496,6 @@ def api_election_data_google_sheets_health():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route("/api/election_data/states_counties", methods=["GET"])
 def api_election_data_states_counties():
     """
     Return authoritative state-to-county mappings from Google Sheets.
@@ -6947,10 +7516,12 @@ def api_election_data_states_counties():
             "total_counties": 3143
         }
     """
+    started_at = time.perf_counter()
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
         # Graceful degradation: return empty mappings for unauthenticated users
         # This prevents 403 errors in console when users browse without cert
+        _log_endpoint_latency("/api/election_data/states_counties", started_at, cache_hit=False, context={"auth": "required"})
         return jsonify({
             "success": True,
             "states": [],
@@ -6959,6 +7530,19 @@ def api_election_data_states_counties():
             "total_counties": 0,
             "note": "Authentication required for state/county mappings"
         }), 200
+
+    cached_payload = _get_ttl_cache_payload("states_counties")
+    if isinstance(cached_payload, dict):
+        _log_endpoint_latency(
+            "/api/election_data/states_counties",
+            started_at,
+            cache_hit=True,
+            context={
+                "total_states": len(cached_payload.get("states") or []),
+                "total_counties": int(cached_payload.get("total_counties") or 0),
+            },
+        )
+        return jsonify(cached_payload), 200
 
     try:
         from collections import defaultdict
@@ -7006,7 +7590,7 @@ def api_election_data_states_counties():
         
         total_counties = sum(len(counties) for counties in counties_dict.values())
 
-        return jsonify({
+        payload = {
             'success': True,
             'states': states_list,
             'counties': counties_dict,
@@ -7014,14 +7598,24 @@ def api_election_data_states_counties():
             'contests': sorted(list(contests_set)),
             'total_states': len(states_list),
             'total_counties': total_counties,
-        }), 200
+        }
+        _set_ttl_cache_payload("states_counties", payload, STATES_COUNTIES_CACHE_TTL_SEC)
+        _log_endpoint_latency(
+            "/api/election_data/states_counties",
+            started_at,
+            cache_hit=False,
+            context={
+                "total_states": len(states_list),
+                "total_counties": total_counties,
+            },
+        )
+        return jsonify(payload), 200
 
     except Exception as e:
         logger.error(f"Error fetching states/counties mapping: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route("/api/election_data/worklist/<race_id>/assign", methods=["POST"])
 def api_assign_dl_owner(race_id):
     """
     Assign DL1 or DL2 owner to a race.
@@ -7090,7 +7684,6 @@ def api_assign_dl_owner(race_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route("/api/election_data/preqc/<race_id>", methods=["POST"])
 def api_preqc_check(race_id):
     """
     Run Pre-QC Auto-check: strict equality + fuzzy matching between DL1 and DL2.
@@ -7211,7 +7804,6 @@ def api_preqc_check(race_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route("/api/election_data/qc1/<race_id>/submit", methods=["POST"])
 def api_qc1_submit(race_id):
     """
     Submit QC1 form and approve/reject data for QC2.
@@ -7307,7 +7899,6 @@ def api_qc1_submit(race_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route("/api/election_data/stats", methods=["GET"])
 def api_election_data_stats():
     """Get overall election data pipeline statistics."""
     principal, _, _ = get_request_principal()
@@ -7401,6 +7992,21 @@ def api_election_data_stats():
                 logger.error(f"Stats fallback failed: {fallback_exc}")
         logger.error(f"Error fetching stats: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+app.config["_ELECTION_DATA_ROUTE_HANDLERS"] = {
+    "api_election_data_worklist": api_election_data_worklist,
+    "api_election_data_worklist_overview": api_election_data_worklist_overview,
+    "api_election_data_db_lite_finalized": api_election_data_db_lite_finalized,
+    "api_election_data_db_lite_down_ballot": api_election_data_db_lite_down_ballot,
+    "api_election_data_google_sheets_health": api_election_data_google_sheets_health,
+    "api_election_data_states_counties": api_election_data_states_counties,
+    "api_assign_dl_owner": api_assign_dl_owner,
+    "api_preqc_check": api_preqc_check,
+    "api_qc1_submit": api_qc1_submit,
+    "api_election_data_stats": api_election_data_stats,
+    "api_warehouse_election_results": api_warehouse_election_results,
+}
 
 
 # 6. SocketIO Event Handlers
@@ -8168,488 +8774,64 @@ def handle_delete_session(data) -> None:
 
 @socketio.on('ballot_lens')
 def handle_ballot_lens(data=None) -> None:
-    """
-    Ensures session join is fully propagated before emitting any logs,
-    synchronizes session/thread state, and launches the parser pipeline.
-    """
-    cleanup_sessions()
-    dev_isolation_bypass = _is_dev_isolation_bypass_request()
-    payload = data if isinstance(data, dict) else {}
-    session_id = resolve_session_id(payload, create_if_missing=True)
-    if not isinstance(session_id, str):
-        logger.error({
-            "level": "ERROR",
-            "type": "status",
-            "message": "Unable to resolve session_id.",
-            "session_id": None
-        })
-        return
-
-    if not _rate_limit_socket_action(session_id, "ballot_lens"):
-        emit('parser_output', normalize_log_obj({
-            "level": "WARNING",
-            "type": "status",
-            "message": "Rate limit exceeded for starting a job.",
-            "session_id": session_id,
-        }), room=session_id)
-        return
-
-    principal, principal_source, cert_metadata = get_request_principal()
-    arr_cert_header = request.headers.get("X-ARR-ClientCert", "") or ""
-    principal_kind = None
-    if isinstance(principal, str):
-        principal_kind = "cert" if principal.startswith("cert:") else "principal"
-    gate_ok = _require_cert_for_socket_action("ballot_lens", session_id=session_id)
-    logger.info({
-        "level": "INFO",
-        "type": "auth",
-        "message": "Socket cert gate decision for ballot_lens.",
-        "session_id": session_id,
-        "cert_gate": "allow" if gate_ok else "deny",
-        "require_cert": REQUIRE_CERT_FOR_MUTATIONS,
-        "arr_client_cert_present": bool(arr_cert_header),
-        "arr_client_cert_len": len(arr_cert_header) if arr_cert_header else 0,
-        "principal_present": bool(principal),
-        "principal_kind": principal_kind,
-        "principal_source": principal_source,
-        "cert_metadata_error": bool(cert_metadata) and isinstance(cert_metadata, dict) and bool(cert_metadata.get("error")),
-    })
-    if not gate_ok:
-        return
-
-    # --- Ensure join_room is fully propagated before any log emission ---
-    join_room(session_id)
-    socketio.sleep(0.25)  # More robust than time.sleep for Flask-SocketIO (yields event loop)
-
-    # --- Send session ID back to frontend immediately ---
-    emit('session_id', {'session_id': session_id})
-
-    # --- Sync socket/session mapping ---
-    try:
-        socket_sid = safe_sid()
-    except Exception:
-        socket_sid = getattr(request, 'sid', None)
-    if isinstance(socket_sid, str):
-        session_manager.bind_socket(socket_sid, session_id)
-
-    # --- Ensure session metadata exists ---
-    if not session_manager.has_session(session_id):
-        create_session_metadata(session_id)
-    meta = session_manager.get_metadata(session_id) or {}
-    session_manager.mark_active(session_id)
-    session_manager.touch_session(session_id)
-    session_manager.update_metadata(session_id, dev_isolation_bypass=dev_isolation_bypass)
-
-    if meta.get("auth_blocked"):
-        emit('parser_output', normalize_log_obj({
-            "level": "INFO",
-            "type": "auth",
-            "message": "Session blocked due to certificate change. Re-authenticate to continue.",
-            "session_id": session_id,
-        }), room=session_id)
-        return
-
-    # --- Prevent concurrent runs ---
-    if safe_get(meta, 'locked') and safe_is_alive(session_id):
-        logger.error({
-            "level": "ERROR",
-            "type": "status",
-            "message": "Session is locked. Wait for current job to finish.",
-            "session_id": session_id
-        })
-        return
-    if safe_is_alive(session_id):
-        logger.warning({
-            "level": "WARNING",
-            "type": "status",
-            "message": "Parser already running for this session.",
-            "session_id": session_id
-        })
-        return
-
-    # --- Session config ---
-    requested_source = safe_lower(safe_get(payload, 'file_source', get_manual_source(session_id)))
-    if requested_source not in {'input', 'uploads'}:
-        requested_source = 'input'
-    requested_origin = safe_lower(safe_get(payload, 'manual_source_origin', None))
-    if requested_origin not in {'user', 'default', 'server'}:
-        requested_origin = 'user' if safe_get(payload, 'file_source') == 'uploads' else session_manager.get_manual_source_origin(session_id)
-
-    force_parse_input_file = None
-    force_parse_format = None
-    manual_upload_rel = None
-    manual_upload_name = safe_strip(safe_get(payload, 'manual_upload_name', ''))
-    raw_manual_upload_path = safe_strip(safe_get(payload, 'manual_upload_path', ''))
-    abs_uploads_dir = os.path.abspath(UPLOADS_DIR)
-
-    if raw_manual_upload_path:
-        normalized_rel = raw_manual_upload_path.replace('\\', '/').strip('/')
-        candidate_path = os.path.normpath(os.path.join(abs_uploads_dir, normalized_rel))
-        if candidate_path.startswith(abs_uploads_dir) and os.path.isfile(candidate_path):
-            manual_upload_rel = normalized_rel
-            if not manual_upload_name:
-                manual_upload_name = os.path.basename(candidate_path)
-            requested_source = 'uploads'
-            requested_origin = 'user'
-            force_parse_input_file = manual_upload_rel
-            guessed_ext = ''
-            try:
-                _, ext = os.path.splitext(manual_upload_name or manual_upload_rel)
-                guessed_ext = safe_lower(ext.lstrip('.'))
-            except Exception:
-                guessed_ext = ''
-            if guessed_ext:
-                force_parse_format = guessed_ext
-            session['FORCE_PARSE_INPUT_FILE'] = manual_upload_rel
-            session['FORCE_PARSE_FORMAT'] = force_parse_format or guessed_ext or ''
-            session['manual_source_pref'] = 'uploads'
-            logger.info({
-                "level": "INFO",
-                "type": "manual_override",
-                "message": f"[ManualOverride] Using uploaded file: {manual_upload_rel}",
-                "session_id": session_id
-            })
-        else:
-            logger.warning({
-                "level": "WARNING",
-                "type": "manual_override",
-                "message": f"[ManualOverride] Invalid manual upload selection: {raw_manual_upload_path}",
-                "session_id": session_id
-            })
-
-    if requested_source == 'uploads' and force_parse_input_file is None:
-        force_parse_input_file = session.get('FORCE_PARSE_INPUT_FILE')
-        force_parse_format = session.get('FORCE_PARSE_FORMAT')
-
-    raw_direct_urls = safe_get(payload, 'direct_urls', [])
-    direct_urls = []
-    if isinstance(raw_direct_urls, list):
-        for entry in raw_direct_urls:
-            url_text = safe_strip(entry)
-            if not url_text:
-                continue
-            try:
-                parsed = urlparse(url_text)
-            except Exception:
-                parsed = None
-            if not parsed or parsed.scheme not in {'http', 'https'} or parsed.username or parsed.password:
-                logger.warning({
-                    "level": "WARNING",
-                    "type": "input",
-                    "message": f"Ignoring invalid direct URL: {url_text}",
-                    "session_id": session_id
-                })
-                continue
-            allowed, reason = safe_validate_external_url(
-                url_text,
-                allowlist_suffixes=URL_ALLOWLIST_SUFFIXES,
-                allowlist_hosts=URL_ALLOWLIST_HOSTS,
-                enforce_allowlist=URL_ENFORCE_ALLOWLIST,
-                block_private_ips=URL_BLOCK_PRIVATE_IPS,
-                allowlist_bypass=dev_isolation_bypass,
-            )
-            if not allowed:
-                logger.warning({
-                    "level": "WARNING",
-                    "type": "input",
-                    "message": f"Blocked direct URL: {reason}",
-                    "session_id": session_id,
-                    "url": url_text,
-                })
-                continue
-            direct_urls.append(url_text)
-    if len(direct_urls) > DIRECT_URL_LIMIT:
-        logger.warning({
-            "level": "WARNING",
-            "type": "input",
-            "message": f"Direct URL list trimmed to {DIRECT_URL_LIMIT} entries.",
-            "session_id": session_id
-        })
-        direct_urls = direct_urls[:DIRECT_URL_LIMIT]
-    if direct_urls and requested_source == 'uploads':
-        logger.warning({
-            "level": "WARNING",
-            "type": "input",
-            "message": "Direct URLs ignored because manual uploads source is active.",
-            "session_id": session_id
-        })
-        direct_urls = []
-    if direct_urls:
-        guard_ok, guard_reason = _guarded_ingestion_allowed("direct_urls")
-        if not guard_ok:
-            logger.warning({
-                "level": "WARNING",
-                "type": "security",
-                "message": f"Direct URL ingestion blocked by guarded gate: {guard_reason}",
-                "session_id": session_id,
-            })
-            direct_urls = []
-        logger.info({
-            "level": "INFO",
-            "type": "input",
-            "message": f"Direct URL override engaged with {len(direct_urls)} link(s).",
-            "session_id": session_id,
-            "urls": direct_urls
-        })
-
-    warehouse_override_url = safe_strip(safe_get(payload, 'warehouse_override_url', ''))
-    if warehouse_override_url:
-        logger.info({
-            "level": "INFO",
-            "type": "status",
-            "message": "Warehouse override acknowledged for parse run.",
-            "session_id": session_id,
-            "warehouse_override_url": warehouse_override_url,
-        })
-
-    session_manager.set_manual_source(session_id, requested_source, origin=requested_origin)
-    output_bypass_flag = is_output_bypassed(session_id)
-    lock_session(session_id)
-
-
-    # --- Register per-session emitter (used by prompt/manual emits) ---
-    session_manager.register_emitter(session_id, socketio_emit_func)
-
-    # --- Install dispatcher only ONCE globally (idempotent) ---
-    logger.set_mode("webapp")
-    logger.set_format("json")
-    def filtered_emit(line):
-        try:
-            obj = orjson.loads(line) if isinstance(line, str) and line.strip().startswith("{") else None
-        except Exception:
-            obj = None
-        lvl = (obj or {}).get("level") or ""
-        if lvl.upper() in WEBAPP_CONSOLE_LEVELS:
-            logger.enable_console_echo_webapp(True)
-        else:
-            logger.enable_console_echo_webapp(False)
-        socketio_emit_func(line)
-    logger.set_socketio_emit_func(filtered_emit)
-    prompt.set_mode("webapp")
-    prompt.set_socketio_emit_func(lambda msg: socketio.emit(
-        'parser_output',
-        normalize_log_obj(msg if isinstance(msg, dict) else {
-            "level": "info",
-            "type": "prompt",
-            "message": str(msg),
-            "session_id": session_id
-        }),
-        room=session_id
-    ))
-
-    # --- Now emit initial logs (client is guaranteed in room) ---
-    logger.info({
-        "level": "INFO",
-        "type": "status",
-        "message": "Parser connected. Starting parser run...",
-        "session_id": session_id
-    })
-    logger.info({
-        "level": "INFO",
-        "type": "status",
-        "message": f"Launching parser (source={requested_source}, output_bypass={'on' if output_bypass_flag else 'off'})",
-        "session_id": session_id
-    })
-
-    # --- Run event logging ---
-    run_id = f"run_{int(time.time()*1000)}"
-    start_ts = datetime.now(timezone.utc).isoformat()
-    log_run_event({
-        "type": "start",
-        "run_id": run_id,
-        "session_id": session_id,
-        "ts": start_ts,
-        "source": requested_source,
-        "output_bypass": output_bypass_flag,
-        "status": "running",
-        "manual_upload": manual_upload_rel,
-        "direct_url_count": len(direct_urls),
-        "warehouse_override_url": warehouse_override_url or None,
-    })
-
-    # --- Prepare cancellation and prompt queue ---
-    cancel_flag = cancellation_manager.get_flag(session_id)
-    prompt_queue = get_prompt_queue(session_id)
-
-    # --- Launch parser in a dedicated thread ---
-    def worker_wrapper():
-        start_time = time.time()
-        output_dir = Path(OUTPUT_DIR)
-        download_ready_emitted = threading.Event()
-        watcher_stop = threading.Event()
-
-        def _snapshot_output_artifacts() -> dict[str, float]:
-            artifacts: dict[str, float] = {}
-            try:
-                if not output_dir.exists():
-                    return artifacts
-                exts = {".csv", ".xlsx", ".xls", ".json", ".pdf"}
-                for path in output_dir.rglob("*"):
-                    try:
-                        if not path.is_file():
-                            continue
-                        if path.suffix.lower() not in exts:
-                            continue
-                        rel = str(path.relative_to(output_dir)).replace("\\", "/")
-                        artifacts[rel] = path.stat().st_mtime
-                    except Exception:
-                        continue
-            except Exception:
-                return artifacts
-            return artifacts
-
-        artifacts_before = _snapshot_output_artifacts()
-
-        def _output_watcher() -> None:
-            while not watcher_stop.is_set() and not download_ready_emitted.is_set():
-                time.sleep(2)
-                artifacts_after = _snapshot_output_artifacts()
-                new_artifacts = [
-                    rel for rel in artifacts_after.keys()
-                    if rel not in artifacts_before
-                ]
-                if not new_artifacts:
-                    new_artifacts = [
-                        rel for rel, mtime in artifacts_after.items()
-                        if mtime >= (start_time - 1.0)
-                    ]
-                if not new_artifacts:
-                    continue
-                newest_rel = max(new_artifacts, key=lambda rel: artifacts_after.get(rel, 0.0))
-                newest_abs = output_dir / newest_rel
-                try:
-                    size = newest_abs.stat().st_size
-                except Exception:
-                    size = None
-                try:
-                    _emit_download_ready(session_id, {
-                        "session_id": session_id,
-                        "filename": os.path.basename(newest_rel),
-                        "output_path": newest_rel,
-                        "root": "output",
-                        "size": size,
-                        "source": "pipeline_output",
-                    })
-                    download_ready_emitted.set()
-                except Exception:
-                    continue
-
-        watcher_thread = threading.Thread(target=_output_watcher, daemon=True)
-        watcher_thread.start()
-        session_manager.bind_thread_id(threading.get_ident(), session_id)
-        status = "error"  # Default to error
-        err = None
-        try:
-            process_urls_for_web(
-                prompt_queue,
-                session_id,
-                cancel_flag,
-                emit_func=socketio_emit_func,
-                output_bypass=output_bypass_flag,
-                manual_source=requested_source,
-                disable_internal_heartbeat=True,
-                force_parse_input_file=force_parse_input_file,
-                force_parse_format=force_parse_format,
-                urls=direct_urls if direct_urls else None,
-                principal=principal,
-                principal_source=principal_source,
-                dev_isolation_bypass=dev_isolation_bypass,
-            )
-            logger.info({
-                "level": "INFO",
-                "type": "status",
-                "message": "Parser run completed.",
-                "session_id": session_id
-            })
-            try:
-                artifacts_after = _snapshot_output_artifacts()
-                new_artifacts = [
-                    rel for rel in artifacts_after.keys()
-                    if rel not in artifacts_before
-                ]
-                if not new_artifacts:
-                    new_artifacts = [
-                        rel for rel, mtime in artifacts_after.items()
-                        if mtime >= (start_time - 1.0)
-                    ]
-                if new_artifacts and not download_ready_emitted.is_set():
-                    newest_rel = max(new_artifacts, key=lambda rel: artifacts_after.get(rel, 0.0))
-                    newest_abs = output_dir / newest_rel
-                    size = None
-                    try:
-                        size = newest_abs.stat().st_size
-                    except Exception:
-                        size = None
-                    try:
-                        _emit_download_ready(session_id, {
-                            "session_id": session_id,
-                            "filename": os.path.basename(newest_rel),
-                            "output_path": newest_rel,
-                            "root": "output",
-                            "size": size,
-                            "source": "pipeline_output",
-                        })
-                        download_ready_emitted.set()
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            status = "ok"
-            err = None
-        except Exception as e:
-            logger.error({
-                "level": "ERROR",
-                "type": "exception",
-                "message": f"Parser run failed: {e}",
-                "session_id": session_id
-            })
-            status = "error"
-            err = str(e)
-        finally:
-            watcher_stop.set()
-            duration_ms = int((time.time() - start_time)*1000)
-            log_run_event({
-                "type": "end",
-                "run_id": run_id,
-                "session_id": session_id,
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "source": requested_source,
-                "output_bypass": output_bypass_flag,
-                "status": status,
-                "error": err,
-                "duration_ms": duration_ms,
-                "manual_upload": manual_upload_rel,
-                "direct_url_count": len(direct_urls)
-            })
-            session_manager.pop_thread(session_id)
-            final_state = SessionState.COMPLETED
-            if safe_is_set(cancel_flag):
-                final_state = SessionState.CANCELLED
-            elif status != "ok":
-                final_state = SessionState.ERROR
-            extras = {
-                "manual_source": requested_source,
-                "manual_source_origin": requested_origin,
-                "run_id": run_id,
-                "output_bypass": output_bypass_flag,
-                "manual_upload_file": manual_upload_rel,
-                "direct_url_count": len(direct_urls),
-                "direct_urls": direct_urls,
-                "warehouse_override_url": warehouse_override_url or None,
-            }
-            if err:
-                extras["last_error"] = err
-            transition_session(
-                session_id,
-                final_state,
-                locked=False,
-                phase=None,
-                extras=extras,
-            )
-        session_manager.unbind_thread_id(threading.get_ident())
-
-    thread = socketio.start_background_task(worker_wrapper)
-    session_manager.set_thread(session_id, thread)
+    run_ballot_lens_socket_handler(
+        data=data,
+        hooks={
+            "cleanup_sessions": cleanup_sessions,
+            "is_dev_isolation_bypass_request": _is_dev_isolation_bypass_request,
+            "resolve_session_id": resolve_session_id,
+            "rate_limit_socket_action": _rate_limit_socket_action,
+            "emit": emit,
+            "normalize_log_obj": normalize_log_obj,
+            "get_request_principal": get_request_principal,
+            "request": request,
+            "require_cert_for_socket_action": _require_cert_for_socket_action,
+            "require_cert_for_mutations": REQUIRE_CERT_FOR_MUTATIONS,
+            "join_room": join_room,
+            "socketio": socketio,
+            "safe_sid": safe_sid,
+            "session_manager": session_manager,
+            "create_session_metadata": create_session_metadata,
+            "safe_get": safe_get,
+            "safe_is_alive": safe_is_alive,
+            "safe_lower": safe_lower,
+            "safe_strip": safe_strip,
+            "get_manual_source": get_manual_source,
+            "os": os,
+            "uploads_dir": UPLOADS_DIR,
+            "session": session,
+            "urlparse": urlparse,
+            "safe_validate_external_url": safe_validate_external_url,
+            "url_allowlist_suffixes": URL_ALLOWLIST_SUFFIXES,
+            "url_allowlist_hosts": URL_ALLOWLIST_HOSTS,
+            "url_enforce_allowlist": URL_ENFORCE_ALLOWLIST,
+            "url_block_private_ips": URL_BLOCK_PRIVATE_IPS,
+            "direct_url_limit": DIRECT_URL_LIMIT,
+            "guarded_ingestion_allowed": _guarded_ingestion_allowed,
+            "collect_url_reference_hint": _collect_url_reference_hint,
+            "is_output_bypassed": is_output_bypassed,
+            "lock_session": lock_session,
+            "socketio_emit_func": socketio_emit_func,
+            "logger": logger,
+            "orjson": orjson,
+            "webapp_console_levels": WEBAPP_CONSOLE_LEVELS,
+            "prompt": prompt,
+            "time": time,
+            "datetime": datetime,
+            "timezone": timezone,
+            "log_run_event": log_run_event,
+            "cancellation_manager": cancellation_manager,
+            "get_prompt_queue": get_prompt_queue,
+            "path_cls": Path,
+            "output_dir": OUTPUT_DIR,
+            "threading": threading,
+            "process_urls_for_web": process_urls_for_web,
+            "emit_download_ready": _emit_download_ready,
+            "transition_session": transition_session,
+            "session_state": SessionState,
+            "safe_is_set": safe_is_set,
+        },
+    )
 
 # --- FEC mappings review endpoints ---
 MAPPINGS_PATH = os.path.join(str(PROJECT_ROOT), 'webapp', 'parser', 'fixtures', 'mappings.json')
@@ -8676,7 +8858,6 @@ def _read_jsonl(path):
     return out
 
 
-@app.route('/fec_mappings_review')
 def fec_mappings_review():
     # Simple single-file HTML reviewer for fuzzy-match problem rows
     html = '''<!doctype html><html><head><meta charset="utf-8"><title>FEC Mappings Review</title></head><body>
@@ -8719,7 +8900,6 @@ def fec_mappings_review():
     return html
 
 
-@app.route('/api/fec/problem_rows')
 def api_fec_problem_rows():
     try:
         min_score = int(request.args.get('min_score') or 70)
@@ -8743,7 +8923,6 @@ def api_fec_problem_rows():
     return jsonify(out)
 
 
-@app.route('/api/fec/save_mapping', methods=['POST'])
 def api_fec_save_mapping():
     cert_resp = _require_client_cert("fec_save_mapping")
     if cert_resp:
@@ -8837,7 +9016,6 @@ def api_fec_save_mapping():
 # Data Assurance API Endpoints (QA Panel Integration)
 # ============================================
 
-@app.route("/api/data-assurance/parse-and-classify", methods=["POST"])
 def api_data_assurance_classify():
     """
     Classify parsed election data as DL1 (Data Level 1) with auto QA checks.
@@ -8967,7 +9145,6 @@ def api_data_assurance_classify():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/data-assurance/verify-and-promote", methods=["POST"])
 def api_data_assurance_promote():
     """
     Promote verified dataset from DL1 to DL2 after manual review.
@@ -8980,6 +9157,29 @@ def api_data_assurance_promote():
         from datetime import datetime
         
         from webapp.parser.utils.db_utils import SessionLocal
+        from webapp.parser.utils.privilege_tiers import PrivilegeTier, get_principal_tier
+
+        principal, principal_source, _ = get_request_principal()
+        if not principal:
+            return jsonify({"error": "Unauthorized"}), 401
+
+        principal_tier = get_principal_tier(principal, principal_source)
+        if int(principal_tier) < int(PrivilegeTier.ADMIN_REVIEWER):
+            logger.warning({
+                "level": "WARNING",
+                "type": "auth",
+                "message": "Data assurance promotion denied: insufficient privilege tier.",
+                "session_id": None,
+                "principal": principal,
+                "principal_source": principal_source,
+                "required_tier": PrivilegeTier.ADMIN_REVIEWER.name,
+                "actual_tier": principal_tier.name,
+            })
+            return jsonify({
+                "error": "Forbidden",
+                "required_tier": PrivilegeTier.ADMIN_REVIEWER.name,
+                "actual_tier": principal_tier.name,
+            }), 403
         
         data = request.get_json()
         dataset_id = data.get("dataset_id")
@@ -8999,7 +9199,7 @@ def api_data_assurance_promote():
                 {
                     "dataset_id": dataset_id,
                     "promoted_at": datetime.utcnow(),
-                    "reviewer": session.get("username", "system"),
+                    "reviewer": principal,
                 }
             )
             row = result.fetchone()
@@ -9026,7 +9226,7 @@ def api_data_assurance_promote():
             "detected_issues": orjson.loads(row[2]) if row[2] else [],
             "created_at": row[3].isoformat() if row[3] else None,
             "promoted_at": row[4].isoformat() if row[4] else None,
-            "reviewer_principal": session.get("username", "system"),
+            "reviewer_principal": principal,
         })
     
     except Exception as e:
@@ -9034,7 +9234,6 @@ def api_data_assurance_promote():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/data-assurance/pending-dl2-reviews", methods=["GET"])
 def api_data_assurance_pending_reviews():
     """
     Fetch pending DL2 reviews (DL1 datasets awaiting manual verification).
@@ -9071,6 +9270,16 @@ def api_data_assurance_pending_reviews():
     except Exception as e:
         logger.error(f"[QA] Failed to fetch pending reviews: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+app.config["_FEC_DATA_ASSURANCE_ROUTE_HANDLERS"] = {
+    "fec_mappings_review": fec_mappings_review,
+    "api_fec_problem_rows": api_fec_problem_rows,
+    "api_fec_save_mapping": api_fec_save_mapping,
+    "api_data_assurance_classify": api_data_assurance_classify,
+    "api_data_assurance_promote": api_data_assurance_promote,
+    "api_data_assurance_pending_reviews": api_data_assurance_pending_reviews,
+}
 
 
 # Heartbeat thread startup (idempotent)
