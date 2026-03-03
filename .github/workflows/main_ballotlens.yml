@@ -220,7 +220,7 @@ jobs:
           find output/reports -type f -name "*.log" -delete || true
           rm -rf tools/debug_headless_output || true
 
-        - name: Observability Guardrail (non-blocking failed-manifest smoke)
+      - name: Observability Guardrail (non-blocking failed-manifest smoke)
         if: always()
         continue-on-error: true
         run: |
