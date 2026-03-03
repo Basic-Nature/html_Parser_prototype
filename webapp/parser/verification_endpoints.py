@@ -21,6 +21,7 @@ from webapp.parser.config import (
     SYSTEM_MISSION,
     VERIFICATION_LOG_FILE,
 )
+from webapp.parser.utils.privilege_tiers import PrivilegeTier, get_principal_tier
 from webapp.parser.utils.logger_singleton import logger
 from webapp.parser.utils.shared_logic import safe_get, safe_strip
 from webapp.parser.utils.verification_framework import (
@@ -59,8 +60,35 @@ def _require_verification_enabled(f):
 def _get_verifier_principal() -> Optional[str]:
     """Extract principal from request (must be authenticated)."""
     from webapp.parser.utils.cert_utils import extract_client_principal
-    principal, source = extract_client_principal(request.headers)
+    identity = extract_client_principal(request.headers)
+    if not isinstance(identity, tuple):
+        return None
+    principal = identity[0] if len(identity) >= 1 else None
     return principal
+
+
+def _get_verifier_identity() -> tuple[Optional[str], str]:
+    """Extract principal and source from request headers."""
+    from webapp.parser.utils.cert_utils import extract_client_principal
+    identity = extract_client_principal(request.headers)
+    if not isinstance(identity, tuple):
+        return None, ""
+    principal = identity[0] if len(identity) >= 1 else None
+    source = identity[1] if len(identity) >= 2 else ""
+    return principal, source or ""
+
+
+def _normalize_required_tier(tier: str) -> PrivilegeTier:
+    """Normalize endpoint tier labels to privilege tier enum."""
+    normalized = str(tier or "").strip().lower().replace("-", "_")
+    tier_map = {
+        "reviewer": PrivilegeTier.STANDARD_USER,
+        "standard_user": PrivilegeTier.STANDARD_USER,
+        "admin_reviewer": PrivilegeTier.ADMIN_REVIEWER,
+        "admin_full_trust": PrivilegeTier.ADMIN_FULL_TRUST,
+        "root_admin": PrivilegeTier.ROOT_ADMIN,
+    }
+    return tier_map.get(normalized, PrivilegeTier.ROOT_ADMIN)
 
 
 def _require_verifier_tier(tier: str):
@@ -72,12 +100,32 @@ def _require_verifier_tier(tier: str):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            principal = _get_verifier_principal()
+            principal, principal_source = _get_verifier_identity()
             if not principal:
                 return jsonify({"error": "Unauthorized"}), 401
-            
-            # TODO: Check principal's tier from privilege_tiers module
-            # For now, accept any authenticated principal
+
+            required_tier = _normalize_required_tier(tier)
+            actual_tier = get_principal_tier(principal, principal_source)
+            if int(actual_tier) < int(required_tier):
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "verification",
+                    "message": "Verification endpoint access denied due to insufficient privilege tier.",
+                    "session_id": None,
+                    "principal": principal,
+                    "principal_source": principal_source,
+                    "required_tier": required_tier.name,
+                    "actual_tier": actual_tier.name,
+                    "endpoint": request.path,
+                })
+                return jsonify(
+                    {
+                        "error": "Forbidden",
+                        "required_tier": required_tier.name,
+                        "actual_tier": actual_tier.name,
+                    }
+                ), 403
+
             return f(*args, **kwargs)
         return decorated_function
     return decorator

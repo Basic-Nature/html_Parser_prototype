@@ -539,6 +539,36 @@ def get_dl2_inventory(state_abbr: Optional[str] = None, county_name: Optional[st
         return []
 
 
+def get_rejected_count() -> int:
+    """Get total count of rejected datasets."""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return 0
+
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM verified_data.verified_datasets
+            WHERE dl_status = %s
+            """,
+            (DLStatus.REJECTED.value,),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return int(row[0] or 0) if row else 0
+
+    except Exception as e:
+        logger.error({
+            "level": "ERROR",
+            "type": "query",
+            "message": f"Failed to get rejected count: {e}",
+        })
+        return 0
+
+
 def get_dataset_lineage(dataset_id: str) -> List[Dict[str, Any]]:
     """Get complete audit trail for a dataset."""
     try:

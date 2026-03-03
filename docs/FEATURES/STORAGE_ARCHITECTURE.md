@@ -327,6 +327,31 @@ python automate.py
 # → retrain_models (ML update)
 ```
 
+### Automation + Embedding Cache Policy (Operational Defaults)
+
+To keep CI/local behavior explicit and reduce noise while preserving useful training context:
+
+1. **Automation report retention** (`automate.py`)
+    - CI and explicit runs can enforce report cleanup using:
+      - `--enforce-report-retention`
+      - `--report-retention-days` (default `30`)
+      - `--report-max-files` (default `200`)
+      - `--report-max-bytes` (default `268435456`)
+    - Targets `output/reports/report_*.json` while preserving `*_latest.json` and `automation_run_latest.json`.
+
+2. **Embedding cache lifecycle gate** (`webapp/parser/utils/embedding_cache.py`)
+    - Startup: load disk cache + emit precheck (`EMBEDDING_CACHE_PRECHECK=true` by default).
+    - Optional startup seed: hydrate memory/disk from DB (`EMBEDDING_CACHE_SEED_ON_START=true`, `EMBEDDING_CACHE_SEED_LIMIT=250`).
+    - Runtime checkpoints: periodic disk snapshots after writes/time (`EMBEDDING_CACHE_CHECKPOINT_WRITES=250`, `EMBEDDING_CACHE_CHECKPOINT_SECONDS=120`).
+    - Shutdown: force final disk save via registered exit hook.
+    - Size warning: alert if cache file grows beyond `EMBEDDING_CACHE_DISK_WARN_MB` (default `512`).
+
+3. **Automation preflight visibility** (`automate.py`)
+    - Every `python automate.py` run now captures an always-on `embedding_cache_preflight` stage.
+    - Stage details (cache mode/state/checkpoint policy) are written to `output/reports/automation_run_latest.json` under `stage_details.embedding_cache_preflight`.
+
+These defaults keep parser and NLP/ML pathways reactive across sessions without forcing DB writes in read-only/test modes.
+
 ---
 
 ## 5. Cache Management
@@ -599,6 +624,12 @@ CREATE INDEX idx_ingestion_date ON election_results(ingestion_date);
 | `CACHE_EXPIRE_DAYS` | `7` | Auto-expire cache entries (days) |
 | `INTEGRITY_CHECK` | `false` | Run integrity checks during pipeline |
 | `EXPORT_AUDIT_LOG` | `""` | Export audit log to specified path |
+| `EMBEDDING_CACHE_PRECHECK` | `true` | Emit startup cache gate summary |
+| `EMBEDDING_CACHE_SEED_ON_START` | `false` | Seed disk/memory cache from DB on startup |
+| `EMBEDDING_CACHE_SEED_LIMIT` | `250` | Max DB embeddings loaded during startup seed |
+| `EMBEDDING_CACHE_CHECKPOINT_WRITES` | `250` | Save disk cache after N cache mutations |
+| `EMBEDDING_CACHE_CHECKPOINT_SECONDS` | `120` | Save disk cache after N seconds since last save |
+| `EMBEDDING_CACHE_DISK_WARN_MB` | `512` | Warn when disk cache grows beyond threshold |
 
 ### Key Commands
 

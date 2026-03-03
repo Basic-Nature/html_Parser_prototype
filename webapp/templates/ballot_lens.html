@@ -22,7 +22,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
   <!-- Manifest & icons -->
-  <link rel="manifest" href="{{ url_for('site_webmanifest') }}?v={{ static_version }}">
+  <link rel="manifest" href="{{ url_for('ui_navigation_routes.site_webmanifest') }}?v={{ static_version }}">
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}?v={{ static_version }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}?v={{ static_version }}">
 
@@ -46,7 +46,7 @@
                 <a href="/ballot_lens" class="nav-link active" title="BallotLens">Ballot Lens</a>
                 <a href="/data_framework" class="nav-link" title="Data Framework">Data Framework</a>                
                 <a href="/url_status_dashboard" class="nav-link" title="URL Status Dashboard">URL Status</a>
-                <a href="{{ url_for('worklist') }}" class="nav-link" title="Smart Elections Worklist">Worklist</a>
+                <a href="{{ url_for('public_pages_routes.worklist') }}" class="nav-link" title="Smart Elections Worklist">Worklist</a>
                 <a href="/history" class="nav-link" title="Run History">History</a>
                 <a href="/quick_reference" class="nav-link" title="Quick Reference Guide">Reference</a>
               </div>
@@ -361,7 +361,7 @@
                               <div class="source-title">📤 Manual Uploads</div>
                             </div>
                             <div class="source-body">
-                              <form method="POST" action="{{ url_for('upload_to_uploads') }}" enctype="multipart/form-data" class="mb-1em">
+                              <form method="POST" action="{{ url_for('file_io_routes.upload_to_uploads') }}" enctype="multipart/form-data" class="mb-1em">
                                 <label for="uploadsFile" class="visually-hidden">Choose file for uploads folder</label>
                                 <div class="upload-row">
                                   <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">

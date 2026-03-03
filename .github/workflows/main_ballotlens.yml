@@ -7,12 +7,15 @@ on:
       - main
     paths:
       - 'webapp/**'
+      - 'scripts/**'
+      - 'tests/testdata/**'
       - 'Dockerfile'
       - '.Dockerfile'
       - '.dockerignore'
       - 'requirements.txt'
       - 'requirements-dev.txt'
       - 'pyproject.toml'
+      - 'automate.py'
       - 'gunicorn.conf.py'
       - 'install.py'
       - 'install.sh'
@@ -22,6 +25,9 @@ on:
 env:
   IMAGE_NAME: ballotlens
   IMAGE_TAG: ${{ github.sha }}
+  REPORT_RETENTION_DAYS: "30"
+  REPORT_MAX_FILES: "200"
+  REPORT_MAX_BYTES: "268435456"
 
 jobs:
   build-and-deploy:
@@ -153,6 +159,109 @@ jobs:
           else
             echo "No tests directory found, skipping tests."
           fi
+
+      - name: Run automation strict compare smoke
+        run: |
+          python automate.py \
+            --skip-health \
+            --skip-web \
+            --skip-tests \
+            --skip-webapp-check \
+            --compare-dl1-dl2 \
+            --dl1-path tests/testdata/dl_compare_dl1_sample.json \
+            --dl2-path tests/testdata/dl_compare_dl2_sample.json \
+            --enforce-report-retention \
+            --report-retention-days "${{ env.REPORT_RETENTION_DAYS }}" \
+            --report-max-files "${{ env.REPORT_MAX_FILES }}" \
+            --report-max-bytes "${{ env.REPORT_MAX_BYTES }}"
+
+      - name: Enforce strict-path health score gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest_path = Path("output/reports/automation_run_latest.json")
+          if not manifest_path.exists():
+              raise SystemExit("Health gate failed: automation_run_latest.json not found")
+
+          data = json.loads(manifest_path.read_text(encoding="utf-8"))
+          strict_compare = bool(data.get("strict_compare_mode"))
+          strict_preflight = bool(data.get("strict_embedding_preflight_mode"))
+          strict_path = strict_compare or strict_preflight
+
+          health = data.get("health_score") if isinstance(data.get("health_score"), dict) else {}
+          state = str(health.get("state") or "").strip().lower()
+          score = health.get("score")
+
+          if strict_path and state == "red":
+              raise SystemExit(f"Health gate failed on strict path: state=red score={score}")
+
+          print(
+              f"Health gate passed: strict_path={strict_path} state={state or 'unknown'} score={score}"
+          )
+          PY
+
+      - name: Upload automation reports and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: automation-reports-${{ github.run_id }}
+          path: |
+            output/reports/**
+            tools/debug_headless_output/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Cleanup local logs after ingestion and upload
+        if: always()
+        run: |
+          rm -rf output/reports/logs
+          find output/reports -type f -name "*.log" -delete || true
+          rm -rf tools/debug_headless_output || true
+
+        - name: Observability Guardrail (non-blocking failed-manifest smoke)
+        if: always()
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import sys
+
+          env = os.environ.copy()
+          env["AUTOMATE_ALLOW_SIMULATED_FAILURE"] = "true"
+          cmd = [
+            sys.executable,
+            "automate.py",
+            "--skip-health",
+            "--skip-web",
+            "--skip-tests",
+            "--skip-webapp-check",
+            "--simulate-unhandled-failure",
+          ]
+          proc = subprocess.run(cmd, env=env, text=True, capture_output=True)
+          print(proc.stdout)
+          if proc.stderr:
+            print(proc.stderr)
+
+          manifest_path = pathlib.Path("output/reports/automation_run_latest.json")
+          if not manifest_path.exists():
+            raise SystemExit("Manifest smoke failed: automation_run_latest.json missing")
+
+          data = json.loads(manifest_path.read_text(encoding="utf-8"))
+          if data.get("status") != "failed":
+            raise SystemExit(f"Manifest smoke failed: expected status=failed, got {data.get('status')!r}")
+          unhandled = data.get("unhandled_exception")
+          if not isinstance(unhandled, dict) or not unhandled.get("type"):
+            raise SystemExit("Manifest smoke failed: missing unhandled_exception.type")
+          if proc.returncode == 0:
+            raise SystemExit("Manifest smoke failed: simulate run returned exit code 0")
+
+          print("Manifest smoke passed: failed status + unhandled_exception captured.")
+          PY
 
       - name: Show disk usage before container build
         run: df -h

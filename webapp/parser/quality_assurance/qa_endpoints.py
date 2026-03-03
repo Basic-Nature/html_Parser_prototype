@@ -20,6 +20,7 @@ from io import StringIO
 from flask import Blueprint, jsonify, request, send_file
 
 from ..config import ENABLE_VERIFICATION_FRAMEWORK, QA_REQUIRE_CERT_AUTH
+from ..utils.privilege_tiers import PrivilegeTier, get_principal_tier
 from ..utils.cert_utils import extract_client_principal
 from ..utils.shared_logic import safe_get, safe_strip
 from .data_classifier import (
@@ -28,6 +29,7 @@ from .data_classifier import (
     get_dataset_lineage,
     get_dl2_inventory,
     get_pending_dl2_reviews,
+    get_rejected_count,
     promote_to_dl2,
 )
 
@@ -51,11 +53,29 @@ def _get_reviewer_principal() -> str | None:
     return principal
 
 
+def _get_reviewer_identity() -> tuple[str | None, str]:
+    """Extract reviewer principal + source from request headers."""
+    principal, source, _ = extract_client_principal(request.headers)
+    return principal, source or ""
+
+
+def _normalize_required_tier(tier: str) -> PrivilegeTier:
+    normalized = str(tier or "").strip().lower().replace("-", "_")
+    tier_map = {
+        "reviewer": PrivilegeTier.STANDARD_USER,
+        "standard_user": PrivilegeTier.STANDARD_USER,
+        "admin_reviewer": PrivilegeTier.ADMIN_REVIEWER,
+        "admin_full_trust": PrivilegeTier.ADMIN_FULL_TRUST,
+        "root_admin": PrivilegeTier.ROOT_ADMIN,
+    }
+    return tier_map.get(normalized, PrivilegeTier.ROOT_ADMIN)
+
+
 def _require_reviewer(f):
     """Decorator: Require authenticated reviewer (or allow fallback if cert auth disabled)."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        principal = _get_reviewer_principal()
+        principal, principal_source = _get_reviewer_identity()
         
         # If certificate auth is required and no principal found, reject
         if QA_REQUIRE_CERT_AUTH and not principal:
@@ -69,14 +89,54 @@ def _require_reviewer(f):
             # Use a fallback principal for development/testing
             # This should only happen when QA_REQUIRE_CERT_AUTH=false
             from flask import g
-            g.reviewer_principal = "system:development"
+            principal = "system:development"
+            principal_source = "development_fallback"
+            g.reviewer_principal = principal
+            g.reviewer_source = principal_source
+            g.reviewer_tier = PrivilegeTier.STANDARD_USER.name
         else:
             from flask import g
             g.reviewer_principal = principal
+            g.reviewer_source = principal_source
+            g.reviewer_tier = get_principal_tier(principal, principal_source).name
         
         return f(*args, **kwargs)
 
     return decorated_function
+
+
+def _require_reviewer_tier(required_tier: str):
+    """Decorator: Require a minimum privilege tier for QA endpoints."""
+    required = _normalize_required_tier(required_tier)
+
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            from flask import g
+
+            principal = getattr(g, "reviewer_principal", None)
+            principal_source = getattr(g, "reviewer_source", "")
+            if not principal:
+                principal, principal_source = _get_reviewer_identity()
+                if not principal:
+                    return jsonify({"error": "Unauthorized"}), 401
+
+            actual = get_principal_tier(principal, principal_source)
+            if int(actual) < int(required):
+                return jsonify(
+                    {
+                        "error": "Forbidden",
+                        "required_tier": required.name,
+                        "actual_tier": actual.name,
+                    }
+                ), 403
+
+            g.reviewer_tier = actual.name
+            return f(*args, **kwargs)
+
+        return decorated_function
+
+    return decorator
 
 
 # ===== ENDPOINTS =====
@@ -220,6 +280,7 @@ def get_pending_reviews():
 @qa_bp.route("/verify-and-promote", methods=["POST"])
 @_require_qa_enabled
 @_require_reviewer
+@_require_reviewer_tier("admin_reviewer")
 def verify_and_promote():
     """
     Promote a DL1 dataset to DL2 after human review.
@@ -478,7 +539,7 @@ def get_stats():
         return jsonify({
             "dl1_pending_count": len(pending),
             "dl2_verified_count": len(verified),
-            "rejected_count": 0,  # TODO: Query for rejected count
+            "rejected_count": int(get_rejected_count()),
             "avg_trust_score": round(avg_trust, 2),
             "avg_extraction_confidence": round(avg_confidence, 2),
         })

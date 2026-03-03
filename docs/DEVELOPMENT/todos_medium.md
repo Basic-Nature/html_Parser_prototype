@@ -6,23 +6,23 @@ title: "TODO/FIXME Index — Medium"
 <!-- markdownlint-disable-file MD001 MD004 MD011 MD022 MD024 MD025 MD033 MD034 MD037 MD050 MD052 -->
 
 Index scope: TODO/FIXME/HACK/XXX annotations under `webapp, scripts, docs`.
-Generated: 2026-02-18 03:34:21Z
-Total annotations: 71
-High: 0, Medium: 71, Low: 0
+Generated: 2026-03-03 06:02:17Z
+Total annotations: 78
+High: 0, Medium: 78, Low: 0
 
 ## Scan Profile
 
 - Roots: webapp, scripts, docs
 - Tracked markers: TODO, FIXME, HACK, XXX
 - Priority map: high: FIXME; medium: HACK, TODO, XXX; low: none
-- Exclusions (sample): docs/DEVELOPMENT/todos_medium.md, webapp/parser/Context_Integration/Context_Library/cache/context_cache.json, docs/DEVELOPMENT/pipeline_map.md, webapp/static/vendor/xlsx.full.min.js, docs/DEVELOPMENT/todos.md
+- Exclusions (sample): docs/DEVELOPMENT/project_audit.md, docs/DEVELOPMENT/todos_high.md, webapp/parser/Context_Integration/Context_Library/cache/context_cache.json, docs/DEVELOPMENT/todos_low.md, docs/DEVELOPMENT/todos_medium.md
 - Regex: \b(TODO|FIXME|HACK|XXX)\b (case-insensitive)
 
 ## Marker Breakdown
 
 - HACK: 5 (medium)
-- TODO: 62 (medium)
-- XXX: 4 (medium)
+- TODO: 67 (medium)
+- XXX: 6 (medium)
 
 ## Root Coverage
 
@@ -35,6 +35,9 @@ High: 0, Medium: 71, Low: 0
 - docs\README.md: 3
 - docs\STATE_HANDLER_INTEGRATION.md: 3
 - docs\_data\navigation.yml: 1
+- docs\temp\CORE_INFRASTRUCTURE_GAP_AUDIT_2026-03-02.md: 5
+- docs\temp\STATUS_IMPLEMENTATION_SUMMARY.md: 2
+- docs\temp\integrity_ui_integration_summary.md: 2
 - scripts\generate_county_handler.py: 4
 - scripts\generate_state_handler.py: 2
 - scripts\generate_todo_index.py: 2
@@ -44,9 +47,7 @@ High: 0, Medium: 71, Low: 0
 - webapp\parser\handlers\states\new_york\county\westchester.py: 2
 - webapp\parser\handlers\vendor_state_map.py: 2
 - webapp\parser\health\fine_tune_bert_ner.py: 2
-- webapp\parser\quality_assurance\qa_endpoints.py: 1
 - webapp\parser\utils\shared_logic.py: 1
-- webapp\parser\verification_endpoints.py: 1
 - webapp\static\js\__tests__\ballot_lens_modern.placeholder.test.js: 1
 
 ## Files
@@ -102,7 +103,7 @@ High: 0, Medium: 71, Low: 0
 
 ### docs/FEATURES/STORAGE_ARCHITECTURE.md
 
-- L394 **TODO**: **Planned (TODO):**
+- L419 **TODO**: **Planned (TODO):**
 
 ### docs/QUALITY/DATA_COMPARISON_ROADMAP.md
 
@@ -131,6 +132,24 @@ High: 0, Medium: 71, Low: 0
 
 - L58 **TODO**: - title: TODO Overview
 
+### docs/temp/CORE_INFRASTRUCTURE_GAP_AUDIT_2026-03-02.md
+
+- L16 **TODO**: - key code TODO hotspots under `webapp/parser/*` and `webapp/Smart_Elections_Parser_Webapp.py`
+- L48 **TODO**: - Removed placeholder TODO bypass.
+- L108 **TODO**: - `_require_verifier_tier` includes TODO and bypasses tier checks.
+- L132 **TODO**: - `docs/QUALITY/GOOGLE_SHEETS_MIGRATION.md` (DataComparator + load script TODO)
+- L162 **TODO**: - TODO notes indicate placeholder `ner_tags[0]` alignment.
+
+### docs/temp/STATUS_IMPLEMENTATION_SUMMARY.md
+
+- L381 **TODO**: 6. **⏭️ TODO**: Integrate with worklist import modal to show workflow status
+- L382 **TODO**: 7. **⏭️ TODO**: Create status reconciliation report script
+
+### docs/temp/integrity_ui_integration_summary.md
+
+- L54 **XXX**: 1. `confidence_drop` → "ML/NLP Alert: Confidence avg dropped by X.XXX"
+- L55 **XXX**: 2. `unknown_spike` → "ML/NLP Alert: Unknown ratio increased by X.XXX"
+
 ### scripts/generate_county_handler.py
 
 - L122 **TODO**: TODO: Customize this handler for {county_name} County's specific UI.
@@ -154,7 +173,7 @@ High: 0, Medium: 71, Low: 0
 
 ### webapp/Smart_Elections_Parser_Webapp.py
 
-- L7844 **TODO**: entities = []  # TODO: Use spaCy NER to detect entities
+- L8942 **TODO**: entities = []  # TODO: Use spaCy NER to detect entities
 
 ### webapp/parser/fixtures/candidate_summary_index.json
 
@@ -177,17 +196,9 @@ High: 0, Medium: 71, Low: 0
 - L80 **TODO**: # TODO: Improve token alignment with actual character offsets (start, end)
 - L112 **TODO**: # TODO: Improve token alignment (start, end offsets)
 
-### webapp/parser/quality_assurance/qa_endpoints.py
-
-- L481 **TODO**: "rejected_count": 0,  # TODO: Query for rejected count
-
 ### webapp/parser/utils/shared_logic.py
 
 - L4073 **TODO**: """Generate project audit + pipeline map, optionally a basic TODO index."""
-
-### webapp/parser/verification_endpoints.py
-
-- L79 **TODO**: # TODO: Check principal's tier from privilege_tiers module
 
 ### webapp/static/js/__tests__/ballot_lens_modern.placeholder.test.js
 

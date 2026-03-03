@@ -2,6 +2,7 @@ import os
 import threading
 import time
 import traceback
+from pathlib import Path
 
 import orjson
 
@@ -117,6 +118,95 @@ def save_pipeline_report(session_id, results, errors):
             "errors": errors
         }, option=orjson.OPT_INDENT_2))
     return report_path
+
+
+def _collect_output_artifacts(entries) -> dict:
+    output_root = Path("output").resolve()
+    output_dirs: set[str] = set()
+    csv_paths: set[str] = set()
+    xlsx_paths: set[str] = set()
+    metadata_paths: set[str] = set()
+    other_paths: set[str] = set()
+
+    def _to_rel_output_path(path_value):
+        if not isinstance(path_value, str):
+            return None
+        raw = path_value.strip()
+        if not raw:
+            return None
+        normalized = raw.replace("\\", "/")
+        if normalized.startswith("output/"):
+            normalized = normalized[len("output/"):]
+        try:
+            abs_path = os.path.abspath(raw)
+            output_root_str = str(output_root)
+            if abs_path == output_root_str:
+                return None
+            if abs_path.startswith(output_root_str + os.sep):
+                return os.path.relpath(abs_path, output_root_str).replace("\\", "/")
+        except Exception:
+            pass
+        if normalized.startswith("/"):
+            return None
+        return normalized
+
+    def _record_path(path_value):
+        rel = _to_rel_output_path(path_value)
+        if not rel:
+            return
+        low = rel.lower()
+        if low.endswith(".csv"):
+            csv_paths.add(rel)
+        elif low.endswith(".xlsx") or low.endswith(".xls"):
+            xlsx_paths.add(rel)
+        elif low.endswith("results.metadata.json") or low.endswith("metadata.json"):
+            metadata_paths.add(rel)
+        elif any(low.endswith(ext) for ext in (".json", ".pdf")):
+            other_paths.add(rel)
+
+    if isinstance(entries, list):
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+            for key in ("output_file", "output_path", "csv_path", "xlsx_path", "excel_path", "metadata_path"):
+                _record_path(entry.get(key))
+                _record_path(metadata.get(key))
+            rel_dir = _to_rel_output_path(entry.get("output_dir")) or _to_rel_output_path(metadata.get("output_dir"))
+            if rel_dir:
+                output_dirs.add(rel_dir.rstrip("/"))
+
+    for rel_dir in sorted(output_dirs):
+        try:
+            abs_dir = output_root / rel_dir
+            if not abs_dir.is_dir():
+                continue
+            for artifact in abs_dir.iterdir():
+                if not artifact.is_file():
+                    continue
+                _record_path(str(artifact))
+        except Exception:
+            continue
+
+    ordered_csv = sorted(csv_paths)
+    ordered_xlsx = sorted(xlsx_paths)
+    ordered_metadata = sorted(metadata_paths)
+    ordered_other = sorted(other_paths)
+
+    primary_download = None
+    for bucket in (ordered_csv, ordered_xlsx, ordered_metadata, ordered_other):
+        if bucket:
+            primary_download = bucket[0]
+            break
+
+    return {
+        "output_dirs": sorted(output_dirs),
+        "csv": ordered_csv,
+        "xlsx": ordered_xlsx,
+        "metadata": ordered_metadata,
+        "other": ordered_other,
+        "primary_download": primary_download,
+    }
 
 def process_urls_for_web(
     prompt_queue,
@@ -596,6 +686,8 @@ def process_urls_for_web(
                 else:
                     results = {"total_entries": 0, "status_counts": {}, "sample_recent": [], "errors": [], "flagged_count": 0}
 
+                artifacts = _collect_output_artifacts(entries if isinstance(entries, list) else [])
+
                 audit_hits = []
                 if "entries" in locals() and isinstance(entries, list):
                     for e in entries:
@@ -694,15 +786,23 @@ def process_urls_for_web(
                     conf_metrics = {'count': 0}
 
                 results['confidence_metrics'] = conf_metrics
+                results['artifacts'] = artifacts
 
                 report_path = save_pipeline_report(session_id, results, errors=[])
                 run_summary_emitted = True
+                if isinstance(report_path, str) and report_path:
+                    rel_report = report_path.replace("\\", "/")
+                    if rel_report.startswith("output/"):
+                        rel_report = rel_report[len("output/"):]
+                    if rel_report and rel_report not in artifacts['other']:
+                        artifacts['other'].append(rel_report)
                 if emit_func:
                     try:
                         emit_func({
                             "type": "run_summary",
                             "session_id": session_id,
                             "summary": results,
+                            "artifacts": artifacts,
                             "report_path": report_path,
                             "timestamp": time.time(),
                         })
@@ -758,6 +858,8 @@ def process_urls_for_web(
                     "flagged_count": 0,
                     "confidence_metrics": {"count": 0},
                 }
+                fallback_artifacts = _collect_output_artifacts(processed_urls if isinstance(processed_urls, list) else [])
+                minimal_results["artifacts"] = fallback_artifacts
                 
                 report_path = save_pipeline_report(session_id, minimal_results, errors=[])
                 logger.info({
@@ -770,6 +872,7 @@ def process_urls_for_web(
                     "type": "run_summary",
                     "session_id": session_id,
                     "summary": minimal_results,
+                    "artifacts": fallback_artifacts,
                     "report_path": report_path,
                     "timestamp": time.time(),
                 })

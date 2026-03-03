@@ -2800,6 +2800,7 @@ socket.on('run_progress', /** @param {RunProgressPayload} data */ (data) => {
  * @property {RunConfidenceMetrics} [confidence_metrics]
  * @property {RunErrorEntry[]} [errors]
  * @property {FlaggedDetail[]} [flagged_details]
+ * @property {{csv?: string[], xlsx?: string[], metadata?: string[], other?: string[], primary_download?: string}} [artifacts]
  */
 
 /**
@@ -2807,6 +2808,7 @@ socket.on('run_progress', /** @param {RunProgressPayload} data */ (data) => {
  * @property {string} session_id
  * @property {number} [timestamp]
  * @property {RunSummary} [summary]
+ * @property {{csv?: string[], xlsx?: string[], metadata?: string[], other?: string[], primary_download?: string}} [artifacts]
  * @property {string} [report_path]
  */
 
@@ -2829,6 +2831,7 @@ socket.on('run_summary', /**
     const summary = data.summary || {};
     /** @type {Object.<string, number>} */
     const counts = summary.status_counts || {};
+    const artifacts = data.artifacts || summary.artifacts || {};
     /** @type {number} */
     const total = summary.total_entries || 0;
     let _html = `<strong>Run:</strong> ${escapeHtml(data.session_id)} — <em>completed</em> <span class="small muted">(${new Date((data.timestamp || Date.now())*1000).toLocaleString()})</span>`;
@@ -2884,20 +2887,54 @@ socket.on('run_summary', /**
       _html += `</ul></details></div>`;
       _html += `<div class="mt-1"><button id="btnViewFlagged" class="btn btn-sm btn-primary">View flagged details</button></div>`;
     }
-    if (data.report_path) {
-      const parts = data.report_path.replace(/\\/g, '/').split('/');
-      const name = parts[parts.length-1] || data.report_path;
-      const href = '/download_fs?root=output&path=reports&name=' + encodeURIComponent(name);
-      const dlDiv = document.createElement('div');
-      dlDiv.className = 'mt-2';
-      const dlA = document.createElement('a');
-      dlA.href = href;
-      dlA.target = '_blank';
-      dlA.rel = 'noopener';
-      dlA.textContent = 'Download report';
-      dlDiv.appendChild(dlA);
-      panel.appendChild(dlDiv);
+
+    /**
+     * @param {string} relPath
+     * @returns {string | null}
+     */
+    const buildOutputDownloadHref = (relPath) => {
+      if (!relPath || typeof relPath !== 'string') return null;
+      const norm = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+      if (!norm) return null;
+      const slash = norm.lastIndexOf('/');
+      const dir = slash >= 0 ? norm.slice(0, slash) : '';
+      const name = slash >= 0 ? norm.slice(slash + 1) : norm;
+      if (!name) return null;
+      return `/download_fs?root=output&path=${encodeURIComponent(dir)}&name=${encodeURIComponent(name)}`;
+    };
+
+    const csvArtifacts = Array.isArray(artifacts.csv) ? artifacts.csv : [];
+    const xlsxArtifacts = Array.isArray(artifacts.xlsx) ? artifacts.xlsx : [];
+    const metadataArtifacts = Array.isArray(artifacts.metadata) ? artifacts.metadata : [];
+    const otherArtifacts = Array.isArray(artifacts.other) ? artifacts.other : [];
+    const reportArtifact = typeof data.report_path === 'string' && data.report_path
+      ? data.report_path.replace(/\\/g, '/').replace(/^output\//, '')
+      : '';
+
+    const linkRows = [];
+    csvArtifacts.slice(0, 2).forEach((path) => linkRows.push({ label: 'CSV', path }));
+    xlsxArtifacts.slice(0, 2).forEach((path) => linkRows.push({ label: 'Excel', path }));
+    metadataArtifacts.slice(0, 1).forEach((path) => linkRows.push({ label: 'Metadata', path }));
+    if (reportArtifact) linkRows.push({ label: 'Report', path: reportArtifact });
+    if (!linkRows.length) {
+      otherArtifacts.slice(0, 2).forEach((path) => linkRows.push({ label: 'Artifact', path }));
     }
+
+    if (linkRows.length) {
+      _html += '<div class="mt-2">Output downloads: ';
+      _html += linkRows.map((item) => {
+        const href = buildOutputDownloadHref(item.path);
+        if (!href) return '';
+        return `<a class="btn btn-sm" href="${href}" target="_blank" rel="noopener">${escapeHtml(item.label)}</a>`;
+      }).filter(Boolean).join(' ');
+      _html += '</div>';
+      if (typeof artifacts.primary_download === 'string' && artifacts.primary_download) {
+        _html += `<div class="mt-1 small muted">Primary output: ${escapeHtml(artifacts.primary_download)}</div>`;
+      }
+    }
+
+    panel.innerHTML = _html;
+
     // If html content (other parts) existed previously, ensure panel has that content appended elsewhere
     // attach listener for modal open if present
     try {
@@ -4025,19 +4062,23 @@ function updateSessionsList(sessions = state.sessions) {
   list.innerHTML = '';
   const frag = document.createDocumentFragment();
   state.sessions.forEach(session => {
+    const sessionId = String(session?.id || session?.session_id || 'unknown');
+    const sessionState = String(session?.status || session?.state || 'pending');
+    const sessionPhase = String(session?.progress || session?.phase || sessionState || 'Initializing...');
+
     const card = document.createElement('div');
-    card.className = 'session-card ' + (session.id === currentSessionId ? 'active' : '');
+    card.className = 'session-card ' + (sessionId === currentSessionId ? 'active' : '');
 
     const idDiv = document.createElement('div');
     idDiv.className = 'session-id';
-    idDiv.textContent = String(session.id);
+    idDiv.textContent = sessionId;
 
     const progDiv = document.createElement('div');
     progDiv.className = 'session-progress';
     const statusSpan = document.createElement('span');
-    statusSpan.className = 'session-status ' + (session.status || 'pending');
+    statusSpan.className = 'session-status ' + sessionState;
     progDiv.appendChild(statusSpan);
-    progDiv.appendChild(document.createTextNode(' ' + String(session.progress || 'Initializing...')));
+    progDiv.appendChild(document.createTextNode(' ' + sessionPhase));
 
     card.appendChild(idDiv);
     card.appendChild(progDiv);
@@ -8124,6 +8165,7 @@ const UrlListManager = (() => {
     counties: {}
   };
   let mappingsFetched = false;
+  let mappingsFetchPromise = null;
 
   /**
    * Fetch authoritative state-to-county mappings from Google Sheets API.
@@ -8131,39 +8173,49 @@ const UrlListManager = (() => {
    */
   async function fetchStateCountyMappings() {
     if (mappingsFetched) return; // Only fetch once
-
-    try {
-      const response = await fetch('/api/election_data/states_counties', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (!response.ok) {
-        console.warn('[UrlListManager] Failed to fetch state/county mappings:', response.status);
-        mappingsFetched = true; // Don't retry on auth failure
-        return;
-      }
-
-      const data = await response.json();
-      if (data.success) {
-        stateCountyMappings.states = data.states || [];
-        stateCountyMappings.counties = data.counties || {};
-        mappingsFetched = true;
-        
-        if (data.total_states === 0 && data.note) {
-          // Graceful degradation: no auth, using URL-based fallback
-          console.log('[UrlListManager] Using URL-based state/county detection (no auth)');
-        } else {
-          console.log('[UrlListManager] Loaded authoritative mappings:', data.total_states, 'states,', data.total_counties, 'counties');
-        }
-      } else {
-        console.warn('[UrlListManager] State/county mappings fetch failed:', data.error);
-        mappingsFetched = true; // Don't retry
-      }
-    } catch (error) {
-      console.warn('[UrlListManager] Error fetching state/county mappings:', error);
-      mappingsFetched = true; // Don't retry
+    if (mappingsFetchPromise) {
+      await mappingsFetchPromise;
+      return;
     }
+
+    mappingsFetchPromise = (async () => {
+
+      try {
+        const response = await fetch('/api/election_data/states_counties', {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+          console.warn('[UrlListManager] Failed to fetch state/county mappings:', response.status);
+          mappingsFetched = true; // Don't retry on auth failure
+          return;
+        }
+
+        const data = await response.json();
+        if (data.success) {
+          stateCountyMappings.states = data.states || [];
+          stateCountyMappings.counties = data.counties || {};
+          mappingsFetched = true;
+
+          if (data.total_states === 0 && data.note) {
+            console.log('[UrlListManager] Authoritative state/county mappings unavailable:', data.note);
+          } else {
+            console.log('[UrlListManager] Loaded authoritative mappings:', data.total_states, 'states,', data.total_counties, 'counties');
+          }
+        } else {
+          console.warn('[UrlListManager] State/county mappings fetch failed:', data.error);
+          mappingsFetched = true; // Don't retry
+        }
+      } catch (error) {
+        console.warn('[UrlListManager] Error fetching state/county mappings:', error);
+        mappingsFetched = true; // Don't retry
+      } finally {
+        mappingsFetchPromise = null;
+      }
+    })();
+
+    await mappingsFetchPromise;
   }
 
   /**
@@ -8257,38 +8309,17 @@ const UrlListManager = (() => {
         }
       }
     } else {
-      // Fallback: use URL-based heuristics (legacy behavior)
-      console.warn('[UrlListManager] Using URL-based state/county detection (fallback)');
-      const statesSeen = Array.from(new Set(meta.map(m => m.state).filter(Boolean))).sort();
-
-      stateSelect.innerHTML = '<option value="">— Filter by state —</option>';
-      statesSeen.forEach(st => {
-        const opt = document.createElement('option');
-        opt.value = st;
-        opt.textContent = st;
-        stateSelect.appendChild(opt);
-      });
-
-      countySelect.innerHTML = '<option value="">— Select a state first —</option>';
-      countySelect.disabled = !selectedState;
-
-      if (selectedState) {
-        const counties = Array.from(new Set(meta.filter(m => m.state === selectedState && m.county).map(m => m.county))).sort();
-        if (counties.length) {
-          countySelect.innerHTML = '<option value="">— Filter by county —</option>';
-          counties.forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = c;
-            opt.textContent = c;
-            countySelect.appendChild(opt);
-          });
-          countySelect.disabled = false;
-        } else {
-          countySelect.innerHTML = `<option value="">No counties detected for ${selectedState}</option>`;
-          countySelect.disabled = true;
-        }
-      }
+      // Authoritative-only mode: legacy URL heuristics removed
+      selectedState = '';
+      selectedCounty = '';
+      stateSelect.innerHTML = '<option value="">State filter unavailable (authenticate to load mappings)</option>';
+      stateSelect.disabled = true;
+      countySelect.innerHTML = '<option value="">County filter unavailable</option>';
+      countySelect.disabled = true;
+      return;
     }
+
+    stateSelect.disabled = false;
 
     // Restore selections if still present
     if (selectedState) {
@@ -8679,6 +8710,7 @@ const UrlListManager = (() => {
 
   async function fetchUrls() {
     try {
+      await fetchStateCountyMappings();
       const response = await fetch('/api/urls');
 
       // Prefer JSON when available; otherwise handle text/HTML gracefully

@@ -119,7 +119,9 @@ document.addEventListener('DOMContentLoaded', () => {
     ghostPanelToggle: document.getElementById('ghostPanelToggle'),
     ghostPanelBody: document.getElementById('ghostPanelBody'),
     pipelineSteps: document.getElementById('uploadPipelineSteps'),
-    pipelineDetail: document.getElementById('uploadPipelineDetail')
+    pipelineDetail: document.getElementById('uploadPipelineDetail'),
+    readOnlyBanner: document.getElementById('dataFrameworkReadOnlyBanner'),
+    readOnlyMessage: document.getElementById('dataFrameworkReadOnlyMessage')
   };
   const colWrap = el.colBtn?.parentElement;
 
@@ -174,6 +176,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let previewActive = false;
   let previewMode = 'idle';
   let previewTimer = null;
+  let priorityTimer = null;
+  let authRestrictedMode = false;
+  let authRestrictionReason = '';
+  let authRestrictionNotified = false;
   let compactPreferenceSet = false;
   let dropoffDrawerOpen = false;
   let dropoffData = [];
@@ -215,6 +221,41 @@ document.addEventListener('DOMContentLoaded', () => {
   const VIZ_DATASET_DOWN_BALLOT = 'down_ballot';
   const VIZ_DATASET_WAREHOUSE = 'warehouse_core';
   const DEFAULT_VISIBLE_COLUMNS = ['state', 'county', 'contest', 'candidate', 'party', 'votes'];
+
+  function isAuthForbiddenStatus(status) {
+    return status === 401 || status === 403;
+  }
+
+  function enterAuthRestrictedMode(reason = 'Authentication required for protected Data Framework endpoints.') {
+    authRestrictedMode = true;
+    authRestrictionReason = reason;
+    if (el.readOnlyBanner) {
+      if (el.readOnlyMessage) {
+        el.readOnlyMessage.textContent = `Read-only mode: ${reason}`;
+      }
+      el.readOnlyBanner.classList.remove('d-none');
+    }
+    if (previewTimer) {
+      window.clearInterval(previewTimer);
+      previewTimer = null;
+    }
+    if (priorityTimer) {
+      window.clearInterval(priorityTimer);
+      priorityTimer = null;
+    }
+    previewActive = false;
+    previewMode = 'idle';
+    setPreviewState(false);
+    setPreviewStatus('Read-only mode: authenticate to enable curated/worklist/preview feeds.');
+    setPriorityStatus('Read-only mode: priority tracker requires authentication.', 'info');
+    if (el.curatedStatus) {
+      setStatusText(el.curatedStatus, 'Read-only mode: authenticate to load curated datasets.');
+    }
+    if (!authRestrictionNotified) {
+      showInfoToast(reason);
+      authRestrictionNotified = true;
+    }
+  }
 
   // ---------- Utilities ----------
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
@@ -503,11 +544,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function fetchPriorityStatus() {
     if (!priorityUrl) return;
+    if (authRestrictedMode) return;
     try {
       const url = new URL(priorityUrl, window.location.origin);
       if (priorityState) url.searchParams.set('state', priorityState);
       if (priorityYear) url.searchParams.set('year', priorityYear);
       const response = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+      if (isAuthForbiddenStatus(response.status)) {
+        enterAuthRestrictedMode('Authentication required for Data Framework priority and preview APIs.');
+        return;
+      }
       if (!response.ok) {
         const cached = readWarehouseStatusSnapshot();
         if (cached?.payload && applyPriorityPayload(cached.payload, true)) return;
@@ -535,10 +581,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function fetchWorklistOverview() {
     if (!worklistOverviewUrl) return;
+    if (authRestrictedMode) return;
     try {
       const url = new URL(worklistOverviewUrl, window.location.origin);
       url.searchParams.set('limit', '200');
       const response = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+      if (isAuthForbiddenStatus(response.status)) {
+        enterAuthRestrictedMode('Authentication required for Data Framework worklist and DB-Lite feeds.');
+        return;
+      }
       if (!response.ok) return;
       const payload = await response.json().catch(() => null);
       if (!payload || payload.success === false) return;
@@ -1574,8 +1625,13 @@ document.addEventListener('DOMContentLoaded', () => {
   async function fetchPreviewPayload(mode) {
     const url = buildPreviewUrl(mode);
     if (!url) return null;
+    if (authRestrictedMode) return null;
     try {
       const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (isAuthForbiddenStatus(response.status)) {
+        enterAuthRestrictedMode('Authentication required for Data Framework preview feed.');
+        return null;
+      }
       if (!response.ok) return null;
       return await response.json().catch(() => null);
     } catch (err) {
@@ -1623,6 +1679,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function startPreviewCycle(mode = 'idle') {
     if (!previewUrl) return;
+    if (authRestrictedMode) return;
     previewActive = true;
     previewMode = mode;
     setPreviewState(true);
@@ -1825,10 +1882,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function fetchCuratedDatasets() {
     if (!curatedUrl) return;
+    if (authRestrictedMode) return;
     setStatusText(el.curatedStatus, 'Loading curated datasets...');
     fetch(curatedUrl, { headers: { 'Accept': 'application/json' } })
-      .then(r => r.json())
+      .then(r => {
+        if (isAuthForbiddenStatus(r.status)) {
+          enterAuthRestrictedMode('Authentication required for curated datasets and preview feeds.');
+          return null;
+        }
+        return r.json().catch(() => null);
+      })
       .then(data => {
+        if (!data) return;
         curatedItems = Array.isArray(data?.items) ? data.items : [];
         updateCuratedStateOptions(curatedItems);
         updateCuratedCountyOptions(curatedItems);
@@ -1847,8 +1912,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function fetchDbLiteDataset(url, mapper) {
     if (!url) return { ok: false, rows: [] };
+    if (authRestrictedMode) return { ok: false, rows: [] };
     try {
       const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (isAuthForbiddenStatus(response.status)) {
+        enterAuthRestrictedMode('Authentication required for DB-Lite dataset feeds.');
+        return { ok: false, rows: [] };
+      }
       if (!response.ok) return { ok: false, rows: [] };
       const payload = await response.json().catch(() => null);
       const records = Array.isArray(payload?.records) ? payload.records : [];
@@ -1884,6 +1954,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function refreshFinalizedSliceForSelection() {
     if (vizDataset !== VIZ_DATASET_FINALIZED) return;
+    if (authRestrictedMode) return;
     try {
       const url = new URL('/api/election_data/db_lite/finalized', window.location.origin);
       url.searchParams.set('limit', '2000');
@@ -1893,6 +1964,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (vizContest) url.searchParams.set('contest', vizContest);
 
       const response = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+      if (isAuthForbiddenStatus(response.status)) {
+        enterAuthRestrictedMode('Authentication required for DB-Lite finalized dataset queries.');
+        return;
+      }
       if (!response.ok) return;
       const payload = await response.json().catch(() => null);
       if (!payload || payload.success === false) return;
@@ -3156,14 +3231,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { once: true });
   }
 
-  startPreviewCycle('idle');
-  fetchWorklistOverview();
-  fetchPriorityStatus();
-  window.setInterval(fetchPriorityStatus, PRIORITY_REFRESH_MS);
-  fetchCuratedDatasets();
+  async function bootstrapProtectedFeeds() {
+    await fetchPriorityStatus();
+    if (authRestrictedMode) return;
+    priorityTimer = window.setInterval(fetchPriorityStatus, PRIORITY_REFRESH_MS);
+    startPreviewCycle('idle');
+    fetchWorklistOverview();
+    fetchCuratedDatasets();
+    fetchDbLiteFinalized();
+    fetchDbLiteDownBallot();
+  }
+
+  bootstrapProtectedFeeds();
   fetchFinalizedMetadata();
-  fetchDbLiteFinalized();
-  fetchDbLiteDownBallot();
   loadDropoffData();
   fetchData(true);
 });  

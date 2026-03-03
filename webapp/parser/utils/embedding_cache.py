@@ -9,6 +9,7 @@ import logging
 # ---------------------------------------------------------------
 import os
 import threading
+import time
 from functools import lru_cache
 
 import numpy as np
@@ -40,15 +41,20 @@ for name in [
     logger_obj = logging.getLogger(name)
     logger_obj.addHandler(SQLAlchemyToSharedLoggerHandler(logger))
 
-with logger.progress_bar("Loading...", total=100) as update_progress:
-    for i in range(100):
-        # ... do work ...
-        update_progress(i + 1)
-
 # --- In-memory process-level cache for batch operations ---
 _batch_cache = {}
 _batch_cache_lock = threading.Lock()
 _db_lock = threading.Lock()
+_disk_cache_lock = threading.Lock()
+_pending_disk_writes = 0
+_last_disk_checkpoint_ts = time.time()
+
+
+def _int_env(name: str, default: int, *, minimum: int = 0) -> int:
+    try:
+        return max(minimum, int(os.environ.get(name, str(default))))
+    except Exception:
+        return default
 
 # --- Disk cache using joblib if available, else pickle ---
 if JOBLIB_AVAILABLE:
@@ -56,15 +62,26 @@ if JOBLIB_AVAILABLE:
         if os.path.exists(DISK_CACHE_PATH):
             try:
                 cache = joblib.load(DISK_CACHE_PATH)
+                if not isinstance(cache, dict):
+                    cache = {}
                 console.print(f"[cyan][EMBEDDING CACHE] Loaded disk cache with {len(cache)} embeddings.[/cyan]")
                 return cache
             except Exception as e:
                 console.print(f"[red][EMBEDDING CACHE] Failed to load disk cache: {e}[/red]")
         return {}
-    def save_disk_cache():
+    def save_disk_cache(*, reason: str = "manual"):
+        global _last_disk_checkpoint_ts, _pending_disk_writes
         try:
-            joblib.dump(_disk_cache, DISK_CACHE_PATH)
-            console.print(f"[cyan][EMBEDDING CACHE] Saved disk cache with {len(_disk_cache)} embeddings.[/cyan]")
+            with _disk_cache_lock:
+                snapshot = dict(_disk_cache)
+            os.makedirs(os.path.dirname(DISK_CACHE_PATH), exist_ok=True)
+            joblib.dump(snapshot, DISK_CACHE_PATH)
+            _last_disk_checkpoint_ts = time.time()
+            _pending_disk_writes = 0
+            size_mb = os.path.getsize(DISK_CACHE_PATH) / (1024 * 1024) if os.path.exists(DISK_CACHE_PATH) else 0.0
+            console.print(
+                f"[cyan][EMBEDDING CACHE] Saved disk cache ({reason}) with {len(snapshot)} embeddings ({size_mb:.2f} MB).[/cyan]"
+            )
         except Exception as e:
             console.print(f"[red][EMBEDDING CACHE] Failed to save disk cache: {e}[/red]")
 else:
@@ -73,21 +90,31 @@ else:
             try:
                 with open(DISK_CACHE_PATH, "rb") as f:
                     cache = pickle.load(f)
+                if not isinstance(cache, dict):
+                    cache = {}
                 console.print(f"[cyan][EMBEDDING CACHE] Loaded disk cache with {len(cache)} embeddings.[/cyan]")
                 return cache
             except Exception as e:
                 console.print(f"[red][EMBEDDING CACHE] Failed to load disk cache: {e}[/red]")
         return {}
-    def save_disk_cache():
+    def save_disk_cache(*, reason: str = "manual"):
+        global _last_disk_checkpoint_ts, _pending_disk_writes
         try:
+            with _disk_cache_lock:
+                snapshot = dict(_disk_cache)
+            os.makedirs(os.path.dirname(DISK_CACHE_PATH), exist_ok=True)
             with open(DISK_CACHE_PATH, "wb") as f:
-                pickle.dump(_disk_cache, f)
-            console.print(f"[cyan][EMBEDDING CACHE] Saved disk cache with {len(_disk_cache)} embeddings.[/cyan]")
+                pickle.dump(snapshot, f)
+            _last_disk_checkpoint_ts = time.time()
+            _pending_disk_writes = 0
+            size_mb = os.path.getsize(DISK_CACHE_PATH) / (1024 * 1024) if os.path.exists(DISK_CACHE_PATH) else 0.0
+            console.print(
+                f"[cyan][EMBEDDING CACHE] Saved disk cache ({reason}) with {len(snapshot)} embeddings ({size_mb:.2f} MB).[/cyan]"
+            )
         except Exception as e:
             console.print(f"[red][EMBEDDING CACHE] Failed to save disk cache: {e}[/red]")
 
 _disk_cache = load_disk_cache()
-atexit.register(save_disk_cache)
 
 # --- DB readiness / disablement flags ---
 EMBEDDING_CACHE_DISABLE_DB = os.environ.get("EMBEDDING_CACHE_DISABLE_DB", "").lower() in ("1", "true", "yes")
@@ -98,6 +125,12 @@ try:
     EMBEDDING_CACHE_MAX_BATCH = max(1, int(os.environ.get("EMBEDDING_CACHE_MAX_BATCH", "500")))
 except Exception:
     EMBEDDING_CACHE_MAX_BATCH = 500
+EMBEDDING_CACHE_CHECKPOINT_WRITES = _int_env("EMBEDDING_CACHE_CHECKPOINT_WRITES", 250, minimum=1)
+EMBEDDING_CACHE_CHECKPOINT_SECONDS = _int_env("EMBEDDING_CACHE_CHECKPOINT_SECONDS", 120, minimum=1)
+EMBEDDING_CACHE_SEED_ON_START = os.environ.get("EMBEDDING_CACHE_SEED_ON_START", "false").lower() in ("1", "true", "yes")
+EMBEDDING_CACHE_SEED_LIMIT = _int_env("EMBEDDING_CACHE_SEED_LIMIT", 250, minimum=1)
+EMBEDDING_CACHE_DISK_WARN_MB = _int_env("EMBEDDING_CACHE_DISK_WARN_MB", 512, minimum=1)
+EMBEDDING_CACHE_PRECHECK = os.environ.get("EMBEDDING_CACHE_PRECHECK", "true").lower() in ("1", "true", "yes")
 _db_disabled_reason = None
 if EMBEDDING_CACHE_DB_MODE == "off":
     _db_disabled_reason = "EMBEDDING_CACHE_DB_MODE=off"
@@ -111,6 +144,54 @@ _db_ready = None
 _db_warning_logged = False
 _db_readonly_logged = False
 EMBEDDING_CACHE_AUTO_WARMUP = os.environ.get("EMBEDDING_CACHE_AUTO_WARMUP", "false").lower() in ("1", "true", "yes")
+
+
+def _warn_on_large_disk_cache() -> None:
+    if not os.path.exists(DISK_CACHE_PATH):
+        return
+    size_mb = os.path.getsize(DISK_CACHE_PATH) / (1024 * 1024)
+    if size_mb > EMBEDDING_CACHE_DISK_WARN_MB:
+        console.print(
+            f"[yellow][EMBEDDING CACHE] Disk cache is {size_mb:.2f} MB (threshold={EMBEDDING_CACHE_DISK_WARN_MB} MB). Consider pruning/rotation.[/yellow]",
+            highlight=False,
+        )
+
+
+def _checkpoint_disk_cache(*, force: bool = False, reason: str = "checkpoint") -> None:
+    if force:
+        save_disk_cache(reason=reason)
+        _warn_on_large_disk_cache()
+        return
+    elapsed = time.time() - _last_disk_checkpoint_ts
+    if _pending_disk_writes >= EMBEDDING_CACHE_CHECKPOINT_WRITES or elapsed >= EMBEDDING_CACHE_CHECKPOINT_SECONDS:
+        save_disk_cache(reason=reason)
+        _warn_on_large_disk_cache()
+
+
+def _note_disk_cache_mutation(count: int = 1) -> None:
+    global _pending_disk_writes
+    _pending_disk_writes += max(1, count)
+    _checkpoint_disk_cache(reason="periodic")
+
+
+def get_embedding_cache_status() -> dict:
+    db_state = "disabled" if _db_disabled_reason else ("readonly" if _db_readonly else "enabled")
+    with _batch_cache_lock:
+        mem_count = len(_batch_cache)
+    with _disk_cache_lock:
+        disk_count = len(_disk_cache)
+    return {
+        "db_mode": EMBEDDING_CACHE_DB_MODE,
+        "db_state": db_state,
+        "db_ready": bool(_db_ready),
+        "disk_cache_path": DISK_CACHE_PATH,
+        "disk_entries": disk_count,
+        "memory_entries": mem_count,
+        "checkpoint_writes": EMBEDDING_CACHE_CHECKPOINT_WRITES,
+        "checkpoint_seconds": EMBEDDING_CACHE_CHECKPOINT_SECONDS,
+        "seed_on_start": EMBEDDING_CACHE_SEED_ON_START,
+        "seed_limit": EMBEDDING_CACHE_SEED_LIMIT,
+    }
 
 
 def _log_cache_status():
@@ -129,6 +210,19 @@ def _log_cache_status():
 
 
 _log_cache_status()
+if EMBEDDING_CACHE_PRECHECK:
+    status = get_embedding_cache_status()
+    console.print(
+        f"[cyan][EMBEDDING CACHE] precheck: db_state={status['db_state']}, mem={status['memory_entries']}, disk={status['disk_entries']}, checkpoint={status['checkpoint_writes']} writes/{status['checkpoint_seconds']}s[/cyan]",
+        highlight=False,
+    )
+
+
+def _save_disk_cache_on_exit() -> None:
+    _checkpoint_disk_cache(force=True, reason="shutdown")
+
+
+atexit.register(_save_disk_cache_on_exit)
 
 
 def ensure_embedding_cache_table():
@@ -192,6 +286,43 @@ def _db_write_allowed() -> bool:
     return ensure_embedding_cache_table()
 
 
+def _seed_cache_from_db(limit: int | None = None) -> int:
+    if not ensure_embedding_cache_table():
+        return 0
+    limit_value = max(1, int(limit or EMBEDDING_CACHE_SEED_LIMIT))
+    loaded = 0
+    try:
+        with _db_lock:
+            with get_session() as session:
+                stmt = select(EmbeddingCache).order_by(EmbeddingCache.created_at.desc()).limit(limit_value)
+                for obj in session.execute(stmt).scalars():
+                    if not obj.embedding:
+                        continue
+                    emb = np.frombuffer(obj.embedding, dtype=np.float32)
+                    with _batch_cache_lock:
+                        if obj.segment_hash not in _batch_cache:
+                            _batch_cache[obj.segment_hash] = emb
+                    with _disk_cache_lock:
+                        if obj.segment_hash not in _disk_cache:
+                            _disk_cache[obj.segment_hash] = emb
+                            loaded += 1
+        if loaded:
+            _note_disk_cache_mutation(loaded)
+        return loaded
+    except Exception as e:
+        logger.warning(f"[EMBEDDING CACHE] DB seed skipped due to error: {e}")
+        return 0
+
+
+if EMBEDDING_CACHE_SEED_ON_START:
+    seeded = _seed_cache_from_db()
+    if seeded:
+        console.print(
+            f"[cyan][EMBEDDING CACHE] startup seed loaded {seeded} embedding(s) from DB into disk/memory cache.[/cyan]",
+            highlight=False,
+        )
+
+
 def compute_embedding_for_hash(segment_hash):
     """
     Compute or fetch the embedding for a given hash.
@@ -228,15 +359,18 @@ def save_embedding(segment_hash, embedding):
     # Update in-memory and disk cache
     with _batch_cache_lock:
         _batch_cache[segment_hash] = np.array(embedding, dtype=np.float32)
-    _disk_cache[segment_hash] = np.array(embedding, dtype=np.float32)
+    with _disk_cache_lock:
+        _disk_cache[segment_hash] = np.array(embedding, dtype=np.float32)
+    _note_disk_cache_mutation(1)
 
 def load_embedding(segment_hash):
     """Load a single embedding from the cache, using in-memory and disk cache if available."""
     with _batch_cache_lock:
         if segment_hash in _batch_cache:
             return _batch_cache[segment_hash]
-    if segment_hash in _disk_cache:
-        emb = _disk_cache[segment_hash]
+    with _disk_cache_lock:
+        emb = _disk_cache.get(segment_hash)
+    if emb is not None:
         with _batch_cache_lock:
             _batch_cache[segment_hash] = emb
         return emb
@@ -250,7 +384,9 @@ def load_embedding(segment_hash):
                 emb = np.frombuffer(obj.embedding, dtype=np.float32)
                 with _batch_cache_lock:
                     _batch_cache[segment_hash] = emb
-                _disk_cache[segment_hash] = emb
+                with _disk_cache_lock:
+                    _disk_cache[segment_hash] = emb
+                _note_disk_cache_mutation(1)
                 return emb
     # Log missing hash for diagnostics
     with open(MISSING_LOG_PATH, "ab") as f:
@@ -337,7 +473,10 @@ def save_embeddings_batch(hash_emb_list):
     with _batch_cache_lock:
         for h, e in deduped.items():
             _batch_cache[h] = np.array(e, dtype=np.float32)
+    with _disk_cache_lock:
+        for h, e in deduped.items():
             _disk_cache[h] = np.array(e, dtype=np.float32)
+    _note_disk_cache_mutation(len(deduped))
 
 def load_embeddings_batch(segment_hashes):
     """
@@ -357,11 +496,13 @@ def load_embeddings_batch(segment_hashes):
                 cache_hits += 1
     # Next, try disk cache
     for h in segment_hashes:
-        if result[h] is None and h in _disk_cache:
-            result[h] = _disk_cache[h]
+        with _disk_cache_lock:
+            disk_emb = _disk_cache.get(h)
+        if result[h] is None and disk_emb is not None:
+            result[h] = disk_emb
             disk_hits += 1
             with _batch_cache_lock:
-                _batch_cache[h] = _disk_cache[h]
+                _batch_cache[h] = disk_emb
     # Only query DB for missing
     missing = [h for h in segment_hashes if result[h] is None]
     if missing and db_ok:
@@ -376,11 +517,14 @@ def load_embeddings_batch(segment_hashes):
                             db_hits += 1
                             with _batch_cache_lock:
                                 _batch_cache[obj.segment_hash] = emb
-                            _disk_cache[obj.segment_hash] = emb
+                            with _disk_cache_lock:
+                                _disk_cache[obj.segment_hash] = emb
                         except Exception as e:
                             console.print(f"[red][EMBEDDING CACHE ERROR][/red] Failed to load embedding for hash {obj.segment_hash}: {e}", highlight=False)
         except SQLAlchemyError as e:
             console.print(f"[red][EMBEDDING CACHE DB ERROR][/red] {str(e)}", highlight=False)
+    if db_hits:
+        _note_disk_cache_mutation(db_hits)
     # Log missing hashes
     still_missing = [h for h in segment_hashes if result[h] is None]
     if still_missing:

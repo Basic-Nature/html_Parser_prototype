@@ -21,6 +21,7 @@ from .data_classifier import (
     get_dataset_lineage,
     get_dl2_inventory,
     get_pending_dl2_reviews,
+    get_rejected_count,
     promote_to_dl2,
 )
 from .qa_endpoints import qa_bp
@@ -36,6 +37,7 @@ __all__ = [
     "promote_to_dl2",
     "get_pending_dl2_reviews",
     "get_dl2_inventory",
+    "get_rejected_count",
     "get_dataset_lineage",
     "qa_bp",
 ]

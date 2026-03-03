@@ -273,6 +273,10 @@
                         </div>
                     </div>
                     <div class="warehouse-status-strip" id="warehousePriorityStatus" aria-live="polite"></div>
+                    <div id="dataFrameworkReadOnlyBanner" class="alert alert-danger d-none" role="status" aria-live="polite">
+                      <span id="dataFrameworkReadOnlyMessage">Read-only mode: authenticate to enable curated datasets, priority tracker, and preview feeds.</span>
+                      <a id="dataFrameworkAuthLink" class="btn btn-sm ms-2" href="{{ url_for('auth_welcome', next=request.url) }}">Authenticate</a>
+                    </div>
                     <div class="warehouse-priority-controls" aria-label="Priority focus">
                       <label for="priorityStateSelect" class="sr-only">Priority state</label>
                       <select id="priorityStateSelect" aria-label="Priority state">
