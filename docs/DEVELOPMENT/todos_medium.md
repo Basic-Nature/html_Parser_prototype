@@ -6,7 +6,7 @@ title: "TODO/FIXME Index — Medium"
 <!-- markdownlint-disable-file MD001 MD004 MD011 MD022 MD024 MD025 MD033 MD034 MD037 MD050 MD052 -->
 
 Index scope: TODO/FIXME/HACK/XXX annotations under `webapp, scripts, docs`.
-Generated: 2026-03-03 06:02:17Z
+Generated: 2026-03-04 05:13:22Z
 Total annotations: 78
 High: 0, Medium: 78, Low: 0
 
@@ -15,7 +15,7 @@ High: 0, Medium: 78, Low: 0
 - Roots: webapp, scripts, docs
 - Tracked markers: TODO, FIXME, HACK, XXX
 - Priority map: high: FIXME; medium: HACK, TODO, XXX; low: none
-- Exclusions (sample): docs/DEVELOPMENT/project_audit.md, docs/DEVELOPMENT/todos_high.md, webapp/parser/Context_Integration/Context_Library/cache/context_cache.json, docs/DEVELOPMENT/todos_low.md, docs/DEVELOPMENT/todos_medium.md
+- Exclusions (sample): docs/DEVELOPMENT/project_audit.md, docs/DEVELOPMENT/todos_low.md, webapp/static/vendor/xlsx.full.min.js, docs/DEVELOPMENT/todos_medium.md, docs/DEVELOPMENT/todos.md
 - Regex: \b(TODO|FIXME|HACK|XXX)\b (case-insensitive)
 
 ## Marker Breakdown
@@ -164,8 +164,8 @@ High: 0, Medium: 78, Low: 0
 
 ### scripts/generate_todo_index.py
 
-- L261 **HACK**: f"Index scope: {_TASK}/{_FIXME}/HACK/XXX annotations under `{roots_text}`.",
-- L309 **HACK**: lines.append(f"No {_TASK}/{_FIXME}/HACK/XXX annotations found under specified roots.")
+- L273 **HACK**: f"Index scope: {_TASK}/{_FIXME}/HACK/XXX annotations under `{roots_text}`.",
+- L321 **HACK**: lines.append(f"No {_TASK}/{_FIXME}/HACK/XXX annotations found under specified roots.")
 
 ### scripts/migrate_google_sheets.py
 
@@ -173,7 +173,7 @@ High: 0, Medium: 78, Low: 0
 
 ### webapp/Smart_Elections_Parser_Webapp.py
 
-- L8942 **TODO**: entities = []  # TODO: Use spaCy NER to detect entities
+- L9116 **TODO**: entities = []  # TODO: Use spaCy NER to detect entities
 
 ### webapp/parser/fixtures/candidate_summary_index.json
 

@@ -186,6 +186,18 @@ def keyword_priority(keyword: str) -> str:
     return PRIORITY.get(upper, "low")
 
 
+def _normalize_emphasis_style(text: str) -> str:
+    """Normalize triple-asterisk emphasis to underscore+bold style.
+
+    markdownlint (MD049) may enforce underscore emphasis style. Source lines like
+    `***text***` are semantically valid but trigger style warnings in generated
+    docs. Convert them to `_**text**_` while preserving content.
+    """
+    if not text:
+        return text
+    return re.sub(r"\*\*\*(.+?)\*\*\*", r"_**\1**_", text)
+
+
 def filter_by_priority(entries: Sequence[MarkerEntry], allowed_levels: set[str]) -> list[MarkerEntry]:
     return [entry for entry in entries if keyword_priority(entry.keyword) in allowed_levels]
 
@@ -319,7 +331,7 @@ def format_markdown(
         lines.append(f"### {rel_path}")
         lines.append("")
         for entry in grouped[rel_path]:
-            snippet = entry.text.strip()
+            snippet = _normalize_emphasis_style(entry.text.strip())
             prefix = f"- L{entry.lineno} **{entry.keyword}**: "
             available = max(20, wrap_width - len(prefix))
             wrapped = textwrap.wrap(snippet, width=available) or [""]

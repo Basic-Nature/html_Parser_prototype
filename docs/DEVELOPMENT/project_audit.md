@@ -5,7 +5,7 @@ title: "Project Audit"
 
 Audit scope: `webapp/parser/` modules.
 
-Modules scanned: 250 | ~88022 non-empty LOC
+Modules scanned: 250 | ~88169 non-empty LOC
 
 ## Pipeline map (Mermaid)
 
@@ -92,10 +92,10 @@ Key module-to-module and cluster relationships to watch during refactors.
 
 ### Cluster flow summary
 
-- Utils → Utils: 1130 edges (intra-cluster)
+- Utils → Utils: 1126 edges (intra-cluster)
 - Other → Other: 700 edges (intra-cluster)
 - Context_Integration → Context_Integration: 386 edges (intra-cluster)
-- Entry → Entry: 301 edges (intra-cluster)
+- Entry → Entry: 316 edges (intra-cluster)
 - Format Handlers → Format Handlers: 234 edges (intra-cluster)
 - Health → Health: 192 edges (intra-cluster)
 - State Handlers → State Handlers: 69 edges (intra-cluster)
@@ -125,9 +125,9 @@ graph LR
     database_comparison["database_comparison"]
     db_utils["db_utils"]
     detect["detect"]
-    detector["detector"]
     download_utils["download_utils"]
     dynamic_table_extractor["dynamic_table_extractor"]
+    embedding_cache["embedding_cache"]
     format_router["format_router"]
     pattern_extractor["pattern_extractor"]
     pivot["pivot"]
@@ -160,6 +160,7 @@ graph LR
   pivot -->|12| contest_selector
   user_prompt -->|9| shared_logic
   pattern_extractor -->|7| browser_utils
+  embedding_cache -->|4| Smart_Elections_Parser_Webapp
   table_builder -->|4| pivot
   Smart_Elections_Parser_Webapp -->|3| database_comparison
   format_router -->|3| download_utils
@@ -169,7 +170,6 @@ graph LR
   example_county -->|2| example_state
   browser_utils -->|2| shared_logic
   database_comparison -->|2| db_utils
-  detector -->|2| detect
 ```
 
 ## Cross-module hotspots
@@ -324,204 +324,210 @@ graph LR
 ### webapp/Smart\_Elections\_Parser\_Webapp.py {#webapp-smart-elections-parser-webapp-py}
 
 - Definitions:
-  - function: `\_emit\_download\_ready` (line 213)
-  - function: `\_flagged\_url\_log\_dir` (line 253)
-  - function: `\_rotate\_flagged\_url\_path` (line 261)
-  - function: `\_prune\_flagged\_url\_logs` (line 279)
-  - function: `\_is\_local\_request` (line 295)
-  - function: `\_guarded\_ingestion\_allowed` (line 311)
-  - function: `\_request\_wants\_json` (line 328)
-  - function: `\_cert\_required\_response` (line 343)
-  - function: `\_require\_client\_cert` (line 354)
-  - function: `\_require\_cert\_for\_socket\_action` (line 373)
-  - function: `\_ingestion\_audit\_context` (line 422)
-  - function: `log\_flagged\_url` (line 438)
-  - function: `\_require\_health\_auth` (line 616)
-  - function: `\_health\_auth\_response` (line 639)
-  - function: `\_public\_health\_task\_definitions` (line 647)
-  - function: `\_get\_health\_tasks` (line 659)
-  - function: `\_get\_health\_task` (line 666)
-  - function: `\_append\_health\_task\_log` (line 672)
-  - function: `\_trim\_health\_task\_history` (line 688)
-  - function: `\_finalize\_health\_task` (line 700)
-  - function: `\_launch\_health\_task` (line 711)
-  - function: `\_run\_health\_task` (line 735)
-  - function: `ensure\_utf8` (line 785)
-  - function: `\_is\_request\_secure` (line 799)
-  - class: `EnsureWsSecurityHeaders` (line 807)
-  - function: `\_socket\_payload\_too\_large` (line 1131)
-  - function: `\_rate\_limit\_socket\_action` (line 1142)
-  - function: `\_rate\_limit` (line 1156)
-  - function: `\_generate\_upload\_filename` (line 1161)
-  - function: `\_enforce\_request\_size` (line 1167)
-  - function: `\_validate\_uploaded\_file` (line 1176)
-  - function: `\_save\_uploaded\_file` (line 1219)
-  - function: `\_log\_download\_access` (line 1242)
-  - function: `\_resolve\_output\_metadata\_path` (line 1252)
-  - function: `\_quick\_copy\_session\_dir` (line 1264)
-  - function: `\_ensure\_quick\_copy\_dir` (line 1272)
-  - function: `\_cleanup\_quick\_copy\_dir` (line 1288)
-  - function: `\_unique\_quick\_copy\_name` (line 1302)
-  - function: `\_is\_output\_download\_allowed` (line 1316)
-  - function: `is\_owner` (line 1335)
-  - function: `create\_session\_metadata` (line 1339)
-  - function: `\_recover\_stale\_session` (line 1342)
-  - function: `cleanup\_sessions` (line 1370)
-  - function: `transition\_session` (line 1399)
-  - function: `cleanup\_old\_log\_files` (line 1438)
-  - function: `client\_fingerprint` (line 1459)
-  - function: `get\_request\_principal` (line 1469)
-  - function: `\_is\_local\_host` (line 1484)
-  - function: `\_is\_azure\_environment` (line 1495)
-  - function: `\_get\_dev\_isolation\_bypass\_ips` (line 1505)
-  - function: `\_is\_dev\_isolation\_bypass\_request` (line 1511)
-  - function: `\_resolve\_cert\_session\_id` (line 1526)
-  - function: `\_derive\_auth\_context` (line 1535)
-  - function: `\_apply\_auth\_context` (line 1545)
-  - function: `\_session\_has\_principal` (line 1555)
-  - function: `resolve\_session\_id` (line 1559)
-  - function: `emit\_contest\_options` (line 1711)
-  - function: `\_promote\_inner` (line 1749)
-  - function: `ensure\_db\_tables` (line 1771)
-  - function: `normalize\_log\_obj` (line 1800)
-  - function: `store\_log` (line 1935)
-  - function: `\_heartbeat\_loop` (line 1947)
-  - function: `socketio\_emit\_func` (line 1962)
-  - function: `get\_prompt\_queue` (line 2130)
-  - function: `broadcast\_sessions` (line 2133)
-  - function: `lock\_session` (line 2150)
-  - function: `unlock\_session` (line 2161)
-  - function: `safe\_is\_alive` (line 2172)
-  - function: `is\_output\_bypassed` (line 2192)
-  - function: `get\_manual\_source` (line 2195)
-  - function: `get\_manual\_source\_origin` (line 2198)
-  - function: `get\_all\_file\_lists` (line 2201)
-  - function: `get\_session\_enums` (line 2208)
-  - function: `redirect\_to\_https\_www` (line 2225)
-  - function: `\_csp\_nonce` (line 2297)
-  - function: `build\_csp` (line 2306)
-  - function: `add\_headers` (line 2382)
-  - function: `\_handle\_global\_exception` (line 2459)
-  - function: `add\_url` (line 2506)
-  - function: `allowed\_file` (line 2624)
-  - function: `get\_url\_list` (line 2634)
-  - function: `list\_urls` (line 2650)
-  - function: `log\_run\_event` (line 2676)
-  - function: `\_validate\_filter\_value` (line 2700)
-  - function: `log\_db\_monitor\_event` (line 2717)
-  - function: `index` (line 2727)
-  - function: `api\_urls` (line 2731)
-  - function: `api\_urls\_parse` (line 2876)
-  - function: `api\_urls\_training\_data` (line 2951)
-  - function: `api\_urls\_parse\_all` (line 3031)
-  - function: `api\_filename\_parse` (line 3099)
-  - function: `\_load\_output\_metadata` (line 3175)
-  - function: `\_build\_output\_lookup\_match` (line 3186)
-  - function: `api\_outputs\_lookup` (line 3225)
-  - function: `\_get\_warehouse\_columns` (line 3283)
-  - function: `\_collect\_url\_reference\_hint` (line 3292)
-  - function: `api\_warehouse\_match` (line 3374)
-  - function: `api\_warehouse\_export` (line 3461)
-  - function: `api\_warehouse\_coverage` (line 3514)
-  - function: `data\_framework` (line 3603)
-  - function: `\_collect\_data\_framework\_scaffold` (line 3607)
-  - function: `\_extract\_year\_from\_text` (line 3661)
-  - function: `\_collect\_data\_framework\_curated` (line 3670)
-  - function: `\_resolve\_preview\_filters` (line 3725)
-  - function: `\_select\_preview\_context` (line 3745)
-  - function: `\_fetch\_preview\_rows` (line 3776)
-  - function: `api\_data\_framework\_preview` (line 3815)
-  - function: `api\_data\_framework\_scaffold` (line 3934)
-  - function: `api\_data\_framework\_scaffold\_csv` (line 3947)
-  - function: `api\_data\_framework\_curated` (line 3971)
-  - function: `api\_data\_framework\_warehouse\_status` (line 3984)
-  - function: `api\_data\_framework\_exports` (line 4333)
-  - function: `health\_dashboard` (line 4381)
-  - function: `api\_list\_health\_tasks` (line 4425)
-  - function: `api\_start\_health\_task` (line 4432)
-  - function: `api\_health\_task\_detail` (line 4449)
-  - function: `api\_health\_socket\_test` (line 4459)
-  - function: `test\_ui\_prompt` (line 4518)
-  - function: `api\_fs\_list` (line 4574)
-  - function: `api\_list\_dir\_compat` (line 4619)
-  - function: `api\_fs\_mkdir` (line 4622)
-  - function: `api\_fs\_delete` (line 4654)
-  - function: `api\_quick\_copy` (line 4693)
-  - function: `api\_quick\_copy\_clear` (line 4755)
-  - function: `download\_fs` (line 4766)
-  - function: `view\_csv` (line 4841)
-  - function: `\_build\_or\_load\_csv\_index` (line 5031)
-  - function: `csv\_locate` (line 5078)
-  - function: `favicon` (line 5119)
-  - function: `robots\_txt` (line 5178)
-  - function: `serve\_well\_known\_appspecific` (line 5183)
-  - function: `\_normalize\_party\_bucket` (line 5192)
-  - function: `\_compute\_dropoff\_items` (line 5203)
-  - function: `api\_warehouse\_election\_results` (line 5242)
-  - function: `delete\_input\_file` (line 5612)
-  - function: `delete\_output\_file` (line 5624)
-  - function: `delete\_upload\_file` (line 5636)
-  - function: `download\_input\_file` (line 5648)
-  - function: `download\_output\_file` (line 5651)
-  - function: `download\_upload\_file` (line 5732)
-  - function: `ballot\_lens` (line 5735)
-  - function: `ballot\_lens\_modern` (line 5779)
-  - function: `worklist` (line 5784)
-  - function: `api\_validate\_urls` (line 5802)
-  - function: `api\_url\_status` (line 5875)
-  - function: `site\_webmanifest` (line 6080)
-  - function: `quality\_dashboard` (line 6117)
-  - function: `\_load\_integrity\_trends` (line 6122)
-  - function: `api\_integrity\_trends` (line 6174)
-  - function: `api\_integrity\_signal` (line 6188)
-  - function: `api\_integrity\_export` (line 6233)
-  - function: `url\_status\_dashboard` (line 6270)
-  - function: `quick\_reference\_page` (line 6274)
-  - function: `api\_quality\_metrics` (line 6289)
-  - function: `api\_auth\_certificate\_info` (line 6364)
-  - function: `api\_route\_wrapper\_monitor\_snapshot` (line 6405)
-  - function: `auth\_welcome` (line 6478)
-  - function: `upload\_to\_input` (line 6531)
-  - function: `upload\_to\_output` (line 6605)
-  - function: `upload\_to\_uploads` (line 6677)
-  - function: `health` (line 6778)
-  - function: `heartbeat` (line 6784)
-  - function: `clear\_history` (line 6787)
-  - function: `history` (line 6796)
-  - function: `rerun\_prior` (line 6838)
-  - function: `api\_election\_data\_worklist` (line 6895)
-  - function: `api\_election\_data\_worklist\_overview` (line 7101)
-  - function: `api\_election\_data\_db\_lite\_finalized` (line 7150)
-  - function: `api\_election\_data\_db\_lite\_down\_ballot` (line 7225)
-  - function: `api\_election\_data\_google\_sheets\_health` (line 7273)
-  - function: `api\_election\_data\_states\_counties` (line 7351)
-  - function: `api\_assign\_dl\_owner` (line 7445)
-  - function: `api\_preqc\_check` (line 7513)
-  - function: `api\_qc1\_submit` (line 7633)
-  - function: `api\_election\_data\_stats` (line 7728)
-  - function: `handle\_contest\_selected` (line 7841)
-  - function: `handle\_get\_session\_history` (line 7882)
-  - function: `handle\_clone\_session` (line 7934)
-  - function: `on\_join` (line 7979)
-  - function: `handle\_get\_sessions` (line 8019)
-  - function: `handle\_connect` (line 8026)
-  - function: `handle\_disconnect` (line 8235)
-  - function: `handle\_ack\_cert\_reauth` (line 8266)
-  - function: `handle\_set\_output\_mode` (line 8302)
-  - function: `handle\_parser\_prompt` (line 8331)
-  - function: `handle\_prompt\_cancel` (line 8388)
-  - function: `handle\_cancel\_parser` (line 8440)
-  - function: `handle\_toggle\_output\_bypass` (line 8505)
-  - function: `handle\_set\_manual\_source` (line 8534)
-  - function: `handle\_delete\_session` (line 8580)
-  - function: `handle\_ballot\_lens` (line 8602)
-  - function: `\_read\_jsonl` (line 8667)
-  - function: `fec\_mappings\_review` (line 8687)
-  - function: `api\_fec\_problem\_rows` (line 8729)
-  - function: `api\_fec\_save\_mapping` (line 8752)
-  - function: `api\_data\_assurance\_classify` (line 8845)
-  - function: `api\_data\_assurance\_promote` (line 8974)
-  - function: `api\_data\_assurance\_pending\_reviews` (line 9063)
+  - function: `\_int\_env` (line 220)
+  - function: `\_clone\_payload` (line 232)
+  - function: `\_get\_ttl\_cache\_payload` (line 241)
+  - function: `\_set\_ttl\_cache\_payload` (line 252)
+  - function: `\_log\_endpoint\_latency` (line 261)
+  - function: `\_emit\_download\_ready` (line 280)
+  - function: `\_flagged\_url\_log\_dir` (line 320)
+  - function: `\_rotate\_flagged\_url\_path` (line 328)
+  - function: `\_prune\_flagged\_url\_logs` (line 346)
+  - function: `\_is\_local\_request` (line 362)
+  - function: `\_guarded\_ingestion\_allowed` (line 378)
+  - function: `\_request\_wants\_json` (line 395)
+  - function: `\_cert\_required\_response` (line 410)
+  - function: `\_require\_client\_cert` (line 421)
+  - function: `\_require\_cert\_for\_socket\_action` (line 440)
+  - function: `\_ingestion\_audit\_context` (line 489)
+  - function: `log\_flagged\_url` (line 505)
+  - function: `\_require\_health\_auth` (line 683)
+  - function: `\_health\_auth\_response` (line 706)
+  - function: `\_public\_health\_task\_definitions` (line 714)
+  - function: `\_get\_health\_tasks` (line 726)
+  - function: `\_get\_health\_task` (line 733)
+  - function: `\_append\_health\_task\_log` (line 739)
+  - function: `\_trim\_health\_task\_history` (line 755)
+  - function: `\_finalize\_health\_task` (line 767)
+  - function: `\_launch\_health\_task` (line 778)
+  - function: `\_run\_health\_task` (line 802)
+  - function: `ensure\_utf8` (line 852)
+  - function: `\_is\_request\_secure` (line 866)
+  - class: `EnsureWsSecurityHeaders` (line 874)
+  - function: `\_register\_legacy\_endpoint\_aliases` (line 1139)
+  - function: `\_socket\_payload\_too\_large` (line 1268)
+  - function: `\_rate\_limit\_socket\_action` (line 1279)
+  - function: `\_rate\_limit` (line 1293)
+  - function: `\_generate\_upload\_filename` (line 1298)
+  - function: `\_enforce\_request\_size` (line 1304)
+  - function: `\_validate\_uploaded\_file` (line 1313)
+  - function: `\_save\_uploaded\_file` (line 1356)
+  - function: `\_log\_download\_access` (line 1379)
+  - function: `\_resolve\_output\_metadata\_path` (line 1389)
+  - function: `\_quick\_copy\_session\_dir` (line 1401)
+  - function: `\_ensure\_quick\_copy\_dir` (line 1409)
+  - function: `\_cleanup\_quick\_copy\_dir` (line 1425)
+  - function: `\_unique\_quick\_copy\_name` (line 1439)
+  - function: `\_is\_output\_download\_allowed` (line 1453)
+  - function: `is\_owner` (line 1472)
+  - function: `create\_session\_metadata` (line 1476)
+  - function: `\_recover\_stale\_session` (line 1479)
+  - function: `cleanup\_sessions` (line 1507)
+  - function: `transition\_session` (line 1536)
+  - function: `cleanup\_old\_log\_files` (line 1575)
+  - function: `client\_fingerprint` (line 1596)
+  - function: `get\_request\_principal` (line 1606)
+  - function: `\_is\_local\_host` (line 1621)
+  - function: `\_is\_azure\_environment` (line 1632)
+  - function: `\_get\_dev\_isolation\_bypass\_ips` (line 1642)
+  - function: `\_is\_dev\_isolation\_bypass\_request` (line 1648)
+  - function: `\_resolve\_cert\_session\_id` (line 1663)
+  - function: `\_derive\_auth\_context` (line 1672)
+  - function: `\_apply\_auth\_context` (line 1682)
+  - function: `\_session\_has\_principal` (line 1692)
+  - function: `resolve\_session\_id` (line 1696)
+  - function: `emit\_contest\_options` (line 1848)
+  - function: `\_promote\_inner` (line 1886)
+  - function: `ensure\_db\_tables` (line 1908)
+  - function: `normalize\_log\_obj` (line 1937)
+  - function: `store\_log` (line 2072)
+  - function: `\_heartbeat\_loop` (line 2084)
+  - function: `socketio\_emit\_func` (line 2099)
+  - function: `get\_prompt\_queue` (line 2267)
+  - function: `broadcast\_sessions` (line 2270)
+  - function: `lock\_session` (line 2287)
+  - function: `unlock\_session` (line 2298)
+  - function: `safe\_is\_alive` (line 2309)
+  - function: `is\_output\_bypassed` (line 2329)
+  - function: `get\_manual\_source` (line 2332)
+  - function: `get\_manual\_source\_origin` (line 2335)
+  - function: `get\_all\_file\_lists` (line 2338)
+  - function: `get\_session\_enums` (line 2345)
+  - function: `redirect\_to\_https\_www` (line 2362)
+  - function: `\_csp\_nonce` (line 2434)
+  - function: `build\_csp` (line 2443)
+  - function: `add\_headers` (line 2519)
+  - function: `\_handle\_global\_exception` (line 2596)
+  - function: `add\_url` (line 2643)
+  - function: `allowed\_file` (line 2761)
+  - function: `get\_url\_list` (line 2771)
+  - function: `list\_urls` (line 2787)
+  - function: `log\_run\_event` (line 2813)
+  - function: `\_validate\_filter\_value` (line 2837)
+  - function: `log\_db\_monitor\_event` (line 2854)
+  - function: `index` (line 2864)
+  - function: `api\_urls` (line 2868)
+  - function: `api\_urls\_parse` (line 3013)
+  - function: `api\_urls\_training\_data` (line 3088)
+  - function: `api\_urls\_parse\_all` (line 3168)
+  - function: `api\_filename\_parse` (line 3236)
+  - function: `\_load\_output\_metadata` (line 3312)
+  - function: `\_build\_output\_lookup\_match` (line 3323)
+  - function: `api\_outputs\_lookup` (line 3362)
+  - function: `\_get\_warehouse\_columns` (line 3420)
+  - function: `\_collect\_url\_reference\_hint` (line 3429)
+  - function: `api\_warehouse\_match` (line 3511)
+  - function: `api\_warehouse\_export` (line 3598)
+  - function: `api\_warehouse\_coverage` (line 3651)
+  - function: `data\_framework` (line 3751)
+  - function: `\_collect\_data\_framework\_scaffold` (line 3755)
+  - function: `\_extract\_year\_from\_text` (line 3809)
+  - function: `\_collect\_data\_framework\_curated` (line 3818)
+  - function: `\_resolve\_preview\_filters` (line 3873)
+  - function: `\_select\_preview\_context` (line 3893)
+  - function: `\_fetch\_preview\_rows` (line 3924)
+  - function: `api\_data\_framework\_preview` (line 3963)
+  - function: `api\_data\_framework\_scaffold` (line 4082)
+  - function: `api\_data\_framework\_scaffold\_csv` (line 4095)
+  - function: `api\_data\_framework\_curated` (line 4119)
+  - function: `api\_data\_framework\_warehouse\_status` (line 4132)
+  - function: `api\_data\_framework\_exports` (line 4481)
+  - function: `health\_dashboard` (line 4529)
+  - function: `api\_list\_health\_tasks` (line 4573)
+  - function: `api\_start\_health\_task` (line 4580)
+  - function: `api\_health\_task\_detail` (line 4597)
+  - function: `api\_health\_socket\_test` (line 4607)
+  - function: `test\_ui\_prompt` (line 4666)
+  - function: `api\_fs\_list` (line 4722)
+  - function: `api\_list\_dir\_compat` (line 4767)
+  - function: `api\_fs\_mkdir` (line 4770)
+  - function: `api\_fs\_delete` (line 4802)
+  - function: `api\_quick\_copy` (line 4841)
+  - function: `api\_quick\_copy\_clear` (line 4903)
+  - function: `download\_fs` (line 4914)
+  - function: `view\_csv` (line 4989)
+  - function: `\_build\_or\_load\_csv\_index` (line 5179)
+  - function: `csv\_locate` (line 5226)
+  - function: `favicon` (line 5267)
+  - function: `robots\_txt` (line 5326)
+  - function: `serve\_well\_known\_appspecific` (line 5331)
+  - function: `\_normalize\_party\_bucket` (line 5340)
+  - function: `\_compute\_dropoff\_items` (line 5351)
+  - function: `api\_warehouse\_election\_results` (line 5390)
+  - function: `delete\_input\_file` (line 5760)
+  - function: `delete\_output\_file` (line 5772)
+  - function: `delete\_upload\_file` (line 5784)
+  - function: `download\_input\_file` (line 5796)
+  - function: `download\_output\_file` (line 5799)
+  - function: `download\_upload\_file` (line 5880)
+  - function: `ballot\_lens` (line 5883)
+  - function: `ballot\_lens\_modern` (line 5927)
+  - function: `worklist` (line 5932)
+  - function: `api\_validate\_urls` (line 5950)
+  - function: `api\_url\_status` (line 6023)
+  - function: `site\_webmanifest` (line 6228)
+  - function: `quality\_dashboard` (line 6265)
+  - function: `\_load\_integrity\_trends` (line 6270)
+  - function: `api\_integrity\_trends` (line 6322)
+  - function: `api\_integrity\_signal` (line 6336)
+  - function: `api\_integrity\_export` (line 6381)
+  - function: `url\_status\_dashboard` (line 6418)
+  - function: `quick\_reference\_page` (line 6422)
+  - function: `api\_quality\_metrics` (line 6437)
+  - function: `api\_auth\_certificate\_info` (line 6512)
+  - function: `api\_route\_wrapper\_monitor\_snapshot` (line 6553)
+  - function: `auth\_welcome` (line 6626)
+  - function: `upload\_to\_input` (line 6679)
+  - function: `upload\_to\_output` (line 6753)
+  - function: `upload\_to\_uploads` (line 6825)
+  - function: `health` (line 6926)
+  - function: `heartbeat` (line 6932)
+  - function: `clear\_history` (line 6935)
+  - function: `history` (line 6944)
+  - function: `rerun\_prior` (line 6986)
+  - function: `api\_election\_data\_worklist` (line 7043)
+  - function: `api\_election\_data\_worklist\_overview` (line 7249)
+  - function: `api\_election\_data\_db\_lite\_finalized` (line 7298)
+  - function: `api\_election\_data\_db\_lite\_down\_ballot` (line 7373)
+  - function: `api\_election\_data\_google\_sheets\_health` (line 7421)
+  - function: `api\_election\_data\_states\_counties` (line 7499)
+  - function: `api\_assign\_dl\_owner` (line 7619)
+  - function: `api\_preqc\_check` (line 7687)
+  - function: `api\_qc1\_submit` (line 7807)
+  - function: `api\_election\_data\_stats` (line 7902)
+  - function: `handle\_contest\_selected` (line 8015)
+  - function: `handle\_get\_session\_history` (line 8056)
+  - function: `handle\_clone\_session` (line 8108)
+  - function: `on\_join` (line 8153)
+  - function: `handle\_get\_sessions` (line 8193)
+  - function: `handle\_connect` (line 8200)
+  - function: `handle\_disconnect` (line 8409)
+  - function: `handle\_ack\_cert\_reauth` (line 8440)
+  - function: `handle\_set\_output\_mode` (line 8476)
+  - function: `handle\_parser\_prompt` (line 8505)
+  - function: `handle\_prompt\_cancel` (line 8562)
+  - function: `handle\_cancel\_parser` (line 8614)
+  - function: `handle\_toggle\_output\_bypass` (line 8679)
+  - function: `handle\_set\_manual\_source` (line 8708)
+  - function: `handle\_delete\_session` (line 8754)
+  - function: `handle\_ballot\_lens` (line 8776)
+  - function: `\_read\_jsonl` (line 8841)
+  - function: `fec\_mappings\_review` (line 8861)
+  - function: `api\_fec\_problem\_rows` (line 8903)
+  - function: `api\_fec\_save\_mapping` (line 8926)
+  - function: `api\_data\_assurance\_classify` (line 9019)
+  - function: `api\_data\_assurance\_promote` (line 9148)
+  - function: `api\_data\_assurance\_pending\_reviews` (line 9237)
 - Imports:
   - **Standard Library** (26):
     - `import os as os` (line 4)
@@ -611,166 +617,165 @@ graph LR
     - `import gzip as gzip` (line 54)
     - `import secrets as secrets` (line 58)
 - Task markers:
-  - L412 **WARNING**: ",
-  - L534 **WARNING**: ({
-  - L535 **WARNING**: ",
-  - L805 **WARNING**: ").upper().split(","))
-  - L841 **WARNING**: ({
-  - L842 **WARNING**: ",
-  - L859 **WARNING**: ({
-  - L860 **WARNING**: ",
-  - L877 **WARNING**: ({
-  - L878 **WARNING**: ",
-  - L894 **WARNING**: ({
-  - L895 **WARNING**: ",
-  - L911 **WARNING**: ({
-  - L912 **WARNING**: ",
-  - L928 **WARNING**: ({
-  - L929 **WARNING**: ",
-  - L945 **WARNING**: ({
-  - L946 **WARNING**: ",
-  - L962 **WARNING**: ({
-  - L963 **WARNING**: ",
-  - L979 **WARNING**: ({
-  - L980 **WARNING**: ",
-  - L996 **WARNING**: ({
-  - L997 **WARNING**: ",
-  - L1013 **WARNING**: ({
-  - L1014 **WARNING**: ",
-  - L1030 **WARNING**: ({
-  - L1031 **WARNING**: ",
-  - L1047 **WARNING**: ({
-  - L1048 **WARNING**: ",
-  - L1064 **WARNING**: ({
-  - L1065 **WARNING**: ",
-  - L1191 **WARNING**: ({
-  - L1192 **WARNING**: ",
-  - L1208 **WARNING**: ({
-  - L1209 **WARNING**: ",
-  - L1295 **WARNING**: ({
-  - L1296 **WARNING**: ",
-  - L1803 **WARNING**: , ERROR, CRITICAL, TRACE
-  - L1845 **WARNING**: ", "ERROR", "CRITICAL", "TRACE"}
-  - L1881 **WARNING**: " in mlow:
-  - L2434 **WARNING**:         # For websocket handshake only: add Cache-Control
+  - L264 **WARNING**: " if elapsed_ms &gt;= API_LATENCY_WARN_MS else "DEBUG",
+  - L276 **WARNING**: (payload)
+  - L479 **WARNING**: ",
+  - L601 **WARNING**: ({
+  - L602 **WARNING**: ",
+  - L872 **WARNING**: ").upper().split(","))
+  - L908 **WARNING**: ({
+  - L909 **WARNING**: ",
+  - L926 **WARNING**: ({
+  - L927 **WARNING**: ",
+  - L944 **WARNING**: ({
+  - L945 **WARNING**: ",
+  - L961 **WARNING**: ({
+  - L962 **WARNING**: ",
+  - L978 **WARNING**: ({
+  - L979 **WARNING**: ",
+  - L995 **WARNING**: ({
+  - L996 **WARNING**: ",
+  - L1012 **WARNING**: ({
+  - L1013 **WARNING**: ",
+  - L1029 **WARNING**: ({
+  - L1030 **WARNING**: ",
+  - L1046 **WARNING**: ({
+  - L1047 **WARNING**: ",
+  - L1063 **WARNING**: ({
+  - L1064 **WARNING**: ",
+  - L1080 **WARNING**: ({
+  - L1081 **WARNING**: ",
+  - L1097 **WARNING**: ({
+  - L1098 **WARNING**: ",
+  - L1114 **WARNING**: ({
+  - L1115 **WARNING**: ",
+  - L1131 **WARNING**: ({
+  - L1132 **WARNING**: ",
+  - L1328 **WARNING**: ({
+  - L1329 **WARNING**: ",
+  - L1345 **WARNING**: ({
+  - L1346 **WARNING**: ",
+  - L1432 **WARNING**: ({
+  - L1433 **WARNING**: ",
+  - L1940 **WARNING**: , ERROR, CRITICAL, TRACE
+  - L1982 **WARNING**: ", "ERROR", "CRITICAL", "TRACE"}
+  - L2018 **WARNING**: " in mlow:
+  - L2571 **WARNING**:         # For websocket handshake only: add Cache-Control
     so webhint stops warning
-  - L2517 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URL
+  - L2654 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URL
     too long or invalid.", "session_id": None})
-  - L2521 **WARNING**: ({"level": "WARNING", "type": "status", "message": "No
+  - L2658 **WARNING**: ({"level": "WARNING", "type": "status", "message": "No
     valid http(s) URL found.", "session_id": None})
-  - L2530 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URL
+  - L2667 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URL
     too long.", "session_id": None})
-  - L2540 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URLs
+  - L2677 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URLs
     with credentials are not allowed.", "session_id": None})
-  - L2560 **WARNING**: ({"level": "WARNING", "type": "status", "message": f"URL
+  - L2697 **WARNING**: ({"level": "WARNING", "type": "status", "message": f"URL
     blocked: {reason}", "session_id": None})
-  - L2593 **WARNING**: ({"level": "WARNING", "type": "status", "message": "Only
+  - L2730 **WARNING**: ({"level": "WARNING", "type": "status", "message": "Only
     http/https URLs with a host are accepted.", "session_id": None})
-  - L2603 **WARNING**: ({"level": "WARNING", "type": "status", "message": "Host
-    requires manual review; URL logged for safety.", "session_id": None})
-  - L2752 **WARNING**: ({
 - Outgoing cross-module calls (sample):
   - origin.strip (line 36)
   - \_RAW\_SOCKETIO\_ORIGINS.split (line 37)
   - origin.strip (line 38)
   - dotenv.load\_dotenv (line 132)
   - threading.Lock (line 211)
-  - \_DOWNLOAD\_READY\_SESSIONS.add (line 219)
-  - socketio.emit (line 221)
-  - DB\_MONITOR\_FILE.touch (line 243)
-  - webapp.parser.config.LOG\_DIR.mkdir (line 255)
-  - datetime.datetime.now (line 263)
-  - now.strftime (line 265)
-  - prefix.with\_suffix (line 266)
-  - candidate.exists (line 267)
-  - candidate.stat (line 267)
-  - prefix.with\_name (line 271)
-  - cand.exists (line 272)
-  - cand.stat (line 272)
-  - datetime.datetime.now (line 280)
-  - datetime.timedelta (line 281)
-  - base.glob (line 284)
-  - datetime.datetime.fromtimestamp (line 286)
-  - entry.stat (line 286)
-  - entry.unlink (line 288)
-  - remote\_addr.startswith (line 304)
-  - hmac.compare\_digest (line 315)
-  - auth\_hdr.lower (line 318)
-  - auth\_hdr.split (line 320)
-  - hmac.compare\_digest (line 321)
-  - accept.lower (line 334)
-  - flask.jsonify (line 346)
-  - flask.url\_for (line 349)
-  - flask.redirect (line 351)
-  - flask.url\_for (line 351)
-  - auth\_hdr.lower (line 361)
-  - hmac.compare\_digest (line 363)
-  - auth\_hdr.split (line 363)
-  - principal.startswith (line 368)
-  - auth\_hdr.lower (line 380)
+  - threading.Lock (line 213)
+  - orjson.loads (line 236)
+  - orjson.dumps (line 236)
+  - time.time (line 242)
+  - \_API\_LATENCY\_CACHE.get (line 244)
+  - slot.get (line 247)
+  - slot.get (line 249)
+  - time.time (line 253)
+  - time.perf\_counter (line 262)
+  - payload.update (line 273)
+  - webapp.parser.utils.logger\_singleton.logger.warning (line 276)
+  - webapp.parser.utils.logger\_singleton.logger.debug (line 278)
+  - \_DOWNLOAD\_READY\_SESSIONS.add (line 286)
+  - socketio.emit (line 288)
+  - DB\_MONITOR\_FILE.touch (line 310)
+  - webapp.parser.config.LOG\_DIR.mkdir (line 322)
+  - datetime.datetime.now (line 330)
+  - now.strftime (line 332)
+  - prefix.with\_suffix (line 333)
+  - candidate.exists (line 334)
+  - candidate.stat (line 334)
+  - prefix.with\_name (line 338)
+  - cand.exists (line 339)
+  - cand.stat (line 339)
+  - datetime.datetime.now (line 347)
+  - datetime.timedelta (line 348)
+  - base.glob (line 351)
+  - datetime.datetime.fromtimestamp (line 353)
+  - entry.stat (line 353)
+  - entry.unlink (line 355)
+  - remote\_addr.startswith (line 371)
   - hmac.compare\_digest (line 382)
-  - auth\_hdr.split (line 382)
-  - session\_manager.get\_metadata (line 389)
-  - meta.get (line 390)
-  - meta.get (line 391)
-  - cached\_principal.startswith (line 393)
-  - cached\_principal.startswith (line 394)
-  - cached\_principal.startswith (line 395)
-  - principal.startswith (line 402)
-  - session\_manager.update\_metadata (line 406)
-  - payload.setdefault (line 440)
-  - datetime.datetime.now (line 440)
+  - auth\_hdr.lower (line 385)
+  - auth\_hdr.split (line 387)
+  - hmac.compare\_digest (line 388)
+  - accept.lower (line 401)
+  - flask.jsonify (line 413)
+  - flask.url\_for (line 416)
+  - flask.redirect (line 418)
+  - flask.url\_for (line 418)
+  - auth\_hdr.lower (line 428)
+  - hmac.compare\_digest (line 430)
+  - auth\_hdr.split (line 430)
+  - principal.startswith (line 435)
+  - auth\_hdr.lower (line 447)
 - Inbound references:
-  - \_emit\_download\_ready ← Smart_Elections_Parser_Webapp.py:2103
-  - \_emit\_download\_ready ← Smart_Elections_Parser_Webapp.py:2116
-  - \_flagged\_url\_log\_dir ← Smart_Elections_Parser_Webapp.py:264
-  - \_flagged\_url\_log\_dir ← Smart_Elections_Parser_Webapp.py:282
-  - \_rotate\_flagged\_url\_path ← Smart_Elections_Parser_Webapp.py:441
-  - \_prune\_flagged\_url\_logs ← Smart_Elections_Parser_Webapp.py:448
-  - \_is\_local\_request ← Smart_Elections_Parser_Webapp.py:357
-  - \_is\_local\_request ← Smart_Elections_Parser_Webapp.py:376
-  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:2750
-  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:5745
-  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:6543
-  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:6617
-  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:6683
-  - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:344
-  - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:6532
-  - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:6606
-  - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:6678
-  - \_cert\_required\_response ← Smart_Elections_Parser_Webapp.py:370
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:2747
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4436
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4624
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4655
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4694
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4756
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5613
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5625
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5637
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5742
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:6370
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:6406
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:6534
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:6608
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:6680
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:8753
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:8850
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:8979
-  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2768
-  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2780
-  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2790
-  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2810
-  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2842
-  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2852
-  - \_ingestion\_audit\_context ← Smart_Elections_Parser_Webapp.py:2867
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2511
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2524
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2534
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2554
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2587
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2596
-  - log\_flagged\_url ← Smart_Elections_Parser_Webapp.py:2617
+  - \_int\_env ← Smart_Elections_Parser_Webapp.py:227
+  - \_int\_env ← Smart_Elections_Parser_Webapp.py:228
+  - \_int\_env ← Smart_Elections_Parser_Webapp.py:229
+  - \_int\_env ← embedding_cache.py:128
+  - \_int\_env ← embedding_cache.py:129
+  - \_int\_env ← embedding_cache.py:131
+  - \_int\_env ← embedding_cache.py:132
+  - \_clone\_payload ← Smart_Elections_Parser_Webapp.py:249
+  - \_clone\_payload ← Smart_Elections_Parser_Webapp.py:257
+  - \_get\_ttl\_cache\_payload ← Smart_Elections_Parser_Webapp.py:3654
+  - \_get\_ttl\_cache\_payload ← Smart_Elections_Parser_Webapp.py:7534
+  - \_set\_ttl\_cache\_payload ← Smart_Elections_Parser_Webapp.py:3717
+  - \_set\_ttl\_cache\_payload ← Smart_Elections_Parser_Webapp.py:7602
+  - \_log\_endpoint\_latency ← Smart_Elections_Parser_Webapp.py:3656
+  - \_log\_endpoint\_latency ← Smart_Elections_Parser_Webapp.py:3718
+  - \_log\_endpoint\_latency ← Smart_Elections_Parser_Webapp.py:7524
+  - \_log\_endpoint\_latency ← Smart_Elections_Parser_Webapp.py:7536
+  - \_log\_endpoint\_latency ← Smart_Elections_Parser_Webapp.py:7603
+  - \_emit\_download\_ready ← Smart_Elections_Parser_Webapp.py:2240
+  - \_emit\_download\_ready ← Smart_Elections_Parser_Webapp.py:2253
+  - \_flagged\_url\_log\_dir ← Smart_Elections_Parser_Webapp.py:331
+  - \_flagged\_url\_log\_dir ← Smart_Elections_Parser_Webapp.py:349
+  - \_rotate\_flagged\_url\_path ← Smart_Elections_Parser_Webapp.py:508
+  - \_prune\_flagged\_url\_logs ← Smart_Elections_Parser_Webapp.py:515
+  - \_is\_local\_request ← Smart_Elections_Parser_Webapp.py:424
+  - \_is\_local\_request ← Smart_Elections_Parser_Webapp.py:443
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:2887
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:5893
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:6691
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:6765
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:6831
+  - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:411
+  - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:6680
+  - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:6754
+  - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:6826
+  - \_cert\_required\_response ← Smart_Elections_Parser_Webapp.py:437
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:2884
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4584
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4772
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4803
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4842
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4904
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5761
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5773
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5785
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5890
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:6518
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:6554
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:6682
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:6756
 
 ### Context\_Integration/Context\_Library/constants.py {#webapp-parser-context-integration-context-library-constants-py}
 
@@ -2447,16 +2452,16 @@ graph LR
   - GoogleSheetsElectionClient ← google_sheets_client.py:458
   - GoogleSheetsElectionClient ← google_sheets_client.py:470
   - GoogleSheetsElectionClient ← database_comparison.py:139
-  - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7173
-  - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7240
-  - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7306
-  - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7323
-  - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7389
+  - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7321
+  - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7388
+  - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7454
+  - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7471
+  - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7552
   - get\_worklist\_client ← google_sheets_client.py:483
-  - fetch\_worklist\_overview ← Smart_Elections_Parser_Webapp.py:6938
-  - fetch\_worklist\_overview ← Smart_Elections_Parser_Webapp.py:7118
-  - fetch\_worklist\_overview ← Smart_Elections_Parser_Webapp.py:7290
-  - fetch\_worklist\_overview ← Smart_Elections_Parser_Webapp.py:7737
+  - fetch\_worklist\_overview ← Smart_Elections_Parser_Webapp.py:7086
+  - fetch\_worklist\_overview ← Smart_Elections_Parser_Webapp.py:7266
+  - fetch\_worklist\_overview ← Smart_Elections_Parser_Webapp.py:7438
+  - fetch\_worklist\_overview ← Smart_Elections_Parser_Webapp.py:7911
 
 ### db\_init.py {#webapp-parser-db-init-py}
 
@@ -10878,9 +10883,9 @@ graph LR
   - row.get (line 326)
   - logger\_singleton.logger.warning (line 334)
 - Inbound references:
-  - check\_existing\_finalized\_data ← Smart_Elections_Parser_Webapp.py:3335
-  - check\_existing\_finalized\_data ← Smart_Elections_Parser_Webapp.py:5848
-  - check\_existing\_finalized\_data ← Smart_Elections_Parser_Webapp.py:5978
+  - check\_existing\_finalized\_data ← Smart_Elections_Parser_Webapp.py:3472
+  - check\_existing\_finalized\_data ← Smart_Elections_Parser_Webapp.py:5996
+  - check\_existing\_finalized\_data ← Smart_Elections_Parser_Webapp.py:6126
   - check\_existing\_finalized\_data ← html_election_parser.py:2754
   - \_check\_google\_sheets\_finalized\_data ← database_comparison.py:61
   - \_check\_warehouse\_database ← database_comparison.py:80
@@ -11797,10 +11802,6 @@ graph LR
   - session.rollback (line 356)
   - logger\_singleton.console.print (line 357)
 - Inbound references:
-  - \_int\_env ← embedding_cache.py:128
-  - \_int\_env ← embedding_cache.py:129
-  - \_int\_env ← embedding_cache.py:131
-  - \_int\_env ← embedding_cache.py:132
   - \_warn\_on\_large\_disk\_cache ← embedding_cache.py:163
   - \_warn\_on\_large\_disk\_cache ← embedding_cache.py:168
   - \_checkpoint\_disk\_cache ← embedding_cache.py:174
@@ -12956,7 +12957,7 @@ graph LR
   - \_counters.get (line 89)
   - c.inc (line 92)
 - Inbound references:
-  - increment\_test\_counter ← Smart_Elections_Parser_Webapp.py:508
+  - increment\_test\_counter ← Smart_Elections_Parser_Webapp.py:575
   - \_push\_registry\_async ← metrics_prom.py:62
   - \_push\_registry\_async ← metrics_prom.py:95
   - increment\_prom\_counter ← telemetry_agg.py:57
@@ -13957,8 +13958,8 @@ graph LR
 - Inbound references:
   - PrivilegeTier ← privilege_tiers.py:260
   - PrivilegeTier ← privilege_tiers.py:261
-  - get\_principal\_tier ← Smart_Elections_Parser_Webapp.py:6396
-  - get\_principal\_tier ← Smart_Elections_Parser_Webapp.py:8992
+  - get\_principal\_tier ← Smart_Elections_Parser_Webapp.py:6544
+  - get\_principal\_tier ← Smart_Elections_Parser_Webapp.py:9166
   - get\_principal\_tier ← html_election_parser.py:1524
   - get\_principal\_tier ← web_pipeline.py:268
   - is\_domain\_in\_allowlist ← privilege_tiers.py:222
