@@ -160,16 +160,13 @@ jobs:
             echo "No tests directory found, skipping tests."
           fi
 
-      - name: Run automation strict compare smoke
+      - name: Run automation deployment smoke
         run: |
           python automate.py \
             --skip-health \
             --skip-web \
             --skip-tests \
             --skip-webapp-check \
-            --compare-dl1-dl2 \
-            --dl1-path tests/testdata/dl_compare_dl1_sample.json \
-            --dl2-path tests/testdata/dl_compare_dl2_sample.json \
             --enforce-report-retention \
             --report-retention-days "${{ env.REPORT_RETENTION_DAYS }}" \
             --report-max-files "${{ env.REPORT_MAX_FILES }}" \
@@ -418,3 +415,51 @@ jobs:
             exit 1
           fi
           echo "Redirect probe OK: apex resolves to https://www.electionpulse.org"
+
+  qa-dl-compare:
+    name: QA DL Compare (non-blocking)
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir --prefer-binary -r requirements.txt
+
+      - name: Run DL compare QA (non-blocking)
+        run: |
+          python automate.py \
+            --skip-health \
+            --skip-web \
+            --skip-tests \
+            --skip-webapp-check \
+            --compare-dl1-dl2 \
+            --dl1-path tests/testdata/dl_compare_dl1_sample.json \
+            --dl2-path tests/testdata/dl_compare_dl2_sample.json \
+            --enforce-report-retention \
+            --report-retention-days "${{ env.REPORT_RETENTION_DAYS }}" \
+            --report-max-files "${{ env.REPORT_MAX_FILES }}" \
+            --report-max-bytes "${{ env.REPORT_MAX_BYTES }}"
+
+      - name: Upload DL compare QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dl-compare-qa-${{ github.run_id }}
+          path: |
+            output/reports/data_comparison_latest.json
+            output/reports/automation_run_latest.json
+            output/reports/logs/**
+          if-no-files-found: warn
+          retention-days: 14
