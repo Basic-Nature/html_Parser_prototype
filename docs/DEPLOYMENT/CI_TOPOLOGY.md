@@ -46,8 +46,8 @@ This separation prevents docs-only changes from triggering Azure deployment and 
 
 **Environment labels:**
 
-- `azure-production` for deploy job
-- `azure-postdeploy-qa` for non-blocking QA job
+- Deploy job runs without an explicit GitHub Environment binding (avoids OIDC subject mismatch with existing Entra federated credentials)
+- `azure-postdeploy-qa` remains for non-blocking QA visibility
 
 **Automation intent flaging:**
 

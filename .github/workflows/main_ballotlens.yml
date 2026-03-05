@@ -38,9 +38,6 @@ jobs:
   build-and-deploy:
     name: Azure Deploy (dynamic webapp)
     runs-on: ubuntu-latest
-    environment:
-      name: azure-production
-      url: https://www.electionpulse.org/
     permissions:
       id-token: write
       contents: read
