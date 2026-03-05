@@ -210,6 +210,19 @@
   }
 
   /* ---------- Popup API (no inline handlers) ---------- */
+  function buildPopupMessage(primaryText, highlightText) {
+    const message = document.createElement('div');
+    if (primaryText) message.append(String(primaryText));
+    if (highlightText) {
+      message.appendChild(document.createElement('br'));
+      const highlight = document.createElement('span');
+      highlight.className = 'popup-highlight';
+      highlight.textContent = String(highlightText);
+      message.appendChild(highlight);
+    }
+    return message;
+  }
+
   function initPopup() {
     const popup = document.getElementById('popup');
     if (!popup) return;
@@ -761,10 +774,11 @@
     if (!prefersReduce) requestAnimationFrame(draw);
 
     canvas.addEventListener('click', () => {
-      W.showPopup?.(
-        '🌞 You clicked the solar system!<br>' +
-        '<span class="popup-highlight">Keep exploring the universe of transparent data!</span>'
+      const message = buildPopupMessage(
+        '🌞 You clicked the solar system!',
+        'Keep exploring the universe of transparent data!'
       );
+      W.showPopup?.(message);
     });
   }
 

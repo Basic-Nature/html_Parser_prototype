@@ -148,7 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let priorityYear = '';
   let lastPriorityPayload = null;
   let worklistOverviewRecords = [];
-  let worklistOverviewMeta = null;
+  let _worklistOverviewMeta = null;
   let curatedItems = [];
   let curatedSelection = null;
   let curatedSearch = '';
@@ -178,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let previewTimer = null;
   let priorityTimer = null;
   let authRestrictedMode = false;
-  let authRestrictionReason = '';
+  let _authRestrictionReason = '';
   let authRestrictionNotified = false;
   let compactPreferenceSet = false;
   let dropoffDrawerOpen = false;
@@ -228,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function enterAuthRestrictedMode(reason = 'Authentication required for protected Data Framework endpoints.') {
     authRestrictedMode = true;
-    authRestrictionReason = reason;
+    _authRestrictionReason = reason;
     if (el.readOnlyBanner) {
       if (el.readOnlyMessage) {
         el.readOnlyMessage.textContent = `Read-only mode: ${reason}`;
@@ -594,7 +594,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const payload = await response.json().catch(() => null);
       if (!payload || payload.success === false) return;
       worklistOverviewRecords = Array.isArray(payload.records) ? payload.records : [];
-      worklistOverviewMeta = {
+      _worklistOverviewMeta = {
         sheet: payload.sheet_name || '',
         rowCount: payload.row_count || 0
       };
@@ -1377,7 +1377,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return filtered;
   }
 
-  function shuffleArray(items) {
+  function _shuffleArray(items) {
     for (let i = items.length - 1; i > 0; i -= 1) {
       const j = Math.floor(Math.random() * (i + 1));
       [items[i], items[j]] = [items[j], items[i]];
@@ -1455,7 +1455,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function startVizAutoRotation(resetOrder = true) {
+  function startVizAutoRotation(_resetOrder = true) {
     if (vizAutoLocked || vizAutoPaused) {
       stopVizAutoRotation();
       updateVizAutoToggleLabel();

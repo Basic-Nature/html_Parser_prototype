@@ -22,17 +22,16 @@ Usage:
       --output-report comparison_report.json
 """
 
-import csv
-import json
-import sys
-from pathlib import Path
-from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Set, Optional, Tuple
-from datetime import datetime
-import re
-import hashlib
 import argparse
-
+import csv
+import hashlib
+import json
+import re
+import sys
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Set
 
 # ============================================================================
 # Data Structures

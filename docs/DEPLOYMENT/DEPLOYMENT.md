@@ -7,6 +7,12 @@ title: Deployment Guide
 
 Complete guide for deploying the Smart Elections Parser to production environments, including local testing, cloud platforms (Azure), and general best practices.
 
+## CI/CD Workflow Topology
+
+For workflow ownership, trigger boundaries, and environment targets, see:
+
+- [CI Topology](CI_TOPOLOGY.html)
+
 > **Note**: This document consolidates content from:
 >
 > - [DEPLOYMENT_GUIDE.md](../DEPLOYMENT_GUIDE.md) - General deployment procedures

@@ -17,7 +17,7 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
   <div class="feature" data-section="architecture">
     <h3>🏗️ System Architecture</h3>
     <p>Complete system overview, data flow, and component interactions. Understand how the parser orchestrates multi-format extraction.</p>
-    <a href="CORE/">View Architecture →</a>
+    <a href="CORE/ARCHITECTURE.html">View Architecture →</a>
   </div>
 
   <div class="feature" data-section="audit">
@@ -29,37 +29,43 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
   <div class="feature" data-section="roadmap">
     <h3>📋 Development Roadmap</h3>
     <p>Complete feature roadmap including planned features and development priorities.</p>
-    <a href="IMPLEMENTATION-STATE.md">View Roadmap →</a>
+    <a href="IMPLEMENTATION-STATE.html">View Roadmap →</a>
   </div>
 
   <div class="feature" data-section="features">
     <h3>🚀 Active Features</h3>
     <p>Selenium NLP integration, multi-format support, and ML-powered validation.</p>
-    <a href="FEATURES/">Browse Features →</a>
+    <a href="FEATURES/GUIDES.html">Browse Features →</a>
   </div>
 
   <div class="feature" data-section="deployment">
     <h3>🚀 Deployment & Operations</h3>
     <p>Azure App Service setup, configuration, and best practices.</p>
-    <a href="DEPLOYMENT/">View Deployment →</a>
+    <a href="DEPLOYMENT/DEPLOYMENT.html">View Deployment →</a>
+  </div>
+
+  <div class="feature" data-section="ci-topology">
+    <h3>🧭 CI Topology</h3>
+    <p>See exactly how Azure dynamic deployment and GitHub Pages docs deployment are separated, triggered, and validated.</p>
+    <a href="DEPLOYMENT/CI_TOPOLOGY.html">View CI Topology →</a>
   </div>
 
   <div class="feature" data-section="development">
     <h3>🔧 Development Guide</h3>
     <p>Local setup, handler development, and contribution workflows.</p>
-    <a href="DEVELOPMENT/">Get Started →</a>
+    <a href="DEVELOPMENT/todos.html">Get Started →</a>
   </div>
 
   <div class="feature" data-section="quality">
     <h3>✅ Quality & Testing</h3>
     <p>Health checks, automation scripts, and validation procedures.</p>
-    <a href="QUALITY/">View Quality →</a>
+    <a href="QUALITY/VERIFICATION.html">View Quality →</a>
   </div>
 
   <div class="feature" data-section="governance">
     <h3>📋 Governance & Standards</h3>
     <p>Code standards, decision logs, and project governance.</p>
-    <a href="GOVERNANCE/">View Standards →</a>
+    <a href="GOVERNANCE/GOVERNANCE.html">View Standards →</a>
   </div>
 </div>
 
@@ -69,21 +75,22 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
 
 ### 🎯 Getting Started
 
-- **[Quick Start Guide](QUICK-START.md)** - Setup and first run
-- **[Technical Reference](TECHNICAL-REFERENCE.md)** - API and technical details
-- **[System State](IMPLEMENTATION-STATE.md)** - Current implementation status
+- **[Quick Start Guide](QUICK-START.html)** - Setup and first run
+- **[Technical Reference](TECHNICAL-REFERENCE.html)** - API and technical details
+- **[System State](IMPLEMENTATION-STATE.html)** - Current implementation status
 
 ### 📚 Core Documentation
 
-- **[Executive Summary](EXECUTIVE-SUMMARY.md)** - High-level overview
-- **[Session Summary](SESSION-SUMMARY.md)** - Recent work and decisions
-- **[State Handler Integration](STATE_HANDLER_INTEGRATION.md)** - Handler patterns
+- **[Executive Summary](EXECUTIVE-SUMMARY.html)** - High-level overview
+- **[Session Summary](SESSION-SUMMARY.html)** - Recent work and decisions
+- **[State Handler Integration](STATE_HANDLER_INTEGRATION.html)** - Handler patterns
 
 ### 🔗 Special Topics
 
-- **[Noise Filtering](FEATURES/NOISE_FILTERING.md)** - PDF/OCR processing overrides
-- **[Election Integrity](GOVERNANCE/Election_Integrity_Guidelines.md)** - Integrity practices
-- **[Selenium NLP Integration](FEATURES/SELENIUM_NLP_INTEGRATION.md)** - Browser automation with NLP
+- **[Storage Architecture](FEATURES/STORAGE_ARCHITECTURE.html)** - Storage and parser output architecture
+- **[Election Integrity](FEATURES/INTEGRITY_GUIDELINES.html)** - Integrity practices
+- **[Selenium NLP Integration](FEATURES/SELENIUM_NLP_INTEGRATION.html)** - Browser automation with NLP
+- **[CI Topology](DEPLOYMENT/CI_TOPOLOGY.html)** - Azure workflow vs GitHub Pages workflow separation
 
 ---
 
@@ -108,21 +115,21 @@ docs/
 
 ### For Developers
 
-- **[Handler Development](DEVELOPMENT/handler_development.md)** - Build state/county parsers
-- **[Local Setup](DEVELOPMENT/local_setup.md)** - Get your environment ready
-- **[Testing Guide](QUALITY/testing_guide.md)** - Run tests and health checks
+- **[TODO Overview](DEVELOPMENT/TODOS_OVERVIEW.html)** - Active development tasks and workflow
+- **[Project Audit](DEVELOPMENT/project_audit.html)** - Module map and integration hotspots
+- **[Verification Framework](QUALITY/VERIFICATION.html)** - QA workflow and test status
 
 ### For DevOps
 
-- **[Azure Deployment](DEPLOYMENT/azure_setup.md)** - Deploy to App Service
-- **[Configuration](DEPLOYMENT/configuration.md)** - Environment variables
-- **[Health Monitoring](QUALITY/health_monitoring.md)** - Monitor production
+- **[Azure Deployment](DEPLOYMENT/AZURE_CSP_DEPLOYMENT.html)** - Deploy to App Service
+- **[Deployment Guide](DEPLOYMENT/DEPLOYMENT.html)** - Runtime configuration and environment model
+- **[Post-Deploy Verification](DEPLOYMENT/POST_DEPLOY_VERIFICATION.html)** - Validate production health
 
 ### For Contributors
 
 - **[Contributing Guide](https://github.com/Basic-Nature/html_Parser_prototype/blob/main/CONTRIBUTING.md)** - Contribution workflow
-- **[Code Standards](GOVERNANCE/code_standards.md)** - Coding conventions
-- **[Decision Log](GOVERNANCE/decision_log.md)** - Architecture decisions
+- **[Governance Guide](GOVERNANCE/GOVERNANCE.html)** - Standards and operating model
+- **[Documentation Index](DOCUMENTATION-INDEX.html)** - Architecture and decision references
 
 ---
 
@@ -175,7 +182,7 @@ Every extraction, correction, and output is logged with comprehensive metadata f
 
 - **[GitHub Issues](https://github.com/Basic-Nature/html_Parser_prototype/issues)** - Report bugs or request features
 - **[GitHub Discussions](https://github.com/Basic-Nature/html_Parser_prototype/discussions)** - Ask questions and get community help
-- **[Full Documentation Index](DOCUMENTATION-INDEX.md)** - Browse all documentation
+- **[Full Documentation Index](DOCUMENTATION-INDEX.html)** - Browse all documentation
 - **[Repository Contributing Guide](https://github.com/Basic-Nature/html_Parser_prototype/blob/main/CONTRIBUTING.md)** - How to contribute
 
 ---

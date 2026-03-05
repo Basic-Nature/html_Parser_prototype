@@ -1,11 +1,14 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-name: Build and deploy container with OCR - BallotLens
+name: Azure WebApp Deploy - BallotLens (Dynamic App)
 
 on:
   push:
     branches:
       - main
     paths:
+      # Explicit guard: ignore docs-only/static-site updates in Azure deploy workflow
+      - '!docs/**'
+      - '!.github/workflows/jekyll-gh-pages.yml'
       - 'webapp/**'
       - 'scripts/**'
       - 'tests/testdata/**'
@@ -28,16 +31,24 @@ env:
   REPORT_RETENTION_DAYS: "30"
   REPORT_MAX_FILES: "200"
   REPORT_MAX_BYTES: "268435456"
+  DYNAMIC_SITE_URL: "https://www.electionpulse.org/"
+  DOCS_SITE_URL: "https://basic-nature.github.io/html_Parser_prototype/"
 
 jobs:
   build-and-deploy:
+    name: Azure Deploy (dynamic webapp)
     runs-on: ubuntu-latest
+    environment:
+      name: azure-production
+      url: https://www.electionpulse.org/
     permissions:
       id-token: write
       contents: read
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -45,6 +56,16 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
+
+      - name: CI context summary (environment separation)
+        run: |
+          {
+            echo "## CI Context"
+            echo "- Workflow scope: **Azure dynamic deployment**"
+            echo "- Dynamic webapp target: ${{ env.DYNAMIC_SITE_URL }}"
+            echo "- Docs (separate GitHub Pages pipeline): ${{ env.DOCS_SITE_URL }}"
+            echo "- DL compare QA: separate post-deploy non-blocking job in this workflow"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Show resolved image reference (debug)
         run: |
@@ -163,6 +184,7 @@ jobs:
       - name: Run automation deployment smoke
         run: |
           python automate.py \
+            --intended-env production \
             --skip-health \
             --skip-web \
             --skip-tests \
@@ -417,15 +439,42 @@ jobs:
           echo "Redirect probe OK: apex resolves to https://www.electionpulse.org"
 
   qa-dl-compare:
-    name: QA DL Compare (non-blocking)
+    name: "Post-Deploy QA: DL compare (non-blocking)"
     needs: build-and-deploy
     runs-on: ubuntu-latest
     continue-on-error: true
+    environment:
+      name: azure-postdeploy-qa
     permissions:
       contents: read
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Ensure Git LFS assets are hydrated (QA job)
+        run: |
+          git lfs install
+          git lfs pull
+
+      - name: Guard against unresolved LFS pointer in constants.py
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          target = Path("webapp/parser/Context_Integration/Context_Library/constants.py")
+          if not target.exists():
+              raise SystemExit("Missing constants.py in QA job checkout")
+
+          head = target.read_text(encoding="utf-8", errors="replace")[:200]
+          if "git-lfs.github.com/spec/v1" in head:
+              raise SystemExit(
+                  "Git LFS pointer detected for constants.py after checkout; refusing to run automate.py."
+              )
+
+          print("LFS guard passed for constants.py")
+          PY
 
       - name: Set up Python 3.12.10
         uses: actions/setup-python@v5
@@ -440,6 +489,7 @@ jobs:
       - name: Run DL compare QA (non-blocking)
         run: |
           python automate.py \
+            --intended-env ci \
             --skip-health \
             --skip-web \
             --skip-tests \
@@ -463,3 +513,13 @@ jobs:
             output/reports/logs/**
           if-no-files-found: warn
           retention-days: 14
+
+      - name: QA summary (non-blocking visibility)
+        if: always()
+        run: |
+          {
+            echo "## Post-Deploy QA (DL compare)"
+            echo "- Mode: **non-blocking** (continue-on-error=true)"
+            echo "- Purpose: QA signal and artifacts only; cannot block Azure deployment"
+            echo "- Artifact bundle: dl-compare-qa-${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"

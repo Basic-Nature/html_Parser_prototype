@@ -8,8 +8,8 @@ from .prometheus_metrics_blueprint import create_prometheus_metrics_blueprint
 from .public_pages_blueprint import create_public_pages_blueprint
 from .session_orchestration_blueprint import create_session_orchestration_blueprint
 from .ui_navigation_blueprint import create_ui_navigation_blueprint
-from .utility_admin_blueprint import create_utility_admin_blueprint
 from .url_library_blueprint import create_url_library_blueprint
+from .utility_admin_blueprint import create_utility_admin_blueprint
 
 __all__ = [
     "create_data_framework_blueprint",

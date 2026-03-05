@@ -6,66 +6,68 @@ main:
     url: /html_Parser_prototype/
 
   - title: Core Architecture
-    url: /html_Parser_prototype/core/architecture/
+    url: /html_Parser_prototype/CORE/ARCHITECTURE.html
     items:
       - title: System Architecture
-        url: /html_Parser_prototype/core/architecture/
+        url: /html_Parser_prototype/CORE/ARCHITECTURE.html
       - title: Data Models
-        url: /html_Parser_prototype/core/data-models/
+        url: /html_Parser_prototype/CORE/DATA_MODELS.html
       - title: Constants Reference
-        url: /html_Parser_prototype/core/constants/
+        url: /html_Parser_prototype/CORE/CONSTANTS.html
 
   - title: Deployment
-    url: /html_Parser_prototype/deployment/deployment/
+    url: /html_Parser_prototype/DEPLOYMENT/DEPLOYMENT.html
     items:
       - title: Deployment Guide
-        url: /html_Parser_prototype/deployment/deployment/
+        url: /html_Parser_prototype/DEPLOYMENT/DEPLOYMENT.html
+      - title: CI Topology
+        url: /html_Parser_prototype/DEPLOYMENT/CI_TOPOLOGY.html
       - title: Security & Authentication
-        url: /html_Parser_prototype/deployment/security/
+        url: /html_Parser_prototype/DEPLOYMENT/SECURITY.html
       - title: Operations & Monitoring
-        url: /html_Parser_prototype/deployment/operations/
+        url: /html_Parser_prototype/DEPLOYMENT/OPERATIONS.html
 
   - title: Quality Assurance
-    url: /html_Parser_prototype/quality/verification/
+    url: /html_Parser_prototype/QUALITY/VERIFICATION.html
     items:
       - title: Verification Framework
-        url: /html_Parser_prototype/quality/verification/
+        url: /html_Parser_prototype/QUALITY/VERIFICATION.html
       - title: Quarantine System
-        url: /html_Parser_prototype/quality/quarantine-system/
+        url: /html_Parser_prototype/QUALITY/QUARANTINE_SYSTEM.html
       - title: ML Framework
-        url: /html_Parser_prototype/quality/ml-framework/
+        url: /html_Parser_prototype/QUALITY/ML_FRAMEWORK.html
 
   - title: Features & Guides
-    url: /html_Parser_prototype/features/guides/
+    url: /html_Parser_prototype/FEATURES/GUIDES.html
     items:
       - title: Developer Guides
-        url: /html_Parser_prototype/features/guides/
+        url: /html_Parser_prototype/FEATURES/GUIDES.html
       - title: FEC Fuzzy Matching
-        url: /html_Parser_prototype/features/fec-fuzzy-matching/
+        url: /html_Parser_prototype/FEATURES/FEC_FUZZY_MATCHING.html
       - title: Confidence Framework
-        url: /html_Parser_prototype/features/confidence-framework/
+        url: /html_Parser_prototype/FEATURES/CONFIDENCE_FRAMEWORK.html
       - title: Election Operations
-        url: /html_Parser_prototype/features/election-operations/
+        url: /html_Parser_prototype/FEATURES/ELECTION_OPERATIONS.html
       - title: Integrity Guidelines
-        url: /html_Parser_prototype/features/integrity-guidelines/
+        url: /html_Parser_prototype/FEATURES/INTEGRITY_GUIDELINES.html
 
   - title: Governance
-    url: /html_Parser_prototype/governance/governance/
+    url: /html_Parser_prototype/GOVERNANCE/GOVERNANCE.html
 
   - title: Development
-    url: /html_Parser_prototype/development/todos/
+    url: /html_Parser_prototype/DEVELOPMENT/todos.html
     items:
       - title: TODO Overview
-        url: /html_Parser_prototype/development/todos-overview/
+        url: /html_Parser_prototype/DEVELOPMENT/TODOS_OVERVIEW.html
       - title: All TODOs
-        url: /html_Parser_prototype/development/todos/
+        url: /html_Parser_prototype/DEVELOPMENT/todos.html
       - title: High Priority
-        url: /html_Parser_prototype/development/todos-high/
+        url: /html_Parser_prototype/DEVELOPMENT/todos_high.html
       - title: Medium Priority
-        url: /html_Parser_prototype/development/todos-medium/
+        url: /html_Parser_prototype/DEVELOPMENT/todos_medium.html
       - title: Low Priority
-        url: /html_Parser_prototype/development/todos-low/
+        url: /html_Parser_prototype/DEVELOPMENT/todos_low.html
       - title: Project Audit
-        url: /html_Parser_prototype/development/project-audit/
+        url: /html_Parser_prototype/DEVELOPMENT/project_audit.html
       - title: Pipeline Map
-        url: /html_Parser_prototype/development/pipeline-map/
+        url: /html_Parser_prototype/DEVELOPMENT/pipeline_map.html

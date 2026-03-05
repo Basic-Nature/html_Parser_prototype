@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from playwright.sync_api import Page
 

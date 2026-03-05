@@ -8,11 +8,10 @@ from enum import Enum as PyEnum
 from typing import Any
 
 from sqlalchemy import Boolean as _Boolean
-from sqlalchemy import Column
+from sqlalchemy import Column, ForeignKey, Index
 from sqlalchemy import DateTime as _DateTime
 from sqlalchemy import Enum as _SQLEnumType
 from sqlalchemy import Float as _Float
-from sqlalchemy import ForeignKey, Index
 from sqlalchemy import Integer as _Integer
 from sqlalchemy import String as _String
 from sqlalchemy import Text as _Text

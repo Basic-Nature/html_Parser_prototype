@@ -1,11 +1,16 @@
 # Sample workflow for building and deploying a Jekyll site to GitHub Pages
-name: Deploy Jekyll with GitHub Pages dependencies preinstalled
+name: GitHub Pages Docs - Jekyll Build & Deploy
 
 on:
   # Runs on pushes targeting the default branch
   push:
     branches: ["main"]
     paths:
+      # Explicit guard: docs workflow should not run for Azure/webapp-only changes
+      - '!webapp/**'
+      - '!scripts/**'
+      - '!automate.py'
+      - '!.github/workflows/main_ballotlens.yml'
       - 'docs/**'
       - 'Gemfile'
       - 'Gemfile.lock'
@@ -27,9 +32,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  docs-quality:
+    name: Docs Quality (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Markdown lint (docs only)
+        run: |
+          npm install -g markdownlint-cli
+          markdownlint "docs/**/*.md" --config .markdownlint.json
+      - name: Docs quality summary
+        if: always()
+        run: |
+          {
+            echo "## Docs Quality"
+            echo "- Scope: docs/** markdown checks"
+            echo "- Mode: non-blocking (visibility only)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Build job
   build:
+    name: Build Docs (Jekyll)
     runs-on: ubuntu-latest
+    needs: docs-quality
     env:
       NODE_OPTIONS: "--trace-deprecation"
     steps:
@@ -53,6 +84,7 @@ jobs:
 
   # Deployment job
   deploy:
+    name: Deploy Docs (GitHub Pages)
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -62,3 +94,38 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  docs-routing-smoke:
+    name: Docs Routing Smoke (non-blocking)
+    runs-on: ubuntu-latest
+    needs: deploy
+    continue-on-error: true
+    steps:
+      - name: Probe key docs routes
+        run: |
+          set -e
+          BASE="https://basic-nature.github.io/html_Parser_prototype/"
+          URLS=(
+            "$BASE"
+            "${BASE}DOCUMENTATION-INDEX"
+            "${BASE}FEATURES/"
+            "${BASE}DEVELOPMENT/"
+          )
+          for u in "${URLS[@]}"; do
+            echo "Probing: $u"
+            final=$(curl -L -s -o /dev/null -w "%{url_effective}" "$u")
+            code=$(curl -L -s -o /dev/null -w "%{http_code}" "$u")
+            echo "  final=$final status=$code"
+            if [ "$code" -ge 400 ]; then
+              echo "  warning: route returned HTTP $code"
+            fi
+          done
+      - name: Docs routing summary
+        if: always()
+        run: |
+          {
+            echo "## Docs Routing Smoke"
+            echo "- Site: https://basic-nature.github.io/html_Parser_prototype/"
+            echo "- Mode: non-blocking (visibility only)"
+            echo "- Purpose: detect link/route regressions without blocking docs deploy"
+          } >> "$GITHUB_STEP_SUMMARY"

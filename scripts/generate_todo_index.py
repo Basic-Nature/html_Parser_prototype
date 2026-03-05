@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import textwrap
 from collections import Counter
@@ -31,6 +32,13 @@ PRIORITY = {
     _HACK: "medium",
     _XXX: "medium",
 }
+
+STUB_HINT_PATTERNS = [
+    re.compile(r"\b(stub|placeholder|tbd)\b", re.IGNORECASE),
+    re.compile(r"\b(not\s+implemented|to\s+be\s+implemented)\b", re.IGNORECASE),
+    re.compile(r"\b(implement|wire|integrate|migrate|add|customize)\b", re.IGNORECASE),
+    re.compile(r"\b(requires?\s+\w+|needs?\s+\w+)\b", re.IGNORECASE),
+]
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 WEBAPP_DIR = DEFAULT_ROOT / "webapp"
@@ -91,6 +99,7 @@ class MarkerEntry:
     lineno: int
     keyword: str
     text: str
+    likely_stub: bool = False
 
     @property
     def rel_path(self) -> str:
@@ -101,20 +110,44 @@ def iter_source_files(roots: Sequence[Path]) -> Iterator[Path]:
     for root in roots:
         if not root.exists() or not root.is_dir():
             continue
-        for path in root.rglob("*"):
-            if path.is_dir():
-                if path.name in IGNORED_DIRS:
+        for dir_path, dir_names, file_names in os.walk(root):
+            dir_names[:] = [d for d in dir_names if d not in IGNORED_DIRS]
+            base = Path(dir_path)
+            for name in file_names:
+                path = base / name
+                if path.suffix.lower() not in ALLOWED_SUFFIXES:
                     continue
-                continue
-            if path.suffix.lower() not in ALLOWED_SUFFIXES:
-                continue
-            try:
-                rel = path.resolve().relative_to(DEFAULT_ROOT)
-                if rel in EXCLUDED_FILES:
-                    continue
-            except Exception:
-                pass
-            yield path
+                try:
+                    rel = path.resolve().relative_to(DEFAULT_ROOT)
+                    if rel in EXCLUDED_FILES:
+                        continue
+                except Exception:
+                    pass
+                yield path
+
+
+def _is_actionable_marker_line(line: str, keyword: str) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return False
+
+    esc_kw = re.escape(keyword)
+    patterns = (
+        rf"\b{esc_kw}\s*:",
+        rf"\b{esc_kw}\s+-",
+        rf"\b{esc_kw}\s+—",
+        rf"(^|\s)#\s*{esc_kw}\b",
+        rf"(^|\s)//\s*{esc_kw}\b",
+        rf"<!--\s*{esc_kw}\b",
+        rf"^\s*{esc_kw}\b",
+    )
+    return any(re.search(pat, stripped, re.IGNORECASE) for pat in patterns)
+
+
+def _looks_like_stub(text: str) -> bool:
+    if not text:
+        return False
+    return any(p.search(text) for p in STUB_HINT_PATTERNS)
 
 
 def extract_markers(path: Path) -> list[MarkerEntry]:
@@ -130,9 +163,19 @@ def extract_markers(path: Path) -> list[MarkerEntry]:
         if not match:
             continue
         keyword = match.group(1).upper()
+        if not _is_actionable_marker_line(line, keyword):
+            continue
         raw_line = line.strip()
         text = raw_line
-        entries.append(MarkerEntry(path=path, lineno=idx, keyword=keyword, text=text))
+        entries.append(
+            MarkerEntry(
+                path=path,
+                lineno=idx,
+                keyword=keyword,
+                text=text,
+                likely_stub=_looks_like_stub(text),
+            )
+        )
     return entries
 
 
@@ -163,7 +206,13 @@ def ingest_ruff_json(paths: Sequence[Path]) -> list[MarkerEntry]:
                     continue
                 keyword = f"RUFF-{code}"
                 entries.append(
-                    MarkerEntry(path=Path(filename), lineno=int(row), keyword=keyword, text=message)
+                    MarkerEntry(
+                        path=Path(filename),
+                        lineno=int(row),
+                        keyword=keyword,
+                        text=message,
+                        likely_stub=False,
+                    )
                 )
             except Exception:
                 continue
@@ -261,6 +310,7 @@ def format_markdown(
         legend.setdefault(level, []).append(kw)
 
     marker_counts = Counter(entry.keyword for entry in entries)
+    stub_candidates = [entry for entry in entries if entry.likely_stub]
 
     lines: list[str] = [
         "---",
@@ -282,6 +332,7 @@ def format_markdown(
         "- Priority map: " + "; ".join(f"{lvl}: {', '.join(sorted(vals)) or 'none'}" for lvl, vals in legend.items()),
         f"- Exclusions (sample): {exclusions_text}",
         f"- Regex: \\b({'|'.join(KEYWORDS)})\\b (case-insensitive)",
+        f"- Actionable marker syntax: `{_TASK}:`/`{_FIXME}:` and common comment-prefix forms only",
         "",
         "## Marker Breakdown",
         "",
@@ -301,9 +352,25 @@ def format_markdown(
     ])
 
     root_counts = Counter()
+
+    def _root_label_for_entry(entry: MarkerEntry) -> str:
+        try:
+            rel = entry.path.resolve().relative_to(project_root.resolve())
+        except Exception:
+            rel = entry.path if not entry.path.is_absolute() else Path(entry.path.name)
+        for root in roots:
+            try:
+                root_rel = root.resolve().relative_to(project_root.resolve())
+                root_parts = root_rel.parts
+                rel_parts = rel.parts
+                if root_parts and len(rel_parts) >= len(root_parts) and rel_parts[: len(root_parts)] == root_parts:
+                    return root_rel.as_posix()
+            except Exception:
+                continue
+        return rel.parts[0] if rel.parts else str(rel)
+
     for entry in entries:
-        rel = entry.path.relative_to(project_root) if entry.path.is_absolute() else entry.path
-        root_counts[str(rel).split("/", 1)[0]] += 1
+        root_counts[_root_label_for_entry(entry)] += 1
 
     if root_counts:
         for root_label in sorted(root_counts.keys()):
@@ -331,6 +398,34 @@ def format_markdown(
         lines.append(f"### {rel_path}")
         lines.append("")
         for entry in grouped[rel_path]:
+            snippet = _normalize_emphasis_style(entry.text.strip())
+            prefix = f"- L{entry.lineno} **{entry.keyword}**: "
+            available = max(20, wrap_width - len(prefix))
+            wrapped = textwrap.wrap(snippet, width=available) or [""]
+            lines.append(prefix + wrapped[0])
+            for cont in wrapped[1:]:
+                lines.append(f"  {cont}")
+        lines.append("")
+
+    lines.extend([
+        "## Likely Stubs/Placeholders",
+        "",
+    ])
+
+    if not stub_candidates:
+        lines.append("- None detected.")
+        lines.append("")
+        return "\n".join(lines).rstrip() + "\n"
+
+    grouped_stubs: dict[str, list[MarkerEntry]] = {}
+    for entry in sorted(stub_candidates, key=lambda e: (e.rel_path.lower(), e.lineno)):
+        rel = entry.path.relative_to(project_root) if entry.path.is_absolute() else entry.path
+        grouped_stubs.setdefault(rel.as_posix(), []).append(entry)
+
+    for rel_path in sorted(grouped_stubs.keys()):
+        lines.append(f"### {rel_path}")
+        lines.append("")
+        for entry in grouped_stubs[rel_path]:
             snippet = _normalize_emphasis_style(entry.text.strip())
             prefix = f"- L{entry.lineno} **{entry.keyword}**: "
             available = max(20, wrap_width - len(prefix))

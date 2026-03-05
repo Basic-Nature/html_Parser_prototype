@@ -1963,8 +1963,8 @@ selectors. Trying table-based extraction...\[/yellow\]")
 
 #### 📦 Key Imports (handlers_states_new_york_county_rockland)
 
-- `typing`
 - `pathlib`
+- `typing`
 - `playwright.sync_api`
 - `Context_Integration.librarian`
 - `utils.browser_utils`
@@ -3313,31 +3313,31 @@ may remain.")
 
 #### 🔧 Key Functions & Classes (models_election_data)
 
-- `Integer` (function, line 24)
-- `String` (function, line 28)
-- `Text` (function, line 34)
-- `Boolean` (function, line 38)
-- `DateTime` (function, line 42)
-- `Float` (function, line 46)
-- `SQLEnum` (function, line 50)
-- `DataQualityTier` (class, line 54)
-- `ManualReviewStatus` (class, line 61)
-- `DataQualityFlagType` (class, line 70)
-- `ElectionResult` (class, line 82)
-- `ValidationRecord` (class, line 147)
-- `StagingRecord` (class, line 215)
-- `VoterDropoff` (class, line 258)
-- `RaceMetadata` (class, line 289)
-- `AuditLog` (class, line 325)
-- `ManualReviewQueue` (class, line 361)
-- `GoogleSheetsSync` (class, line 407)
-- `DownloadRecord` (class, line 440)
-- `ValidationRecord_DL1` (class, line 514)
-- `ValidationRecord_DL2` (class, line 578)
-- `PreQCComparison` (class, line 645)
-- `QC1Checkpoint` (class, line 684)
-- `QC2Checkpoint` (class, line 722)
-- `ChainOfCustody` (class, line 764)
+- `Integer` (function, line 23)
+- `String` (function, line 27)
+- `Text` (function, line 33)
+- `Boolean` (function, line 37)
+- `DateTime` (function, line 41)
+- `Float` (function, line 45)
+- `SQLEnum` (function, line 49)
+- `DataQualityTier` (class, line 53)
+- `ManualReviewStatus` (class, line 60)
+- `DataQualityFlagType` (class, line 69)
+- `ElectionResult` (class, line 81)
+- `ValidationRecord` (class, line 146)
+- `StagingRecord` (class, line 214)
+- `VoterDropoff` (class, line 257)
+- `RaceMetadata` (class, line 288)
+- `AuditLog` (class, line 324)
+- `ManualReviewQueue` (class, line 360)
+- `GoogleSheetsSync` (class, line 406)
+- `DownloadRecord` (class, line 439)
+- `ValidationRecord_DL1` (class, line 513)
+- `ValidationRecord_DL2` (class, line 577)
+- `PreQCComparison` (class, line 644)
+- `QC1Checkpoint` (class, line 683)
+- `QC2Checkpoint` (class, line 721)
+- `ChainOfCustody` (class, line 763)
 
 #### 📦 Key Imports (models_election_data)
 
@@ -3593,9 +3593,9 @@ may remain.")
 - `flask`
 - `config`
 - `config`
-- `utils.privilege_tiers`
-- `utils.privilege_tiers`
 - `utils.cert_utils`
+- `utils.privilege_tiers`
+- `utils.privilege_tiers`
 - `utils.shared_logic`
 - `utils.shared_logic`
 - `data_classifier`
@@ -3645,8 +3645,8 @@ may remain.")
 - `public_pages_blueprint`
 - `session_orchestration_blueprint`
 - `ui_navigation_blueprint`
-- `utility_admin_blueprint`
 - `url_library_blueprint`
+- `utility_admin_blueprint`
 
 ### routes/data\_framework\_blueprint.py {#webapp-parser-routes-data-framework-blueprint-py}
 
@@ -3772,8 +3772,8 @@ may remain.")
 
 #### 🔧 Key Functions & Classes (routes_route_monitor)
 
-- `_utc_now_iso` (function, line 12)
-- `record_route_monitor_event` (function, line 16)
+- `_utc_now_iso` (function, line 11)
+- `record_route_monitor_event` (function, line 15)
 
 #### 📦 Key Imports (routes_route_monitor)
 
@@ -4503,27 +4503,25 @@ match; try again.", "session_id": session_id})
 
 #### 🔧 Key Functions & Classes (utils_database_comparison)
 
-- `check_existing_finalized_data` (function, line 19)
-- `_check_google_sheets_finalized_data` (function, line 127)
-- `_check_warehouse_database` (function, line 198)
-- `_check_verified_datasets` (function, line 272)
+- `check_existing_finalized_data` (function, line 17)
+- `_check_google_sheets_finalized_data` (function, line 125)
+- `_check_warehouse_database` (function, line 196)
+- `_check_verified_datasets` (function, line 271)
 
 #### 📦 Key Imports (utils_database_comparison)
 
 - `__future__`
-- `os`
 - `typing`
 - `typing`
 - `typing`
-- `config`
 - `logger_singleton`
 
 #### ⚠️ Task markers (utils_database_comparison)
 
-- L189 **WARNING**: ({
-- L190 **WARNING**: ",
-- L263 **WARNING**: ({
-- L264 **WARNING**: ",
+- L187 **WARNING**: ({
+- L188 **WARNING**: ",
+- L262 **WARNING**: ({
+- L263 **WARNING**: ",
 - L334 **WARNING**: ({
 - L335 **WARNING**: ",
 
@@ -4979,30 +4977,30 @@ session_id, error=str(e))
 
 #### 🔧 Key Functions & Classes (utils_format_router)
 
-- `_guard_text` (function, line 64)
-- `_guard_download_links` (function, line 73)
-- `_guard_google_sheet_meta` (function, line 86)
-- `_normalize_text` (function, line 92)
-- `_infer_format_from_text` (function, line 96)
-- `_infer_format_from_attr_value` (function, line 107)
-- `_extract_candidate_urls` (function, line 118)
-- `_clean_filename` (function, line 145)
-- `_guess_filename_from_url` (function, line 151)
-- `_extract_filename_from_disposition` (function, line 170)
-- `_extract_google_sheet_metadata` (function, line 180)
-- `_probe_remote_format` (function, line 225)
-- `_browser_headers` (function, line 276)
-- `_build_download_url` (function, line 297)
-- `_normalize_download_url` (function, line 307)
-- `_cookies_header_from_page` (function, line 318)
-- `extract_contest_from_filename` (function, line 332)
-- `summarize_downloads` (function, line 371)
-- `_infer_format_from_url` (function, line 381)
-- `_expose_download_interfaces` (function, line 389)
-- `detect_format_from_links` (function, line 438)
-- `route_format_handler` (function, line 489)
-- `extract_download_links_from_html` (function, line 516)
-- `prompt_and_handle_download` (function, line 536)
+- `_guard_text` (function, line 63)
+- `_guard_download_links` (function, line 72)
+- `_guard_google_sheet_meta` (function, line 85)
+- `_normalize_text` (function, line 91)
+- `_infer_format_from_text` (function, line 95)
+- `_infer_format_from_attr_value` (function, line 106)
+- `_extract_candidate_urls` (function, line 117)
+- `_clean_filename` (function, line 144)
+- `_guess_filename_from_url` (function, line 150)
+- `_extract_filename_from_disposition` (function, line 169)
+- `_extract_google_sheet_metadata` (function, line 179)
+- `_probe_remote_format` (function, line 224)
+- `_browser_headers` (function, line 275)
+- `_build_download_url` (function, line 296)
+- `_normalize_download_url` (function, line 306)
+- `_cookies_header_from_page` (function, line 317)
+- `extract_contest_from_filename` (function, line 331)
+- `summarize_downloads` (function, line 370)
+- `_infer_format_from_url` (function, line 380)
+- `_expose_download_interfaces` (function, line 388)
+- `detect_format_from_links` (function, line 437)
+- `route_format_handler` (function, line 488)
+- `extract_download_links_from_html` (function, line 515)
+- `prompt_and_handle_download` (function, line 535)
 
 #### 📦 Key Imports (utils_format_router)
 
@@ -5029,22 +5027,22 @@ session_id, error=str(e))
 
 #### ⚠️ Task markers (utils_format_router)
 
-- L474 **WARNING**: ({
-- L475 **WARNING**: ",
-- L477 **WARN**: \] No supported file formats found on the page.",
-- L502 **WARNING**: ({
-- L503 **WARNING**: ",
-- L505 **WARN**: \] Unsupported format requested: {format_str}",
-- L509 **WARNING**: ({
-- L510 **WARNING**: ",
-- L804 **WARNING**: ({
-- L805 **WARNING**: ",
-- L1013 **WARNING**: ({
-- L1014 **WARNING**: ",
-- L1064 **WARNING**: ({
-- L1065 **WARNING**: ",
-- L1171 **WARNING**: ({
-- L1172 **WARNING**: ",
+- L473 **WARNING**: ({
+- L474 **WARNING**: ",
+- L476 **WARN**: \] No supported file formats found on the page.",
+- L501 **WARNING**: ({
+- L502 **WARNING**: ",
+- L504 **WARN**: \] Unsupported format requested: {format_str}",
+- L508 **WARNING**: ({
+- L509 **WARNING**: ",
+- L803 **WARNING**: ({
+- L804 **WARNING**: ",
+- L1012 **WARNING**: ({
+- L1013 **WARNING**: ",
+- L1063 **WARNING**: ({
+- L1064 **WARNING**: ",
+- L1170 **WARNING**: ({
+- L1171 **WARNING**: ",
 
 ### utils/header\_confidence.py {#webapp-parser-utils-header-confidence-py}
 
@@ -6028,9 +6026,9 @@ warnings; check markers and path.")
 
 #### 🔧 Key Functions & Classes (utils_status_reconciliation)
 
-- `StatusReconciliation` (class, line 16)
-- `WorklistParser` (class, line 198)
-- `_normalize_state` (function, line 261)
+- `StatusReconciliation` (class, line 15)
+- `WorklistParser` (class, line 197)
+- `_normalize_state` (function, line 260)
 
 #### 📦 Key Imports (utils_status_reconciliation)
 
@@ -6039,14 +6037,13 @@ warnings; check markers and path.")
 - `typing`
 - `typing`
 - `typing`
-- `datetime`
 
 #### ⚠️ Task markers (utils_status_reconciliation)
 
-- L59 **WARNING**: ', 'priority': 4},
-- L60 **WARNING**: ', 'priority': 7},
-- L62 **WARNING**: ', 'priority': 9},
-- L73 **WARNING**: ', 'priority': 6},
+- L58 **WARNING**: ', 'priority': 4},
+- L59 **WARNING**: ', 'priority': 7},
+- L61 **WARNING**: ', 'priority': 9},
+- L72 **WARNING**: ', 'priority': 6},
 
 ### utils/strategy\_concurrency.py {#webapp-parser-utils-strategy-concurrency-py}
 
@@ -6512,9 +6509,9 @@ user.\[/yellow\]")
 - `webapp.parser.config`
 - `webapp.parser.config`
 - `webapp.parser.config`
-- `webapp.parser.utils.privilege_tiers`
-- `webapp.parser.utils.privilege_tiers`
 - `webapp.parser.utils.logger_singleton`
+- `webapp.parser.utils.privilege_tiers`
+- `webapp.parser.utils.privilege_tiers`
 - `webapp.parser.utils.shared_logic`
 - `webapp.parser.utils.shared_logic`
 - `webapp.parser.utils.verification_framework`

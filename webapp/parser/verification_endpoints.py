@@ -21,8 +21,8 @@ from webapp.parser.config import (
     SYSTEM_MISSION,
     VERIFICATION_LOG_FILE,
 )
-from webapp.parser.utils.privilege_tiers import PrivilegeTier, get_principal_tier
 from webapp.parser.utils.logger_singleton import logger
+from webapp.parser.utils.privilege_tiers import PrivilegeTier, get_principal_tier
 from webapp.parser.utils.shared_logic import safe_get, safe_strip
 from webapp.parser.utils.verification_framework import (
     VerificationConfidence,

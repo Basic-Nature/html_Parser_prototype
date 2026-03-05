@@ -20,8 +20,8 @@ from io import StringIO
 from flask import Blueprint, jsonify, request, send_file
 
 from ..config import ENABLE_VERIFICATION_FRAMEWORK, QA_REQUIRE_CERT_AUTH
-from ..utils.privilege_tiers import PrivilegeTier, get_principal_tier
 from ..utils.cert_utils import extract_client_principal
+from ..utils.privilege_tiers import PrivilegeTier, get_principal_tier
 from ..utils.shared_logic import safe_get, safe_strip
 from .data_classifier import (
     DatasetMetadata,

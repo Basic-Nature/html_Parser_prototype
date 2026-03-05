@@ -3053,9 +3053,9 @@ socket.on('integrity_signal', /** @param {IntegritySignalPayload} data */ (data)
 /**
  * Update the integrity diagnostics panel with latest drift metrics
  * @param {IntegritySignal} signal
- * @param {string} sessionId
+ * @param {string} _sessionId
  */
-function updateIntegrityPanel(signal, sessionId) {
+function updateIntegrityPanel(signal, _sessionId) {
   let panel = document.getElementById('integrityDiagnosticsPanel');
   if (!panel) {
     // Create panel if it doesn't exist
@@ -3087,8 +3087,6 @@ function updateIntegrityPanel(signal, sessionId) {
     html += `<p class="integrity-message error">Error: ${escapeHtml(signal.error || 'Unknown error')}</p>`;
   } else if (signal.status === 'ok' || signal.status === 'alert') {
     // Display metrics
-    /** @type {IntegrityMetrics} */
-    const baseline = signal.baseline || /** @type {IntegrityMetrics} */ ({confidence_avg: 0, unknown_ratio: 0, segments_review: 0, pattern_kb_matches: 0});
     /** @type {IntegrityMetrics} */
     const recent = signal.recent || /** @type {IntegrityMetrics} */ ({confidence_avg: 0, unknown_ratio: 0, segments_review: 0, pattern_kb_matches: 0});
     /** @type {IntegrityDeltas} */
@@ -4507,7 +4505,6 @@ if (drawerHandle) {
 (function syncDrawerToLegacySidebar(){
   const legacySidebar = document.getElementById('sidebar');
   const logDrawer = $('#logDrawer');
-  const root = document.documentElement;
   
   function updateDrawerOffset() {
     if (!legacySidebar || !logDrawer) return;
@@ -7347,17 +7344,17 @@ async function loadRealData() {
      * @param {any} value
      * @returns {number|null}
      */
-    function toNumberOrNull(value) {
+    const toNumberOrNull = (value) => {
       if (value === null || value === undefined || value === '') return null;
       const n = Number(value);
       return Number.isFinite(n) ? n : null;
-    }
+    };
 
     /**
      * @param {any} item
      * @returns {any}
      */
-    function parseMeta(item) {
+    const parseMeta = (item) => {
       const meta = item && item.metastats;
       if (!meta) return {};
       if (typeof meta === 'string') {
@@ -7368,25 +7365,25 @@ async function loadRealData() {
         }
       }
       return (typeof meta === 'object') ? meta : {};
-    }
+    };
 
     /**
      * @param {any} status
      * @returns {number}
      */
-    function confidenceFromStatus(status) {
+    const confidenceFromStatus = (status) => {
       const v = String(status || '').toLowerCase();
       if (v === 'verified' || v === 'dl2') return 90;
       if (v === 'pending' || v === 'dl1') return 72;
       if (v === 'rejected') return 30;
       return 58;
-    }
+    };
 
     /**
      * @param {any} item
      * @returns {number}
      */
-    function resolveConfidence(item) {
+    const resolveConfidence = (item) => {
       const meta = parseMeta(item);
       const qm = (meta && meta.quality_metrics && typeof meta.quality_metrics === 'object') ? meta.quality_metrics : {};
       const candidates = [
@@ -7413,35 +7410,35 @@ async function loadRealData() {
       const hasVotes = toNumberOrNull(item?.votes) !== null;
       const adjusted = base + (hasCandidate ? 6 : 0) + (hasVotes ? 6 : 0);
       return Math.max(0, Math.min(100, adjusted));
-    }
+    };
 
     /**
      * @param {any} item
      * @returns {number}
      */
-    function resolveRowCount(item) {
+    const resolveRowCount = (item) => {
       const meta = parseMeta(item);
       const fromItem = toNumberOrNull(item?.row_count);
       const fromMeta = toNumberOrNull(meta?.row_count);
       if (fromItem !== null && fromItem > 0) return fromItem;
       if (fromMeta !== null && fromMeta > 0) return fromMeta;
       return 1;
-    }
+    };
 
     /**
      * @param {any} item
      * @returns {string}
      */
-    function resolveType(item) {
+    const resolveType = (item) => {
       const meta = parseMeta(item);
       return String(item?.format || meta?.format || meta?.source_format || 'csv').toLowerCase();
-    }
+    };
 
     /**
      * @param {any} item
      * @returns {number}
      */
-    function resolveTimestamp(item) {
+    const resolveTimestamp = (item) => {
       const candidates = [item?.created_at, item?.processed_at, item?.extracted_at, item?.election_date];
       for (const raw of candidates) {
         if (!raw) continue;
@@ -7449,17 +7446,17 @@ async function loadRealData() {
         if (!Number.isNaN(t)) return t;
       }
       return Date.now();
-    }
+    };
 
-    function riskRank(tier) {
+    const riskRank = (tier) => {
       const t = String(tier || '').toLowerCase();
       if (t === 'block') return 3;
       if (t === 'warn') return 2;
       if (t === 'log') return 1;
       return 0;
-    }
+    };
 
-    function resolveRisk(item) {
+    const resolveRisk = (item) => {
       const meta = parseMeta(item);
       const risk = (meta && typeof meta.risk_assessment === 'object') ? meta.risk_assessment : {};
       const tier = String(
@@ -7484,7 +7481,7 @@ async function loadRealData() {
         || ''
       );
       return { tier, subTier, action };
-    }
+    };
 
     /** @type {Map<string, any>} */
     const grouped = new Map();
@@ -8270,9 +8267,9 @@ const UrlListManager = (() => {
   /**
    * Populate state/county dropdowns with authoritative Google Sheets data.
    * Falls back to URL-based heuristics if mappings unavailable.
-   * @param {Array} meta - URL metadata (fallback only)
+  * @param {Array} _meta - URL metadata (fallback only)
    */
-  function populateTaxonomy(meta) {
+  function populateTaxonomy(_meta) {
     const stateSelect = $('#urlStateFilter');
     const countySelect = $('#urlCountyFilter');
     if (!stateSelect || !(stateSelect instanceof HTMLSelectElement) || !countySelect || !(countySelect instanceof HTMLSelectElement)) return;

@@ -27,7 +27,7 @@ try:
     from webapp.parser.config import PROCESSED_URLS_FILE, URL_LIST_FILE
     from webapp.parser.utils.database_comparison import check_existing_finalized_data
     from webapp.parser.utils.logger_singleton import logger
-    from webapp.parser.utils.misc_utils import load_processed_urls, extract_url_and_label
+    from webapp.parser.utils.misc_utils import extract_url_and_label, load_processed_urls
 except ImportError as e:
     print(f"Error importing parser modules: {e}")
     print("Make sure you're running from the repository root: python tools/url_status_report.py")
@@ -121,7 +121,7 @@ def generate_markdown_report(
         # Gap analysis
         gap_count = stats['pending'] + stats['failed']
         if gap_count > 0:
-            f.write(f"### Gap Analysis\n\n")
+            f.write("### Gap Analysis\n\n")
             f.write(f"**{gap_count} URLs** need attention (pending or failed)\n\n")
         
         # Detailed table
@@ -268,7 +268,7 @@ def main():
     print(f"      Found {len(processed_map)} processed entries\n")
     
     # Check production status for each URL
-    print(f"[3/4] Checking production status (Google Sheets + warehouse)...")
+    print("[3/4] Checking production status (Google Sheets + warehouse)...")
     report_data = []
     stats = {
         'total': len(urls_list),
@@ -350,10 +350,10 @@ def main():
             if prod_source:
                 stats['production_sources'][prod_source] += 1
     
-    print(f"\n      Complete!\n")
+    print("\n      Complete!\n")
     
     # Generate reports
-    print(f"[4/4] Generating reports...")
+    print("[4/4] Generating reports...")
     
     if args.format in ('md', 'both'):
         generate_markdown_report(report_data, md_path, stats)
@@ -375,7 +375,7 @@ def main():
     print(f"  Other:                {stats['other']} ({stats['other']/stats['total']*100:.1f}%)")
     
     if stats['production_sources']:
-        print(f"\n  Production Sources:")
+        print("\n  Production Sources:")
         for source, count in sorted(stats['production_sources'].items()):
             print(f"    - {source}: {count}")
     
@@ -387,9 +387,9 @@ def main():
         print(f"⚠️  Gap Analysis: {gap_count} URLs need attention")
         print(f"   - {stats['pending']} pending (not yet processed)")
         print(f"   - {stats['failed']} failed (need retry/investigation)")
-        print(f"\n💡 Tip: Review failed URLs in the report for common error patterns\n")
+        print("\n💡 Tip: Review failed URLs in the report for common error patterns\n")
     else:
-        print(f"✅ All URLs processed successfully!\n")
+        print("✅ All URLs processed successfully!\n")
 
 
 if __name__ == '__main__':

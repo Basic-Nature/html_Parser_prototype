@@ -295,7 +295,6 @@ class SmartElectionsWorklist {
      * Render single race row
      */
     renderRaceRow(race) {
-        const progressPercent = this.calculateProgress(race);
         const workflowStepNumber = this.getWorkflowStepNumber(race.workflow_status);
 
         return `

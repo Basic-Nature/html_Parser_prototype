@@ -3,7 +3,7 @@ from __future__ import annotations
 import hmac
 import os
 import socket
-from typing import Any, Callable, Generator, Tuple 
+from typing import Any, Callable, Tuple
 
 # ============================================
 # SocketIO Configuration: Threading Framework
@@ -50,6 +50,7 @@ SOCKETIO_CLIENT_CONFIG = {
 SOCKETIO_MESSAGE_QUEUE = os.environ.get("SOCKETIO_MESSAGE_QUEUE")
 SOCKETIO_MESSAGE_CHANNEL = os.environ.get("SOCKETIO_MESSAGE_CHANNEL", "socketio")
 
+import asyncio
 import csv
 import gzip
 import io
@@ -63,9 +64,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import asyncio
 from threading import Event, Thread
-from typing import Callable, Tuple
 from urllib.parse import urlparse, urlunparse
 
 import orjson
@@ -167,6 +166,21 @@ from webapp.parser.config import (
     URL_LIST_FILE,
 )
 from webapp.parser.filename_parser import parse_filename_simple
+from webapp.parser.routes import (
+    create_data_framework_blueprint,
+    create_election_data_blueprint,
+    create_fec_data_assurance_blueprint,
+    create_file_io_blueprint,
+    create_health_blueprint,
+    create_observability_blueprint,
+    create_prometheus_metrics_blueprint,
+    create_public_pages_blueprint,
+    create_session_orchestration_blueprint,
+    create_ui_navigation_blueprint,
+    create_url_library_blueprint,
+    create_utility_admin_blueprint,
+)
+from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socket_handler
 from webapp.parser.url_parser import (
     parse_url_simple,
 )
@@ -190,21 +204,6 @@ from webapp.parser.web_pipeline import (
     cancel_processing,
     cancellation_manager,
     process_urls_for_web,
-)
-from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socket_handler
-from webapp.parser.routes import (
-    create_data_framework_blueprint,
-    create_election_data_blueprint,
-    create_fec_data_assurance_blueprint,
-    create_file_io_blueprint,
-    create_health_blueprint,
-    create_observability_blueprint,
-    create_prometheus_metrics_blueprint,
-    create_public_pages_blueprint,
-    create_session_orchestration_blueprint,
-    create_ui_navigation_blueprint,
-    create_utility_admin_blueprint,
-    create_url_library_blueprint,
 )
 
 _DOWNLOAD_READY_SESSIONS: set[str] = set()
@@ -6062,9 +6061,10 @@ def api_url_status():
     """
     try:
         from datetime import datetime
+
         from webapp.parser.config import URL_LIST_FILE
-        from webapp.parser.utils.misc_utils import load_processed_urls, extract_url_and_label
         from webapp.parser.utils.database_comparison import check_existing_finalized_data
+        from webapp.parser.utils.misc_utils import extract_url_and_label, load_processed_urls
         from webapp.parser.utils.status_reconciliation import StatusReconciliation
         
         # Parse query parameters

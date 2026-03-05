@@ -9,10 +9,8 @@ Supports:
 """
 from __future__ import annotations
 
-import os
 from typing import Any, Dict, Optional
 
-from ..config import LOG_DIR
 from .logger_singleton import logger
 
 
@@ -164,7 +162,7 @@ def _check_google_sheets_finalized_data(
                 return True, metadata
             
             # URL normalization: strip trailing slash, query params, fragments
-            from urllib.parse import urlparse, urlunparse
+            from urllib.parse import urlparse
             parsed_record = urlparse(record_url)
             parsed_target = urlparse(url)
             
@@ -206,6 +204,7 @@ def _check_warehouse_database(
     """Check warehouse_election_results table for matching URL."""
     try:
         from sqlalchemy import inspect, text
+
         from ..utils.db_utils import get_engine
         
         engine = get_engine()
@@ -280,6 +279,7 @@ def _check_verified_datasets(
     """Check verified_datasets table for matching URL with approved QA status."""
     try:
         from sqlalchemy import inspect, text
+
         from ..utils.db_utils import get_engine
         
         engine = get_engine()

@@ -10,8 +10,8 @@
   const socketTestButton = document.querySelector("[data-socket-test-broadcast]");
   const alertBox = document.querySelector("[data-health-alert]");
   const defaultAlert = alertBox ? alertBox.textContent.trim() : "";
-    const healthEnabled = String(configEl.dataset.healthEnabled || "true").toLowerCase() === "true";
-    const healthReason = String(configEl.dataset.healthReason || "").trim();
+  const healthEnabled = String(configEl.dataset.healthEnabled || "true").toLowerCase() === "true";
+  const healthReason = String(configEl.dataset.healthReason || "").trim();
 
   const parseJson = (value) => {
       if (!value) {

@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 
 from flask import current_app
 
-
 _ROUTE_MONITOR_LOCK = threading.Lock()
 
 

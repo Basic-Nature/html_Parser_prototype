@@ -13,7 +13,6 @@ from ..Context_Integration.Context_Library.constants import CONTEST_KEYWORDS
 from ..handlers import fec_handler
 from ..handlers.formats import csv_handler, json_handler, pdf_handler, txt_handler, xlsx_handler
 from .browser_utils import (
-    safe_click,
     safe_click_with_retry,
     safe_content,
     safe_context_library,

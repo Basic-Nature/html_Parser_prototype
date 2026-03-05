@@ -10,13 +10,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
 try:
-    from PIL import Image
     import pytesseract
+    from PIL import Image
 except Exception:
     Image = None
     pytesseract = None

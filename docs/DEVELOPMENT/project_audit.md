@@ -5,7 +5,7 @@ title: "Project Audit"
 
 Audit scope: `webapp/parser/` modules.
 
-Modules scanned: 250 | ~88169 non-empty LOC
+Modules scanned: 250 | ~88154 non-empty LOC
 
 ## Pipeline map (Mermaid)
 
@@ -93,7 +93,7 @@ Key module-to-module and cluster relationships to watch during refactors.
 ### Cluster flow summary
 
 - Utils → Utils: 1126 edges (intra-cluster)
-- Other → Other: 700 edges (intra-cluster)
+- Other → Other: 699 edges (intra-cluster)
 - Context_Integration → Context_Integration: 386 edges (intra-cluster)
 - Entry → Entry: 316 edges (intra-cluster)
 - Format Handlers → Format Handlers: 234 edges (intra-cluster)
@@ -324,157 +324,157 @@ graph LR
 ### webapp/Smart\_Elections\_Parser\_Webapp.py {#webapp-smart-elections-parser-webapp-py}
 
 - Definitions:
-  - function: `\_int\_env` (line 220)
-  - function: `\_clone\_payload` (line 232)
-  - function: `\_get\_ttl\_cache\_payload` (line 241)
-  - function: `\_set\_ttl\_cache\_payload` (line 252)
-  - function: `\_log\_endpoint\_latency` (line 261)
-  - function: `\_emit\_download\_ready` (line 280)
-  - function: `\_flagged\_url\_log\_dir` (line 320)
-  - function: `\_rotate\_flagged\_url\_path` (line 328)
-  - function: `\_prune\_flagged\_url\_logs` (line 346)
-  - function: `\_is\_local\_request` (line 362)
-  - function: `\_guarded\_ingestion\_allowed` (line 378)
-  - function: `\_request\_wants\_json` (line 395)
-  - function: `\_cert\_required\_response` (line 410)
-  - function: `\_require\_client\_cert` (line 421)
-  - function: `\_require\_cert\_for\_socket\_action` (line 440)
-  - function: `\_ingestion\_audit\_context` (line 489)
-  - function: `log\_flagged\_url` (line 505)
-  - function: `\_require\_health\_auth` (line 683)
-  - function: `\_health\_auth\_response` (line 706)
-  - function: `\_public\_health\_task\_definitions` (line 714)
-  - function: `\_get\_health\_tasks` (line 726)
-  - function: `\_get\_health\_task` (line 733)
-  - function: `\_append\_health\_task\_log` (line 739)
-  - function: `\_trim\_health\_task\_history` (line 755)
-  - function: `\_finalize\_health\_task` (line 767)
-  - function: `\_launch\_health\_task` (line 778)
-  - function: `\_run\_health\_task` (line 802)
-  - function: `ensure\_utf8` (line 852)
-  - function: `\_is\_request\_secure` (line 866)
-  - class: `EnsureWsSecurityHeaders` (line 874)
-  - function: `\_register\_legacy\_endpoint\_aliases` (line 1139)
-  - function: `\_socket\_payload\_too\_large` (line 1268)
-  - function: `\_rate\_limit\_socket\_action` (line 1279)
-  - function: `\_rate\_limit` (line 1293)
-  - function: `\_generate\_upload\_filename` (line 1298)
-  - function: `\_enforce\_request\_size` (line 1304)
-  - function: `\_validate\_uploaded\_file` (line 1313)
-  - function: `\_save\_uploaded\_file` (line 1356)
-  - function: `\_log\_download\_access` (line 1379)
-  - function: `\_resolve\_output\_metadata\_path` (line 1389)
-  - function: `\_quick\_copy\_session\_dir` (line 1401)
-  - function: `\_ensure\_quick\_copy\_dir` (line 1409)
-  - function: `\_cleanup\_quick\_copy\_dir` (line 1425)
-  - function: `\_unique\_quick\_copy\_name` (line 1439)
-  - function: `\_is\_output\_download\_allowed` (line 1453)
-  - function: `is\_owner` (line 1472)
-  - function: `create\_session\_metadata` (line 1476)
-  - function: `\_recover\_stale\_session` (line 1479)
-  - function: `cleanup\_sessions` (line 1507)
-  - function: `transition\_session` (line 1536)
-  - function: `cleanup\_old\_log\_files` (line 1575)
-  - function: `client\_fingerprint` (line 1596)
-  - function: `get\_request\_principal` (line 1606)
-  - function: `\_is\_local\_host` (line 1621)
-  - function: `\_is\_azure\_environment` (line 1632)
-  - function: `\_get\_dev\_isolation\_bypass\_ips` (line 1642)
-  - function: `\_is\_dev\_isolation\_bypass\_request` (line 1648)
-  - function: `\_resolve\_cert\_session\_id` (line 1663)
-  - function: `\_derive\_auth\_context` (line 1672)
-  - function: `\_apply\_auth\_context` (line 1682)
-  - function: `\_session\_has\_principal` (line 1692)
-  - function: `resolve\_session\_id` (line 1696)
-  - function: `emit\_contest\_options` (line 1848)
-  - function: `\_promote\_inner` (line 1886)
-  - function: `ensure\_db\_tables` (line 1908)
-  - function: `normalize\_log\_obj` (line 1937)
-  - function: `store\_log` (line 2072)
-  - function: `\_heartbeat\_loop` (line 2084)
-  - function: `socketio\_emit\_func` (line 2099)
-  - function: `get\_prompt\_queue` (line 2267)
-  - function: `broadcast\_sessions` (line 2270)
-  - function: `lock\_session` (line 2287)
-  - function: `unlock\_session` (line 2298)
-  - function: `safe\_is\_alive` (line 2309)
-  - function: `is\_output\_bypassed` (line 2329)
-  - function: `get\_manual\_source` (line 2332)
-  - function: `get\_manual\_source\_origin` (line 2335)
-  - function: `get\_all\_file\_lists` (line 2338)
-  - function: `get\_session\_enums` (line 2345)
-  - function: `redirect\_to\_https\_www` (line 2362)
-  - function: `\_csp\_nonce` (line 2434)
-  - function: `build\_csp` (line 2443)
-  - function: `add\_headers` (line 2519)
-  - function: `\_handle\_global\_exception` (line 2596)
-  - function: `add\_url` (line 2643)
-  - function: `allowed\_file` (line 2761)
-  - function: `get\_url\_list` (line 2771)
-  - function: `list\_urls` (line 2787)
-  - function: `log\_run\_event` (line 2813)
-  - function: `\_validate\_filter\_value` (line 2837)
-  - function: `log\_db\_monitor\_event` (line 2854)
-  - function: `index` (line 2864)
-  - function: `api\_urls` (line 2868)
-  - function: `api\_urls\_parse` (line 3013)
-  - function: `api\_urls\_training\_data` (line 3088)
-  - function: `api\_urls\_parse\_all` (line 3168)
-  - function: `api\_filename\_parse` (line 3236)
-  - function: `\_load\_output\_metadata` (line 3312)
-  - function: `\_build\_output\_lookup\_match` (line 3323)
-  - function: `api\_outputs\_lookup` (line 3362)
-  - function: `\_get\_warehouse\_columns` (line 3420)
-  - function: `\_collect\_url\_reference\_hint` (line 3429)
-  - function: `api\_warehouse\_match` (line 3511)
-  - function: `api\_warehouse\_export` (line 3598)
-  - function: `api\_warehouse\_coverage` (line 3651)
-  - function: `data\_framework` (line 3751)
-  - function: `\_collect\_data\_framework\_scaffold` (line 3755)
-  - function: `\_extract\_year\_from\_text` (line 3809)
-  - function: `\_collect\_data\_framework\_curated` (line 3818)
-  - function: `\_resolve\_preview\_filters` (line 3873)
-  - function: `\_select\_preview\_context` (line 3893)
-  - function: `\_fetch\_preview\_rows` (line 3924)
-  - function: `api\_data\_framework\_preview` (line 3963)
-  - function: `api\_data\_framework\_scaffold` (line 4082)
-  - function: `api\_data\_framework\_scaffold\_csv` (line 4095)
-  - function: `api\_data\_framework\_curated` (line 4119)
-  - function: `api\_data\_framework\_warehouse\_status` (line 4132)
-  - function: `api\_data\_framework\_exports` (line 4481)
-  - function: `health\_dashboard` (line 4529)
-  - function: `api\_list\_health\_tasks` (line 4573)
-  - function: `api\_start\_health\_task` (line 4580)
-  - function: `api\_health\_task\_detail` (line 4597)
-  - function: `api\_health\_socket\_test` (line 4607)
-  - function: `test\_ui\_prompt` (line 4666)
-  - function: `api\_fs\_list` (line 4722)
-  - function: `api\_list\_dir\_compat` (line 4767)
-  - function: `api\_fs\_mkdir` (line 4770)
-  - function: `api\_fs\_delete` (line 4802)
-  - function: `api\_quick\_copy` (line 4841)
-  - function: `api\_quick\_copy\_clear` (line 4903)
-  - function: `download\_fs` (line 4914)
-  - function: `view\_csv` (line 4989)
-  - function: `\_build\_or\_load\_csv\_index` (line 5179)
-  - function: `csv\_locate` (line 5226)
-  - function: `favicon` (line 5267)
-  - function: `robots\_txt` (line 5326)
-  - function: `serve\_well\_known\_appspecific` (line 5331)
-  - function: `\_normalize\_party\_bucket` (line 5340)
-  - function: `\_compute\_dropoff\_items` (line 5351)
-  - function: `api\_warehouse\_election\_results` (line 5390)
-  - function: `delete\_input\_file` (line 5760)
-  - function: `delete\_output\_file` (line 5772)
-  - function: `delete\_upload\_file` (line 5784)
-  - function: `download\_input\_file` (line 5796)
-  - function: `download\_output\_file` (line 5799)
-  - function: `download\_upload\_file` (line 5880)
-  - function: `ballot\_lens` (line 5883)
-  - function: `ballot\_lens\_modern` (line 5927)
-  - function: `worklist` (line 5932)
-  - function: `api\_validate\_urls` (line 5950)
-  - function: `api\_url\_status` (line 6023)
+  - function: `\_int\_env` (line 219)
+  - function: `\_clone\_payload` (line 231)
+  - function: `\_get\_ttl\_cache\_payload` (line 240)
+  - function: `\_set\_ttl\_cache\_payload` (line 251)
+  - function: `\_log\_endpoint\_latency` (line 260)
+  - function: `\_emit\_download\_ready` (line 279)
+  - function: `\_flagged\_url\_log\_dir` (line 319)
+  - function: `\_rotate\_flagged\_url\_path` (line 327)
+  - function: `\_prune\_flagged\_url\_logs` (line 345)
+  - function: `\_is\_local\_request` (line 361)
+  - function: `\_guarded\_ingestion\_allowed` (line 377)
+  - function: `\_request\_wants\_json` (line 394)
+  - function: `\_cert\_required\_response` (line 409)
+  - function: `\_require\_client\_cert` (line 420)
+  - function: `\_require\_cert\_for\_socket\_action` (line 439)
+  - function: `\_ingestion\_audit\_context` (line 488)
+  - function: `log\_flagged\_url` (line 504)
+  - function: `\_require\_health\_auth` (line 682)
+  - function: `\_health\_auth\_response` (line 705)
+  - function: `\_public\_health\_task\_definitions` (line 713)
+  - function: `\_get\_health\_tasks` (line 725)
+  - function: `\_get\_health\_task` (line 732)
+  - function: `\_append\_health\_task\_log` (line 738)
+  - function: `\_trim\_health\_task\_history` (line 754)
+  - function: `\_finalize\_health\_task` (line 766)
+  - function: `\_launch\_health\_task` (line 777)
+  - function: `\_run\_health\_task` (line 801)
+  - function: `ensure\_utf8` (line 851)
+  - function: `\_is\_request\_secure` (line 865)
+  - class: `EnsureWsSecurityHeaders` (line 873)
+  - function: `\_register\_legacy\_endpoint\_aliases` (line 1138)
+  - function: `\_socket\_payload\_too\_large` (line 1267)
+  - function: `\_rate\_limit\_socket\_action` (line 1278)
+  - function: `\_rate\_limit` (line 1292)
+  - function: `\_generate\_upload\_filename` (line 1297)
+  - function: `\_enforce\_request\_size` (line 1303)
+  - function: `\_validate\_uploaded\_file` (line 1312)
+  - function: `\_save\_uploaded\_file` (line 1355)
+  - function: `\_log\_download\_access` (line 1378)
+  - function: `\_resolve\_output\_metadata\_path` (line 1388)
+  - function: `\_quick\_copy\_session\_dir` (line 1400)
+  - function: `\_ensure\_quick\_copy\_dir` (line 1408)
+  - function: `\_cleanup\_quick\_copy\_dir` (line 1424)
+  - function: `\_unique\_quick\_copy\_name` (line 1438)
+  - function: `\_is\_output\_download\_allowed` (line 1452)
+  - function: `is\_owner` (line 1471)
+  - function: `create\_session\_metadata` (line 1475)
+  - function: `\_recover\_stale\_session` (line 1478)
+  - function: `cleanup\_sessions` (line 1506)
+  - function: `transition\_session` (line 1535)
+  - function: `cleanup\_old\_log\_files` (line 1574)
+  - function: `client\_fingerprint` (line 1595)
+  - function: `get\_request\_principal` (line 1605)
+  - function: `\_is\_local\_host` (line 1620)
+  - function: `\_is\_azure\_environment` (line 1631)
+  - function: `\_get\_dev\_isolation\_bypass\_ips` (line 1641)
+  - function: `\_is\_dev\_isolation\_bypass\_request` (line 1647)
+  - function: `\_resolve\_cert\_session\_id` (line 1662)
+  - function: `\_derive\_auth\_context` (line 1671)
+  - function: `\_apply\_auth\_context` (line 1681)
+  - function: `\_session\_has\_principal` (line 1691)
+  - function: `resolve\_session\_id` (line 1695)
+  - function: `emit\_contest\_options` (line 1847)
+  - function: `\_promote\_inner` (line 1885)
+  - function: `ensure\_db\_tables` (line 1907)
+  - function: `normalize\_log\_obj` (line 1936)
+  - function: `store\_log` (line 2071)
+  - function: `\_heartbeat\_loop` (line 2083)
+  - function: `socketio\_emit\_func` (line 2098)
+  - function: `get\_prompt\_queue` (line 2266)
+  - function: `broadcast\_sessions` (line 2269)
+  - function: `lock\_session` (line 2286)
+  - function: `unlock\_session` (line 2297)
+  - function: `safe\_is\_alive` (line 2308)
+  - function: `is\_output\_bypassed` (line 2328)
+  - function: `get\_manual\_source` (line 2331)
+  - function: `get\_manual\_source\_origin` (line 2334)
+  - function: `get\_all\_file\_lists` (line 2337)
+  - function: `get\_session\_enums` (line 2344)
+  - function: `redirect\_to\_https\_www` (line 2361)
+  - function: `\_csp\_nonce` (line 2433)
+  - function: `build\_csp` (line 2442)
+  - function: `add\_headers` (line 2518)
+  - function: `\_handle\_global\_exception` (line 2595)
+  - function: `add\_url` (line 2642)
+  - function: `allowed\_file` (line 2760)
+  - function: `get\_url\_list` (line 2770)
+  - function: `list\_urls` (line 2786)
+  - function: `log\_run\_event` (line 2812)
+  - function: `\_validate\_filter\_value` (line 2836)
+  - function: `log\_db\_monitor\_event` (line 2853)
+  - function: `index` (line 2863)
+  - function: `api\_urls` (line 2867)
+  - function: `api\_urls\_parse` (line 3012)
+  - function: `api\_urls\_training\_data` (line 3087)
+  - function: `api\_urls\_parse\_all` (line 3167)
+  - function: `api\_filename\_parse` (line 3235)
+  - function: `\_load\_output\_metadata` (line 3311)
+  - function: `\_build\_output\_lookup\_match` (line 3322)
+  - function: `api\_outputs\_lookup` (line 3361)
+  - function: `\_get\_warehouse\_columns` (line 3419)
+  - function: `\_collect\_url\_reference\_hint` (line 3428)
+  - function: `api\_warehouse\_match` (line 3510)
+  - function: `api\_warehouse\_export` (line 3597)
+  - function: `api\_warehouse\_coverage` (line 3650)
+  - function: `data\_framework` (line 3750)
+  - function: `\_collect\_data\_framework\_scaffold` (line 3754)
+  - function: `\_extract\_year\_from\_text` (line 3808)
+  - function: `\_collect\_data\_framework\_curated` (line 3817)
+  - function: `\_resolve\_preview\_filters` (line 3872)
+  - function: `\_select\_preview\_context` (line 3892)
+  - function: `\_fetch\_preview\_rows` (line 3923)
+  - function: `api\_data\_framework\_preview` (line 3962)
+  - function: `api\_data\_framework\_scaffold` (line 4081)
+  - function: `api\_data\_framework\_scaffold\_csv` (line 4094)
+  - function: `api\_data\_framework\_curated` (line 4118)
+  - function: `api\_data\_framework\_warehouse\_status` (line 4131)
+  - function: `api\_data\_framework\_exports` (line 4480)
+  - function: `health\_dashboard` (line 4528)
+  - function: `api\_list\_health\_tasks` (line 4572)
+  - function: `api\_start\_health\_task` (line 4579)
+  - function: `api\_health\_task\_detail` (line 4596)
+  - function: `api\_health\_socket\_test` (line 4606)
+  - function: `test\_ui\_prompt` (line 4665)
+  - function: `api\_fs\_list` (line 4721)
+  - function: `api\_list\_dir\_compat` (line 4766)
+  - function: `api\_fs\_mkdir` (line 4769)
+  - function: `api\_fs\_delete` (line 4801)
+  - function: `api\_quick\_copy` (line 4840)
+  - function: `api\_quick\_copy\_clear` (line 4902)
+  - function: `download\_fs` (line 4913)
+  - function: `view\_csv` (line 4988)
+  - function: `\_build\_or\_load\_csv\_index` (line 5178)
+  - function: `csv\_locate` (line 5225)
+  - function: `favicon` (line 5266)
+  - function: `robots\_txt` (line 5325)
+  - function: `serve\_well\_known\_appspecific` (line 5330)
+  - function: `\_normalize\_party\_bucket` (line 5339)
+  - function: `\_compute\_dropoff\_items` (line 5350)
+  - function: `api\_warehouse\_election\_results` (line 5389)
+  - function: `delete\_input\_file` (line 5759)
+  - function: `delete\_output\_file` (line 5771)
+  - function: `delete\_upload\_file` (line 5783)
+  - function: `download\_input\_file` (line 5795)
+  - function: `download\_output\_file` (line 5798)
+  - function: `download\_upload\_file` (line 5879)
+  - function: `ballot\_lens` (line 5882)
+  - function: `ballot\_lens\_modern` (line 5926)
+  - function: `worklist` (line 5931)
+  - function: `api\_validate\_urls` (line 5949)
+  - function: `api\_url\_status` (line 6022)
   - function: `site\_webmanifest` (line 6228)
   - function: `quality\_dashboard` (line 6265)
   - function: `\_load\_integrity\_trends` (line 6270)
@@ -529,249 +529,246 @@ graph LR
   - function: `api\_data\_assurance\_promote` (line 9148)
   - function: `api\_data\_assurance\_pending\_reviews` (line 9237)
 - Imports:
-  - **Standard Library** (26):
+  - **Standard Library** (23):
     - `import os as os` (line 4)
     - `import socket as socket` (line 5)
     - `from typing import Any` (line 6)
     - `from typing import Callable` (line 6)
-    - `from typing import Generator` (line 6)
     - `from typing import Tuple` (line 6)
-    - `import csv as csv` (line 53)
-    - `import io as io` (line 55)
-    - `import json as json` (line 56)
-    - `import re as re` (line 57)
-    - `import shutil as shutil` (line 59)
-    - `import subprocess as subprocess` (line 60)
-    - `import sys as sys` (line 61)
-    - `import threading as threading` (line 62)
-    - `import time as time` (line 63)
-    - `from datetime import datetime` (line 64)
-    - `from datetime import timedelta` (line 64)
-    - `from datetime import timezone` (line 64)
-    - `from pathlib import Path` (line 65)
-    - `import asyncio as asyncio` (line 66)
+    - `import asyncio as asyncio` (line 53)
+    - `import csv as csv` (line 54)
+    - `import io as io` (line 56)
+    - `import json as json` (line 57)
+    - `import re as re` (line 58)
+    - `import shutil as shutil` (line 60)
+    - `import subprocess as subprocess` (line 61)
+    - `import sys as sys` (line 62)
+    - `import threading as threading` (line 63)
+    - `import time as time` (line 64)
+    - `from datetime import datetime` (line 65)
+    - `from datetime import timedelta` (line 65)
+    - `from datetime import timezone` (line 65)
+    - `from pathlib import Path` (line 66)
     - `from threading import Event` (line 67)
     - `from threading import Thread` (line 67)
-    - `from typing import Callable` (line 68)
-    - `from typing import Tuple` (line 68)
-    - `from urllib.parse import urlparse` (line 69)
-    - `from urllib.parse import urlunparse` (line 69)
+    - `from urllib.parse import urlparse` (line 68)
+    - `from urllib.parse import urlunparse` (line 68)
   - **Third-party** (91):
-    - `import orjson as orjson` (line 71)
-    - `import psycopg2 as psycopg2` (line 72)
-    - `from flask import Flask` (line 73)
-    - `from flask import Response` (line 73)
-    - `from flask import flash` (line 73)
-    - `from flask import g` (line 73)
-    - `from flask import jsonify` (line 73)
-    - `from flask import redirect` (line 73)
-    - `from flask import render_template` (line 73)
-    - `from flask import request` (line 73)
-    - `from flask import send_file` (line 73)
-    - `from flask import send_from_directory` (line 73)
-    - `from flask import session` (line 73)
-    - `from flask import url_for` (line 73)
-    - `from psycopg2 import errors as pg_errors` (line 87)
-    - `from sqlalchemy import inspect` (line 88)
-    - `from sqlalchemy import text` (line 88)
-    - `from sqlalchemy.exc import OperationalError` (line 89)
-    - `from werkzeug.exceptions import HTTPException` (line 90)
-    - `from werkzeug.exceptions import NotFound` (line 90)
+    - `import orjson as orjson` (line 70)
+    - `import psycopg2 as psycopg2` (line 71)
+    - `from flask import Flask` (line 72)
+    - `from flask import Response` (line 72)
+    - `from flask import flash` (line 72)
+    - `from flask import g` (line 72)
+    - `from flask import jsonify` (line 72)
+    - `from flask import redirect` (line 72)
+    - `from flask import render_template` (line 72)
+    - `from flask import request` (line 72)
+    - `from flask import send_file` (line 72)
+    - `from flask import send_from_directory` (line 72)
+    - `from flask import session` (line 72)
+    - `from flask import url_for` (line 72)
+    - `from psycopg2 import errors as pg_errors` (line 86)
+    - `from sqlalchemy import inspect` (line 87)
+    - `from sqlalchemy import text` (line 87)
+    - `from sqlalchemy.exc import OperationalError` (line 88)
+    - `from werkzeug.exceptions import HTTPException` (line 89)
+    - `from werkzeug.exceptions import NotFound` (line 89)
     - `from webapp.parser.health.integrity_monitor import get_integrity_monitor`
-      (line 120)
+      (line 119)
     - `from webapp.parser.health.session_manager import SessionManager` (line
-      121)
-    - `from webapp.parser.utils.logger_singleton import logger` (line 122)
-    - `from webapp.parser.utils.logger_singleton import prompt` (line 122)
+      120)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 121)
+    - `from webapp.parser.utils.logger_singleton import prompt` (line 121)
     - `from webapp.parser.utils.session_state import DEFAULT_PHASE_BY_STATE`
-      (line 123)
-    - `from webapp.parser.utils.session_state import PipelinePhase` (line 123)
-    - `from webapp.parser.utils.session_state import SessionState` (line 123)
+      (line 122)
+    - `from webapp.parser.utils.session_state import PipelinePhase` (line 122)
+    - `from webapp.parser.utils.session_state import SessionState` (line 122)
     - `from webapp.parser.utils.session_state import export_session_enums` (line
-      123)
-    - `from webapp.parser.config import ALLOW_GOOGLE_DOCS` (line 138)
-    - `from webapp.parser.config import ALLOW_LEGACY_OUTPUT_DOWNLOAD` (line 138)
-    - `from webapp.parser.config import DATA_API_URL` (line 138)
-    - `from webapp.parser.config import DEPLOY_ENV` (line 138)
-    - `from webapp.parser.config import INPUT_DIR` (line 138)
-    - `from webapp.parser.config import LOG_DIR` (line 138)
-    - `from webapp.parser.config import MAX_CSV_ROWS` (line 138)
-    - `from webapp.parser.config import MAX_PDF_PAGES` (line 138)
-    - `from webapp.parser.config import MAX_SOCKET_EVENT_BYTES` (line 138)
-    - `from webapp.parser.config import MAX_SOCKET_LOG_BYTES` (line 138)
-    - `from webapp.parser.config import MAX_UPLOAD_BYTES` (line 138)
-    - `from webapp.parser.config import MAX_UPLOAD_SIZE_MB` (line 138)
-    - `from webapp.parser.config import MAX_XLSX_BYTES` (line 138)
-    - `from webapp.parser.config import OUTPUT_DIR` (line 138)
-    - `from webapp.parser.config import POSTGRES_DB` (line 138)
-    - `from webapp.parser.config import POSTGRES_HOST` (line 138)
-    - `from webapp.parser.config import POSTGRES_PASSWORD_RAW` (line 138)
-    - `from webapp.parser.config import POSTGRES_PORT` (line 138)
-    - `from webapp.parser.config import POSTGRES_USER_RAW` (line 138)
-    - `from webapp.parser.config import PROJECT_ROOT` (line 138)
-    - `from webapp.parser.config import QUICK_COPY_DIR` (line 138)
-    - `from webapp.parser.config import RUN_HISTORY_FILE` (line 138)
+      122)
+    - `from webapp.parser.config import ALLOW_GOOGLE_DOCS` (line 137)
+    - `from webapp.parser.config import ALLOW_LEGACY_OUTPUT_DOWNLOAD` (line 137)
+    - `from webapp.parser.config import DATA_API_URL` (line 137)
+    - `from webapp.parser.config import DEPLOY_ENV` (line 137)
+    - `from webapp.parser.config import INPUT_DIR` (line 137)
+    - `from webapp.parser.config import LOG_DIR` (line 137)
+    - `from webapp.parser.config import MAX_CSV_ROWS` (line 137)
+    - `from webapp.parser.config import MAX_PDF_PAGES` (line 137)
+    - `from webapp.parser.config import MAX_SOCKET_EVENT_BYTES` (line 137)
+    - `from webapp.parser.config import MAX_SOCKET_LOG_BYTES` (line 137)
+    - `from webapp.parser.config import MAX_UPLOAD_BYTES` (line 137)
+    - `from webapp.parser.config import MAX_UPLOAD_SIZE_MB` (line 137)
+    - `from webapp.parser.config import MAX_XLSX_BYTES` (line 137)
+    - `from webapp.parser.config import OUTPUT_DIR` (line 137)
+    - `from webapp.parser.config import POSTGRES_DB` (line 137)
+    - `from webapp.parser.config import POSTGRES_HOST` (line 137)
+    - `from webapp.parser.config import POSTGRES_PASSWORD_RAW` (line 137)
+    - `from webapp.parser.config import POSTGRES_PORT` (line 137)
+    - `from webapp.parser.config import POSTGRES_USER_RAW` (line 137)
+    - `from webapp.parser.config import PROJECT_ROOT` (line 137)
+    - `from webapp.parser.config import QUICK_COPY_DIR` (line 137)
+    - `from webapp.parser.config import RUN_HISTORY_FILE` (line 137)
   - **Local/Project** (4):
     - `from __future__ import annotations` (line 1)
     - `import hmac as hmac` (line 3)
-    - `import gzip as gzip` (line 54)
-    - `import secrets as secrets` (line 58)
+    - `import gzip as gzip` (line 55)
+    - `import secrets as secrets` (line 59)
 - Task markers:
-  - L264 **WARNING**: " if elapsed_ms &gt;= API_LATENCY_WARN_MS else "DEBUG",
-  - L276 **WARNING**: (payload)
-  - L479 **WARNING**: ",
-  - L601 **WARNING**: ({
-  - L602 **WARNING**: ",
-  - L872 **WARNING**: ").upper().split(","))
-  - L908 **WARNING**: ({
-  - L909 **WARNING**: ",
-  - L926 **WARNING**: ({
-  - L927 **WARNING**: ",
-  - L944 **WARNING**: ({
-  - L945 **WARNING**: ",
-  - L961 **WARNING**: ({
-  - L962 **WARNING**: ",
-  - L978 **WARNING**: ({
-  - L979 **WARNING**: ",
-  - L995 **WARNING**: ({
-  - L996 **WARNING**: ",
-  - L1012 **WARNING**: ({
-  - L1013 **WARNING**: ",
-  - L1029 **WARNING**: ({
-  - L1030 **WARNING**: ",
-  - L1046 **WARNING**: ({
-  - L1047 **WARNING**: ",
-  - L1063 **WARNING**: ({
-  - L1064 **WARNING**: ",
-  - L1080 **WARNING**: ({
-  - L1081 **WARNING**: ",
-  - L1097 **WARNING**: ({
-  - L1098 **WARNING**: ",
-  - L1114 **WARNING**: ({
-  - L1115 **WARNING**: ",
-  - L1131 **WARNING**: ({
-  - L1132 **WARNING**: ",
-  - L1328 **WARNING**: ({
-  - L1329 **WARNING**: ",
-  - L1345 **WARNING**: ({
-  - L1346 **WARNING**: ",
-  - L1432 **WARNING**: ({
-  - L1433 **WARNING**: ",
-  - L1940 **WARNING**: , ERROR, CRITICAL, TRACE
-  - L1982 **WARNING**: ", "ERROR", "CRITICAL", "TRACE"}
-  - L2018 **WARNING**: " in mlow:
-  - L2571 **WARNING**:         # For websocket handshake only: add Cache-Control
+  - L263 **WARNING**: " if elapsed_ms &gt;= API_LATENCY_WARN_MS else "DEBUG",
+  - L275 **WARNING**: (payload)
+  - L478 **WARNING**: ",
+  - L600 **WARNING**: ({
+  - L601 **WARNING**: ",
+  - L871 **WARNING**: ").upper().split(","))
+  - L907 **WARNING**: ({
+  - L908 **WARNING**: ",
+  - L925 **WARNING**: ({
+  - L926 **WARNING**: ",
+  - L943 **WARNING**: ({
+  - L944 **WARNING**: ",
+  - L960 **WARNING**: ({
+  - L961 **WARNING**: ",
+  - L977 **WARNING**: ({
+  - L978 **WARNING**: ",
+  - L994 **WARNING**: ({
+  - L995 **WARNING**: ",
+  - L1011 **WARNING**: ({
+  - L1012 **WARNING**: ",
+  - L1028 **WARNING**: ({
+  - L1029 **WARNING**: ",
+  - L1045 **WARNING**: ({
+  - L1046 **WARNING**: ",
+  - L1062 **WARNING**: ({
+  - L1063 **WARNING**: ",
+  - L1079 **WARNING**: ({
+  - L1080 **WARNING**: ",
+  - L1096 **WARNING**: ({
+  - L1097 **WARNING**: ",
+  - L1113 **WARNING**: ({
+  - L1114 **WARNING**: ",
+  - L1130 **WARNING**: ({
+  - L1131 **WARNING**: ",
+  - L1327 **WARNING**: ({
+  - L1328 **WARNING**: ",
+  - L1344 **WARNING**: ({
+  - L1345 **WARNING**: ",
+  - L1431 **WARNING**: ({
+  - L1432 **WARNING**: ",
+  - L1939 **WARNING**: , ERROR, CRITICAL, TRACE
+  - L1981 **WARNING**: ", "ERROR", "CRITICAL", "TRACE"}
+  - L2017 **WARNING**: " in mlow:
+  - L2570 **WARNING**:         # For websocket handshake only: add Cache-Control
     so webhint stops warning
-  - L2654 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URL
+  - L2653 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URL
     too long or invalid.", "session_id": None})
-  - L2658 **WARNING**: ({"level": "WARNING", "type": "status", "message": "No
+  - L2657 **WARNING**: ({"level": "WARNING", "type": "status", "message": "No
     valid http(s) URL found.", "session_id": None})
-  - L2667 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URL
+  - L2666 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URL
     too long.", "session_id": None})
-  - L2677 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URLs
+  - L2676 **WARNING**: ({"level": "WARNING", "type": "status", "message": "URLs
     with credentials are not allowed.", "session_id": None})
-  - L2697 **WARNING**: ({"level": "WARNING", "type": "status", "message": f"URL
+  - L2696 **WARNING**: ({"level": "WARNING", "type": "status", "message": f"URL
     blocked: {reason}", "session_id": None})
-  - L2730 **WARNING**: ({"level": "WARNING", "type": "status", "message": "Only
+  - L2729 **WARNING**: ({"level": "WARNING", "type": "status", "message": "Only
     http/https URLs with a host are accepted.", "session_id": None})
 - Outgoing cross-module calls (sample):
   - origin.strip (line 36)
   - \_RAW\_SOCKETIO\_ORIGINS.split (line 37)
   - origin.strip (line 38)
-  - dotenv.load\_dotenv (line 132)
-  - threading.Lock (line 211)
-  - threading.Lock (line 213)
-  - orjson.loads (line 236)
-  - orjson.dumps (line 236)
-  - time.time (line 242)
-  - \_API\_LATENCY\_CACHE.get (line 244)
-  - slot.get (line 247)
-  - slot.get (line 249)
-  - time.time (line 253)
-  - time.perf\_counter (line 262)
-  - payload.update (line 273)
-  - webapp.parser.utils.logger\_singleton.logger.warning (line 276)
-  - webapp.parser.utils.logger\_singleton.logger.debug (line 278)
-  - \_DOWNLOAD\_READY\_SESSIONS.add (line 286)
-  - socketio.emit (line 288)
-  - DB\_MONITOR\_FILE.touch (line 310)
-  - webapp.parser.config.LOG\_DIR.mkdir (line 322)
-  - datetime.datetime.now (line 330)
-  - now.strftime (line 332)
-  - prefix.with\_suffix (line 333)
-  - candidate.exists (line 334)
-  - candidate.stat (line 334)
-  - prefix.with\_name (line 338)
-  - cand.exists (line 339)
-  - cand.stat (line 339)
-  - datetime.datetime.now (line 347)
-  - datetime.timedelta (line 348)
-  - base.glob (line 351)
-  - datetime.datetime.fromtimestamp (line 353)
-  - entry.stat (line 353)
-  - entry.unlink (line 355)
-  - remote\_addr.startswith (line 371)
-  - hmac.compare\_digest (line 382)
-  - auth\_hdr.lower (line 385)
-  - auth\_hdr.split (line 387)
-  - hmac.compare\_digest (line 388)
-  - accept.lower (line 401)
-  - flask.jsonify (line 413)
-  - flask.url\_for (line 416)
-  - flask.redirect (line 418)
-  - flask.url\_for (line 418)
-  - auth\_hdr.lower (line 428)
-  - hmac.compare\_digest (line 430)
-  - auth\_hdr.split (line 430)
-  - principal.startswith (line 435)
-  - auth\_hdr.lower (line 447)
+  - dotenv.load\_dotenv (line 131)
+  - threading.Lock (line 210)
+  - threading.Lock (line 212)
+  - orjson.loads (line 235)
+  - orjson.dumps (line 235)
+  - time.time (line 241)
+  - \_API\_LATENCY\_CACHE.get (line 243)
+  - slot.get (line 246)
+  - slot.get (line 248)
+  - time.time (line 252)
+  - time.perf\_counter (line 261)
+  - payload.update (line 272)
+  - webapp.parser.utils.logger\_singleton.logger.warning (line 275)
+  - webapp.parser.utils.logger\_singleton.logger.debug (line 277)
+  - \_DOWNLOAD\_READY\_SESSIONS.add (line 285)
+  - socketio.emit (line 287)
+  - DB\_MONITOR\_FILE.touch (line 309)
+  - webapp.parser.config.LOG\_DIR.mkdir (line 321)
+  - datetime.datetime.now (line 329)
+  - now.strftime (line 331)
+  - prefix.with\_suffix (line 332)
+  - candidate.exists (line 333)
+  - candidate.stat (line 333)
+  - prefix.with\_name (line 337)
+  - cand.exists (line 338)
+  - cand.stat (line 338)
+  - datetime.datetime.now (line 346)
+  - datetime.timedelta (line 347)
+  - base.glob (line 350)
+  - datetime.datetime.fromtimestamp (line 352)
+  - entry.stat (line 352)
+  - entry.unlink (line 354)
+  - remote\_addr.startswith (line 370)
+  - hmac.compare\_digest (line 381)
+  - auth\_hdr.lower (line 384)
+  - auth\_hdr.split (line 386)
+  - hmac.compare\_digest (line 387)
+  - accept.lower (line 400)
+  - flask.jsonify (line 412)
+  - flask.url\_for (line 415)
+  - flask.redirect (line 417)
+  - flask.url\_for (line 417)
+  - auth\_hdr.lower (line 427)
+  - hmac.compare\_digest (line 429)
+  - auth\_hdr.split (line 429)
+  - principal.startswith (line 434)
+  - auth\_hdr.lower (line 446)
 - Inbound references:
+  - \_int\_env ← Smart_Elections_Parser_Webapp.py:226
   - \_int\_env ← Smart_Elections_Parser_Webapp.py:227
   - \_int\_env ← Smart_Elections_Parser_Webapp.py:228
-  - \_int\_env ← Smart_Elections_Parser_Webapp.py:229
   - \_int\_env ← embedding_cache.py:128
   - \_int\_env ← embedding_cache.py:129
   - \_int\_env ← embedding_cache.py:131
   - \_int\_env ← embedding_cache.py:132
-  - \_clone\_payload ← Smart_Elections_Parser_Webapp.py:249
-  - \_clone\_payload ← Smart_Elections_Parser_Webapp.py:257
-  - \_get\_ttl\_cache\_payload ← Smart_Elections_Parser_Webapp.py:3654
+  - \_clone\_payload ← Smart_Elections_Parser_Webapp.py:248
+  - \_clone\_payload ← Smart_Elections_Parser_Webapp.py:256
+  - \_get\_ttl\_cache\_payload ← Smart_Elections_Parser_Webapp.py:3653
   - \_get\_ttl\_cache\_payload ← Smart_Elections_Parser_Webapp.py:7534
-  - \_set\_ttl\_cache\_payload ← Smart_Elections_Parser_Webapp.py:3717
+  - \_set\_ttl\_cache\_payload ← Smart_Elections_Parser_Webapp.py:3716
   - \_set\_ttl\_cache\_payload ← Smart_Elections_Parser_Webapp.py:7602
-  - \_log\_endpoint\_latency ← Smart_Elections_Parser_Webapp.py:3656
-  - \_log\_endpoint\_latency ← Smart_Elections_Parser_Webapp.py:3718
+  - \_log\_endpoint\_latency ← Smart_Elections_Parser_Webapp.py:3655
+  - \_log\_endpoint\_latency ← Smart_Elections_Parser_Webapp.py:3717
   - \_log\_endpoint\_latency ← Smart_Elections_Parser_Webapp.py:7524
   - \_log\_endpoint\_latency ← Smart_Elections_Parser_Webapp.py:7536
   - \_log\_endpoint\_latency ← Smart_Elections_Parser_Webapp.py:7603
-  - \_emit\_download\_ready ← Smart_Elections_Parser_Webapp.py:2240
-  - \_emit\_download\_ready ← Smart_Elections_Parser_Webapp.py:2253
-  - \_flagged\_url\_log\_dir ← Smart_Elections_Parser_Webapp.py:331
-  - \_flagged\_url\_log\_dir ← Smart_Elections_Parser_Webapp.py:349
-  - \_rotate\_flagged\_url\_path ← Smart_Elections_Parser_Webapp.py:508
-  - \_prune\_flagged\_url\_logs ← Smart_Elections_Parser_Webapp.py:515
-  - \_is\_local\_request ← Smart_Elections_Parser_Webapp.py:424
-  - \_is\_local\_request ← Smart_Elections_Parser_Webapp.py:443
-  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:2887
-  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:5893
+  - \_emit\_download\_ready ← Smart_Elections_Parser_Webapp.py:2239
+  - \_emit\_download\_ready ← Smart_Elections_Parser_Webapp.py:2252
+  - \_flagged\_url\_log\_dir ← Smart_Elections_Parser_Webapp.py:330
+  - \_flagged\_url\_log\_dir ← Smart_Elections_Parser_Webapp.py:348
+  - \_rotate\_flagged\_url\_path ← Smart_Elections_Parser_Webapp.py:507
+  - \_prune\_flagged\_url\_logs ← Smart_Elections_Parser_Webapp.py:514
+  - \_is\_local\_request ← Smart_Elections_Parser_Webapp.py:423
+  - \_is\_local\_request ← Smart_Elections_Parser_Webapp.py:442
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:2886
+  - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:5892
   - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:6691
   - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:6765
   - \_guarded\_ingestion\_allowed ← Smart_Elections_Parser_Webapp.py:6831
-  - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:411
+  - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:410
   - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:6680
   - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:6754
   - \_request\_wants\_json ← Smart_Elections_Parser_Webapp.py:6826
-  - \_cert\_required\_response ← Smart_Elections_Parser_Webapp.py:437
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:2884
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4584
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4772
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4803
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4842
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4904
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5761
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5773
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5785
-  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5890
+  - \_cert\_required\_response ← Smart_Elections_Parser_Webapp.py:436
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:2883
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4583
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4771
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4802
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4841
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:4903
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5760
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5772
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5784
+  - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:5889
   - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:6518
   - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:6554
   - \_require\_client\_cert ← Smart_Elections_Parser_Webapp.py:6682
@@ -2451,7 +2448,7 @@ graph LR
   - SheetFetchResult ← google_sheets_client.py:519
   - GoogleSheetsElectionClient ← google_sheets_client.py:458
   - GoogleSheetsElectionClient ← google_sheets_client.py:470
-  - GoogleSheetsElectionClient ← database_comparison.py:139
+  - GoogleSheetsElectionClient ← database_comparison.py:137
   - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7321
   - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7388
   - get\_election\_data\_client ← Smart_Elections_Parser_Webapp.py:7454
@@ -5065,8 +5062,8 @@ graph LR
   - function: `parse` (line 153)
 - Imports:
   - **Standard Library** (2):
-    - `from typing import TYPE_CHECKING` (line 1)
-    - `from pathlib import Path` (line 2)
+    - `from pathlib import Path` (line 1)
+    - `from typing import TYPE_CHECKING` (line 2)
   - **Third-party** (1):
     - `from playwright.sync_api import Page` (line 4)
   - **Local/Project** (13):
@@ -7887,31 +7884,31 @@ graph LR
 > Election Data SQLAlchemy Models
 
 - Definitions:
-  - function: `Integer` (line 24)
-  - function: `String` (line 28)
-  - function: `Text` (line 34)
-  - function: `Boolean` (line 38)
-  - function: `DateTime` (line 42)
-  - function: `Float` (line 46)
-  - function: `SQLEnum` (line 50)
-  - class: `DataQualityTier` (line 54)
-  - class: `ManualReviewStatus` (line 61)
-  - class: `DataQualityFlagType` (line 70)
-  - class: `ElectionResult` (line 82)
-  - class: `ValidationRecord` (line 147)
-  - class: `StagingRecord` (line 215)
-  - class: `VoterDropoff` (line 258)
-  - class: `RaceMetadata` (line 289)
-  - class: `AuditLog` (line 325)
-  - class: `ManualReviewQueue` (line 361)
-  - class: `GoogleSheetsSync` (line 407)
-  - class: `DownloadRecord` (line 440)
-  - class: `ValidationRecord\_DL1` (line 514)
-  - class: `ValidationRecord\_DL2` (line 578)
-  - class: `PreQCComparison` (line 645)
-  - class: `QC1Checkpoint` (line 684)
-  - class: `QC2Checkpoint` (line 722)
-  - class: `ChainOfCustody` (line 764)
+  - function: `Integer` (line 23)
+  - function: `String` (line 27)
+  - function: `Text` (line 33)
+  - function: `Boolean` (line 37)
+  - function: `DateTime` (line 41)
+  - function: `Float` (line 45)
+  - function: `SQLEnum` (line 49)
+  - class: `DataQualityTier` (line 53)
+  - class: `ManualReviewStatus` (line 60)
+  - class: `DataQualityFlagType` (line 69)
+  - class: `ElectionResult` (line 81)
+  - class: `ValidationRecord` (line 146)
+  - class: `StagingRecord` (line 214)
+  - class: `VoterDropoff` (line 257)
+  - class: `RaceMetadata` (line 288)
+  - class: `AuditLog` (line 324)
+  - class: `ManualReviewQueue` (line 360)
+  - class: `GoogleSheetsSync` (line 406)
+  - class: `DownloadRecord` (line 439)
+  - class: `ValidationRecord\_DL1` (line 513)
+  - class: `ValidationRecord\_DL2` (line 577)
+  - class: `PreQCComparison` (line 644)
+  - class: `QC1Checkpoint` (line 683)
+  - class: `QC2Checkpoint` (line 721)
+  - class: `ChainOfCustody` (line 763)
 - Imports:
   - **Standard Library** (3):
     - `from datetime import datetime` (line 6)
@@ -7920,118 +7917,118 @@ graph LR
   - **Third-party** (12):
     - `from sqlalchemy import Boolean as _Boolean` (line 10)
     - `from sqlalchemy import Column` (line 11)
+    - `from sqlalchemy import ForeignKey` (line 11)
+    - `from sqlalchemy import Index` (line 11)
     - `from sqlalchemy import DateTime as _DateTime` (line 12)
     - `from sqlalchemy import Enum as _SQLEnumType` (line 13)
     - `from sqlalchemy import Float as _Float` (line 14)
-    - `from sqlalchemy import ForeignKey` (line 15)
-    - `from sqlalchemy import Index` (line 15)
-    - `from sqlalchemy import Integer as _Integer` (line 16)
-    - `from sqlalchemy import String as _String` (line 17)
-    - `from sqlalchemy import Text as _Text` (line 18)
-    - `from sqlalchemy.orm import declarative_base` (line 19)
-    - `from sqlalchemy.orm import relationship` (line 19)
+    - `from sqlalchemy import Integer as _Integer` (line 15)
+    - `from sqlalchemy import String as _String` (line 16)
+    - `from sqlalchemy import Text as _Text` (line 17)
+    - `from sqlalchemy.orm import declarative_base` (line 18)
+    - `from sqlalchemy.orm import relationship` (line 18)
 - Outgoing cross-module calls (sample):
-  - sqlalchemy.orm.declarative\_base (line 21)
-  - sqlalchemy.Column (line 25)
+  - sqlalchemy.orm.declarative\_base (line 20)
+  - sqlalchemy.Column (line 24)
+  - sqlalchemy.Column (line 29)
   - sqlalchemy.Column (line 30)
-  - sqlalchemy.Column (line 31)
-  - sqlalchemy.String (line 31)
-  - sqlalchemy.Column (line 35)
-  - sqlalchemy.Column (line 39)
-  - sqlalchemy.Column (line 43)
-  - sqlalchemy.Column (line 47)
-  - sqlalchemy.Column (line 51)
-  - sqlalchemy.Enum (line 51)
+  - sqlalchemy.String (line 30)
+  - sqlalchemy.Column (line 34)
+  - sqlalchemy.Column (line 38)
+  - sqlalchemy.Column (line 42)
+  - sqlalchemy.Column (line 46)
+  - sqlalchemy.Column (line 50)
+  - sqlalchemy.Enum (line 50)
+  - sqlalchemy.Index (line 88)
   - sqlalchemy.Index (line 89)
   - sqlalchemy.Index (line 90)
-  - sqlalchemy.Index (line 91)
+  - sqlalchemy.orm.relationship (line 142)
   - sqlalchemy.orm.relationship (line 143)
-  - sqlalchemy.orm.relationship (line 144)
+  - sqlalchemy.Index (line 153)
   - sqlalchemy.Index (line 154)
   - sqlalchemy.Index (line 155)
-  - sqlalchemy.Index (line 156)
-  - sqlalchemy.ForeignKey (line 163)
-  - sqlalchemy.orm.relationship (line 164)
+  - sqlalchemy.ForeignKey (line 162)
+  - sqlalchemy.orm.relationship (line 163)
+  - sqlalchemy.Index (line 221)
   - sqlalchemy.Index (line 222)
-  - sqlalchemy.Index (line 223)
+  - sqlalchemy.Index (line 264)
   - sqlalchemy.Index (line 265)
-  - sqlalchemy.Index (line 266)
-  - sqlalchemy.Index (line 296)
+  - sqlalchemy.Index (line 295)
+  - sqlalchemy.Index (line 331)
   - sqlalchemy.Index (line 332)
   - sqlalchemy.Index (line 333)
-  - sqlalchemy.Index (line 334)
-  - sqlalchemy.ForeignKey (line 340)
-  - sqlalchemy.orm.relationship (line 341)
+  - sqlalchemy.ForeignKey (line 339)
+  - sqlalchemy.orm.relationship (line 340)
+  - sqlalchemy.Index (line 367)
   - sqlalchemy.Index (line 368)
   - sqlalchemy.Index (line 369)
-  - sqlalchemy.Index (line 370)
-  - sqlalchemy.ForeignKey (line 376)
+  - sqlalchemy.ForeignKey (line 375)
+  - sqlalchemy.Index (line 446)
   - sqlalchemy.Index (line 447)
-  - sqlalchemy.Index (line 448)
+  - sqlalchemy.Index (line 521)
   - sqlalchemy.Index (line 522)
-  - sqlalchemy.Index (line 523)
-  - sqlalchemy.ForeignKey (line 527)
+  - sqlalchemy.ForeignKey (line 526)
+  - sqlalchemy.Index (line 585)
   - sqlalchemy.Index (line 586)
-  - sqlalchemy.Index (line 587)
-  - sqlalchemy.ForeignKey (line 591)
+  - sqlalchemy.ForeignKey (line 590)
+  - sqlalchemy.Index (line 651)
   - sqlalchemy.Index (line 652)
-  - sqlalchemy.Index (line 653)
-  - sqlalchemy.ForeignKey (line 657)
+  - sqlalchemy.ForeignKey (line 656)
+  - sqlalchemy.ForeignKey (line 660)
   - sqlalchemy.ForeignKey (line 661)
-  - sqlalchemy.ForeignKey (line 662)
+  - sqlalchemy.Index (line 690)
   - sqlalchemy.Index (line 691)
-  - sqlalchemy.Index (line 692)
 - Inbound references:
-  - Integer ← election_data.py:95
-  - Integer ← election_data.py:98
+  - Integer ← election_data.py:94
+  - Integer ← election_data.py:97
+  - Integer ← election_data.py:113
   - Integer ← election_data.py:114
   - Integer ← election_data.py:115
   - Integer ← election_data.py:116
   - Integer ← election_data.py:117
   - Integer ← election_data.py:118
-  - Integer ← election_data.py:119
-  - Integer ← election_data.py:160
-  - Integer ← election_data.py:163
-  - Integer ← election_data.py:167
+  - Integer ← election_data.py:159
+  - Integer ← election_data.py:162
+  - Integer ← election_data.py:166
+  - Integer ← election_data.py:183
   - Integer ← election_data.py:184
   - Integer ← election_data.py:185
   - Integer ← election_data.py:186
   - Integer ← election_data.py:187
   - Integer ← election_data.py:188
-  - Integer ← election_data.py:189
-  - Integer ← election_data.py:226
-  - Integer ← election_data.py:229
-  - Integer ← election_data.py:269
-  - Integer ← election_data.py:272
+  - Integer ← election_data.py:225
+  - Integer ← election_data.py:228
+  - Integer ← election_data.py:268
+  - Integer ← election_data.py:271
+  - Integer ← election_data.py:279
   - Integer ← election_data.py:280
-  - Integer ← election_data.py:281
-  - Integer ← election_data.py:299
-  - Integer ← election_data.py:302
+  - Integer ← election_data.py:298
+  - Integer ← election_data.py:301
+  - Integer ← election_data.py:307
   - Integer ← election_data.py:308
   - Integer ← election_data.py:309
-  - Integer ← election_data.py:310
+  - Integer ← election_data.py:312
   - Integer ← election_data.py:313
   - Integer ← election_data.py:314
-  - Integer ← election_data.py:315
-  - Integer ← election_data.py:337
-  - Integer ← election_data.py:340
-  - Integer ← election_data.py:373
-  - Integer ← election_data.py:376
-  - Integer ← election_data.py:379
-  - Integer ← election_data.py:404
-  - Integer ← election_data.py:414
+  - Integer ← election_data.py:336
+  - Integer ← election_data.py:339
+  - Integer ← election_data.py:372
+  - Integer ← election_data.py:375
+  - Integer ← election_data.py:378
+  - Integer ← election_data.py:403
+  - Integer ← election_data.py:413
+  - Integer ← election_data.py:419
   - Integer ← election_data.py:420
-  - Integer ← election_data.py:421
-  - Integer ← election_data.py:428
-  - Integer ← election_data.py:451
-  - Integer ← election_data.py:454
-  - Integer ← election_data.py:487
+  - Integer ← election_data.py:427
+  - Integer ← election_data.py:450
+  - Integer ← election_data.py:453
+  - Integer ← election_data.py:486
+  - Integer ← election_data.py:525
   - Integer ← election_data.py:526
-  - Integer ← election_data.py:527
-  - Integer ← election_data.py:530
+  - Integer ← election_data.py:529
+  - Integer ← election_data.py:548
   - Integer ← election_data.py:549
   - Integer ← election_data.py:550
-  - Integer ← election_data.py:551
 
 ### navigator/\_\_init\_\_.py {#webapp-parser-navigator-init-py}
 
@@ -8537,9 +8534,9 @@ graph LR
     - `from __future__ import annotations` (line 13)
     - `from config import ENABLE_VERIFICATION_FRAMEWORK` (line 22)
     - `from config import QA_REQUIRE_CERT_AUTH` (line 22)
-    - `from utils.privilege_tiers import PrivilegeTier` (line 23)
-    - `from utils.privilege_tiers import get_principal_tier` (line 23)
-    - `from utils.cert_utils import extract_client_principal` (line 24)
+    - `from utils.cert_utils import extract_client_principal` (line 23)
+    - `from utils.privilege_tiers import PrivilegeTier` (line 24)
+    - `from utils.privilege_tiers import get_principal_tier` (line 24)
     - `from utils.shared_logic import safe_get` (line 25)
     - `from utils.shared_logic import safe_strip` (line 25)
     - `from data_classifier import DatasetMetadata` (line 26)
@@ -8699,9 +8696,9 @@ graph LR
       create_session_orchestration_blueprint` (line 9)
     - `from ui_navigation_blueprint import create_ui_navigation_blueprint` (line
       10)
+    - `from url_library_blueprint import create_url_library_blueprint` (line 11)
     - `from utility_admin_blueprint import create_utility_admin_blueprint` (line
-      11)
-    - `from url_library_blueprint import create_url_library_blueprint` (line 12)
+      12)
 
 ### routes/data\_framework\_blueprint.py {#webapp-parser-routes-data-framework-blueprint-py}
 
@@ -8998,8 +8995,8 @@ graph LR
 ### routes/route\_monitor.py {#webapp-parser-routes-route-monitor-py}
 
 - Definitions:
-  - function: `\_utc\_now\_iso` (line 12)
-  - function: `record\_route\_monitor\_event` (line 16)
+  - function: `\_utc\_now\_iso` (line 11)
+  - function: `record\_route\_monitor\_event` (line 15)
 - Imports:
   - **Standard Library** (3):
     - `import threading as threading` (line 3)
@@ -9010,18 +9007,18 @@ graph LR
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
-  - threading.Lock (line 9)
-  - datetime.datetime.now (line 13)
-  - flask.current\_app.\_get\_current\_object (line 18)
-  - monitor.setdefault (line 30)
-  - routes.setdefault (line 31)
-  - stats.get (line 40)
-  - stats.get (line 42)
-  - stats.get (line 44)
+  - threading.Lock (line 8)
+  - datetime.datetime.now (line 12)
+  - flask.current\_app.\_get\_current\_object (line 17)
+  - monitor.setdefault (line 29)
+  - routes.setdefault (line 30)
+  - stats.get (line 39)
+  - stats.get (line 41)
+  - stats.get (line 43)
 - Inbound references:
+  - \_utc\_now\_iso ← route_monitor.py:25
   - \_utc\_now\_iso ← route_monitor.py:26
-  - \_utc\_now\_iso ← route_monitor.py:27
-  - \_utc\_now\_iso ← route_monitor.py:46
+  - \_utc\_now\_iso ← route_monitor.py:45
 
 ### routes/session\_orchestration\_blueprint.py {#webapp-parser-routes-session-orchestration-blueprint-py}
 
@@ -10815,61 +10812,59 @@ graph LR
 > Database Comparison Utility
 
 - Definitions:
-  - function: `check\_existing\_finalized\_data` (line 19)
-  - function: `\_check\_google\_sheets\_finalized\_data` (line 127)
-  - function: `\_check\_warehouse\_database` (line 198)
-  - function: `\_check\_verified\_datasets` (line 272)
+  - function: `check\_existing\_finalized\_data` (line 17)
+  - function: `\_check\_google\_sheets\_finalized\_data` (line 125)
+  - function: `\_check\_warehouse\_database` (line 196)
+  - function: `\_check\_verified\_datasets` (line 271)
 - Imports:
-  - **Standard Library** (4):
-    - `import os as os` (line 12)
-    - `from typing import Any` (line 13)
-    - `from typing import Dict` (line 13)
-    - `from typing import Optional` (line 13)
-  - **Local/Project** (3):
+  - **Standard Library** (3):
+    - `from typing import Any` (line 12)
+    - `from typing import Dict` (line 12)
+    - `from typing import Optional` (line 12)
+  - **Local/Project** (2):
     - `from __future__ import annotations` (line 10)
-    - `from config import LOG_DIR` (line 15)
-    - `from logger_singleton import logger` (line 16)
+    - `from logger_singleton import logger` (line 14)
 - Task markers:
-  - L189 **WARNING**: ({
-  - L190 **WARNING**: ",
-  - L263 **WARNING**: ({
-  - L264 **WARNING**: ",
+  - L187 **WARNING**: ({
+  - L188 **WARNING**: ",
+  - L262 **WARNING**: ({
+  - L263 **WARNING**: ",
   - L334 **WARNING**: ({
   - L335 **WARNING**: ",
 - Outgoing cross-module calls (sample):
-  - logger\_singleton.logger.info (line 52)
-  - logger\_singleton.logger.info (line 69)
-  - logger\_singleton.logger.info (line 88)
-  - logger\_singleton.logger.info (line 107)
-  - logger\_singleton.logger.info (line 117)
-  - client.fetch\_finalized\_data (line 140)
-  - record.get (line 150)
-  - record\_url.lower (line 155)
-  - url.lower (line 155)
+  - logger\_singleton.logger.info (line 50)
+  - logger\_singleton.logger.info (line 67)
+  - logger\_singleton.logger.info (line 86)
+  - logger\_singleton.logger.info (line 105)
+  - logger\_singleton.logger.info (line 115)
+  - client.fetch\_finalized\_data (line 138)
+  - record.get (line 148)
+  - record\_url.lower (line 153)
+  - url.lower (line 153)
+  - record.get (line 155)
+  - record.get (line 156)
   - record.get (line 157)
-  - record.get (line 158)
-  - record.get (line 159)
-  - record.keys (line 160)
-  - k.lower (line 160)
+  - record.keys (line 158)
+  - k.lower (line 158)
+  - record.get (line 175)
+  - record.get (line 176)
   - record.get (line 177)
-  - record.get (line 178)
-  - record.get (line 179)
-  - record.keys (line 180)
-  - k.lower (line 180)
-  - logger\_singleton.logger.warning (line 189)
-  - inspector.get\_columns (line 216)
-  - col.get (line 220)
-  - col.get (line 220)
-  - select\_cols.append (line 228)
-  - aggregates.append (line 232)
-  - engine.connect (line 245)
-  - conn.execute (line 246)
+  - record.keys (line 178)
+  - k.lower (line 178)
+  - logger\_singleton.logger.warning (line 187)
+  - inspector.get\_columns (line 215)
+  - col.get (line 219)
+  - col.get (line 219)
+  - select\_cols.append (line 227)
+  - aggregates.append (line 231)
+  - engine.connect (line 244)
+  - conn.execute (line 245)
+  - row.get (line 250)
   - row.get (line 251)
   - row.get (line 252)
   - row.get (line 253)
   - row.get (line 254)
-  - row.get (line 255)
-  - logger\_singleton.logger.warning (line 263)
+  - logger\_singleton.logger.warning (line 262)
   - inspector.get\_columns (line 290)
   - col.get (line 294)
   - col.get (line 294)
@@ -10883,13 +10878,13 @@ graph LR
   - row.get (line 326)
   - logger\_singleton.logger.warning (line 334)
 - Inbound references:
-  - check\_existing\_finalized\_data ← Smart_Elections_Parser_Webapp.py:3472
-  - check\_existing\_finalized\_data ← Smart_Elections_Parser_Webapp.py:5996
+  - check\_existing\_finalized\_data ← Smart_Elections_Parser_Webapp.py:3471
+  - check\_existing\_finalized\_data ← Smart_Elections_Parser_Webapp.py:5995
   - check\_existing\_finalized\_data ← Smart_Elections_Parser_Webapp.py:6126
   - check\_existing\_finalized\_data ← html_election_parser.py:2754
-  - \_check\_google\_sheets\_finalized\_data ← database_comparison.py:61
-  - \_check\_warehouse\_database ← database_comparison.py:80
-  - \_check\_verified\_datasets ← database_comparison.py:99
+  - \_check\_google\_sheets\_finalized\_data ← database_comparison.py:59
+  - \_check\_warehouse\_database ← database_comparison.py:78
+  - \_check\_verified\_datasets ← database_comparison.py:97
 
 ### utils/date\_utils.py {#webapp-parser-utils-date-utils-py}
 
@@ -11044,7 +11039,7 @@ graph LR
   - get\_session ← db_utils.py:254
   - get\_session ← db_utils.py:263
   - get\_session ← db_utils.py:291
-  - get\_engine ← database_comparison.py:211
+  - get\_engine ← database_comparison.py:210
   - get\_engine ← database_comparison.py:285
   - get\_engine ← db_utils.py:421
   - get\_engine ← models.py:485
@@ -11463,15 +11458,15 @@ graph LR
   - load\_download\_manifest ← download_utils.py:280
   - load\_download\_manifest ← download_utils.py:291
   - \_normalize\_download\_url ← download_utils.py:129
-  - \_normalize\_download\_url ← format_router.py:303
+  - \_normalize\_download\_url ← format_router.py:302
   - \_retry\_step\_back\_url ← download_utils.py:145
-  - \_retry\_step\_back\_url ← format_router.py:1020
+  - \_retry\_step\_back\_url ← format_router.py:1019
   - update\_download\_manifest ← download_utils.py:205
   - update\_download\_manifest ← download_utils.py:219
   - is\_already\_downloaded ← download_utils.py:131
   - download\_file ← download_utils.py:241
   - download\_file ← download_utils.py:269
-  - summarize\_downloads ← format_router.py:921
+  - summarize\_downloads ← format_router.py:920
 
 ### utils/dynamic\_table\_extractor.py {#webapp-parser-utils-dynamic-table-extractor-py}
 
@@ -12068,30 +12063,30 @@ graph LR
 ### utils/format\_router.py {#webapp-parser-utils-format-router-py}
 
 - Definitions:
-  - function: `\_guard\_text` (line 64)
-  - function: `\_guard\_download\_links` (line 73)
-  - function: `\_guard\_google\_sheet\_meta` (line 86)
-  - function: `\_normalize\_text` (line 92)
-  - function: `\_infer\_format\_from\_text` (line 96)
-  - function: `\_infer\_format\_from\_attr\_value` (line 107)
-  - function: `\_extract\_candidate\_urls` (line 118)
-  - function: `\_clean\_filename` (line 145)
-  - function: `\_guess\_filename\_from\_url` (line 151)
-  - function: `\_extract\_filename\_from\_disposition` (line 170)
-  - function: `\_extract\_google\_sheet\_metadata` (line 180)
-  - function: `\_probe\_remote\_format` (line 225)
-  - function: `\_browser\_headers` (line 276)
-  - function: `\_build\_download\_url` (line 297)
-  - function: `\_normalize\_download\_url` (line 307)
-  - function: `\_cookies\_header\_from\_page` (line 318)
-  - function: `extract\_contest\_from\_filename` (line 332)
-  - function: `summarize\_downloads` (line 371)
-  - function: `\_infer\_format\_from\_url` (line 381)
-  - function: `\_expose\_download\_interfaces` (line 389)
-  - function: `detect\_format\_from\_links` (line 438)
-  - function: `route\_format\_handler` (line 489)
-  - function: `extract\_download\_links\_from\_html` (line 516)
-  - function: `prompt\_and\_handle\_download` (line 536)
+  - function: `\_guard\_text` (line 63)
+  - function: `\_guard\_download\_links` (line 72)
+  - function: `\_guard\_google\_sheet\_meta` (line 85)
+  - function: `\_normalize\_text` (line 91)
+  - function: `\_infer\_format\_from\_text` (line 95)
+  - function: `\_infer\_format\_from\_attr\_value` (line 106)
+  - function: `\_extract\_candidate\_urls` (line 117)
+  - function: `\_clean\_filename` (line 144)
+  - function: `\_guess\_filename\_from\_url` (line 150)
+  - function: `\_extract\_filename\_from\_disposition` (line 169)
+  - function: `\_extract\_google\_sheet\_metadata` (line 179)
+  - function: `\_probe\_remote\_format` (line 224)
+  - function: `\_browser\_headers` (line 275)
+  - function: `\_build\_download\_url` (line 296)
+  - function: `\_normalize\_download\_url` (line 306)
+  - function: `\_cookies\_header\_from\_page` (line 317)
+  - function: `extract\_contest\_from\_filename` (line 331)
+  - function: `summarize\_downloads` (line 370)
+  - function: `\_infer\_format\_from\_url` (line 380)
+  - function: `\_expose\_download\_interfaces` (line 388)
+  - function: `detect\_format\_from\_links` (line 437)
+  - function: `route\_format\_handler` (line 488)
+  - function: `extract\_download\_links\_from\_html` (line 515)
+  - function: `prompt\_and\_handle\_download` (line 535)
 - Imports:
   - **Standard Library** (14):
     - `import os as os` (line 1)
@@ -12110,7 +12105,7 @@ graph LR
     - `from urllib.parse import urlunsplit` (line 7)
   - **Third-party** (1):
     - `import requests as requests` (line 9)
-  - **Local/Project** (30):
+  - **Local/Project** (29):
     - `from difflib import get_close_matches` (line 5)
     - `from config import ALLOW_GOOGLE_DOCS` (line 11)
     - `from config import DISABLE_HTML_FALLBACK` (line 11)
@@ -12124,7 +12119,6 @@ graph LR
     - `from handlers.formats import pdf_handler` (line 14)
     - `from handlers.formats import txt_handler` (line 14)
     - `from handlers.formats import xlsx_handler` (line 14)
-    - `from browser_utils import safe_click` (line 15)
     - `from browser_utils import safe_click_with_retry` (line 15)
     - `from browser_utils import safe_content` (line 15)
     - `from browser_utils import safe_context_library` (line 15)
@@ -12134,122 +12128,122 @@ graph LR
     - `from browser_utils import safe_query_selector_all` (line 15)
     - `from browser_utils import safe_url` (line 15)
     - `from browser_utils import safe_wait_for_timeout` (line 15)
-    - `from download_utils import download_file` (line 27)
-    - `from download_utils import ensure_input_directory` (line 27)
-    - `from html_scanner import append_pattern_kb` (line 28)
-    - `from html_scanner import load_pattern_kb` (line 28)
-    - `from logger_singleton import logger` (line 29)
-    - `from logger_singleton import prompt` (line 29)
-    - `from shared_logic import safe_lower` (line 30)
-    - `from shared_logic import safe_parse` (line 30)
+    - `from download_utils import download_file` (line 26)
+    - `from download_utils import ensure_input_directory` (line 26)
+    - `from html_scanner import append_pattern_kb` (line 27)
+    - `from html_scanner import load_pattern_kb` (line 27)
+    - `from logger_singleton import logger` (line 28)
+    - `from logger_singleton import prompt` (line 28)
+    - `from shared_logic import safe_lower` (line 29)
+    - `from shared_logic import safe_parse` (line 29)
 - Task markers:
-  - L474 **WARNING**: ({
-  - L475 **WARNING**: ",
-  - L477 **WARN**: \] No supported file formats found on the page.",
-  - L502 **WARNING**: ({
-  - L503 **WARNING**: ",
-  - L505 **WARN**: \] Unsupported format requested: {format_str}",
-  - L509 **WARNING**: ({
-  - L510 **WARNING**: ",
-  - L804 **WARNING**: ({
-  - L805 **WARNING**: ",
-  - L1013 **WARNING**: ({
-  - L1014 **WARNING**: ",
-  - L1064 **WARNING**: ({
-  - L1065 **WARNING**: ",
-  - L1171 **WARNING**: ({
-  - L1172 **WARNING**: ",
+  - L473 **WARNING**: ({
+  - L474 **WARNING**: ",
+  - L476 **WARN**: \] No supported file formats found on the page.",
+  - L501 **WARNING**: ({
+  - L502 **WARNING**: ",
+  - L504 **WARN**: \] Unsupported format requested: {format_str}",
+  - L508 **WARNING**: ({
+  - L509 **WARNING**: ",
+  - L803 **WARNING**: ({
+  - L804 **WARNING**: ",
+  - L1012 **WARNING**: ({
+  - L1013 **WARNING**: ",
+  - L1063 **WARNING**: ({
+  - L1064 **WARNING**: ",
+  - L1170 **WARNING**: ({
+  - L1171 **WARNING**: ",
 - Outgoing cross-module calls (sample):
-  - re.compile (line 53)
-  - link.get (line 80)
-  - link.get (line 80)
-  - cleaned.get (line 81)
-  - cleaned.get (line 81)
-  - guarded.append (line 82)
-  - meta.get (line 89)
-  - meta.get (line 89)
-  - raw\_value.strip (line 121)
+  - re.compile (line 52)
+  - link.get (line 79)
+  - link.get (line 79)
+  - cleaned.get (line 80)
+  - cleaned.get (line 80)
+  - guarded.append (line 81)
+  - meta.get (line 88)
+  - meta.get (line 88)
+  - raw\_value.strip (line 120)
+  - urls.extend (line 123)
+  - re.findall (line 123)
   - urls.extend (line 124)
   - re.findall (line 124)
   - urls.extend (line 125)
-  - re.findall (line 125)
-  - urls.extend (line 126)
-  - re.findall (line 128)
-  - url.lower (line 134)
-  - deduped.append (line 138)
-  - raw\_value.lower (line 140)
-  - urllib.parse.unquote (line 146)
-  - name.strip (line 147)
-  - urllib.parse.urlparse (line 153)
-  - segment.split (line 161)
-  - val.lower (line 163)
-  - url.split (line 165)
-  - FILENAME\_FROM\_DISPOSITION.search (line 173)
-  - match.group (line 176)
-  - match.group (line 176)
-  - urllib.parse.urlparse (line 184)
-  - path\_parts.index (line 196)
-  - urllib.parse.parse\_qs (line 201)
-  - qs.get (line 202)
-  - urllib.parse.parse\_qs (line 206)
-  - qs.get (line 207)
-  - urllib.parse.parse\_qs (line 209)
-  - frag\_qs.get (line 210)
-  - requests.head (line 241)
+  - re.findall (line 127)
+  - url.lower (line 133)
+  - deduped.append (line 137)
+  - raw\_value.lower (line 139)
+  - urllib.parse.unquote (line 145)
+  - name.strip (line 146)
+  - urllib.parse.urlparse (line 152)
+  - segment.split (line 160)
+  - val.lower (line 162)
+  - url.split (line 164)
+  - FILENAME\_FROM\_DISPOSITION.search (line 172)
+  - match.group (line 175)
+  - match.group (line 175)
+  - urllib.parse.urlparse (line 183)
+  - path\_parts.index (line 195)
+  - urllib.parse.parse\_qs (line 200)
+  - qs.get (line 201)
+  - urllib.parse.parse\_qs (line 205)
+  - qs.get (line 206)
+  - urllib.parse.parse\_qs (line 208)
+  - frag\_qs.get (line 209)
+  - requests.head (line 240)
+  - headers\_map.get (line 255)
+  - headers\_map.get (line 255)
   - headers\_map.get (line 256)
   - headers\_map.get (line 256)
-  - headers\_map.get (line 257)
-  - headers\_map.get (line 257)
-  - logger\_singleton.logger.debug (line 260)
-  - content\_type.split (line 268)
-  - CONTENT\_TYPE\_FORMAT\_MAP.get (line 269)
-  - page.evaluate (line 278)
-  - urllib.parse.urlparse (line 284)
-  - re.sub (line 301)
-  - urllib.parse.urljoin (line 302)
-  - urllib.parse.urlsplit (line 310)
-  - re.sub (line 313)
-  - urllib.parse.urlunsplit (line 314)
+  - logger\_singleton.logger.debug (line 259)
+  - content\_type.split (line 267)
+  - CONTENT\_TYPE\_FORMAT\_MAP.get (line 268)
+  - page.evaluate (line 277)
+  - urllib.parse.urlparse (line 283)
+  - re.sub (line 300)
+  - urllib.parse.urljoin (line 301)
+  - urllib.parse.urlsplit (line 309)
+  - re.sub (line 312)
+  - urllib.parse.urlunsplit (line 313)
 - Inbound references:
-  - \_guard\_text ← format_router.py:80
-  - \_guard\_text ← format_router.py:89
-  - \_guard\_download\_links ← format_router.py:849
-  - \_guard\_google\_sheet\_meta ← format_router.py:851
-  - \_normalize\_text ← format_router.py:97
-  - \_normalize\_text ← format_router.py:108
+  - \_guard\_text ← format_router.py:79
+  - \_guard\_text ← format_router.py:88
+  - \_guard\_download\_links ← format_router.py:848
+  - \_guard\_google\_sheet\_meta ← format_router.py:850
+  - \_normalize\_text ← format_router.py:96
+  - \_normalize\_text ← format_router.py:107
   - \_normalize\_text ← shared_logic.py:1327
   - \_normalize\_text ← shared_logic.py:1333
   - \_normalize\_text ← shared_logic.py:1341
-  - \_infer\_format\_from\_text ← format_router.py:112
-  - \_infer\_format\_from\_text ← format_router.py:114
-  - \_infer\_format\_from\_text ← format_router.py:271
-  - \_infer\_format\_from\_text ← format_router.py:768
-  - \_infer\_format\_from\_attr\_value ← format_router.py:774
-  - \_infer\_format\_from\_attr\_value ← format_router.py:778
-  - \_extract\_candidate\_urls ← format_router.py:769
-  - \_clean\_filename ← format_router.py:157
-  - \_clean\_filename ← format_router.py:162
-  - \_clean\_filename ← format_router.py:165
-  - \_clean\_filename ← format_router.py:177
-  - \_guess\_filename\_from\_url ← format_router.py:801
-  - \_guess\_filename\_from\_url ← format_router.py:903
-  - \_extract\_filename\_from\_disposition ← format_router.py:258
-  - \_extract\_google\_sheet\_metadata ← format_router.py:677
-  - \_extract\_google\_sheet\_metadata ← format_router.py:677
-  - \_probe\_remote\_format ← format_router.py:716
-  - \_browser\_headers ← format_router.py:227
-  - \_browser\_headers ← format_router.py:1002
-  - \_build\_download\_url ← format_router.py:770
-  - \_build\_download\_url ← format_router.py:998
-  - \_cookies\_header\_from\_page ← format_router.py:227
-  - \_cookies\_header\_from\_page ← format_router.py:1001
-  - extract\_contest\_from\_filename ← format_router.py:904
-  - \_infer\_format\_from\_url ← format_router.py:273
-  - \_infer\_format\_from\_url ← format_router.py:773
-  - \_expose\_download\_interfaces ← format_router.py:667
-  - route\_format\_handler ← format_router.py:621
-  - route\_format\_handler ← format_router.py:1140
-  - extract\_download\_links\_from\_html ← format_router.py:812
+  - \_infer\_format\_from\_text ← format_router.py:111
+  - \_infer\_format\_from\_text ← format_router.py:113
+  - \_infer\_format\_from\_text ← format_router.py:270
+  - \_infer\_format\_from\_text ← format_router.py:767
+  - \_infer\_format\_from\_attr\_value ← format_router.py:773
+  - \_infer\_format\_from\_attr\_value ← format_router.py:777
+  - \_extract\_candidate\_urls ← format_router.py:768
+  - \_clean\_filename ← format_router.py:156
+  - \_clean\_filename ← format_router.py:161
+  - \_clean\_filename ← format_router.py:164
+  - \_clean\_filename ← format_router.py:176
+  - \_guess\_filename\_from\_url ← format_router.py:800
+  - \_guess\_filename\_from\_url ← format_router.py:902
+  - \_extract\_filename\_from\_disposition ← format_router.py:257
+  - \_extract\_google\_sheet\_metadata ← format_router.py:676
+  - \_extract\_google\_sheet\_metadata ← format_router.py:676
+  - \_probe\_remote\_format ← format_router.py:715
+  - \_browser\_headers ← format_router.py:226
+  - \_browser\_headers ← format_router.py:1001
+  - \_build\_download\_url ← format_router.py:769
+  - \_build\_download\_url ← format_router.py:997
+  - \_cookies\_header\_from\_page ← format_router.py:226
+  - \_cookies\_header\_from\_page ← format_router.py:1000
+  - extract\_contest\_from\_filename ← format_router.py:903
+  - \_infer\_format\_from\_url ← format_router.py:272
+  - \_infer\_format\_from\_url ← format_router.py:772
+  - \_expose\_download\_interfaces ← format_router.py:666
+  - route\_format\_handler ← format_router.py:620
+  - route\_format\_handler ← format_router.py:1139
+  - extract\_download\_links\_from\_html ← format_router.py:811
 
 ### utils/header\_confidence.py {#webapp-parser-utils-header-confidence-py}
 
@@ -12957,7 +12951,7 @@ graph LR
   - \_counters.get (line 89)
   - c.inc (line 92)
 - Inbound references:
-  - increment\_test\_counter ← Smart_Elections_Parser_Webapp.py:575
+  - increment\_test\_counter ← Smart_Elections_Parser_Webapp.py:574
   - \_push\_registry\_async ← metrics_prom.py:62
   - \_push\_registry\_async ← metrics_prom.py:95
   - increment\_prom\_counter ← telemetry_agg.py:57
@@ -14991,36 +14985,35 @@ graph LR
 > Status Reconciliation System
 
 - Definitions:
-  - class: `StatusReconciliation` (line 16)
-  - class: `WorklistParser` (line 198)
-  - function: `\_normalize\_state` (line 261)
+  - class: `StatusReconciliation` (line 15)
+  - class: `WorklistParser` (line 197)
+  - function: `\_normalize\_state` (line 260)
 - Imports:
-  - **Standard Library** (5):
-    - `from typing import Optional` (line 12)
-    - `from typing import Dict` (line 12)
+  - **Standard Library** (4):
     - `from typing import Any` (line 12)
+    - `from typing import Dict` (line 12)
+    - `from typing import Optional` (line 12)
     - `from typing import Tuple` (line 12)
-    - `from datetime import datetime` (line 13)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 10)
 - Task markers:
-  - L59 **WARNING**: ', 'priority': 4},
-  - L60 **WARNING**: ', 'priority': 7},
-  - L62 **WARNING**: ', 'priority': 9},
-  - L73 **WARNING**: ', 'priority': 6},
+  - L58 **WARNING**: ', 'priority': 4},
+  - L59 **WARNING**: ', 'priority': 7},
+  - L61 **WARNING**: ', 'priority': 9},
+  - L72 **WARNING**: ', 'priority': 6},
 - Outgoing cross-module calls (sample):
-  - StatusReconciliation.\_normalize\_worklist\_status (line 115)
-  - worklist\_status.strip (line 147)
-  - mappings.get (line 163)
-  - badge\_info.get (line 172)
-  - row.items (line 221)
-  - state.strip (line 237)
-  - race.strip (line 238)
-  - race.lower (line 244)
-  - state.strip (line 265)
-  - state\_lower.replace (line 289)
+  - StatusReconciliation.\_normalize\_worklist\_status (line 114)
+  - worklist\_status.strip (line 146)
+  - mappings.get (line 162)
+  - badge\_info.get (line 171)
+  - row.items (line 220)
+  - state.strip (line 236)
+  - race.strip (line 237)
+  - race.lower (line 243)
+  - state.strip (line 264)
+  - state\_lower.replace (line 288)
 - Inbound references:
-  - \_normalize\_state ← status_reconciliation.py:241
+  - \_normalize\_state ← status_reconciliation.py:240
 
 ### utils/strategy\_concurrency.py {#webapp-parser-utils-strategy-concurrency-py}
 
@@ -16042,10 +16035,10 @@ graph LR
     - `from webapp.parser.config import SYSTEM_AUTHOR` (line 18)
     - `from webapp.parser.config import SYSTEM_MISSION` (line 18)
     - `from webapp.parser.config import VERIFICATION_LOG_FILE` (line 18)
-    - `from webapp.parser.utils.privilege_tiers import PrivilegeTier` (line 24)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 24)
+    - `from webapp.parser.utils.privilege_tiers import PrivilegeTier` (line 25)
     - `from webapp.parser.utils.privilege_tiers import get_principal_tier` (line
-      24)
-    - `from webapp.parser.utils.logger_singleton import logger` (line 25)
+      25)
     - `from webapp.parser.utils.shared_logic import safe_get` (line 26)
     - `from webapp.parser.utils.shared_logic import safe_strip` (line 26)
     - `from webapp.parser.utils.verification_framework import
@@ -16323,24 +16316,24 @@ graph LR
 > Multi-Pathway Integration Tests for Ballot Lens
 
 - Definitions:
-  - class: `ExecutionPathway` (line 63)
-  - class: `DataValidationResult` (line 70)
-  - class: `CSVValidation` (line 80)
-  - class: `PathwayExecutionResult` (line 94)
-  - function: `webapp\_client` (line 114)
-  - function: `temp\_output\_dir` (line 122)
-  - function: `sample\_election\_urls` (line 129)
-  - function: `sample\_html\_fixture` (line 148)
-  - function: `validate\_csv` (line 173)
-  - function: `read\_csv\_content` (line 277)
-  - function: `hash\_csv\_content` (line 287)
-  - function: `execute\_via\_cli` (line 296)
-  - function: `execute\_via\_direct\_api` (line 375)
-  - function: `execute\_via\_webapp\_api` (line 472)
-  - class: `TestPathwayConsistency` (line 568)
-  - class: `TestCSVValidation` (line 613)
-  - class: `TestEdgeCases` (line 649)
-  - class: `TestDataComparison` (line 681)
+  - class: `ExecutionPathway` (line 61)
+  - class: `DataValidationResult` (line 68)
+  - class: `CSVValidation` (line 78)
+  - class: `PathwayExecutionResult` (line 92)
+  - function: `webapp\_client` (line 112)
+  - function: `temp\_output\_dir` (line 120)
+  - function: `sample\_election\_urls` (line 127)
+  - function: `sample\_html\_fixture` (line 146)
+  - function: `validate\_csv` (line 171)
+  - function: `read\_csv\_content` (line 275)
+  - function: `hash\_csv\_content` (line 285)
+  - function: `execute\_via\_cli` (line 294)
+  - function: `execute\_via\_direct\_api` (line 373)
+  - function: `execute\_via\_webapp\_api` (line 470)
+  - class: `TestPathwayConsistency` (line 558)
+  - class: `TestCSVValidation` (line 603)
+  - class: `TestEdgeCases` (line 639)
+  - class: `TestDataComparison` (line 671)
 - Imports:
   - **Standard Library** (19):
     - `import csv as csv` (line 33)
@@ -16362,97 +16355,93 @@ graph LR
     - `import sys as sys` (line 42)
     - `import time as time` (line 43)
     - `import hashlib as hashlib` (line 44)
-  - **Third-party** (4):
+  - **Third-party** (1):
     - `import pytest as pytest` (line 46)
-    - `import requests as requests` (line 47)
-    - `from requests.exceptions import ConnectionError` (line 48)
-    - `from requests.exceptions import Timeout` (line 48)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 31)
 - Task markers:
-  - L132 **NOTE**: These are representative URLs. Real testing should use:
-  - L314 **NOTE**: Adjust based on actual CLI interface of
+  - L130 **NOTE**: These are representative URLs. Real testing should use:
+  - L312 **NOTE**: Adjust based on actual CLI interface of
     html_election_parser.py
-  - L394 **NOTE**: This is a simplified test version
-  - L491 **NOTE**: Adjust based on actual Flask route
-  - L575 **NOTE**: For real tests, either:
+  - L392 **NOTE**: This is a simplified test version
+  - L489 **NOTE**: Adjust based on actual Flask route
+  - L565 **NOTE**: For real tests, either:
 - Outgoing cross-module calls (sample):
-  - pytest.skip (line 56)
-  - app.test\_client (line 117)
-  - tempfile.TemporaryDirectory (line 124)
-  - pathlib.Path (line 125)
-  - csv\_path.exists (line 188)
-  - csv\_path.stat (line 197)
-  - csv.DictReader (line 208)
-  - errors.append (line 225)
-  - errors.append (line 245)
-  - csv\_path.exists (line 280)
-  - csv\_path.read\_text (line 281)
-  - hashlib.sha256 (line 289)
-  - csv\_content.encode (line 289)
-  - time.time (line 306)
-  - subprocess.run (line 322)
-  - output\_dir.glob (line 333)
-  - time.time (line 354)
-  - time.time (line 386)
-  - time.time (line 396)
-  - result.get (line 409)
-  - result.get (line 410)
-  - csv.writer (line 424)
-  - writer.writerow (line 425)
-  - writer.writerows (line 426)
-  - time.time (line 451)
-  - time.time (line 483)
-  - client.post (line 492)
-  - response.get\_data (line 499)
-  - response.get\_json (line 509)
-  - result\_data.get (line 510)
-  - result\_data.get (line 510)
-  - csv\_path.write\_text (line 514)
-  - time.time (line 543)
-  - csv\_path.touch (line 619)
-  - csv\_path.write\_text (line 628)
-  - csv\_path.write\_text (line 642)
-  - pytest.main (line 725)
+  - pytest.skip (line 54)
+  - app.test\_client (line 115)
+  - tempfile.TemporaryDirectory (line 122)
+  - pathlib.Path (line 123)
+  - csv\_path.exists (line 186)
+  - csv\_path.stat (line 195)
+  - csv.DictReader (line 206)
+  - errors.append (line 223)
+  - errors.append (line 243)
+  - csv\_path.exists (line 278)
+  - csv\_path.read\_text (line 279)
+  - hashlib.sha256 (line 287)
+  - csv\_content.encode (line 287)
+  - time.time (line 304)
+  - subprocess.run (line 320)
+  - output\_dir.glob (line 331)
+  - time.time (line 352)
+  - time.time (line 384)
+  - time.time (line 394)
+  - result.get (line 407)
+  - result.get (line 408)
+  - csv.writer (line 422)
+  - writer.writerow (line 423)
+  - writer.writerows (line 424)
+  - time.time (line 449)
+  - time.time (line 481)
+  - client.post (line 490)
+  - response.get\_data (line 497)
+  - response.get\_json (line 507)
+  - result\_data.get (line 508)
+  - result\_data.get (line 508)
+  - csv\_path.write\_text (line 512)
+  - time.time (line 541)
+  - csv\_path.touch (line 609)
+  - csv\_path.write\_text (line 618)
+  - csv\_path.write\_text (line 632)
+  - pytest.main (line 715)
 - Inbound references:
-  - CSVValidation ← test_ballot_lens_pathways.py:189
-  - CSVValidation ← test_ballot_lens_pathways.py:199
-  - CSVValidation ← test_ballot_lens_pathways.py:211
-  - CSVValidation ← test_ballot_lens_pathways.py:232
-  - CSVValidation ← test_ballot_lens_pathways.py:253
-  - CSVValidation ← test_ballot_lens_pathways.py:262
-  - CSVValidation ← test_ballot_lens_pathways.py:269
-  - CSVValidation ← test_ballot_lens_pathways.py:340
-  - CSVValidation ← test_ballot_lens_pathways.py:357
-  - CSVValidation ← test_ballot_lens_pathways.py:414
-  - CSVValidation ← test_ballot_lens_pathways.py:432
-  - CSVValidation ← test_ballot_lens_pathways.py:441
-  - CSVValidation ← test_ballot_lens_pathways.py:454
-  - CSVValidation ← test_ballot_lens_pathways.py:500
-  - CSVValidation ← test_ballot_lens_pathways.py:519
-  - CSVValidation ← test_ballot_lens_pathways.py:527
-  - CSVValidation ← test_ballot_lens_pathways.py:536
-  - CSVValidation ← test_ballot_lens_pathways.py:546
-  - PathwayExecutionResult ← test_ballot_lens_pathways.py:364
-  - PathwayExecutionResult ← test_ballot_lens_pathways.py:461
-  - PathwayExecutionResult ← test_ballot_lens_pathways.py:553
-  - validate\_csv ← test_ballot_lens_pathways.py:337
-  - validate\_csv ← test_ballot_lens_pathways.py:429
-  - validate\_csv ← test_ballot_lens_pathways.py:516
-  - validate\_csv ← test_ballot_lens_pathways.py:621
+  - CSVValidation ← test_ballot_lens_pathways.py:187
+  - CSVValidation ← test_ballot_lens_pathways.py:197
+  - CSVValidation ← test_ballot_lens_pathways.py:209
+  - CSVValidation ← test_ballot_lens_pathways.py:230
+  - CSVValidation ← test_ballot_lens_pathways.py:251
+  - CSVValidation ← test_ballot_lens_pathways.py:260
+  - CSVValidation ← test_ballot_lens_pathways.py:267
+  - CSVValidation ← test_ballot_lens_pathways.py:338
+  - CSVValidation ← test_ballot_lens_pathways.py:355
+  - CSVValidation ← test_ballot_lens_pathways.py:412
+  - CSVValidation ← test_ballot_lens_pathways.py:430
+  - CSVValidation ← test_ballot_lens_pathways.py:439
+  - CSVValidation ← test_ballot_lens_pathways.py:452
+  - CSVValidation ← test_ballot_lens_pathways.py:498
+  - CSVValidation ← test_ballot_lens_pathways.py:517
+  - CSVValidation ← test_ballot_lens_pathways.py:525
+  - CSVValidation ← test_ballot_lens_pathways.py:534
+  - PathwayExecutionResult ← test_ballot_lens_pathways.py:362
+  - PathwayExecutionResult ← test_ballot_lens_pathways.py:459
+  - PathwayExecutionResult ← test_ballot_lens_pathways.py:543
+  - validate\_csv ← test_ballot_lens_pathways.py:335
+  - validate\_csv ← test_ballot_lens_pathways.py:427
+  - validate\_csv ← test_ballot_lens_pathways.py:514
+  - validate\_csv ← test_ballot_lens_pathways.py:611
+  - validate\_csv ← test_ballot_lens_pathways.py:624
   - validate\_csv ← test_ballot_lens_pathways.py:634
-  - validate\_csv ← test_ballot_lens_pathways.py:644
-  - read\_csv\_content ← test_ballot_lens_pathways.py:336
-  - read\_csv\_content ← test_ballot_lens_pathways.py:428
-  - hash\_csv\_content ← test_ballot_lens_pathways.py:703
-  - hash\_csv\_content ← test_ballot_lens_pathways.py:704
-  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:581
-  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:600
-  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:656
-  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:668
-  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:689
-  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:695
-  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:711
+  - read\_csv\_content ← test_ballot_lens_pathways.py:334
+  - read\_csv\_content ← test_ballot_lens_pathways.py:426
+  - hash\_csv\_content ← test_ballot_lens_pathways.py:693
+  - hash\_csv\_content ← test_ballot_lens_pathways.py:694
+  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:571
+  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:590
+  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:646
+  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:658
+  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:679
+  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:685
+  - execute\_via\_direct\_api ← test_ballot_lens_pathways.py:701
 
 ### webapp/tests/test\_batch\_processor.py {#webapp-tests-test-batch-processor-py}
 
