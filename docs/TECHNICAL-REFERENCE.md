@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Technical Reference: API & Contract Specifications
 
 **Version:** 1.0  

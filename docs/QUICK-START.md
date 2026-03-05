@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Quick Start: Dynamic Navigation & Learning Recipe Pipeline
 
 **Status:** Production Ready ✓  

@@ -23,7 +23,7 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
   <div class="feature" data-section="audit">
     <h3>🔍 Project Audit</h3>
     <p>Automated analysis of all modules, dependencies, and cross-references with interactive Mermaid diagrams.</p>
-    <a href="DOCUMENTATION-INDEX.html">View Audit →</a>
+    <a href="DEVELOPMENT/project_audit.html">View Audit →</a>
   </div>
 
   <div class="feature" data-section="roadmap">

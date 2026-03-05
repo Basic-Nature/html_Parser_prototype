@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Storage Architecture – Cache, Log, Database Flow
 
 **Version:** 1.0  

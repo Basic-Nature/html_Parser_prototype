@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Current Implementation State – Smart Elections Parser
 
 **Session:** Dynamic Navigation + Learning Recipe Infrastructure  

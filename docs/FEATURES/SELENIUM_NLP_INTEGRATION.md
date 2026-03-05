@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Selenium-NLP Integration Strategy
 
 **Status**: ✅ **Implemented (Phase 1)** | **Last Updated**: February 13, 2026

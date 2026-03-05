@@ -45,6 +45,8 @@ env:
   DL_COMPARE_DL2_PATH: ""
   POST_DEPLOY_DB_CONFIRM_STRICT: ${{ github.event_name == 'workflow_dispatch' && inputs.post_deploy_db_confirm_strict || 'true' }}
   POST_DEPLOY_DB_CONFIRM_TIMEOUT_SEC: "45"
+  POST_DEPLOY_READY_MAX_ATTEMPTS: "8"
+  POST_DEPLOY_READY_SLEEP_SEC: "20"
   DYNAMIC_SITE_URL: "https://www.electionpulse.org/"
   DOCS_SITE_URL: "https://basic-nature.github.io/html_Parser_prototype/"
 
@@ -580,12 +582,15 @@ jobs:
           import json
           import os
           import sys
+          import time
           from pathlib import Path
           from urllib import error, request
 
           base = os.environ.get("DYNAMIC_SITE_URL", "").strip().rstrip("/")
           strict = os.environ.get("POST_DEPLOY_DB_CONFIRM_STRICT", "true").strip().lower() == "true"
           timeout = int(os.environ.get("POST_DEPLOY_DB_CONFIRM_TIMEOUT_SEC", "45"))
+          max_attempts = max(1, int(os.environ.get("POST_DEPLOY_READY_MAX_ATTEMPTS", "8")))
+          sleep_sec = max(1, int(os.environ.get("POST_DEPLOY_READY_SLEEP_SEC", "20")))
           out_path = Path("output/reports/postdeploy_db_confirmation_latest.json")
           out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -632,10 +637,37 @@ jobs:
           checks = []
           failures = []
 
-          health = fetch("/health")
+            health = None
+            for attempt in range(1, max_attempts + 1):
+              candidate = fetch("/health")
+              candidate["attempt"] = attempt
+              health = candidate
+              ok = False
+              if not candidate["error"] and candidate["status"] == 200:
+                try:
+                  payload = json.loads(candidate["body"] or "{}")
+                  ok = str(payload.get("status", "")).lower() == "ok"
+                except Exception:
+                  ok = False
+              if ok:
+                break
+              if attempt < max_attempts:
+                print(f"Health probe attempt {attempt}/{max_attempts} not ready; waiting {sleep_sec}s...")
+                time.sleep(sleep_sec)
+
+            if health is None:
+              health = {
+                "url": f"{base}/health",
+                "status": None,
+                "headers": {},
+                "body": "",
+                "error": "health probe did not execute",
+                "attempt": 0,
+              }
+
           checks.append({"name": "health", **health})
           if health["error"] or health["status"] != 200:
-              failures.append("/health must return HTTP 200")
+              failures.append(f"/health must return HTTP 200 (last_error={health['error']!r}, status={health['status']})")
           else:
               try:
                   payload = json.loads(health["body"] or "{}")
@@ -644,39 +676,46 @@ jobs:
               except Exception:
                   failures.append("/health body must be valid JSON")
 
-          url_status = fetch("/api/url_status?limit=5&hide_pii=true")
-          checks.append({"name": "api_url_status", **url_status})
-          if url_status["error"] or url_status["status"] != 200:
-              failures.append("/api/url_status must return HTTP 200")
-          else:
-              try:
+            if not failures:
+              url_status = fetch("/api/url_status?limit=5&hide_pii=true")
+              checks.append({"name": "api_url_status", **url_status})
+              if url_status["error"] or url_status["status"] != 200:
+                failures.append(f"/api/url_status must return HTTP 200 (last_error={url_status['error']!r}, status={url_status['status']})")
+              else:
+                try:
                   payload = json.loads(url_status["body"] or "{}")
                   required_keys = {"success", "total", "filtered", "entries", "status_breakdown", "canonical_statuses"}
                   missing = sorted(required_keys - set(payload.keys()))
                   if missing:
-                      failures.append(f"/api/url_status missing keys: {', '.join(missing)}")
+                    failures.append(f"/api/url_status missing keys: {', '.join(missing)}")
                   if payload.get("success") is not True:
-                      failures.append("/api/url_status success must be true")
+                    failures.append("/api/url_status success must be true")
                   if not isinstance(payload.get("entries"), list):
-                      failures.append("/api/url_status entries must be a list")
+                    failures.append("/api/url_status entries must be a list")
                   if not isinstance(payload.get("status_breakdown"), dict):
-                      failures.append("/api/url_status status_breakdown must be an object")
-              except Exception:
+                    failures.append("/api/url_status status_breakdown must be an object")
+                except Exception:
                   failures.append("/api/url_status body must be valid JSON")
 
-          warehouse_status = fetch("/api/data_framework/warehouse_status")
-          checks.append({"name": "api_data_framework_warehouse_status", **warehouse_status})
-          if warehouse_status["error"]:
-              failures.append("/api/data_framework/warehouse_status request failed")
-          elif warehouse_status["status"] not in (200, 403):
-              failures.append("/api/data_framework/warehouse_status must return HTTP 200 or 403")
-          elif warehouse_status["status"] == 200:
-              try:
+              warehouse_status = fetch("/api/data_framework/warehouse_status")
+              checks.append({"name": "api_data_framework_warehouse_status", **warehouse_status})
+              if warehouse_status["error"]:
+                failures.append(f"/api/data_framework/warehouse_status request failed (last_error={warehouse_status['error']!r})")
+              elif warehouse_status["status"] not in (200, 403):
+                failures.append("/api/data_framework/warehouse_status must return HTTP 200 or 403")
+              elif warehouse_status["status"] == 200:
+                try:
                   payload = json.loads(warehouse_status["body"] or "{}")
                   if "available" not in payload:
-                      failures.append("/api/data_framework/warehouse_status 200 response missing 'available'")
-              except Exception:
+                    failures.append("/api/data_framework/warehouse_status 200 response missing 'available'")
+                except Exception:
                   failures.append("/api/data_framework/warehouse_status 200 response must be valid JSON")
+            else:
+              checks.append({
+                "name": "api_checks_skipped",
+                "reason": "health_not_ready",
+                "details": "Skipped /api/url_status and /api/data_framework/warehouse_status because /health readiness did not pass",
+              })
 
           report = {
               "status": "failed" if failures else "passed",
@@ -715,6 +754,7 @@ jobs:
           {
             echo "## Post-Deploy Live App + Data Confirmation"
             echo "- Target: ${{ env.DYNAMIC_SITE_URL }}"
+            echo "- Readiness retry window: ${{ env.POST_DEPLOY_READY_MAX_ATTEMPTS }} attempts x ${{ env.POST_DEPLOY_READY_SLEEP_SEC }}s"
             echo "- Health endpoint: /health (must be 200 + status=ok)"
             echo "- Data shape endpoint: /api/url_status?limit=5&hide_pii=true (must be 200 + required keys)"
             echo "- Warehouse endpoint: /api/data_framework/warehouse_status (accept 200 or 403 in CI)"

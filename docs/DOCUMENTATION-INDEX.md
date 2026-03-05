@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Dynamic Navigation & Learning Infrastructure – Documentation Index
 
 **Status:** Complete & Production-Ready  

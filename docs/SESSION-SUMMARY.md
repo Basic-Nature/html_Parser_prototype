@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Session Summary: Dynamic Navigation + Learning Infrastructure
 
 **Date:** Current Session  

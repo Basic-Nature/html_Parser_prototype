@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Executive Summary: Dynamic Navigation & Learning Infrastructure
 
 **Project:** Smart Elections Parser Enhancement  

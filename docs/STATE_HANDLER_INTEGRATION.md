@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # State Handler Integration – Implementation Summary
 
 **Status**: Phase 1 Complete ✅  
