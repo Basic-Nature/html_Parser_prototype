@@ -31,12 +31,109 @@ env:
   REPORT_RETENTION_DAYS: "30"
   REPORT_MAX_FILES: "200"
   REPORT_MAX_BYTES: "268435456"
+  DL_COMPARE_STRICT: "false"
   DYNAMIC_SITE_URL: "https://www.electionpulse.org/"
   DOCS_SITE_URL: "https://basic-nature.github.io/html_Parser_prototype/"
 
 jobs:
+  qa-dl-compare:
+    name: "Pre-Deploy QA: DL compare"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Ensure Git LFS assets are hydrated (QA job)
+        run: |
+          git lfs install
+          git lfs pull
+
+      - name: Guard against unresolved LFS pointer in constants.py
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          target = Path("webapp/parser/Context_Integration/Context_Library/constants.py")
+          if not target.exists():
+              raise SystemExit("Missing constants.py in QA job checkout")
+
+          head = target.read_text(encoding="utf-8", errors="replace")[:200]
+          if "git-lfs.github.com/spec/v1" in head:
+              raise SystemExit(
+                  "Git LFS pointer detected for constants.py after checkout; refusing to run automate.py."
+              )
+
+          print("LFS guard passed for constants.py")
+          PY
+
+      - name: Set up Python 3.12.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir --prefer-binary -r requirements.txt
+
+      - name: Run DL compare QA (pre-deploy)
+        run: |
+          set +e
+          python automate.py \
+            --intended-env ci \
+            --skip-health \
+            --skip-web \
+            --skip-tests \
+            --skip-webapp-check \
+            --compare-dl1-dl2 \
+            --dl1-path tests/testdata/dl_compare_dl1_sample.json \
+            --dl2-path tests/testdata/dl_compare_dl2_sample.json \
+            --enforce-report-retention \
+            --report-retention-days "${{ env.REPORT_RETENTION_DAYS }}" \
+            --report-max-files "${{ env.REPORT_MAX_FILES }}" \
+            --report-max-bytes "${{ env.REPORT_MAX_BYTES }}"
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ] && [ "${{ env.DL_COMPARE_STRICT }}" = "true" ]; then
+            echo "DL compare failed in strict mode; blocking deploy."
+            exit "$rc"
+          fi
+          if [ "$rc" -ne 0 ]; then
+            echo "DL compare failed in non-strict mode; continuing for visibility."
+          else
+            echo "DL compare passed."
+          fi
+
+      - name: Upload DL compare QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dl-compare-qa-${{ github.run_id }}
+          path: |
+            output/reports/data_comparison_latest.json
+            output/reports/automation_run_latest.json
+            output/reports/logs/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: QA summary
+        if: always()
+        run: |
+          {
+            echo "## Pre-Deploy QA (DL compare)"
+            echo "- Stage timing: **before** Azure deploy"
+            echo "- Default mode: non-strict (signal + artifacts, deploy continues)"
+            echo "- Strict toggle: set \`DL_COMPARE_STRICT=true\` to block deploy on mismatch"
+            echo "- Artifact bundle: dl-compare-qa-${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build-and-deploy:
     name: Azure Deploy (dynamic webapp)
+    needs: qa-dl-compare
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -61,7 +158,8 @@ jobs:
             echo "- Workflow scope: **Azure dynamic deployment**"
             echo "- Dynamic webapp target: ${{ env.DYNAMIC_SITE_URL }}"
             echo "- Docs (separate GitHub Pages pipeline): ${{ env.DOCS_SITE_URL }}"
-            echo "- DL compare QA: separate post-deploy non-blocking job in this workflow"
+            echo "- DL compare QA: pre-deploy job in this workflow (fail-fast timing)"
+            echo "- DL compare strict mode: ${{ env.DL_COMPARE_STRICT }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Show resolved image reference (debug)
@@ -434,89 +532,3 @@ jobs:
             exit 1
           fi
           echo "Redirect probe OK: apex resolves to https://www.electionpulse.org"
-
-  qa-dl-compare:
-    name: "Post-Deploy QA: DL compare (non-blocking)"
-    needs: build-and-deploy
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    environment:
-      name: azure-postdeploy-qa
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          lfs: true
-
-      - name: Ensure Git LFS assets are hydrated (QA job)
-        run: |
-          git lfs install
-          git lfs pull
-
-      - name: Guard against unresolved LFS pointer in constants.py
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          target = Path("webapp/parser/Context_Integration/Context_Library/constants.py")
-          if not target.exists():
-              raise SystemExit("Missing constants.py in QA job checkout")
-
-          head = target.read_text(encoding="utf-8", errors="replace")[:200]
-          if "git-lfs.github.com/spec/v1" in head:
-              raise SystemExit(
-                  "Git LFS pointer detected for constants.py after checkout; refusing to run automate.py."
-              )
-
-          print("LFS guard passed for constants.py")
-          PY
-
-      - name: Set up Python 3.12.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12.10'
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install --no-cache-dir --prefer-binary -r requirements.txt
-
-      - name: Run DL compare QA (non-blocking)
-        run: |
-          python automate.py \
-            --intended-env ci \
-            --skip-health \
-            --skip-web \
-            --skip-tests \
-            --skip-webapp-check \
-            --compare-dl1-dl2 \
-            --dl1-path tests/testdata/dl_compare_dl1_sample.json \
-            --dl2-path tests/testdata/dl_compare_dl2_sample.json \
-            --enforce-report-retention \
-            --report-retention-days "${{ env.REPORT_RETENTION_DAYS }}" \
-            --report-max-files "${{ env.REPORT_MAX_FILES }}" \
-            --report-max-bytes "${{ env.REPORT_MAX_BYTES }}"
-
-      - name: Upload DL compare QA artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dl-compare-qa-${{ github.run_id }}
-          path: |
-            output/reports/data_comparison_latest.json
-            output/reports/automation_run_latest.json
-            output/reports/logs/**
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: QA summary (non-blocking visibility)
-        if: always()
-        run: |
-          {
-            echo "## Post-Deploy QA (DL compare)"
-            echo "- Mode: **non-blocking** (continue-on-error=true)"
-            echo "- Purpose: QA signal and artifacts only; cannot block Azure deployment"
-            echo "- Artifact bundle: dl-compare-qa-${{ github.run_id }}"
-          } >> "$GITHUB_STEP_SUMMARY"

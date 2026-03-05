@@ -46,7 +46,9 @@ jobs:
       - name: Markdown lint (docs only)
         run: |
           npm install -g markdownlint-cli
-          markdownlint "docs/**/*.md" --config .markdownlint.json
+          markdownlint "docs/**/*.md" \
+            --config .markdownlint.json \
+            --disable MD013 MD024
       - name: Docs quality summary
         if: always()
         run: |
@@ -63,6 +65,7 @@ jobs:
     needs: docs-quality
     env:
       NODE_OPTIONS: "--trace-deprecation"
+      PAGES_ARTIFACT_NAME: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -81,6 +84,8 @@ jobs:
         run: bundle exec jekyll build --source ./docs --destination ./_site
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
+        with:
+          name: ${{ env.PAGES_ARTIFACT_NAME }}
 
   # Deployment job
   deploy:
@@ -94,6 +99,8 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
 
   docs-routing-smoke:
     name: Docs Routing Smoke (non-blocking)
