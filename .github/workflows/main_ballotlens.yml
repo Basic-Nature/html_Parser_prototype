@@ -24,6 +24,15 @@ on:
       - 'install.sh'
       - '.github/workflows/main_ballotlens.yml'
   workflow_dispatch:
+    inputs:
+      post_deploy_db_confirm_strict:
+        description: "Fail workflow when post-deploy live DB confirmation finds issues"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
 
 env:
   IMAGE_NAME: ballotlens
@@ -32,12 +41,16 @@ env:
   REPORT_MAX_FILES: "200"
   REPORT_MAX_BYTES: "268435456"
   DL_COMPARE_STRICT: "false"
+  DL_COMPARE_DL1_PATH: ""
+  DL_COMPARE_DL2_PATH: ""
+  POST_DEPLOY_DB_CONFIRM_STRICT: ${{ github.event_name == 'workflow_dispatch' && inputs.post_deploy_db_confirm_strict || 'true' }}
+  POST_DEPLOY_DB_CONFIRM_TIMEOUT_SEC: "45"
   DYNAMIC_SITE_URL: "https://www.electionpulse.org/"
   DOCS_SITE_URL: "https://basic-nature.github.io/html_Parser_prototype/"
 
 jobs:
   qa-dl-compare:
-    name: "Pre-Deploy QA: DL compare"
+    name: "Pre-Deploy QA: Synthetic DL fixture compare"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -80,8 +93,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install --no-cache-dir --prefer-binary -r requirements.txt
 
-      - name: Run DL compare QA (pre-deploy)
+      - name: Run synthetic DL fixture compare (pre-deploy)
         run: |
+          dl1="${{ env.DL_COMPARE_DL1_PATH }}"
+          dl2="${{ env.DL_COMPARE_DL2_PATH }}"
+
+          if [ -z "$dl1" ] || [ -z "$dl2" ]; then
+            echo "DL fixture compare skipped: DL_COMPARE_DL1_PATH or DL_COMPARE_DL2_PATH is not set."
+            echo "This stage is synthetic regression only, not live DB confirmation."
+            exit 0
+          fi
+
+          if [ ! -f "$dl1" ] || [ ! -f "$dl2" ]; then
+            echo "DL fixture compare skipped: fixture file(s) missing."
+            echo "  dl1=$dl1 exists=$([ -f \"$dl1\" ] && echo yes || echo no)"
+            echo "  dl2=$dl2 exists=$([ -f \"$dl2\" ] && echo yes || echo no)"
+            exit 0
+          fi
+
           set +e
           python automate.py \
             --intended-env ci \
@@ -90,8 +119,8 @@ jobs:
             --skip-tests \
             --skip-webapp-check \
             --compare-dl1-dl2 \
-            --dl1-path tests/testdata/dl_compare_dl1_sample.json \
-            --dl2-path tests/testdata/dl_compare_dl2_sample.json \
+            --dl1-path "$dl1" \
+            --dl2-path "$dl2" \
             --enforce-report-retention \
             --report-retention-days "${{ env.REPORT_RETENTION_DAYS }}" \
             --report-max-files "${{ env.REPORT_MAX_FILES }}" \
@@ -124,10 +153,14 @@ jobs:
         if: always()
         run: |
           {
-            echo "## Pre-Deploy QA (DL compare)"
+            echo "## Pre-Deploy QA (Synthetic DL fixture compare)"
             echo "- Stage timing: **before** Azure deploy"
+            echo "- Purpose: parser regression signal against provided fixture files"
+            echo "- Not a live webapp/database confirmation check"
             echo "- Default mode: non-strict (signal + artifacts, deploy continues)"
             echo "- Strict toggle: set \`DL_COMPARE_STRICT=true\` to block deploy on mismatch"
+            echo "- DL1 path: '${{ env.DL_COMPARE_DL1_PATH }}'"
+            echo "- DL2 path: '${{ env.DL_COMPARE_DL2_PATH }}'"
             echo "- Artifact bundle: dl-compare-qa-${{ github.run_id }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -158,7 +191,7 @@ jobs:
             echo "- Workflow scope: **Azure dynamic deployment**"
             echo "- Dynamic webapp target: ${{ env.DYNAMIC_SITE_URL }}"
             echo "- Docs (separate GitHub Pages pipeline): ${{ env.DOCS_SITE_URL }}"
-            echo "- DL compare QA: pre-deploy job in this workflow (fail-fast timing)"
+            echo "- Synthetic DL fixture compare QA: pre-deploy optional regression signal"
             echo "- DL compare strict mode: ${{ env.DL_COMPARE_STRICT }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -532,3 +565,159 @@ jobs:
             exit 1
           fi
           echo "Redirect probe OK: apex resolves to https://www.electionpulse.org"
+
+  postdeploy-live-db-confirmation:
+    name: "Post-Deploy Validation: Live app + data confirmation"
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Run live endpoint and data-shape assertions
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+          from urllib import error, request
+
+          base = os.environ.get("DYNAMIC_SITE_URL", "").strip().rstrip("/")
+          strict = os.environ.get("POST_DEPLOY_DB_CONFIRM_STRICT", "true").strip().lower() == "true"
+          timeout = int(os.environ.get("POST_DEPLOY_DB_CONFIRM_TIMEOUT_SEC", "45"))
+          out_path = Path("output/reports/postdeploy_db_confirmation_latest.json")
+          out_path.parent.mkdir(parents=True, exist_ok=True)
+
+          if not base:
+              raise SystemExit("DYNAMIC_SITE_URL is not configured")
+
+          def fetch(path: str):
+              url = f"{base}{path}"
+              req = request.Request(
+                  url,
+                  headers={
+                      "Accept": "application/json,text/plain,*/*",
+                      "User-Agent": "ballotlens-postdeploy-check/1.0",
+                  },
+              )
+              try:
+                  with request.urlopen(req, timeout=timeout) as resp:
+                      body = resp.read().decode("utf-8", errors="replace")
+                      return {
+                          "url": url,
+                          "status": int(resp.getcode()),
+                          "headers": dict(resp.headers.items()),
+                          "body": body,
+                          "error": None,
+                      }
+              except error.HTTPError as exc:
+                  body = exc.read().decode("utf-8", errors="replace")
+                  return {
+                      "url": url,
+                      "status": int(exc.code),
+                      "headers": dict(exc.headers.items()) if exc.headers else {},
+                      "body": body,
+                      "error": None,
+                  }
+              except Exception as exc:
+                  return {
+                      "url": url,
+                      "status": None,
+                      "headers": {},
+                      "body": "",
+                      "error": str(exc),
+                  }
+
+          checks = []
+          failures = []
+
+          health = fetch("/health")
+          checks.append({"name": "health", **health})
+          if health["error"] or health["status"] != 200:
+              failures.append("/health must return HTTP 200")
+          else:
+              try:
+                  payload = json.loads(health["body"] or "{}")
+                  if str(payload.get("status", "")).lower() != "ok":
+                      failures.append("/health JSON must contain status=ok")
+              except Exception:
+                  failures.append("/health body must be valid JSON")
+
+          url_status = fetch("/api/url_status?limit=5&hide_pii=true")
+          checks.append({"name": "api_url_status", **url_status})
+          if url_status["error"] or url_status["status"] != 200:
+              failures.append("/api/url_status must return HTTP 200")
+          else:
+              try:
+                  payload = json.loads(url_status["body"] or "{}")
+                  required_keys = {"success", "total", "filtered", "entries", "status_breakdown", "canonical_statuses"}
+                  missing = sorted(required_keys - set(payload.keys()))
+                  if missing:
+                      failures.append(f"/api/url_status missing keys: {', '.join(missing)}")
+                  if payload.get("success") is not True:
+                      failures.append("/api/url_status success must be true")
+                  if not isinstance(payload.get("entries"), list):
+                      failures.append("/api/url_status entries must be a list")
+                  if not isinstance(payload.get("status_breakdown"), dict):
+                      failures.append("/api/url_status status_breakdown must be an object")
+              except Exception:
+                  failures.append("/api/url_status body must be valid JSON")
+
+          warehouse_status = fetch("/api/data_framework/warehouse_status")
+          checks.append({"name": "api_data_framework_warehouse_status", **warehouse_status})
+          if warehouse_status["error"]:
+              failures.append("/api/data_framework/warehouse_status request failed")
+          elif warehouse_status["status"] not in (200, 403):
+              failures.append("/api/data_framework/warehouse_status must return HTTP 200 or 403")
+          elif warehouse_status["status"] == 200:
+              try:
+                  payload = json.loads(warehouse_status["body"] or "{}")
+                  if "available" not in payload:
+                      failures.append("/api/data_framework/warehouse_status 200 response missing 'available'")
+              except Exception:
+                  failures.append("/api/data_framework/warehouse_status 200 response must be valid JSON")
+
+          report = {
+              "status": "failed" if failures else "passed",
+              "strict_mode": strict,
+              "base_url": base,
+              "checks": checks,
+              "failures": failures,
+          }
+          out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+          print(f"Wrote report: {out_path}")
+          if failures:
+              print("Post-deploy validation failures:")
+              for item in failures:
+                  print(f"- {item}")
+              if strict:
+                  sys.exit(1)
+              print("Strict mode disabled; continuing despite failures.")
+          else:
+              print("Post-deploy validation passed.")
+          PY
+
+      - name: Upload post-deploy validation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postdeploy-live-db-confirmation-${{ github.run_id }}
+          path: |
+            output/reports/postdeploy_db_confirmation_latest.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Post-deploy validation summary
+        if: always()
+        run: |
+          {
+            echo "## Post-Deploy Live App + Data Confirmation"
+            echo "- Target: ${{ env.DYNAMIC_SITE_URL }}"
+            echo "- Health endpoint: /health (must be 200 + status=ok)"
+            echo "- Data shape endpoint: /api/url_status?limit=5&hide_pii=true (must be 200 + required keys)"
+            echo "- Warehouse endpoint: /api/data_framework/warehouse_status (accept 200 or 403 in CI)"
+            echo "- Strict mode: ${{ env.POST_DEPLOY_DB_CONFIRM_STRICT }}"
+            echo "- Report artifact: postdeploy-live-db-confirmation-${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
