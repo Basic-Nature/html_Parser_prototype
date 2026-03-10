@@ -51,12 +51,12 @@ SOCKETIO_MESSAGE_QUEUE = os.environ.get("SOCKETIO_MESSAGE_QUEUE")
 SOCKETIO_MESSAGE_CHANNEL = os.environ.get("SOCKETIO_MESSAGE_CHANNEL", "socketio")
 
 # ---------------------------------------------------------------------------
-# Redis-free multi-worker message queue: kombu + SQLAlchemy backend
+# Multi-worker message queue: kombu + SQLAlchemy backend
 # ---------------------------------------------------------------------------
 # When SOCKETIO_USE_DB_QUEUE=true, the existing PostgreSQL database is used as
-# the SocketIO message broker via kombu — no Redis required.  This is safe for
-# single-instance deployments with GUNICORN_WORKERS > 1 and for Azure App
-# Service when sticky-session routing is not available.
+# the SocketIO message broker via kombu.  This is safe for single-instance
+# deployments with GUNICORN_WORKERS > 1 and for Azure App Service when
+# sticky-session routing is not available.
 #
 # Requires:  kombu>=5.6.2  (already in requirements.txt)
 # ---------------------------------------------------------------------------
@@ -547,23 +547,12 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
 limiter = None
 if Limiter is not None:
-    _rate_limit_uri = os.environ.get("RATE_LIMIT_STORAGE_URI", "memory://")
-    # Guard: Redis is not available in this deployment; fall back to in-memory.
-    if _rate_limit_uri.startswith("redis://") or _rate_limit_uri.startswith("rediss://"):
-        import warnings
-        warnings.warn(
-            f"RATE_LIMIT_STORAGE_URI={_rate_limit_uri!r} points to Redis which is not used "
-            "in this deployment. Falling back to memory:// storage.",
-            RuntimeWarning,
-            stacklevel=1,
-        )
-        _rate_limit_uri = "memory://"
     try:
         limiter = Limiter(
             get_remote_address,
             app=app,
             default_limits=[],
-            storage_uri=_rate_limit_uri,
+            storage_uri=os.environ.get("RATE_LIMIT_STORAGE_URI", "memory://"),
         )
     except Exception:
         limiter = None
@@ -583,7 +572,7 @@ if _gunicorn_workers > 1 and not SOCKETIO_MESSAGE_QUEUE:
         f"GUNICORN_WORKERS={_gunicorn_workers} but SOCKETIO_MESSAGE_QUEUE is not set. "
         "Real-time events may not reach all connected clients. "
         "Set SOCKETIO_USE_DB_QUEUE=true to route events through the existing "
-        "PostgreSQL database (no Redis or other broker service required).",
+        "PostgreSQL database as the message broker.",
         RuntimeWarning,
         stacklevel=1,
     )

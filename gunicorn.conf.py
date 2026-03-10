@@ -30,7 +30,7 @@ workers = int(os.environ.get("GUNICORN_WORKERS", "1"))
 
 # Thread count per worker — only applied when worker_class="gthread".
 # Gunicorn ignores this setting for "sync" workers.
-# Default 4 handles typical multi-user concurrency without Redis.
+# Default 4 handles typical multi-user concurrency.
 threads = int(os.environ.get("GUNICORN_THREADS", "4"))
 
 # Timeouts tuned for larger PDF/OCR runs
