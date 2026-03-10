@@ -488,8 +488,10 @@ jobs:
               FLASK_SECRET_KEY="${{ secrets.FLASK_SECRET_KEY }}" \
               FLASK_COOKIE_SECURE="True" \
               SOCKETIO_ALLOWED_ORIGINS="https://www.electionpulse.org,https://electionpulse.org" \
-              SOCKETIO_MESSAGE_QUEUE="${{ secrets.SOCKETIO_MESSAGE_QUEUE || '' }}" \
+              SOCKETIO_USE_DB_QUEUE="true" \
               SOCKETIO_MESSAGE_CHANNEL="socketio" \
+              GUNICORN_WORKER_CLASS="gthread" \
+              GUNICORN_THREADS="4" \
               HEARTBEAT_ENABLED="true" \
               DATA_API_URL="/api/ballotlens-database" \
               CSP_MODE="STRICT" \

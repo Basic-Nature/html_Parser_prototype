@@ -16,11 +16,9 @@ bind = f"0.0.0.0:{port}"
 #               Handles many concurrent users within a *single* process.
 #
 # ⚠️  Multi-worker mode (GUNICORN_WORKERS > 1) requires a SocketIO message
-#     queue (SOCKETIO_MESSAGE_QUEUE) so that events emitted by one worker
-#     reach clients connected to another.  See .env.template for options:
-#       • Redis  : redis://localhost:6379/0
-#       • No Redis needed: set SOCKETIO_USE_DB_QUEUE=true to use the existing
-#         PostgreSQL database via kombu (requires kombu>=5.6.2 in requirements).
+#     queue so that events emitted by one worker reach clients connected to
+#     another.  Set SOCKETIO_USE_DB_QUEUE=true to use the existing PostgreSQL
+#     database via kombu (requires kombu>=5.6.2 in requirements).
 #     Without a message queue, keep GUNICORN_WORKERS=1 (the default).
 # ---------------------------------------------------------------------------
 _worker_class = os.environ.get("GUNICORN_WORKER_CLASS", "sync")
