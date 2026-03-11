@@ -191,9 +191,6 @@ def parse(page=None, html_context=None, coordinator=None, context=None, session_
             "race": contest if contest else "Unknown"
         }
 
-        from ....Context_Integration.context_organizer import ContextOrganizer
-        organized = ContextOrganizer.organize_context(metadata)
-        metadata = safe_get(organized, "metadata", metadata)
         result = finalize_election_output(headers, data, contest, metadata)
         contest = safe_get(result, "contest", contest)
         metadata = safe_get(result, "metadata", metadata)

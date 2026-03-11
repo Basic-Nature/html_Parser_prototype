@@ -8,7 +8,6 @@ import os
 import orjson
 
 from ....config import CONTEXT_LIBRARY_PATH
-from ....Context_Integration.context_organizer import ContextOrganizer
 from ....utils.logger_singleton import logger
 from ....utils.output_utils import finalize_election_output
 
@@ -174,9 +173,7 @@ def parse(page=None, html_context=None, coordinator=None, context=None, session_
     if county_totals:
         metadata.update(county_totals)
 
-    # Enrich metadata and finalize output
-    organized = ContextOrganizer.organize_context(metadata)
-    metadata = organized.get("metadata", metadata)
+    # Finalize output using collected metadata.
     result = finalize_election_output(headers_out, precinct_data, contest, metadata)
     contest = result.get("contest", contest)
     metadata = result.get("metadata", metadata)

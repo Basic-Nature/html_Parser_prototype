@@ -951,6 +951,22 @@ def log_extraction_quality(
         quality = build_extraction_quality_metrics(
             headers, data, metadata, handler_name, session_id
         )
+        try:
+            from .utils.ml_telemetry import record_ml_event
+
+            record_ml_event(
+                "extraction_quality",
+                "computed",
+                session_id=session_id,
+                metadata={
+                    "handler": handler_name,
+                    "rows": len(data or []),
+                    "columns": len(headers or []),
+                    "extraction_confidence": quality.get("extraction_confidence") if isinstance(quality, dict) else None,
+                },
+            )
+        except Exception:
+            pass
         logger.info({
             "level": "INFO",
             "type": "ml_quality",

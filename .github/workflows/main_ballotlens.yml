@@ -166,6 +166,56 @@ jobs:
             echo "- Artifact bundle: dl-compare-qa-${{ github.run_id }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  contract-checks-nonblocking:
+    name: "Pre-Deploy QA: Contract checks (non-blocking)"
+    needs: qa-dl-compare
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up Python 3.12.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir --prefer-binary -r requirements.txt
+
+      - name: Install Node dependencies
+        run: npm install
+
+      - name: Run backend contract tests (cert + observability APIs)
+        run: |
+          python -m pytest -q webapp/tests/test_auth_and_observability_contracts.py
+
+      - name: Run frontend contract tests (auth utils)
+        run: |
+          npx jest --config=jest.config.js --runInBand webapp/static/js/__tests__/auth_utils.contract.test.js
+
+      - name: Contract checks summary
+        if: always()
+        run: |
+          {
+            echo "## Pre-Deploy QA (Contract checks, non-blocking)"
+            echo "- Backend contracts: cert-required + ML/pre-ingest API schema checks"
+            echo "- Frontend contracts: cert-required behavior in auth utilities"
+            echo "- Mode: non-blocking (signals quality while implementation hardens)"
+            echo "- Next phase: tighten to blocking once stability and pass-rate are sustained"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build-and-deploy:
     name: Azure Deploy (dynamic webapp)
     needs: qa-dl-compare
@@ -637,32 +687,32 @@ jobs:
           checks = []
           failures = []
 
-            health = None
-            for attempt in range(1, max_attempts + 1):
+          health = None
+          for attempt in range(1, max_attempts + 1):
               candidate = fetch("/health")
               candidate["attempt"] = attempt
               health = candidate
               ok = False
               if not candidate["error"] and candidate["status"] == 200:
-                try:
-                  payload = json.loads(candidate["body"] or "{}")
-                  ok = str(payload.get("status", "")).lower() == "ok"
-                except Exception:
-                  ok = False
+                  try:
+                      payload = json.loads(candidate["body"] or "{}")
+                      ok = str(payload.get("status", "")).lower() == "ok"
+                  except Exception:
+                      ok = False
               if ok:
-                break
+                  break
               if attempt < max_attempts:
-                print(f"Health probe attempt {attempt}/{max_attempts} not ready; waiting {sleep_sec}s...")
-                time.sleep(sleep_sec)
+                  print(f"Health probe attempt {attempt}/{max_attempts} not ready; waiting {sleep_sec}s...")
+                  time.sleep(sleep_sec)
 
-            if health is None:
+          if health is None:
               health = {
-                "url": f"{base}/health",
-                "status": None,
-                "headers": {},
-                "body": "",
-                "error": "health probe did not execute",
-                "attempt": 0,
+                  "url": f"{base}/health",
+                  "status": None,
+                  "headers": {},
+                  "body": "",
+                  "error": "health probe did not execute",
+                  "attempt": 0,
               }
 
           checks.append({"name": "health", **health})
@@ -676,45 +726,45 @@ jobs:
               except Exception:
                   failures.append("/health body must be valid JSON")
 
-            if not failures:
+          if not failures:
               url_status = fetch("/api/url_status?limit=5&hide_pii=true")
               checks.append({"name": "api_url_status", **url_status})
               if url_status["error"] or url_status["status"] != 200:
-                failures.append(f"/api/url_status must return HTTP 200 (last_error={url_status['error']!r}, status={url_status['status']})")
+                  failures.append(f"/api/url_status must return HTTP 200 (last_error={url_status['error']!r}, status={url_status['status']})")
               else:
-                try:
-                  payload = json.loads(url_status["body"] or "{}")
-                  required_keys = {"success", "total", "filtered", "entries", "status_breakdown", "canonical_statuses"}
-                  missing = sorted(required_keys - set(payload.keys()))
-                  if missing:
-                    failures.append(f"/api/url_status missing keys: {', '.join(missing)}")
-                  if payload.get("success") is not True:
-                    failures.append("/api/url_status success must be true")
-                  if not isinstance(payload.get("entries"), list):
-                    failures.append("/api/url_status entries must be a list")
-                  if not isinstance(payload.get("status_breakdown"), dict):
-                    failures.append("/api/url_status status_breakdown must be an object")
-                except Exception:
-                  failures.append("/api/url_status body must be valid JSON")
+                  try:
+                      payload = json.loads(url_status["body"] or "{}")
+                      required_keys = {"success", "total", "filtered", "entries", "status_breakdown", "canonical_statuses"}
+                      missing = sorted(required_keys - set(payload.keys()))
+                      if missing:
+                          failures.append(f"/api/url_status missing keys: {', '.join(missing)}")
+                      if payload.get("success") is not True:
+                          failures.append("/api/url_status success must be true")
+                      if not isinstance(payload.get("entries"), list):
+                          failures.append("/api/url_status entries must be a list")
+                      if not isinstance(payload.get("status_breakdown"), dict):
+                          failures.append("/api/url_status status_breakdown must be an object")
+                  except Exception:
+                      failures.append("/api/url_status body must be valid JSON")
 
               warehouse_status = fetch("/api/data_framework/warehouse_status")
               checks.append({"name": "api_data_framework_warehouse_status", **warehouse_status})
               if warehouse_status["error"]:
-                failures.append(f"/api/data_framework/warehouse_status request failed (last_error={warehouse_status['error']!r})")
+                  failures.append(f"/api/data_framework/warehouse_status request failed (last_error={warehouse_status['error']!r})")
               elif warehouse_status["status"] not in (200, 403):
-                failures.append("/api/data_framework/warehouse_status must return HTTP 200 or 403")
+                  failures.append("/api/data_framework/warehouse_status must return HTTP 200 or 403")
               elif warehouse_status["status"] == 200:
-                try:
-                  payload = json.loads(warehouse_status["body"] or "{}")
-                  if "available" not in payload:
-                    failures.append("/api/data_framework/warehouse_status 200 response missing 'available'")
-                except Exception:
-                  failures.append("/api/data_framework/warehouse_status 200 response must be valid JSON")
-            else:
+                  try:
+                      payload = json.loads(warehouse_status["body"] or "{}")
+                      if "available" not in payload:
+                          failures.append("/api/data_framework/warehouse_status 200 response missing 'available'")
+                  except Exception:
+                      failures.append("/api/data_framework/warehouse_status 200 response must be valid JSON")
+          else:
               checks.append({
-                "name": "api_checks_skipped",
-                "reason": "health_not_ready",
-                "details": "Skipped /api/url_status and /api/data_framework/warehouse_status because /health readiness did not pass",
+                  "name": "api_checks_skipped",
+                  "reason": "health_not_ready",
+                  "details": "Skipped /api/url_status and /api/data_framework/warehouse_status because /health readiness did not pass",
               })
 
           report = {

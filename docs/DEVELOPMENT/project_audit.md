@@ -5,7 +5,7 @@ title: "Project Audit"
 
 Audit scope: `webapp/parser/` modules.
 
-Modules scanned: 250 | ~88154 non-empty LOC
+Modules scanned: 250 | ~88142 non-empty LOC
 
 ## Pipeline map (Mermaid)
 
@@ -92,7 +92,7 @@ Key module-to-module and cluster relationships to watch during refactors.
 
 ### Cluster flow summary
 
-- Utils → Utils: 1126 edges (intra-cluster)
+- Utils → Utils: 1128 edges (intra-cluster)
 - Other → Other: 699 edges (intra-cluster)
 - Context_Integration → Context_Integration: 386 edges (intra-cluster)
 - Entry → Entry: 316 edges (intra-cluster)
@@ -4253,79 +4253,77 @@ graph LR
 ```
 
 - Definitions:
-  - function: `parse` (line 33)
+  - function: `parse` (line 32)
 - Imports:
   - **Standard Library** (1):
     - `import os as os` (line 6)
   - **Third-party** (1):
     - `import orjson as orjson` (line 8)
-  - **Local/Project** (4):
+  - **Local/Project** (3):
     - `from config import CONTEXT_LIBRARY_PATH` (line 10)
-    - `from Context_Integration.context_organizer import ContextOrganizer` (line
-      11)
-    - `from utils.logger_singleton import logger` (line 12)
-    - `from utils.output_utils import finalize_election_output` (line 13)
+    - `from utils.logger_singleton import logger` (line 11)
+    - `from utils.output_utils import finalize_election_output` (line 12)
 - Task markers:
-  - L25 **WARNING**: ("\[WARN\] context_library.json not found. Using fallback
+  - L24 **WARNING**: ("\[WARN\] context_library.json not found. Using fallback
     config for Arizona handler.")
-  - L51 **WARNING**: (f"\[WARN\] Could not expand card {i+1}: {e}")
-  - L64 **WARNING**: (f"\[WARN\] Vote Type toggle failed: {e}")
-  - L77 **WARNING**: (f"\[WARN\] County toggle failed: {e}")
-  - L164 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results
+  - L50 **WARNING**: (f"\[WARN\] Could not expand card {i+1}: {e}")
+  - L63 **WARNING**: (f"\[WARN\] Vote Type toggle failed: {e}")
+  - L76 **WARNING**: (f"\[WARN\] County toggle failed: {e}")
+  - L163 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results
     are published yet or the structure has changed.")
-  - L165 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted
+  - L164 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted
     election data.")
 - Outgoing cross-module calls (sample):
-  - orjson.loads (line 21)
-  - f.read (line 21)
-  - CONTEXT\_LIBRARY.get (line 22)
-  - STATE\_CONFIGS.get (line 23)
-  - utils.logger\_singleton.logger.warning (line 25)
+  - orjson.loads (line 20)
+  - f.read (line 20)
+  - CONTEXT\_LIBRARY.get (line 21)
+  - STATE\_CONFIGS.get (line 22)
+  - utils.logger\_singleton.logger.warning (line 24)
+  - config.setdefault (line 28)
   - config.setdefault (line 29)
   - config.setdefault (line 30)
-  - config.setdefault (line 31)
-  - utils.logger\_singleton.logger.info (line 37)
-  - config.get (line 40)
-  - page.locator (line 42)
-  - buttons.count (line 43)
-  - buttons.nth (line 45)
-  - btn.scroll\_into\_view\_if\_needed (line 46)
-  - btn.click (line 47)
-  - page.wait\_for\_timeout (line 48)
-  - utils.logger\_singleton.logger.info (line 49)
-  - buttons.count (line 49)
-  - utils.logger\_singleton.logger.warning (line 51)
-  - config.get (line 54)
-  - page.locator (line 57)
-  - vote\_toggle.count (line 58)
-  - utils.logger\_singleton.logger.info (line 61)
-  - page.wait\_for\_timeout (line 62)
-  - utils.logger\_singleton.logger.warning (line 64)
-  - config.get (line 67)
-  - page.locator (line 70)
-  - county\_toggle.count (line 71)
-  - utils.logger\_singleton.logger.info (line 74)
-  - page.wait\_for\_timeout (line 75)
-  - utils.logger\_singleton.logger.warning (line 77)
+  - utils.logger\_singleton.logger.info (line 36)
+  - config.get (line 39)
+  - page.locator (line 41)
+  - buttons.count (line 42)
+  - buttons.nth (line 44)
+  - btn.scroll\_into\_view\_if\_needed (line 45)
+  - btn.click (line 46)
+  - page.wait\_for\_timeout (line 47)
+  - utils.logger\_singleton.logger.info (line 48)
+  - buttons.count (line 48)
+  - utils.logger\_singleton.logger.warning (line 50)
+  - config.get (line 53)
+  - page.locator (line 56)
+  - vote\_toggle.count (line 57)
+  - utils.logger\_singleton.logger.info (line 60)
+  - page.wait\_for\_timeout (line 61)
+  - utils.logger\_singleton.logger.warning (line 63)
+  - config.get (line 66)
+  - page.locator (line 69)
+  - county\_toggle.count (line 70)
+  - utils.logger\_singleton.logger.info (line 73)
+  - page.wait\_for\_timeout (line 74)
+  - utils.logger\_singleton.logger.warning (line 76)
+  - utils.logger\_singleton.logger.info (line 79)
   - utils.logger\_singleton.logger.info (line 80)
-  - utils.logger\_singleton.logger.info (line 81)
-  - page.query\_selector\_all (line 85)
-  - el.evaluate (line 89)
-  - el.inner\_text (line 90)
-  - utils.logger\_singleton.logger.debug (line 91)
-  - el.inner\_text (line 94)
-  - utils.logger\_singleton.logger.debug (line 97)
+  - page.query\_selector\_all (line 84)
+  - el.evaluate (line 88)
+  - el.inner\_text (line 89)
+  - utils.logger\_singleton.logger.debug (line 90)
+  - el.inner\_text (line 93)
+  - utils.logger\_singleton.logger.debug (line 96)
+  - el.query\_selector\_all (line 98)
   - el.query\_selector\_all (line 99)
-  - el.query\_selector\_all (line 100)
-  - h.inner\_text (line 103)
-  - utils.logger\_singleton.logger.progress\_bar (line 106)
-  - cell.inner\_text (line 107)
-  - row.query\_selector\_all (line 107)
-  - full\_name.split (line 111)
-  - full\_name.strip (line 117)
-  - all\_candidates.add (line 120)
-  - row\_blocks.append (line 121)
-  - precinct\_data.append (line 135)
+  - h.inner\_text (line 102)
+  - utils.logger\_singleton.logger.progress\_bar (line 105)
+  - cell.inner\_text (line 106)
+  - row.query\_selector\_all (line 106)
+  - full\_name.split (line 110)
+  - full\_name.strip (line 116)
+  - all\_candidates.add (line 119)
+  - row\_blocks.append (line 120)
+  - precinct\_data.append (line 134)
 
 ### handlers/states/arkansas/arkansas.py {#webapp-parser-handlers-states-arkansas-arkansas-py}
 
@@ -8231,88 +8229,86 @@ graph LR
 ### navigator/navigation\_runner.py {#webapp-parser-navigator-navigation-runner-py}
 
 - Definitions:
-  - class: `NavigationResult` (line 24)
-  - class: `NavigationInstructionRunner` (line 32)
+  - class: `NavigationResult` (line 23)
+  - class: `NavigationInstructionRunner` (line 31)
 - Imports:
   - **Standard Library** (6):
     - `import threading as threading` (line 3)
-    - `from dataclasses import dataclass` (line 5)
-    - `from typing import Any` (line 6)
-    - `from typing import Dict` (line 6)
-    - `from typing import List` (line 6)
-    - `from typing import Optional` (line 6)
-  - **Local/Project** (13):
+    - `from dataclasses import dataclass` (line 4)
+    - `from typing import Any` (line 5)
+    - `from typing import Dict` (line 5)
+    - `from typing import List` (line 5)
+    - `from typing import Optional` (line 5)
+  - **Local/Project** (11):
     - `from __future__ import annotations` (line 1)
-    - `from concurrent.futures import ThreadPoolExecutor` (line 4)
-    - `from concurrent.futures import wait` (line 4)
-    - `from utils.browser_utils import SCROLL_METRIC_KEYS` (line 8)
-    - `from utils.browser_utils import autoscroll_until_stable` (line 8)
-    - `from utils.browser_utils import safe_click_with_retry` (line 8)
-    - `from utils.browser_utils import safe_get_attribute` (line 8)
-    - `from utils.browser_utils import safe_inner_text` (line 8)
-    - `from utils.html_scanner import scan_html_for_context` (line 15)
-    - `from utils.logger_singleton import logger` (line 16)
-    - `from keyword_bias import load_keyword_bias` (line 17)
-    - `from navigation_recipes import DEFAULT_RECIPE_PATH` (line 18)
-    - `from navigation_recipes import NavigationRecipeStore` (line 18)
+    - `from utils.browser_utils import SCROLL_METRIC_KEYS` (line 7)
+    - `from utils.browser_utils import autoscroll_until_stable` (line 7)
+    - `from utils.browser_utils import safe_click_with_retry` (line 7)
+    - `from utils.browser_utils import safe_get_attribute` (line 7)
+    - `from utils.browser_utils import safe_inner_text` (line 7)
+    - `from utils.html_scanner import scan_html_for_context` (line 14)
+    - `from utils.logger_singleton import logger` (line 15)
+    - `from keyword_bias import load_keyword_bias` (line 16)
+    - `from navigation_recipes import DEFAULT_RECIPE_PATH` (line 17)
+    - `from navigation_recipes import NavigationRecipeStore` (line 17)
 - Task markers:
-  - L250 **WARNING**: ({
-  - L251 **WARNING**: ",
+  - L249 **WARNING**: ({
+  - L250 **WARNING**: ",
 - Outgoing cross-module calls (sample):
-  - navigation\_recipes.NavigationRecipeStore (line 43)
+  - navigation\_recipes.NavigationRecipeStore (line 42)
+  - threading.RLock (line 47)
   - threading.RLock (line 48)
-  - threading.RLock (line 49)
-  - context.get (line 60)
-  - self.\_apply\_keyword\_bias (line 66)
-  - self.\_script\_matches (line 69)
-  - self.\_execute\_script (line 71)
-  - script.get (line 73)
-  - script.get (line 75)
-  - script.get (line 79)
-  - match.get (line 82)
-  - target\_url.lower (line 84)
-  - substr.lower (line 85)
-  - match.get (line 87)
-  - page.content (line 90)
-  - html\_source.lower (line 93)
-  - marker.lower (line 96)
-  - script.get (line 102)
-  - self.\_execute\_step (line 103)
-  - context\_updates.update (line 105)
-  - script.get (line 106)
-  - context\_updates.update (line 108)
-  - action.lower (line 115)
+  - context.get (line 59)
+  - self.\_apply\_keyword\_bias (line 65)
+  - self.\_script\_matches (line 68)
+  - self.\_execute\_script (line 70)
+  - script.get (line 72)
+  - script.get (line 74)
+  - script.get (line 78)
+  - match.get (line 81)
+  - target\_url.lower (line 83)
+  - substr.lower (line 84)
+  - match.get (line 86)
+  - page.content (line 89)
+  - html\_source.lower (line 92)
+  - marker.lower (line 95)
+  - script.get (line 101)
+  - self.\_execute\_step (line 102)
+  - context\_updates.update (line 104)
+  - script.get (line 105)
+  - context\_updates.update (line 107)
+  - action.lower (line 114)
+  - step.get (line 117)
   - step.get (line 118)
   - step.get (line 119)
-  - step.get (line 120)
-  - self.\_selector\_candidates (line 125)
-  - page.wait\_for\_selector (line 127)
-  - self.\_record\_trace (line 134)
-  - self.\_should\_soft\_skip\_selector\_failure (line 136)
-  - self.\_has\_results\_ready (line 136)
-  - self.\_record\_trace (line 137)
-  - self.\_record\_trace (line 140)
+  - self.\_selector\_candidates (line 124)
+  - page.wait\_for\_selector (line 126)
+  - self.\_record\_trace (line 133)
+  - self.\_should\_soft\_skip\_selector\_failure (line 135)
+  - self.\_has\_results\_ready (line 135)
+  - self.\_record\_trace (line 136)
+  - self.\_record\_trace (line 139)
+  - step.get (line 141)
   - step.get (line 142)
-  - step.get (line 143)
-  - page.wait\_for\_load\_state (line 145)
-  - self.\_record\_trace (line 146)
+  - page.wait\_for\_load\_state (line 144)
+  - self.\_record\_trace (line 145)
+  - step.get (line 147)
   - step.get (line 148)
-  - step.get (line 149)
-  - self.\_selector\_candidates (line 153)
-  - utils.browser\_utils.safe\_click\_with\_retry (line 154)
-  - step.get (line 158)
-  - self.\_click\_by\_text\_discovery (line 168)
-  - self.\_record\_trace (line 171)
-  - self.\_should\_soft\_skip\_selector\_failure (line 173)
-  - self.\_has\_results\_ready (line 173)
-  - self.\_record\_trace (line 174)
-  - step.get (line 177)
-  - page.wait\_for\_timeout (line 180)
-  - self.\_record\_trace (line 181)
+  - self.\_selector\_candidates (line 152)
+  - utils.browser\_utils.safe\_click\_with\_retry (line 153)
+  - step.get (line 157)
+  - self.\_click\_by\_text\_discovery (line 167)
+  - self.\_record\_trace (line 170)
+  - self.\_should\_soft\_skip\_selector\_failure (line 172)
+  - self.\_has\_results\_ready (line 172)
+  - self.\_record\_trace (line 173)
+  - step.get (line 176)
+  - page.wait\_for\_timeout (line 179)
+  - self.\_record\_trace (line 180)
 - Inbound references:
-  - NavigationResult ← navigation_runner.py:64
+  - NavigationResult ← navigation_runner.py:63
+  - NavigationResult ← navigation_runner.py:74
   - NavigationResult ← navigation_runner.py:75
-  - NavigationResult ← navigation_runner.py:76
 
 ### navigator/training\_data.py {#webapp-parser-navigator-training-data-py}
 
@@ -9877,40 +9873,40 @@ graph LR
   - function: `get\_random\_user\_agent` (line 122)
   - function: `safe\_url` (line 129)
   - function: `safe\_inner\_text` (line 138)
-  - function: `safe\_locator` (line 163)
-  - function: `safe\_evaluate` (line 174)
-  - function: `safe\_wait\_for\_timeout` (line 208)
-  - function: `safe\_content` (line 220)
-  - function: `safe\_nth` (line 243)
-  - function: `safe\_is\_visible` (line 250)
-  - function: `safe\_is\_enabled` (line 261)
-  - function: `safe\_click` (line 272)
-  - function: `capture\_page\_diagnostics` (line 296)
-  - function: `safe\_click\_with\_retry` (line 343)
-  - function: `safe\_get\_attribute` (line 494)
-  - function: `safe\_attributes` (line 506)
-  - function: `safe\_query\_selector\_all` (line 576)
-  - function: `safe\_context\_library` (line 587)
-  - function: `safe\_count` (line 599)
-  - function: `safe\_context\_result` (line 634)
-  - function: `safe\_launch` (line 660)
-  - async_function: `async\_safe\_launch` (line 680)
-  - function: `safe\_new\_context` (line 699)
-  - async_function: `async\_safe\_new\_context` (line 710)
-  - function: `safe\_new\_page` (line 721)
-  - async_function: `async\_safe\_new\_page` (line 732)
-  - function: `safe\_goto` (line 743)
-  - async_function: `async\_safe\_goto` (line 755)
-  - async_function: `async\_safe\_browser\_close` (line 767)
-  - async_function: `async\_launch\_browser` (line 781)
-  - async_function: `async\_detect\_cloudflare\_captcha` (line 797)
-  - async_function: `async\_browser\_pipeline` (line 805)
-  - function: `sync\_launch\_browser` (line 815)
-  - function: `sync\_detect\_cloudflare\_captcha` (line 852)
-  - function: `sync\_safe\_browser\_close` (line 860)
-  - function: `sync\_browser\_pipeline` (line 872)
-  - function: `autoscroll\_until\_stable` (line 905)
-  - function: `scan\_buttons\_with\_progress` (line 1087)
+  - function: `safe\_locator` (line 160)
+  - function: `safe\_evaluate` (line 171)
+  - function: `safe\_wait\_for\_timeout` (line 205)
+  - function: `safe\_content` (line 217)
+  - function: `safe\_nth` (line 240)
+  - function: `safe\_is\_visible` (line 247)
+  - function: `safe\_is\_enabled` (line 258)
+  - function: `safe\_click` (line 269)
+  - function: `capture\_page\_diagnostics` (line 293)
+  - function: `safe\_click\_with\_retry` (line 340)
+  - function: `safe\_get\_attribute` (line 491)
+  - function: `safe\_attributes` (line 503)
+  - function: `safe\_query\_selector\_all` (line 573)
+  - function: `safe\_context\_library` (line 584)
+  - function: `safe\_count` (line 596)
+  - function: `safe\_context\_result` (line 631)
+  - function: `safe\_launch` (line 657)
+  - async_function: `async\_safe\_launch` (line 677)
+  - function: `safe\_new\_context` (line 696)
+  - async_function: `async\_safe\_new\_context` (line 707)
+  - function: `safe\_new\_page` (line 718)
+  - async_function: `async\_safe\_new\_page` (line 729)
+  - function: `safe\_goto` (line 740)
+  - async_function: `async\_safe\_goto` (line 752)
+  - async_function: `async\_safe\_browser\_close` (line 764)
+  - async_function: `async\_launch\_browser` (line 778)
+  - async_function: `async\_detect\_cloudflare\_captcha` (line 794)
+  - async_function: `async\_browser\_pipeline` (line 802)
+  - function: `sync\_launch\_browser` (line 812)
+  - function: `sync\_detect\_cloudflare\_captcha` (line 849)
+  - function: `sync\_safe\_browser\_close` (line 857)
+  - function: `sync\_browser\_pipeline` (line 869)
+  - function: `autoscroll\_until\_stable` (line 902)
+  - function: `scan\_buttons\_with\_progress` (line 1088)
 - Imports:
   - **Standard Library** (17):
     - `import asyncio as asyncio` (line 3)
@@ -9966,47 +9962,47 @@ graph LR
     context_library value for key '{key}'")
   - L107 **WARNING**: (f"\[browser_utils\] Skipping unsafe context_library value
     for key '{key}'")
-  - L296 **NOTE**: str = "click_failure") -&gt; dict:
-  - L308 **NOTE**: }\_\_{ts}.html")
-  - L316 **NOTE**: }\_\_{ts}.png")
-  - L404 **WARNING**: (f"\[safe_click_with_retry\] Re-query failed: {e} (attempt
+  - L293 **NOTE**: str = "click_failure") -&gt; dict:
+  - L305 **NOTE**: }\_\_{ts}.html")
+  - L313 **NOTE**: }\_\_{ts}.png")
+  - L401 **WARNING**: (f"\[safe_click_with_retry\] Re-query failed: {e} (attempt
     {attempt})")
-  - L407 **WARNING**: (f"\[safe_click_with_retry\] No element found for
+  - L404 **WARNING**: (f"\[safe_click_with_retry\] No element found for
     selector={selector} (attempt {attempt})")
-  - L459 **WARNING**: ({"level": "WARNING", "type": "browser", "message":
+  - L456 **WARNING**: ({"level": "WARNING", "type": "browser", "message":
     f"Click attempt failed (attempt {attempt}/{max_retries}): {e}",
     "session_id": session_id})
-  - L465 **WARNING**: (f"\[safe_click_with_retry\] Element has no click()
+  - L462 **WARNING**: (f"\[safe_click_with_retry\] Element has no click()
     (attempt {attempt})")
-  - L471 **WARNING**: ({"level": "WARNING", "type": "browser", "message":
+  - L468 **WARNING**: ({"level": "WARNING", "type": "browser", "message":
     f"Exception during click helper (attempt {attempt}): {e}", "session_id":
     session_id})
-  - L477 **WARNING**: ({
-  - L478 **WARNING**: ",
-  - L488 **NOTE**: =(selector or 'element_click').replace('/', '_'))
-  - L527 **WARNING**: (f"\[safe_attributes\] Playwright JS extraction failed:
+  - L474 **WARNING**: ({
+  - L475 **WARNING**: ",
+  - L485 **NOTE**: =(selector or 'element_click').replace('/', '_'))
+  - L524 **WARNING**: (f"\[safe_attributes\] Playwright JS extraction failed:
     {e}")
-  - L541 **WARNING**: (f"\[safe_attributes\] Playwright fallback extraction
+  - L538 **WARNING**: (f"\[safe_attributes\] Playwright fallback extraction
     failed: {e}")
-  - L627 **WARNING**: (f"\[safe_count\] Object is not countable: {type(obj)}")
-  - L673 **WARNING**: (f"\[safe_launch\] browser_type is not a SyncBrowserType:
+  - L624 **WARNING**: (f"\[safe_count\] Object is not countable: {type(obj)}")
+  - L670 **WARNING**: (f"\[safe_launch\] browser_type is not a SyncBrowserType:
     {type(browser_type)}")
-  - L693 **WARNING**: (f"\[async_safe_launch\] browser_type is not an
+  - L690 **WARNING**: (f"\[async_safe_launch\] browser_type is not an
     AsyncBrowserType: {type(browser_type)}")
-  - L772 **WARNING**: ({
-  - L773 **WARNING**: ",
-  - L801 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+  - L769 **WARNING**: ({
+  - L770 **WARNING**: ",
+  - L798 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
     '{indicator}'")
-  - L810 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual
+  - L807 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual
     intervention not implemented. (Session: {session_id})")
-  - L856 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+  - L853 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
     '{indicator}'")
-  - L865 **WARNING**: ({
-  - L866 **WARNING**: ",
-  - L890 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual
+  - L862 **WARNING**: ({
+  - L863 **WARNING**: ",
+  - L887 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual
     intervention not implemented. (Session: {session_id})")
-  - L1045 **WARNING**: ("\[SCROLL\] User aborted scrolling.")
-  - L1081 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may
+  - L1046 **WARNING**: ("\[SCROLL\] User aborted scrolling.")
+  - L1082 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may
     not be fully loaded.")
 - Outgoing cross-module calls (sample):
   - typing.TypeVar (line 61)
@@ -10021,58 +10017,60 @@ graph LR
   - logger\_singleton.logger.error (line 113)
   - random.choice (line 124)
   - logger\_singleton.logger.error (line 135)
-  - obj.count (line 146)
-  - obj.inner\_text (line 151)
-  - obj.inner\_text (line 153)
-  - obj.inner\_text (line 155)
-  - logger\_singleton.logger.error (line 156)
-  - logger\_singleton.logger.error (line 160)
-  - page.locator (line 167)
-  - logger\_singleton.logger.error (line 171)
+  - obj.inner\_text (line 148)
+  - obj.inner\_text (line 150)
+  - obj.inner\_text (line 152)
+  - logger\_singleton.logger.error (line 153)
+  - logger\_singleton.logger.error (line 157)
+  - page.locator (line 164)
+  - logger\_singleton.logger.error (line 168)
+  - logger\_singleton.logger.error (line 186)
   - logger\_singleton.logger.error (line 189)
+  - re.fullmatch (line 191)
+  - script.strip (line 191)
   - logger\_singleton.logger.error (line 192)
-  - re.fullmatch (line 194)
-  - script.strip (line 194)
-  - logger\_singleton.logger.error (line 195)
-  - obj.evaluate (line 199)
-  - logger\_singleton.logger.error (line 201)
-  - logger\_singleton.logger.error (line 205)
-  - page.wait\_for\_timeout (line 212)
-  - logger\_singleton.logger.error (line 217)
-  - logger\_singleton.logger.error (line 224)
-  - logger\_singleton.logger.error (line 228)
-  - inspect.iscoroutinefunction (line 230)
-  - asyncio.get\_event\_loop (line 232)
-  - asyncio.new\_event\_loop (line 234)
-  - asyncio.set\_event\_loop (line 235)
-  - loop.run\_until\_complete (line 236)
-  - logger\_singleton.logger.error (line 240)
-  - element.is\_visible (line 254)
-  - logger\_singleton.logger.error (line 258)
-  - element.is\_enabled (line 265)
-  - logger\_singleton.logger.error (line 269)
-  - element.click (line 287)
-  - logger\_singleton.logger.error (line 292)
-  - datetime.datetime.utcnow (line 304)
-  - fh.write (line 310)
-  - page.screenshot (line 318)
-  - out.get (line 321)
-  - page.evaluate (line 328)
-  - logger\_singleton.logger.info (line 337)
+  - obj.evaluate (line 196)
+  - logger\_singleton.logger.error (line 198)
+  - logger\_singleton.logger.error (line 202)
+  - page.wait\_for\_timeout (line 209)
+  - logger\_singleton.logger.error (line 214)
+  - logger\_singleton.logger.error (line 221)
+  - logger\_singleton.logger.error (line 225)
+  - inspect.iscoroutinefunction (line 227)
+  - asyncio.get\_event\_loop (line 229)
+  - asyncio.new\_event\_loop (line 231)
+  - asyncio.set\_event\_loop (line 232)
+  - loop.run\_until\_complete (line 233)
+  - logger\_singleton.logger.error (line 237)
+  - element.is\_visible (line 251)
+  - logger\_singleton.logger.error (line 255)
+  - element.is\_enabled (line 262)
+  - logger\_singleton.logger.error (line 266)
+  - element.click (line 284)
+  - logger\_singleton.logger.error (line 289)
+  - datetime.datetime.utcnow (line 301)
+  - fh.write (line 307)
+  - page.screenshot (line 315)
+  - out.get (line 318)
+  - page.evaluate (line 325)
+  - logger\_singleton.logger.info (line 334)
+  - logger\_singleton.logger.error (line 358)
 - Inbound references:
-  - get\_random\_user\_agent ← browser_utils.py:782
-  - get\_random\_user\_agent ← browser_utils.py:823
-  - safe\_url ← browser_utils.py:953
-  - safe\_inner\_text ← browser_utils.py:968
+  - get\_random\_user\_agent ← browser_utils.py:779
+  - get\_random\_user\_agent ← browser_utils.py:820
+  - safe\_url ← browser_utils.py:950
+  - safe\_inner\_text ← browser_utils.py:965
   - safe\_inner\_text ← browser_utils.py:970
-  - safe\_inner\_text ← browser_utils.py:1093
+  - safe\_inner\_text ← browser_utils.py:971
+  - safe\_inner\_text ← browser_utils.py:1094
   - safe\_inner\_text ← detect.py:433
   - safe\_inner\_text ← detect.py:446
   - safe\_inner\_text ← pattern_extractor.py:75
-  - safe\_locator ← browser_utils.py:392
-  - safe\_locator ← browser_utils.py:966
-  - safe\_locator ← browser_utils.py:1000
-  - safe\_locator ← browser_utils.py:1009
+  - safe\_locator ← browser_utils.py:389
+  - safe\_locator ← browser_utils.py:963
+  - safe\_locator ← browser_utils.py:968
+  - safe\_locator ← browser_utils.py:1001
+  - safe\_locator ← browser_utils.py:1010
   - safe\_locator ← detect.py:428
   - safe\_locator ← detect.py:430
   - safe\_locator ← detect.py:431
@@ -10081,21 +10079,21 @@ graph LR
   - safe\_locator ← detect.py:440
   - safe\_locator ← pattern_extractor.py:60
   - safe\_locator ← pattern_extractor.py:72
-  - safe\_evaluate ← browser_utils.py:928
-  - safe\_evaluate ← browser_utils.py:979
-  - safe\_evaluate ← browser_utils.py:994
-  - safe\_wait\_for\_timeout ← browser_utils.py:929
-  - safe\_wait\_for\_timeout ← browser_utils.py:995
-  - safe\_content ← browser_utils.py:307
+  - safe\_evaluate ← browser_utils.py:925
+  - safe\_evaluate ← browser_utils.py:980
+  - safe\_evaluate ← browser_utils.py:995
+  - safe\_wait\_for\_timeout ← browser_utils.py:926
+  - safe\_wait\_for\_timeout ← browser_utils.py:996
+  - safe\_content ← browser_utils.py:304
   - safe\_nth ← detect.py:430
   - safe\_nth ← detect.py:433
   - safe\_nth ← detect.py:439
   - safe\_nth ← detect.py:447
   - safe\_nth ← pattern_extractor.py:66
   - safe\_nth ← pattern_extractor.py:75
-  - capture\_page\_diagnostics ← browser_utils.py:488
-  - safe\_click\_with\_retry ← browser_utils.py:277
-  - safe\_count ← browser_utils.py:1001
+  - capture\_page\_diagnostics ← browser_utils.py:485
+  - safe\_click\_with\_retry ← browser_utils.py:274
+  - safe\_count ← browser_utils.py:1002
   - safe\_count ← detect.py:429
   - safe\_count ← detect.py:432
   - safe\_count ← detect.py:436
@@ -10104,12 +10102,10 @@ graph LR
   - safe\_count ← detect.py:444
   - safe\_count ← pattern_extractor.py:61
   - safe\_count ← pattern_extractor.py:74
-  - safe\_launch ← browser_utils.py:832
-  - async\_safe\_launch ← browser_utils.py:787
-  - safe\_new\_context ← browser_utils.py:833
-  - async\_safe\_new\_context ← browser_utils.py:788
-  - safe\_new\_page ← browser_utils.py:834
-  - async\_safe\_new\_page ← browser_utils.py:789
+  - safe\_launch ← browser_utils.py:829
+  - async\_safe\_launch ← browser_utils.py:784
+  - safe\_new\_context ← browser_utils.py:830
+  - async\_safe\_new\_context ← browser_utils.py:785
 
 ### utils/camelot\_utils.py {#webapp-parser-utils-camelot-utils-py}
 

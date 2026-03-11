@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -338,19 +337,13 @@ class NavigationInstructionRunner:
         if not steps:
             return None
         outputs: List[Dict[str, Any]] = []
-        with ThreadPoolExecutor(max_workers=min(len(steps), self.max_parallel_workers)) as executor:
-            futures = [
-                executor.submit(self._execute_step, step, page, context, coordinator, session_id, trace)
-                for step in steps
-            ]
-            wait(futures)
-            for future in futures:
-                try:
-                    result = future.result()
-                except Exception:
-                    result = None
-                if result:
-                    outputs.append(result)
+        for step in steps:
+            try:
+                result = self._execute_step(step, page, context, coordinator, session_id, trace)
+            except Exception:
+                result = None
+            if result:
+                outputs.append(result)
         merged: Dict[str, Any] = {}
         for update in outputs:
             merged.update(update)

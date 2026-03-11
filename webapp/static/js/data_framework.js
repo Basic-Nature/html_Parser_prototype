@@ -2425,6 +2425,9 @@ document.addEventListener('DOMContentLoaded', () => {
               true,  // requiresCert
               (_url) => {
                 setStatus(el.uploadStatus, 'warning', 'Client certificate required for upload');
+                if (typeof authUtils.defaultCertRequiredHandler === 'function') {
+                  authUtils.defaultCertRequiredHandler(_url || uploadUrl);
+                }
               }
             );
           } else {

@@ -42,4 +42,28 @@ def create_observability_blueprint() -> Blueprint:
     def api_quality_metrics_route():
         return _call_handler("api_quality_metrics")
 
+    @bp.route("/api/ml_usage", methods=["GET"], endpoint="api_ml_usage")
+    def api_ml_usage_route():
+        return _call_handler("api_ml_usage")
+
+    @bp.route("/api/ml_pipeline_profile", methods=["GET"], endpoint="api_ml_pipeline_profile")
+    def api_ml_pipeline_profile_route():
+        return _call_handler("api_ml_pipeline_profile")
+
+    @bp.route("/api/ml_vocab_alignment", methods=["GET"], endpoint="api_ml_vocab_alignment")
+    def api_ml_vocab_alignment_route():
+        return _call_handler("api_ml_vocab_alignment")
+
+    @bp.route("/api/ml_vocab_alignment_suggestions", methods=["GET"], endpoint="api_ml_vocab_alignment_suggestions")
+    def api_ml_vocab_alignment_suggestions_route():
+        return _call_handler("api_ml_vocab_alignment_suggestions")
+
+    @bp.route("/api/ml_vocab_alignment_suggestions/export", methods=["GET"], endpoint="api_ml_vocab_alignment_suggestions_export")
+    def api_ml_vocab_alignment_suggestions_export_route():
+        return _call_handler("api_ml_vocab_alignment_suggestions_export")
+
+    @bp.route("/api/preingest_url_glimpse", methods=["GET"], endpoint="api_preingest_url_glimpse")
+    def api_preingest_url_glimpse_route():
+        return _call_handler("api_preingest_url_glimpse")
+
     return bp

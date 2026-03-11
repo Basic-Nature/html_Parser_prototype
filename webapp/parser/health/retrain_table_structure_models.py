@@ -81,6 +81,7 @@ from ..utils.shared_logic import (
     safe_update,
 )
 
+from ..utils.ml_telemetry import record_ml_event
 
 @runtime_checkable
 class NERPipeProtocol(Protocol):
@@ -848,6 +849,7 @@ def ensure_table_structures_exists() -> None:
         logger.info("[INFO] 'table_structures' table exists.")
 
 def main() -> None:
+    record_ml_event("retrain_pipeline", "started")
     ensure_table_structures_exists()
     if REVIEW_WITH_MANUAL_BOT:
         run_manual_correction()
@@ -858,6 +860,11 @@ def main() -> None:
 
     confirmed_structures = get_all_confirmed_structures()
     console.table(f"Found {len(confirmed_structures)} confirmed table structures.")
+    record_ml_event(
+        "retrain_pipeline",
+        "confirmed_structures_loaded",
+        metadata={"count": len(confirmed_structures)},
+    )
 
     # Log user feedback/corrections for ML
     feedback_log_path = os.path.join(LOG_DIR, "structure_feedback_log.jsonl")
@@ -886,6 +893,14 @@ def main() -> None:
         if seg_hash not in cached_hashes:
             deduped_train_data.append(struct)
     console.table(f"Deduplicated to {len(deduped_train_data)} unique structures for training.")
+    record_ml_event(
+        "retrain_pipeline",
+        "dedupe_completed",
+        metadata={
+            "confirmed_structures": len(confirmed_structures),
+            "deduped_structures": len(deduped_train_data),
+        },
+    )
 
     # Build NER training data (auto-label, dedupe, etc.)
     train_data = []
@@ -935,6 +950,11 @@ def main() -> None:
     console.log("[INFO] Scanning in-memory NER training data for misalignments before retraining...")
     misaligned = scan_in_memory_ner_examples(train_data, verbose=True)
     if misaligned:
+        record_ml_event(
+            "retrain_pipeline",
+            "misaligned_examples_detected",
+            metadata={"count": len(misaligned)},
+        )
         console.panel(f"{len(misaligned)} misaligned NER examples found in final training data. Running diagnostics and launching manual_correction. Aborting retraining.")
         misaligned_path = os.path.join(LOG_DIR, "spacy_ner_misaligned.jsonl")
         with open(misaligned_path, "wb") as f:
@@ -956,6 +976,15 @@ def main() -> None:
         epochs=SBERT_EPOCHS,
         batch_size=SBERT_BATCH_SIZE
     )
+    record_ml_event(
+        "retrain_pipeline",
+        "sbert_retrain_completed",
+        metadata={
+            "train_examples": len(deduped_train_data),
+            "epochs": SBERT_EPOCHS,
+            "batch_size": SBERT_BATCH_SIZE,
+        },
+    )
     retrain_spacy_ner_advanced(
         deduped_train_data,
         context_library,
@@ -972,8 +1001,14 @@ def main() -> None:
             console.log("\n[BERT_NER] Starting HuggingFace BERT/RoBERTa fine-tuning...")
             fine_tune_bert_ner()
             console.log("[BERT_NER] Fine-tuning complete.")
+            record_ml_event("retrain_pipeline", "bert_ner_finetune_completed")
         except Exception as e:
             console.log(f"[BERT_NER] Fine-tuning failed (non-critical): {e}")
+            record_ml_event(
+                "retrain_pipeline",
+                "bert_ner_finetune_failed",
+                metadata={"error": str(e)},
+            )
     
     cluster_container_patterns()
     console.log("\n[SUMMARY] Table Structure Model Retraining Complete.")
@@ -981,6 +1016,7 @@ def main() -> None:
     console.log("If you see spaCy lexeme normalization warnings, you can ignore them for English. To suppress, install spacy-lookups-data and load the table if needed.")
     console.log("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
     gc.collect()
+    record_ml_event("retrain_pipeline", "completed")
 
 if __name__ == "__main__":
     main()

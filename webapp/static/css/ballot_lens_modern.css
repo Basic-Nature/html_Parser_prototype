@@ -737,6 +737,91 @@ small {
   margin-top: var(--spacing-sm);
 }
 
+.ml-usage-pill {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--text-strong);
+}
+
+.ml-events-drawer {
+  margin-top: var(--spacing-sm);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.ml-events-summary {
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  color: var(--text-muted-strong);
+  padding: 8px 12px;
+}
+
+.ml-events-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ml-events-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.ml-events-item.muted {
+  color: var(--text-muted);
+}
+
+.ml-events-main {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ml-events-time {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.ml-vocab-card {
+  margin-top: var(--spacing-sm);
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-muted);
+  background: var(--bg-secondary);
+}
+
+.ml-vocab-title {
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.ml-vocab-meta {
+  margin-top: 4px;
+  font-size: 0.86rem;
+  color: var(--text-muted-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.ml-vocab-card.is-good {
+  border-color: rgba(16, 185, 129, 0.45);
+}
+
+.ml-vocab-card.is-warn {
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.ml-vocab-card.is-bad {
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
 .quality-pill .pill-label {
   text-transform: uppercase;
   font-size: 0.78rem;

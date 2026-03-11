@@ -19,6 +19,19 @@ const AuthUtils = (() => {
   const CERT_CHECK_TIMEOUT_MS = 10000;
 
   /**
+   * Route users to the unified certificate onboarding flow.
+   * This keeps cert UX behavior consistent across protected areas.
+   * @param {string} targetUrl
+   */
+  function defaultCertRequiredHandler(targetUrl) {
+    const target = (typeof targetUrl === 'string' && targetUrl.trim())
+      ? targetUrl
+      : window.location.href;
+    const next = encodeURIComponent(target);
+    window.location.href = `/auth/welcome?next=${next}`;
+  }
+
+  /**
    * Check if client certificate is available/valid
    * @param {string} targetUrl - URL being accessed (for error messaging)
    * @returns {Promise} Promise resolving to boolean: true if cert present and valid, false otherwise
@@ -64,8 +77,8 @@ const AuthUtils = (() => {
         
         return false;
       } catch (e) {
-        // Timeout or network error—assume cert might be ok, let mutation retry
-        return true;
+        // Strict-fail on unknown cert status to avoid inconsistent mutation behavior.
+        return false;
       } finally {
         certCheckInFlight = null;
       }
@@ -93,9 +106,9 @@ const AuthUtils = (() => {
       if (!certOk) {
         if (typeof onCertRequired === 'function') {
           onCertRequired(url);
+        } else {
+          defaultCertRequiredHandler(url);
         }
-        // Let browser naturally prompt on cert-required endpoint
-        // Return a rejected promise so caller can handle
         throw new Error('Certificate required');
       }
     }
@@ -108,6 +121,8 @@ const AuthUtils = (() => {
       certCheckLastOk = 0;
       if (typeof onCertRequired === 'function') {
         onCertRequired(url);
+      } else {
+        defaultCertRequiredHandler(url);
       }
     }
     
@@ -154,6 +169,7 @@ const AuthUtils = (() => {
     fetchWithCertHandling,
     executeMutationOnce,
     clearAuthCache,
+    defaultCertRequiredHandler,
   };
 })();
 

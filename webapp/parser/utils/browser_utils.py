@@ -143,12 +143,9 @@ def safe_inner_text(obj: Optional[ElementType | PageType], logger=logger) -> str
         # NEW: support Locator directly
         if isinstance(obj, (SyncLocator, AsyncLocator)):
             try:
-                count = obj.count()
-                if isinstance(count, int) and count > 1:
-                    return obj.first.inner_text()
+                return obj.first.inner_text()
             except Exception:
-                pass
-            return obj.inner_text()
+                return obj.inner_text()
         if isinstance(obj, (SyncElementHandle, AsyncElementHandle)):
             return obj.inner_text()
         if isinstance(obj, (SyncPage, AsyncPage)) and hasattr(obj, "inner_text"):
@@ -963,11 +960,15 @@ def autoscroll_until_stable(
 
     def get_main_text() -> str:
         try:
-            main_div = safe_locator(page, "main, .main-content, #main-content, body", logger)
-            if main_div:
-                return safe_inner_text(main_div, logger)
-            else:
-                return safe_inner_text(page, logger)
+            primary = safe_locator(page, "main, .main-content, #main-content", logger)
+            if primary:
+                text = safe_inner_text(primary, logger)
+                if text:
+                    return text
+            body = safe_locator(page, "body", logger)
+            if body:
+                return safe_inner_text(body, logger)
+            return safe_inner_text(page, logger)
         except Exception:
             return ""
 

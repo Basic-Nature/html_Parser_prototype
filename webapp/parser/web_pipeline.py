@@ -713,6 +713,7 @@ def process_urls_for_web(
                     def _run_slow_nlp_audit():
                         try:
                             from .health.health_router import get_learning_engine
+                            from .utils.ml_telemetry import record_ml_event
                             engine = get_learning_engine()
                             for hit in audit_hits:
                                 md = hit.get("metadata") or {}
@@ -728,6 +729,17 @@ def process_urls_for_web(
                                     success=False,
                                     quality_metrics=hit.get("audit_signals") or {},
                                 )
+                                record_ml_event(
+                                    "learning_engine",
+                                    "ingest_training_signal",
+                                    session_id=session_id,
+                                    metadata={
+                                        "url": hit.get("url"),
+                                        "handler": md.get("handler"),
+                                        "state": md.get("state"),
+                                        "county": md.get("county"),
+                                    },
+                                )
                             logger.warning({
                                 "level": "WARNING",
                                 "type": "audit",
@@ -736,6 +748,15 @@ def process_urls_for_web(
                                 "audit_hit_count": len(audit_hits),
                                 "threshold": SLOW_NLP_AUDIT_THRESHOLD,
                             })
+                            record_ml_event(
+                                "learning_engine",
+                                "slow_nlp_audit_completed",
+                                session_id=session_id,
+                                metadata={
+                                    "audit_hit_count": len(audit_hits),
+                                    "threshold": SLOW_NLP_AUDIT_THRESHOLD,
+                                },
+                            )
                             if emit_func:
                                 emit_func({
                                     "type": "slow_nlp_audit",

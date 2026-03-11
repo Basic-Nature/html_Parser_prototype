@@ -1424,14 +1424,13 @@ budget.",
 
 #### 🔧 Key Functions & Classes (handlers_states_arizona_arizona)
 
-- `parse` (function, line 33)
+- `parse` (function, line 32)
 
 #### 📦 Key Imports (handlers_states_arizona_arizona)
 
 - `os`
 - `orjson`
 - `config`
-- `Context_Integration.context_organizer`
 - `utils.logger_singleton`
 - `utils.output_utils`
 
@@ -1453,14 +1452,14 @@ budget.",
 
 #### ⚠️ Task markers (handlers_states_arizona_arizona)
 
-- L25 **WARNING**: ("\[WARN\] context_library.json not found. Using fallback
+- L24 **WARNING**: ("\[WARN\] context_library.json not found. Using fallback
 config for Arizona handler.")
-- L51 **WARNING**: (f"\[WARN\] Could not expand card {i+1}: {e}")
-- L64 **WARNING**: (f"\[WARN\] Vote Type toggle failed: {e}")
-- L77 **WARNING**: (f"\[WARN\] County toggle failed: {e}")
-- L164 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results
+- L50 **WARNING**: (f"\[WARN\] Could not expand card {i+1}: {e}")
+- L63 **WARNING**: (f"\[WARN\] Vote Type toggle failed: {e}")
+- L76 **WARNING**: (f"\[WARN\] County toggle failed: {e}")
+- L163 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results
 are published yet or the structure has changed.")
-- L165 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted
+- L164 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted
 election data.")
 
 ### handlers/states/arkansas/arkansas.py {#webapp-parser-handlers-states-arkansas-arkansas-py}
@@ -3438,15 +3437,13 @@ may remain.")
 
 #### 🔧 Key Functions & Classes (navigator_navigation_runner)
 
-- `NavigationResult` (class, line 24)
-- `NavigationInstructionRunner` (class, line 32)
+- `NavigationResult` (class, line 23)
+- `NavigationInstructionRunner` (class, line 31)
 
 #### 📦 Key Imports (navigator_navigation_runner)
 
 - `__future__`
 - `threading`
-- `concurrent.futures`
-- `concurrent.futures`
 - `dataclasses`
 - `typing`
 - `typing`
@@ -3465,8 +3462,8 @@ may remain.")
 
 #### ⚠️ Task markers (navigator_navigation_runner)
 
-- L250 **WARNING**: ({
-- L251 **WARNING**: ",
+- L249 **WARNING**: ({
+- L250 **WARNING**: ",
 
 ### navigator/training\_data.py {#webapp-parser-navigator-training-data-py}
 
@@ -4145,27 +4142,27 @@ fuzzy matching.")
 - `get_random_user_agent` (function, line 122)
 - `safe_url` (function, line 129)
 - `safe_inner_text` (function, line 138)
-- `safe_locator` (function, line 163)
-- `safe_evaluate` (function, line 174)
-- `safe_wait_for_timeout` (function, line 208)
-- `safe_content` (function, line 220)
-- `safe_nth` (function, line 243)
-- `safe_is_visible` (function, line 250)
-- `safe_is_enabled` (function, line 261)
-- `safe_click` (function, line 272)
-- `capture_page_diagnostics` (function, line 296)
-- `safe_click_with_retry` (function, line 343)
-- `safe_get_attribute` (function, line 494)
-- `safe_attributes` (function, line 506)
-- `safe_query_selector_all` (function, line 576)
-- `safe_context_library` (function, line 587)
-- `safe_count` (function, line 599)
-- `safe_context_result` (function, line 634)
-- `safe_launch` (function, line 660)
-- `async_safe_launch` (async_function, line 680)
-- `safe_new_context` (function, line 699)
-- `async_safe_new_context` (async_function, line 710)
-- `safe_new_page` (function, line 721)
+- `safe_locator` (function, line 160)
+- `safe_evaluate` (function, line 171)
+- `safe_wait_for_timeout` (function, line 205)
+- `safe_content` (function, line 217)
+- `safe_nth` (function, line 240)
+- `safe_is_visible` (function, line 247)
+- `safe_is_enabled` (function, line 258)
+- `safe_click` (function, line 269)
+- `capture_page_diagnostics` (function, line 293)
+- `safe_click_with_retry` (function, line 340)
+- `safe_get_attribute` (function, line 491)
+- `safe_attributes` (function, line 503)
+- `safe_query_selector_all` (function, line 573)
+- `safe_context_library` (function, line 584)
+- `safe_count` (function, line 596)
+- `safe_context_result` (function, line 631)
+- `safe_launch` (function, line 657)
+- `async_safe_launch` (async_function, line 677)
+- `safe_new_context` (function, line 696)
+- `async_safe_new_context` (async_function, line 707)
+- `safe_new_page` (function, line 718)
 
 #### 📦 Key Imports (utils_browser_utils)
 
@@ -4196,35 +4193,35 @@ fuzzy matching.")
 context_library value for key '{key}'")
 - L107 **WARNING**: (f"\[browser_utils\] Skipping unsafe context_library value
 for key '{key}'")
-- L296 **NOTE**: str = "click_failure") -&gt; dict:
-- L308 **NOTE**: }\_\_{ts}.html")
-- L316 **NOTE**: }\_\_{ts}.png")
-- L404 **WARNING**: (f"\[safe_click_with_retry\] Re-query failed: {e} (attempt
+- L293 **NOTE**: str = "click_failure") -&gt; dict:
+- L305 **NOTE**: }\_\_{ts}.html")
+- L313 **NOTE**: }\_\_{ts}.png")
+- L401 **WARNING**: (f"\[safe_click_with_retry\] Re-query failed: {e} (attempt
 {attempt})")
-- L407 **WARNING**: (f"\[safe_click_with_retry\] No element found for
+- L404 **WARNING**: (f"\[safe_click_with_retry\] No element found for
 selector={selector} (attempt {attempt})")
-- L459 **WARNING**: ({"level": "WARNING", "type": "browser", "message":
+- L456 **WARNING**: ({"level": "WARNING", "type": "browser", "message":
 f"Click attempt failed (attempt {attempt}/{max_retries}): {e}", "session_id":
 session_id})
-- L465 **WARNING**: (f"\[safe_click_with_retry\] Element has no click()
+- L462 **WARNING**: (f"\[safe_click_with_retry\] Element has no click()
 (attempt {attempt})")
-- L471 **WARNING**: ({"level": "WARNING", "type": "browser", "message":
+- L468 **WARNING**: ({"level": "WARNING", "type": "browser", "message":
 f"Exception during click helper (attempt {attempt}): {e}", "session_id":
 session_id})
-- L477 **WARNING**: ({
-- L478 **WARNING**: ",
-- L488 **NOTE**: =(selector or 'element_click').replace('/', '_'))
-- L527 **WARNING**: (f"\[safe_attributes\] Playwright JS extraction failed:
+- L474 **WARNING**: ({
+- L475 **WARNING**: ",
+- L485 **NOTE**: =(selector or 'element_click').replace('/', '_'))
+- L524 **WARNING**: (f"\[safe_attributes\] Playwright JS extraction failed:
 {e}")
-- L541 **WARNING**: (f"\[safe_attributes\] Playwright fallback extraction
+- L538 **WARNING**: (f"\[safe_attributes\] Playwright fallback extraction
 failed: {e}")
-- L627 **WARNING**: (f"\[safe_count\] Object is not countable: {type(obj)}")
-- L673 **WARNING**: (f"\[safe_launch\] browser_type is not a SyncBrowserType:
+- L624 **WARNING**: (f"\[safe_count\] Object is not countable: {type(obj)}")
+- L670 **WARNING**: (f"\[safe_launch\] browser_type is not a SyncBrowserType:
 {type(browser_type)}")
-- L693 **WARNING**: (f"\[async_safe_launch\] browser_type is not an
+- L690 **WARNING**: (f"\[async_safe_launch\] browser_type is not an
 AsyncBrowserType: {type(browser_type)}")
-- L772 **WARNING**: ({
-- L773 **WARNING**: ",
+- L769 **WARNING**: ({
+- L770 **WARNING**: ",
 
 ### utils/camelot\_utils.py {#webapp-parser-utils-camelot-utils-py}
 

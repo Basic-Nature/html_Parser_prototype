@@ -6059,6 +6059,7 @@ def api_url_status():
             "canonical_statuses": ["production", "pending", "fail"]
         }
     """
+    started_at = time.perf_counter()
     try:
         from datetime import datetime
 
@@ -6066,7 +6067,10 @@ def api_url_status():
         from webapp.parser.utils.database_comparison import check_existing_finalized_data
         from webapp.parser.utils.misc_utils import extract_url_and_label, load_processed_urls
         from webapp.parser.utils.status_reconciliation import StatusReconciliation
-        
+
+        def _truthy(value: str | None) -> bool:
+            return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
         # Parse query parameters
         status_filter = request.args.get("status")  # Reconciled status
         parser_status_filter = request.args.get("parser_status")  # Raw parser status
@@ -6074,10 +6078,62 @@ def api_url_status():
         county_filter = request.args.get("county")
         from_date = request.args.get("from_date")
         to_date = request.args.get("to_date")
-        limit = min(int(request.args.get("limit", 100)), 1000)
-        offset = int(request.args.get("offset", 0))
         hide_pii = request.args.get("hide_pii", "true").lower() != "false"
-        
+        profile_enabled = _truthy(request.args.get("profile"))
+        default_include_production = (DEPLOY_ENV or "local").lower() in {"production", "azure", "staging", "ci"}
+        include_production_checks = _truthy(
+            request.args.get(
+                "include_production",
+                os.environ.get("URL_STATUS_INCLUDE_PRODUCTION", "true" if default_include_production else "false"),
+            )
+        )
+        try:
+            limit = min(max(int(request.args.get("limit", 100)), 1), 1000)
+            offset = max(int(request.args.get("offset", 0)), 0)
+        except Exception:
+            return jsonify({"error": "Invalid limit/offset values"}), 400
+
+        budget_ms = max(
+            100,
+            int(os.environ.get("URL_STATUS_PRODUCTION_BUDGET_MS", "12000")),
+        )
+        requested_budget_ms = request.args.get("production_check_budget_ms")
+        if requested_budget_ms is not None:
+            try:
+                budget_ms = max(100, int(requested_budget_ms))
+            except Exception:
+                return jsonify({"error": "Invalid production_check_budget_ms value"}), 400
+
+        cache_ttl_sec = max(1, int(os.environ.get("URL_STATUS_CACHE_TTL_SEC", "30")))
+        cache_key = (
+            "url_status::"
+            f"status={status_filter or ''}|parser={parser_status_filter or ''}|state={state_filter or ''}|"
+            f"county={county_filter or ''}|from={from_date or ''}|to={to_date or ''}|hide_pii={hide_pii}|"
+            f"budget={budget_ms}|include_production={include_production_checks}"
+        )
+        if not profile_enabled:
+            cached_payload = _get_ttl_cache_payload(cache_key)
+            if isinstance(cached_payload, dict):
+                _log_endpoint_latency(
+                    "/api/url_status",
+                    started_at,
+                    cache_hit=True,
+                    context={"filtered": cached_payload.get("filtered"), "total": cached_payload.get("total")},
+                )
+                entries_full = cached_payload.get("entries") if isinstance(cached_payload.get("entries"), list) else []
+                entries_page = entries_full[offset:offset + limit]
+                response_payload = {
+                    "success": True,
+                    "total": cached_payload.get("total", 0),
+                    "filtered": len(entries_full),
+                    "limit": limit,
+                    "offset": offset,
+                    "entries": entries_page,
+                    "status_breakdown": cached_payload.get("status_breakdown", {}),
+                    "canonical_statuses": cached_payload.get("canonical_statuses", []),
+                }
+                return jsonify(response_payload), 200
+
         # Load URLs from urls.txt
         urls_list = []
         if URL_LIST_FILE.exists():
@@ -6086,34 +6142,43 @@ def api_url_status():
                     line = line.strip()
                     if not line or line.startswith('#'):
                         continue
-                    
+
                     url, label = extract_url_and_label(line, allowlist_bypass=True)
                     if url:
                         urls_list.append((url, label or line))
                     else:
-                        # Try tab-delimited schema
                         parts = line.split('\t')
                         if len(parts) >= 7 and parts[6].startswith('http'):
                             url = parts[6].strip()
                             label = f"{parts[0]} {parts[1]} {parts[2]}" if parts[0] != 'TBD' else line
                             urls_list.append((url, label))
-        
-        # Load processing history
+
         processed_map = load_processed_urls()
-        
-        # Build entries with reconciled status
+
         entries = []
         status_breakdown = {}
         canonical_statuses = set()
-        
+
+        profile_data = {
+            "include_production_checks": include_production_checks,
+            "production_checks_requested": 0,
+            "production_checks_executed": 0,
+            "production_checks_skipped_budget": 0,
+            "production_check_elapsed_ms_total": 0,
+            "slowest_production_checks": [],
+            "budget_ms": budget_ms,
+        }
+
+        production_budget_started = time.perf_counter()
+        budget_exhausted = False
+
         for url, label in urls_list:
-            # Get processing status
             processed_entry = processed_map.get(url)
             parser_status = None
             last_processed = None
             state = None
             county = None
-            
+
             if processed_entry:
                 parser_status = processed_entry.get('status')
                 last_processed = processed_entry.get('timestamp')
@@ -6121,30 +6186,53 @@ def api_url_status():
                 county = processed_entry.get('county')
             else:
                 parser_status = 'pending'
-            
-            # Check production status
-            in_production, prod_source, prod_metadata = check_existing_finalized_data(url)
-            
-            # Update metadata from production if available
-            if prod_metadata:
+
+            in_production = False
+            prod_source = None
+            prod_metadata = None
+            worklist_status = None
+
+            if include_production_checks:
+                profile_data["production_checks_requested"] += 1
+                elapsed_budget_ms = int((time.perf_counter() - production_budget_started) * 1000)
+                if elapsed_budget_ms < budget_ms:
+                    check_started = time.perf_counter()
+                    try:
+                        in_production, prod_source, prod_metadata = check_existing_finalized_data(url)
+                    except Exception as check_exc:
+                        logger.warning({
+                            "level": "WARNING",
+                            "type": "api",
+                            "message": f"Production status check failed for URL: {check_exc}",
+                            "session_id": None,
+                            "url": url,
+                        })
+                        in_production, prod_source, prod_metadata = False, None, None
+                    check_elapsed_ms = int((time.perf_counter() - check_started) * 1000)
+                    profile_data["production_checks_executed"] += 1
+                    profile_data["production_check_elapsed_ms_total"] += check_elapsed_ms
+                    if check_elapsed_ms >= 500:
+                        profile_data["slowest_production_checks"].append({
+                            "url": url,
+                            "elapsed_ms": check_elapsed_ms,
+                        })
+                else:
+                    budget_exhausted = True
+                    profile_data["production_checks_skipped_budget"] += 1
+
+            if prod_metadata and isinstance(prod_metadata, dict):
                 state = state or prod_metadata.get('state')
                 county = county or prod_metadata.get('county')
-            
-            # Get worklist status (if available)
-            worklist_status = None
-            if prod_metadata and isinstance(prod_metadata, dict):
-                worklist_status = prod_metadata.get('status')  # e.g., "PROD Loaded", "QC Loaded"
-            
-            # === RECONCILIATION: Determine true status ===
+                worklist_status = prod_metadata.get('status')
+
             canonical_status, status_info = StatusReconciliation.reconcile(
                 url=url,
                 parser_status=parser_status,
                 worklist_status=worklist_status,
                 production_source=prod_source,
-                last_processed=last_processed
+                last_processed=last_processed,
             )
-            
-            # Apply filters (use reconciled status as primary)
+
             if status_filter and canonical_status != status_filter:
                 continue
             if parser_status_filter and parser_status != parser_status_filter:
@@ -6169,8 +6257,7 @@ def api_url_status():
                         continue
                 except Exception:
                     pass
-            
-            # Build entry with reconciled status
+
             entry = {
                 'url': url,
                 'label': label,
@@ -6182,29 +6269,36 @@ def api_url_status():
                 'production_source': prod_source,
                 'last_processed': last_processed,
                 'state': state,
-                'county': county
+                'county': county,
             }
-            
-            # Hide PII if requested
+
             if hide_pii and 'metadata' in entry:
-                entry['metadata'] = {k: v for k, v in entry['metadata'].items() 
-                                     if k not in ['assigned_to', 'dl1', 'dl2']}
-            
+                entry['metadata'] = {
+                    k: v
+                    for k, v in entry['metadata'].items()
+                    if k not in ['assigned_to', 'dl1', 'dl2']
+                }
+
             entries.append(entry)
-            
-            # Update status breakdown
             status_breakdown[canonical_status] = status_breakdown.get(canonical_status, 0) + 1
             canonical_statuses.add(canonical_status)
-        
-        # Sort canonical statuses by priority
-        canonical_statuses_sorted = sorted(canonical_statuses, 
-                                          key=lambda s: StatusReconciliation.get_status_priority(s))
-        
-        # Pagination
+
+        canonical_statuses_sorted = sorted(
+            canonical_statuses,
+            key=lambda s: StatusReconciliation.get_status_priority(s),
+        )
+
+        profile_data["slowest_production_checks"] = sorted(
+            profile_data["slowest_production_checks"],
+            key=lambda item: item.get("elapsed_ms", 0),
+            reverse=True,
+        )[:10]
+        profile_data["budget_exhausted"] = budget_exhausted
+        profile_data["total_elapsed_ms"] = int((time.perf_counter() - started_at) * 1000)
+
         total_filtered = len(entries)
         entries_page = entries[offset:offset + limit]
-        
-        return jsonify({
+        response_payload = {
             "success": True,
             "total": len(urls_list),
             "filtered": total_filtered,
@@ -6212,9 +6306,36 @@ def api_url_status():
             "offset": offset,
             "entries": entries_page,
             "status_breakdown": status_breakdown,
-            "canonical_statuses": canonical_statuses_sorted
-        }), 200
-        
+            "canonical_statuses": canonical_statuses_sorted,
+        }
+
+        if profile_enabled:
+            response_payload["profile"] = profile_data
+
+        if not profile_enabled:
+            cache_payload = {
+                "total": len(urls_list),
+                "entries": entries,
+                "status_breakdown": status_breakdown,
+                "canonical_statuses": canonical_statuses_sorted,
+            }
+            _set_ttl_cache_payload(cache_key, cache_payload, cache_ttl_sec)
+
+        _log_endpoint_latency(
+            "/api/url_status",
+            started_at,
+            context={
+                "total": len(urls_list),
+                "filtered": total_filtered,
+                "checks_executed": profile_data["production_checks_executed"],
+                "checks_skipped_budget": profile_data["production_checks_skipped_budget"],
+                "budget_ms": budget_ms,
+                "profile": profile_enabled,
+                "include_production": include_production_checks,
+            },
+        )
+        return jsonify(response_payload), 200
+
     except Exception as e:
         logger.error({
             "level": "ERROR",
@@ -6222,6 +6343,7 @@ def api_url_status():
             "message": f"URL status query error: {e}",
             "session_id": None,
         })
+        _log_endpoint_latency("/api/url_status", started_at, context={"failed": True})
         return jsonify({"error": f"Query failed: {str(e)}"}), 500
 
 
@@ -6502,11 +6624,330 @@ def api_quality_metrics():
     return jsonify({"metrics": results, "count": len(results)})
 
 
+def api_ml_usage():
+    """Return runtime ML/NLP usage telemetry and recent model activity."""
+    try:
+        from webapp.parser.utils.ml_telemetry import get_ml_telemetry_snapshot
+
+        include_recent = request.args.get("include_recent", "true").strip().lower() != "false"
+        try:
+            limit = int(request.args.get("limit", 120))
+        except Exception:
+            limit = 120
+        limit = max(1, min(limit, 500))
+
+        snapshot = get_ml_telemetry_snapshot(include_recent=include_recent, limit=limit)
+        return jsonify({"success": True, "telemetry": snapshot}), 200
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": "api",
+            "message": f"ML usage telemetry query failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+def api_ml_pipeline_profile():
+    """Return pipeline-ingestion profile for ML/NLP tuning visibility."""
+    try:
+        from webapp.parser.utils.ml_pipeline_profile import get_ml_pipeline_profile
+
+        profile = get_ml_pipeline_profile()
+        return jsonify({"success": True, "profile": profile}), 200
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": "api",
+            "message": f"ML pipeline profile query failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+def api_ml_vocab_alignment():
+    """Return alias->canonical alignment health for election vocab mappings."""
+    try:
+        from webapp.parser.utils.ml_vocab_alignment import get_vocab_alignment_report
+
+        try:
+            sample_limit = int(request.args.get("sample_limit", 25))
+        except Exception:
+            sample_limit = 25
+        report = get_vocab_alignment_report(sample_limit=sample_limit)
+        return jsonify({"success": True, "alignment": report}), 200
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": "api",
+            "message": f"ML vocab alignment query failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+def api_ml_vocab_alignment_suggestions():
+    """Return top canonical target suggestions for unresolved entity alias mappings."""
+    try:
+        from webapp.parser.utils.ml_vocab_alignment import get_vocab_alignment_suggestions
+
+        try:
+            limit = int(request.args.get("limit", 50))
+        except Exception:
+            limit = 50
+        try:
+            min_score = float(request.args.get("min_score", 0.45))
+        except Exception:
+            min_score = 0.45
+
+        payload = get_vocab_alignment_suggestions(limit=limit, min_score=min_score)
+        return jsonify({"success": True, "suggestions": payload}), 200
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": "api",
+            "message": f"ML vocab alignment suggestions query failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+def api_ml_vocab_alignment_suggestions_export():
+    """Export unresolved-entity suggestion rows as JSON or CSV for bulk review."""
+    try:
+        from webapp.parser.utils.ml_vocab_alignment import get_vocab_alignment_suggestions
+        import csv
+        import io
+        import re
+
+        try:
+            limit = int(request.args.get("limit", 50))
+        except Exception:
+            limit = 50
+        try:
+            min_score = float(request.args.get("min_score", 0.45))
+        except Exception:
+            min_score = 0.45
+        try:
+            high_confidence_min_score = float(request.args.get("high_confidence_min_score", 0.75))
+        except Exception:
+            high_confidence_min_score = 0.75
+        high_confidence_min_score = max(0.0, min(high_confidence_min_score, 1.0))
+        try:
+            apply_ready_min_score = float(request.args.get("apply_ready_min_score", 0.90))
+        except Exception:
+            apply_ready_min_score = 0.90
+        apply_ready_min_score = max(0.0, min(apply_ready_min_score, 1.0))
+
+        def _normalize_for_apply(value: str | None) -> str:
+            text = (value or "").strip().lower()
+            text = text.replace("&", " and ")
+            text = text.replace("/", " ")
+            text = text.replace("-", " ")
+            text = re.sub(r"[^a-z0-9\s]", " ", text)
+            text = re.sub(r"\s+", " ", text).strip()
+            return text
+
+        export_format = (request.args.get("format", "json") or "json").strip().lower()
+        if export_format not in {"json", "csv"}:
+            return jsonify({"success": False, "error": "Invalid format. Use 'json' or 'csv'."}), 400
+
+        export_mode = (request.args.get("export_mode", "all") or "all").strip().lower()
+        if export_mode not in {"all", "high_confidence", "apply_ready"}:
+            return jsonify({
+                "success": False,
+                "error": "Invalid export_mode. Use 'all', 'high_confidence', or 'apply_ready'.",
+            }), 400
+
+        payload = get_vocab_alignment_suggestions(limit=limit, min_score=min_score)
+        rows_all = payload.get("suggestions") or []
+
+        if export_mode == "high_confidence":
+            rows = [
+                row for row in rows_all
+                if isinstance(row, dict)
+                and isinstance(row.get("best_score"), (int, float))
+                and float(row.get("best_score", 0.0)) >= high_confidence_min_score
+            ]
+        elif export_mode == "apply_ready":
+            rows = []
+            for row in rows_all:
+                if not isinstance(row, dict):
+                    continue
+                best_score = row.get("best_score")
+                if not isinstance(best_score, (int, float)) or float(best_score) < apply_ready_min_score:
+                    continue
+
+                options = row.get("suggestions") or []
+                if not options or not isinstance(options[0], dict):
+                    continue
+                top_canonical = options[0].get("canonical")
+                current_target = row.get("target")
+
+                if _normalize_for_apply(top_canonical) == _normalize_for_apply(current_target):
+                    rows.append(row)
+        else:
+            rows = rows_all
+
+        payload_filtered = dict(payload)
+        payload_filtered["suggestions"] = rows
+        payload_filtered["suggestion_count"] = len(rows)
+        payload_filtered["export_mode"] = export_mode
+        payload_filtered["high_confidence_min_score"] = high_confidence_min_score
+        payload_filtered["apply_ready_min_score"] = apply_ready_min_score
+        payload_filtered["total_suggestion_count_before_filter"] = len(rows_all)
+
+        if export_mode == "high_confidence":
+            file_suffix = "_high_confidence"
+        elif export_mode == "apply_ready":
+            file_suffix = "_apply_ready"
+        else:
+            file_suffix = ""
+
+        if export_format == "json":
+            body = {
+                "success": True,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "suggestions": payload_filtered,
+            }
+            response = jsonify(body)
+            response.headers["Content-Disposition"] = f"attachment; filename=ml_vocab_alignment_suggestions{file_suffix}.json"
+            return response, 200
+
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow([
+            "file",
+            "alias",
+            "current_target",
+            "best_score",
+            "suggestion_1",
+            "score_1",
+            "suggestion_2",
+            "score_2",
+            "suggestion_3",
+            "score_3",
+        ])
+        for row in rows:
+            options = row.get("suggestions") or []
+            option_1 = options[0] if len(options) > 0 else {}
+            option_2 = options[1] if len(options) > 1 else {}
+            option_3 = options[2] if len(options) > 2 else {}
+            writer.writerow([
+                row.get("file"),
+                row.get("alias"),
+                row.get("target"),
+                row.get("best_score"),
+                option_1.get("canonical"),
+                option_1.get("score"),
+                option_2.get("canonical"),
+                option_2.get("score"),
+                option_3.get("canonical"),
+                option_3.get("score"),
+            ])
+
+        return Response(
+            buffer.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=ml_vocab_alignment_suggestions{file_suffix}.csv"},
+        )
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": "api",
+            "message": f"ML vocab alignment suggestions export failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+def api_preingest_url_glimpse():
+    """Capture pre-ingest screenshot/DOM glimpse and return quick risk flags for a URL."""
+    started_at = time.perf_counter()
+    try:
+        from webapp.parser.utils.url_glimpse import build_glimpse_risk_flags, capture_url_glimpse
+
+        url = (request.args.get("url") or "").strip()
+        if not url:
+            return jsonify({"success": False, "error": "Missing required query param: url"}), 400
+
+        allowlist_bypass_requested = (request.args.get("allowlist_bypass", "false") or "").strip().lower() in {"1", "true", "yes", "on"}
+        allowlist_bypass = bool(allowlist_bypass_requested and _is_local_request())
+
+        allowed, reason = safe_validate_external_url(url, allowlist_bypass=allowlist_bypass)
+        if not allowed:
+            return jsonify({"success": False, "error": "url_not_allowed", "reason": reason}), 400
+
+        try:
+            timeout_ms = int(request.args.get("timeout_ms", 45000))
+        except Exception:
+            timeout_ms = 45000
+        try:
+            wait_ms = int(request.args.get("wait_ms", 1800))
+        except Exception:
+            wait_ms = 1800
+
+        timeout_ms = max(5000, min(timeout_ms, 120000))
+        wait_ms = max(0, min(wait_ms, 10000))
+
+        out_dir = Path("tools") / "debug_headless_output"
+        glimpse = capture_url_glimpse(url, out_dir=out_dir, timeout_ms=timeout_ms, wait_ms=wait_ms)
+        risk = build_glimpse_risk_flags(glimpse)
+
+        response_payload = {
+            "success": True,
+            "url": url,
+            "allowlist_bypass": allowlist_bypass,
+            "risk": risk,
+            "artifacts": {
+                "json_report": glimpse.get("json_report"),
+                "html_snapshot": glimpse.get("html_snapshot"),
+                "screenshot": glimpse.get("screenshot"),
+            },
+            "glimpse": {
+                "status": glimpse.get("status"),
+                "content_type": glimpse.get("content_type"),
+                "title": glimpse.get("title"),
+                "table_count": glimpse.get("table_count"),
+                "table_rows_estimate": glimpse.get("table_rows_estimate"),
+                "has_election_terms": glimpse.get("has_election_terms"),
+                "error": glimpse.get("error"),
+            },
+        }
+
+        _log_endpoint_latency(
+            "/api/preingest_url_glimpse",
+            started_at,
+            context={
+                "url": url,
+                "risk_level": risk.get("risk_level"),
+                "tables_found": risk.get("tables_found"),
+                "has_election_terms": risk.get("has_election_terms"),
+            },
+        )
+        return jsonify(response_payload), 200
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": "api",
+            "message": f"Pre-ingest URL glimpse failed: {exc}",
+            "session_id": None,
+        })
+        _log_endpoint_latency("/api/preingest_url_glimpse", started_at, context={"failed": True})
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
 app.config["_OBSERVABILITY_ROUTE_HANDLERS"] = {
     "api_integrity_trends": api_integrity_trends,
     "api_integrity_signal": api_integrity_signal,
     "api_integrity_export": api_integrity_export,
     "api_quality_metrics": api_quality_metrics,
+    "api_ml_usage": api_ml_usage,
+    "api_ml_pipeline_profile": api_ml_pipeline_profile,
+    "api_ml_vocab_alignment": api_ml_vocab_alignment,
+    "api_ml_vocab_alignment_suggestions": api_ml_vocab_alignment_suggestions,
+    "api_ml_vocab_alignment_suggestions_export": api_ml_vocab_alignment_suggestions_export,
+    "api_preingest_url_glimpse": api_preingest_url_glimpse,
 }
 
 def api_auth_certificate_info():
@@ -9025,6 +9466,9 @@ def api_data_assurance_classify():
     if cert_resp:
         return cert_resp
     try:
+        from webapp.parser.utils.ml_telemetry import record_ml_event
+        from webapp.parser.utils.nlp_entity_extractor import extract_training_entities
+
         data = request.get_json()
         metadata = data.get("metadata", {})
         parsed_data = data.get("parsed_data", {})
@@ -9078,6 +9522,19 @@ def api_data_assurance_classify():
         dl_status = "DL1"  # Always start at DL1; manual review promotes to DL2
         if confidence_score < 50:
             dl_status = "REJECTED"
+
+        record_ml_event(
+            "data_assurance",
+            "classification_scored",
+            metadata={
+                "dataset_id": dataset_id,
+                "dl_status": dl_status,
+                "confidence_score": confidence_score,
+                "issues": len(detected_issues),
+                "rows": len(rows or []),
+                "headers": len(headers or []),
+            },
+        )
         
         # Store in PostgreSQL (data_assurance_classifications table)
         from webapp.parser.utils.db_utils import SessionLocal
@@ -9111,9 +9568,9 @@ def api_data_assurance_classify():
                     if text:
                         text_samples.append(text)
                 
-                # Simple entity detection (placeholder - improve with spaCy)
+                # Entity extraction for NER training payloads
                 for text in text_samples:
-                    entities = []  # TODO: Use spaCy NER to detect entities
+                    entities = extract_training_entities(text, max_entities=40)
                     with SessionLocal() as db_session:
                         db_session.execute(
                             text("""
@@ -9129,8 +9586,22 @@ def api_data_assurance_classify():
                             }
                         )
                         db_session.commit()
+
+                record_ml_event(
+                    "data_assurance",
+                    "ner_training_samples_written",
+                    metadata={
+                        "dataset_id": dataset_id,
+                        "sample_count": len(text_samples),
+                    },
+                )
             except Exception as e:
                 logger.warning(f"[QA] Failed to write NER training data: {e}")
+                record_ml_event(
+                    "data_assurance",
+                    "ner_training_samples_failed",
+                    metadata={"dataset_id": dataset_id, "error": str(e)},
+                )
         
         return jsonify({
             "dataset_id": dataset_id,

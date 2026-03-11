@@ -634,6 +634,278 @@
     margin-top:.5em;
     text-shadow:0 0 8px rgba(0 255 231 /.4);
   }
+
+  .auth-welcome-page {
+    min-height: 100vh;
+  }
+
+  .auth-welcome-page .auth-welcome-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+    background:
+      radial-gradient(120% 120% at 50% 18%, rgba(0 255 231 /.10), transparent 62%),
+      linear-gradient(135deg, #0f2740 0%, #163c5f 45%, #1f5f70 100%);
+  }
+
+  .auth-welcome-page .auth-welcome-card {
+    width: 100%;
+    max-width: 640px;
+    padding: 40px;
+    border-radius: 14px;
+    border: 1px solid rgba(0 255 231 /.22);
+    background: rgba(255 255 255 /.96);
+    color: #13202a;
+    box-shadow: 0 22px 58px rgba(0 0 0 /.28), 0 0 0 1px rgba(255 255 255 /.35) inset;
+    animation: authWelcomeSlideUp 0.45s ease-out;
+  }
+
+  .auth-welcome-page .auth-welcome-header {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+
+  .auth-welcome-page .auth-welcome-header h1 {
+    margin-bottom: 8px;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: .2px;
+    color: #0f2740;
+  }
+
+  .auth-welcome-page .auth-welcome-header p {
+    margin: 0;
+    font-size: 14px;
+    color: #496175;
+  }
+
+  .auth-welcome-page .cert-status-badge {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+  }
+
+  .auth-welcome-page .cert-status-badge.valid {
+    background: #d8f4e8;
+    color: #0f5a3a;
+  }
+
+  .auth-welcome-page .cert-status-badge.expired {
+    background: #fde1e1;
+    color: #7c2020;
+  }
+
+  .auth-welcome-page .cert-status-badge.warning {
+    background: #fff0ce;
+    color: #824c00;
+  }
+
+  .auth-welcome-page .cert-info-section {
+    margin-bottom: 24px;
+    padding: 16px;
+    border-radius: 8px;
+    border-left: 4px solid #1f5f70;
+    background: #f4f8fb;
+  }
+
+  .auth-welcome-page .cert-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid #dde6ec;
+    font-size: 13px;
+  }
+
+  .auth-welcome-page .cert-info-row:last-child {
+    border-bottom: none;
+  }
+
+  .auth-welcome-page .cert-info-label {
+    min-width: 120px;
+    flex-shrink: 0;
+    font-weight: 700;
+    color: #476070;
+  }
+
+  .auth-welcome-page .cert-info-value {
+    flex: 1;
+    margin-left: 16px;
+    text-align: right;
+    word-break: break-word;
+    color: #1f2e39;
+  }
+
+  .auth-welcome-page .cert-info-value.monospace {
+    max-height: 60px;
+    overflow-y: auto;
+    padding: 4px 8px;
+    border-radius: 3px;
+    background: #fff;
+    color: #506575;
+    font-size: 12px;
+    font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  }
+
+  .auth-welcome-page .is-hidden {
+    display: none !important;
+  }
+
+  .auth-welcome-page .session-id-text {
+    font-size: 10px;
+    color: #7e909d;
+  }
+
+  .auth-welcome-page .auth-welcome-explanation {
+    margin-bottom: 24px;
+    padding: 12px 16px;
+    border-left: 3px solid #1f5f70;
+    border-radius: 8px;
+    background: #e8f1f7;
+    color: #112537;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .auth-welcome-page .auth-welcome-explanation strong {
+    color: #0e2337;
+  }
+
+  .auth-welcome-page .tier-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: #495d6b;
+  }
+
+  .auth-welcome-page .tier-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    background: #e7f1ff;
+    color: #1f5f70;
+  }
+
+  .auth-welcome-page .tier-badge.admin {
+    background: #fef1cd;
+    color: #8f5600;
+  }
+
+  .auth-welcome-page .tier-badge.reviewer {
+    background: #dceafb;
+    color: #184680;
+  }
+
+  .auth-welcome-page .tier-badge.standard {
+    background: #eef2f5;
+    color: #4c5f6f;
+  }
+
+  .auth-welcome-page .auth-welcome-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  .auth-welcome-page .btn-auth {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border: none;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+  }
+
+  .auth-welcome-page .btn-auth.primary {
+    background: #1f5f70;
+    color: #fff;
+  }
+
+  .auth-welcome-page .btn-auth.primary:hover {
+    background: #184d5b;
+    box-shadow: 0 4px 12px rgba(31 95 112 /.30);
+  }
+
+  .auth-welcome-page .btn-auth.secondary {
+    background: #e3e8ed;
+    color: #13202a;
+  }
+
+  .auth-welcome-page .btn-auth.secondary:hover {
+    background: #d5dde4;
+  }
+
+  .auth-welcome-page .error-message {
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    border-radius: 6px;
+    border-left: 3px solid #dc2626;
+    background: #fee2e2;
+    color: #8e1d1d;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .auth-welcome-page .warning-message {
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    border-radius: 6px;
+    border-left: 3px solid #f59e0b;
+    background: #fef3c7;
+    color: #874500;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .auth-welcome-page .footer-note {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #dde6ec;
+    text-align: center;
+    font-size: 12px;
+    color: #667c8b;
+  }
+
+  .auth-welcome-page .icon {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    background-size: contain;
+    background-repeat: no-repeat;
+  }
+}
+
+@layer animations {
+  @keyframes authWelcomeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(28px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }
 
 /* ===================== 4. Utilities ===================== */
@@ -669,6 +941,31 @@
 
 /* ===================== 6. Responsive ===================== */
 @layer responsive {
+  @media (max-width: 640px) {
+    .auth-welcome-page .auth-welcome-card {
+      padding: 24px;
+    }
+
+    .auth-welcome-page .auth-welcome-header h1 {
+      font-size: 24px;
+    }
+
+    .auth-welcome-page .cert-info-row {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .auth-welcome-page .cert-info-value {
+      margin-left: 0;
+      margin-top: 4px;
+      text-align: left;
+    }
+
+    .auth-welcome-page .auth-welcome-actions {
+      flex-direction: column;
+    }
+  }
+
   @media (max-width:var(--bp-md)){
     .container { padding:1.75em 1.25em; }
     .feature-list { gap:1.25em; }

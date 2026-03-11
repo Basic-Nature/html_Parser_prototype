@@ -1194,6 +1194,16 @@ const _TablePreview = (() => {
   // LEGACY: older cert check via separate fetch (no longer primary path—socket.io TLS now validates)
   // Kept for reference/fallback to prevent regression
   async function _ensureCertForMutation(targetUrl) {
+    const winAny = (typeof window !== 'undefined') ? /** @type {any} */ (window) : null;
+    const authUtils = winAny ? winAny.AuthUtils : null;
+    if (authUtils && typeof authUtils.ensureCertAvailable === 'function') {
+      const certOk = await authUtils.ensureCertAvailable(targetUrl || window.location.href);
+      if (!certOk) {
+        showCertRequiredModal(targetUrl || window.location.href);
+      }
+      return certOk;
+    }
+
     const now = Date.now();
     if (certCheckLastOk && (now - certCheckLastOk) < CERT_CHECK_COOLDOWN_MS) {
       return true;
@@ -4305,6 +4315,7 @@ function ingestQualityMetrics(log) {
   if (payload.extraction_confidence !== undefined) {
     setQualityPill(payload.extraction_confidence);
   }
+  refreshMlUsageTelemetry(false);
 }
 
 /**
@@ -4336,6 +4347,212 @@ function setQualityPill(confidence) {
     pill.classList.add('has-quality');
   }
 }
+
+let lastMlUsageFetchAt = 0;
+let mlUsageFetchInFlight = null;
+let lastMlVocabFetchAt = 0;
+let mlVocabFetchInFlight = null;
+
+/**
+ * Safely coerce numeric values used by observability widgets.
+ * @param {any} value
+ * @param {number} [fallback=0]
+ * @returns {number}
+ */
+function toFiniteNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * Render/refresh ML usage pill in Expected Artifacts card.
+ * @param {number} totalEvents
+ * @param {number} totalComponents
+ */
+function setMlUsagePill(totalEvents, totalComponents) {
+  const body = document.querySelector('article[aria-label="Expected artifacts"] .artifact-card-body');
+  if (!body) return;
+
+  let pill = document.getElementById('mlUsagePill');
+  if (!pill) {
+    pill = document.createElement('div');
+    pill.id = 'mlUsagePill';
+    pill.className = 'quality-pill ml-usage-pill';
+    pill.innerHTML = '<span class="pill-label">ML Usage</span><span class="pill-value">0 evt • 0 cmp</span><span class="mini-meter"><span class="mini-meter-fill"></span></span>';
+    body.appendChild(pill);
+  }
+
+  const safeEvents = Math.max(0, toFiniteNumber(totalEvents, 0));
+  const safeComponents = Math.max(0, toFiniteNumber(totalComponents, 0));
+  const valueEl = pill.querySelector('.pill-value');
+  if (valueEl) valueEl.textContent = `${safeEvents} evt • ${safeComponents} cmp`;
+
+  const baseline = safeComponents > 0 ? Math.ceil((safeEvents / safeComponents) * 10) : 0;
+  const score = Math.max(0, Math.min(100, baseline));
+  const bucket = Math.max(0, Math.min(100, Math.round(score / 10) * 10));
+  pill.className = pill.className
+    .replace(/\bq-\d{1,3}\b/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  pill.classList.add(`q-${bucket}`);
+}
+
+/**
+ * Render a tiny recent-events drawer (last 5) for ML telemetry.
+ * @param {Array<any>} recentEvents
+ */
+function setMlEventsDrawer(recentEvents) {
+  const body = document.querySelector('article[aria-label="Expected artifacts"] .artifact-card-body');
+  if (!body) return;
+
+  let drawer = document.getElementById('mlEventsDrawer');
+  if (!drawer) {
+    drawer = document.createElement('details');
+    drawer.id = 'mlEventsDrawer';
+    drawer.className = 'ml-events-drawer';
+    drawer.innerHTML = '<summary class="ml-events-summary">Recent ML events</summary><ul class="ml-events-list"></ul>';
+    body.appendChild(drawer);
+  }
+
+  const listEl = drawer.querySelector('.ml-events-list');
+  if (!(listEl instanceof HTMLElement)) return;
+
+  const rows = Array.isArray(recentEvents)
+    ? recentEvents.filter((evt) => evt && typeof evt === 'object').slice(-5).reverse()
+    : [];
+  if (!rows.length) {
+    listEl.innerHTML = '<li class="ml-events-item muted">No recent events yet.</li>';
+    return;
+  }
+
+  const escapeHtml = (value) => String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  listEl.innerHTML = rows.map((evt) => {
+    const component = escapeHtml(evt?.component || 'unknown');
+    const action = escapeHtml(evt?.action || 'event');
+    const tsRaw = evt?.timestamp;
+    let ts = '';
+    if (typeof tsRaw === 'string' && tsRaw.trim()) {
+      const d = new Date(tsRaw);
+      ts = Number.isNaN(d.getTime()) ? tsRaw : d.toLocaleTimeString();
+    }
+    const tsText = ts ? `<span class="ml-events-time">${escapeHtml(ts)}</span>` : '';
+    return `<li class="ml-events-item"><span class="ml-events-main"><strong>${component}</strong> · ${action}</span>${tsText}</li>`;
+  }).join('');
+}
+
+/**
+ * Render a compact vocab alignment status card from /api/ml_vocab_alignment.
+ * @param {any} alignment
+ */
+function setMlVocabAlignmentCard(alignment) {
+  const body = document.querySelector('article[aria-label="Expected artifacts"] .artifact-card-body');
+  if (!body) return;
+
+  let card = document.getElementById('mlVocabAlignmentCard');
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'mlVocabAlignmentCard';
+    card.className = 'ml-vocab-card';
+    card.innerHTML = '<div class="ml-vocab-title">Vocab alignment</div><div class="ml-vocab-meta">Loading…</div>';
+    body.appendChild(card);
+  }
+
+  const safeAlignment = (alignment && typeof alignment === 'object') ? alignment : {};
+  const validators = (safeAlignment.validators && typeof safeAlignment.validators === 'object') ? safeAlignment.validators : {};
+  const entityOnly = (safeAlignment.entity_only && typeof safeAlignment.entity_only === 'object') ? safeAlignment.entity_only : {};
+  const rawRate = toFiniteNumber(entityOnly.resolution_rate, NaN);
+  const rate = Number.isFinite(rawRate) ? rawRate : NaN;
+  const mappings = Math.max(0, toFiniteNumber(entityOnly.mapping_count, 0));
+  const resolved = Math.max(0, toFiniteNumber(entityOnly.resolved_count, 0));
+  const unresolved = Math.max(0, toFiniteNumber(entityOnly.unresolved_count, 0));
+  const normalizedRecovered = Math.max(0, toFiniteNumber(entityOnly.resolved_normalized, 0));
+  const ruleMappings = Math.max(0, toFiniteNumber(validators?.categories?.rule_directive?.mapping_count, 0));
+  const meta = card.querySelector('.ml-vocab-meta');
+  if (!(meta instanceof HTMLElement)) return;
+
+  const rateText = Number.isFinite(rate) ? `${rate.toFixed(1)}%` : 'n/a';
+  meta.textContent = `${rateText} entity-only • ${resolved}/${mappings} mapped • +${normalizedRecovered} normalized • ${unresolved} unresolved • ${ruleMappings} rules`;
+
+  card.classList.remove('is-good', 'is-warn', 'is-bad');
+  if (!Number.isFinite(rate)) {
+    card.classList.add('is-warn');
+  } else if (rate >= 95) {
+    card.classList.add('is-good');
+  } else if (rate >= 85) {
+    card.classList.add('is-warn');
+  } else {
+    card.classList.add('is-bad');
+  }
+}
+
+/**
+ * Poll vocab alignment endpoint with a longer cooldown.
+ * @param {boolean} [force=false]
+ */
+async function refreshMlVocabAlignment(force = false) {
+  const now = Date.now();
+  if (!force && now - lastMlVocabFetchAt < 60000) return;
+  if (mlVocabFetchInFlight) return;
+
+  lastMlVocabFetchAt = now;
+  mlVocabFetchInFlight = fetch('/api/ml_vocab_alignment?sample_limit=10', { credentials: 'same-origin' })
+    .then(async (response) => {
+      if (!response.ok) return;
+      const payload = await response.json().catch(() => null);
+      if (!payload || payload.success !== true || !payload.alignment || typeof payload.alignment !== 'object') return;
+      setMlVocabAlignmentCard(payload.alignment);
+    })
+    .catch(() => {
+      // Silent; observability panel should not interrupt user flow.
+    })
+    .finally(() => {
+      mlVocabFetchInFlight = null;
+    });
+
+  await mlVocabFetchInFlight;
+}
+
+/**
+ * Poll ML telemetry endpoint with a short cooldown to avoid noisy traffic.
+ * @param {boolean} [force=false]
+ */
+async function refreshMlUsageTelemetry(force = false) {
+  const now = Date.now();
+  if (!force && now - lastMlUsageFetchAt < 15000) return;
+  if (mlUsageFetchInFlight) return;
+
+  lastMlUsageFetchAt = now;
+  mlUsageFetchInFlight = fetch('/api/ml_usage?limit=20', { credentials: 'same-origin' })
+    .then(async (response) => {
+      if (!response.ok) return;
+      const payload = await response.json().catch(() => null);
+      if (!payload || payload.success !== true || !payload.telemetry) return;
+      const telemetry = (payload.telemetry && typeof payload.telemetry === 'object') ? payload.telemetry : {};
+      const totals = (telemetry.totals && typeof telemetry.totals === 'object') ? telemetry.totals : {};
+      setMlUsagePill(totals.events, totals.components);
+      setMlEventsDrawer(Array.isArray(telemetry.recent_events) ? telemetry.recent_events : []);
+      await refreshMlVocabAlignment(false);
+    })
+    .catch(() => {
+      // Keep silent for observability polling failures.
+    })
+    .finally(() => {
+      mlUsageFetchInFlight = null;
+    });
+
+  await mlUsageFetchInFlight;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  refreshMlUsageTelemetry(true);
+  refreshMlVocabAlignment(true);
+});
 
 // ============================================
 // Event Listeners: Sidebar Controls
