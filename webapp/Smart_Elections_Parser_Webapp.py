@@ -50,6 +50,34 @@ SOCKETIO_CLIENT_CONFIG = {
 SOCKETIO_MESSAGE_QUEUE = os.environ.get("SOCKETIO_MESSAGE_QUEUE")
 SOCKETIO_MESSAGE_CHANNEL = os.environ.get("SOCKETIO_MESSAGE_CHANNEL", "socketio")
 
+# ---------------------------------------------------------------------------
+# Multi-worker message queue: kombu + SQLAlchemy backend
+# ---------------------------------------------------------------------------
+# When SOCKETIO_USE_DB_QUEUE=true, the existing PostgreSQL database is used as
+# the SocketIO message broker via kombu.  This is safe for single-instance
+# deployments with GUNICORN_WORKERS > 1 and for Azure App Service when
+# sticky-session routing is not available.
+#
+# Requires:  kombu>=5.6.2  (already in requirements.txt)
+# ---------------------------------------------------------------------------
+_USE_DB_QUEUE = os.environ.get("SOCKETIO_USE_DB_QUEUE", "false").lower() in {"1", "true"}
+if _USE_DB_QUEUE and not SOCKETIO_MESSAGE_QUEUE:
+    _db_url = os.environ.get("DATABASE_URL", "")
+    # Only accepted relational-DB schemes are safe for kombu's SQLAlchemy transport.
+    _KOMBU_SQLA_SCHEMES = (
+        "postgresql://", "postgresql+",
+        "mysql://", "mysql+",
+        "sqlite://",
+        "sqla+",
+    )
+    if _db_url and any(_db_url.startswith(s) for s in _KOMBU_SQLA_SCHEMES):
+        if _db_url.startswith("sqla+"):
+            # Already prefixed — pass through unchanged (kombu accepts sqla+dialect://...)
+            SOCKETIO_MESSAGE_QUEUE = _db_url
+        else:
+            # Prepend the kombu SQLAlchemy transport prefix
+            SOCKETIO_MESSAGE_QUEUE = "sqla+" + _db_url
+
 import asyncio
 import csv
 import gzip
@@ -533,6 +561,21 @@ socketio_kwargs = {}
 if SOCKETIO_MESSAGE_QUEUE:
     socketio_kwargs["message_queue"] = SOCKETIO_MESSAGE_QUEUE
     socketio_kwargs["channel"] = SOCKETIO_MESSAGE_CHANNEL
+
+# Warn at startup when running multiple workers without a message queue.
+# In this configuration SocketIO events emitted by one worker will not reach
+# clients connected to a different worker, causing missed real-time updates.
+_gunicorn_workers = int(os.environ.get("GUNICORN_WORKERS", "1"))
+if _gunicorn_workers > 1 and not SOCKETIO_MESSAGE_QUEUE:
+    import warnings
+    warnings.warn(
+        f"GUNICORN_WORKERS={_gunicorn_workers} but SOCKETIO_MESSAGE_QUEUE is not set. "
+        "Real-time events may not reach all connected clients. "
+        "Set SOCKETIO_USE_DB_QUEUE=true to route events through the existing "
+        "PostgreSQL database as the message broker.",
+        RuntimeWarning,
+        stacklevel=1,
+    )
 
 socketio = SocketIO(
     app,

@@ -4,12 +4,34 @@ import os
 port = os.environ.get("PORT", "8000")
 bind = f"0.0.0.0:{port}"
 
-# Use sync worker (simple, stable) or gevent for better concurrency
-# For WebSocket support, Flask-SocketIO now uses threading (native Python async mode)
-worker_class = "sync"
+# ---------------------------------------------------------------------------
+# Worker class & concurrency
+# ---------------------------------------------------------------------------
+# Flask-SocketIO uses async_mode="threading", so all concurrency within a
+# single process is handled by Python threads — no eventlet/gevent needed.
+#
+# Worker class strategy:
+#   "sync"    – 1 request at a time per worker; safe but low throughput.
+#   "gthread" – thread-pool inside each worker; recommended when GUNICORN_THREADS > 1.
+#               Handles many concurrent users within a *single* process.
+#
+# ⚠️  Multi-worker mode (GUNICORN_WORKERS > 1) requires a SocketIO message
+#     queue so that events emitted by one worker reach clients connected to
+#     another.  Set SOCKETIO_USE_DB_QUEUE=true to use the existing PostgreSQL
+#     database via kombu (requires kombu>=5.6.2 in requirements).
+#     Without a message queue, keep GUNICORN_WORKERS=1 (the default).
+# ---------------------------------------------------------------------------
+_worker_class = os.environ.get("GUNICORN_WORKER_CLASS", "sync")
+worker_class = _worker_class
 
-# Leave a single worker by default; Azure load-balances instances externally.
+# Number of worker processes.
+# Default is 1; a single gthread worker handles concurrent sessions via threads.
 workers = int(os.environ.get("GUNICORN_WORKERS", "1"))
+
+# Thread count per worker — only applied when worker_class="gthread".
+# Gunicorn ignores this setting for "sync" workers.
+# Default 4 handles typical multi-user concurrency.
+threads = int(os.environ.get("GUNICORN_THREADS", "4"))
 
 # Timeouts tuned for larger PDF/OCR runs
 timeout = int(os.environ.get("GUNICORN_TIMEOUT", "240"))

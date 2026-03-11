@@ -3370,7 +3370,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                                    'PIL', 'pytesseract', 'spacy', 'transformers', 'torch', 'numpy',
                                    'pandas', 'requests', 'beautifulsoup4', 'lxml', 'selenium',
                                    'pytest', 'coverage', 'black', 'flake8', 'mypy', 'bandit',
-                                   'sqlalchemy', 'psycopg2', 'pymongo', 'redis', 'celery',
+                                   'sqlalchemy', 'psycopg2', 'pymongo', 'celery',
                                    'twilio', 'sendgrid', 'boto3', 'google', 'azure',
                                    'huggingface', 'sentence-transformers', 'scikit-learn', 'nltk'):
                     third_party_imports.append(im)
