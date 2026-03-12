@@ -73,6 +73,7 @@ filterwarnings = [
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests requiring external resources",
+  "live_integration: marks optional live-pathway tests (enable explicitly)",
     "unit: marks pure unit tests",
 ]
 

@@ -37,6 +37,7 @@ on:
 env:
   IMAGE_NAME: ballotlens
   IMAGE_TAG: ${{ github.sha }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   REPORT_RETENTION_DAYS: "30"
   REPORT_MAX_FILES: "200"
   REPORT_MAX_BYTES: "268435456"
@@ -45,7 +46,7 @@ env:
   DL_COMPARE_DL2_PATH: ""
   POST_DEPLOY_DB_CONFIRM_STRICT: ${{ github.event_name == 'workflow_dispatch' && inputs.post_deploy_db_confirm_strict || 'true' }}
   POST_DEPLOY_DB_CONFIRM_TIMEOUT_SEC: "45"
-  POST_DEPLOY_READY_MAX_ATTEMPTS: "8"
+  POST_DEPLOY_READY_MAX_ATTEMPTS: "12"
   POST_DEPLOY_READY_SLEEP_SEC: "20"
   DYNAMIC_SITE_URL: "https://www.electionpulse.org/"
   DOCS_SITE_URL: "https://basic-nature.github.io/html_Parser_prototype/"
@@ -94,6 +95,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --no-cache-dir --prefer-binary -r requirements.txt
+          pip install --no-cache-dir --prefer-binary -r requirements-dev.txt
 
       - name: Run synthetic DL fixture compare (pre-deploy)
         run: |
@@ -140,7 +142,7 @@ jobs:
           fi
 
       - name: Upload DL compare QA artifacts
-        if: always()
+        if: always() && (hashFiles('output/reports/data_comparison_latest.json') != '' || hashFiles('output/reports/automation_run_latest.json') != '' || hashFiles('output/reports/logs/**') != '')
         uses: actions/upload-artifact@v4
         with:
           name: dl-compare-qa-${{ github.run_id }}
@@ -193,32 +195,48 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --no-cache-dir --prefer-binary -r requirements.txt
+          pip install --no-cache-dir --prefer-binary -r requirements-dev.txt
+          python -m pip install --no-cache-dir pytest
+
+      - name: Verify pytest availability
+        run: |
+          python -m pytest --version
 
       - name: Install Node dependencies
         run: npm install
 
-      - name: Run backend contract tests (cert + observability APIs)
+      - name: Run backend contract tests (fast enforced subset)
         run: |
-          python -m pytest -q webapp/tests/test_auth_and_observability_contracts.py
+          python -m pytest -q -m "not live_integration" \
+            webapp/tests/test_auth_and_observability_contracts.py \
+            webapp/tests/test_route_handler_contracts.py \
+            webapp/tests/test_error_handling_suite.py \
+            webapp/tests/test_ballot_lens_pathways.py
 
-      - name: Run frontend contract tests (auth utils)
+      - name: Run frontend contract tests (auth + data framework + ballot lens)
         run: |
-          npx jest --config=jest.config.js --runInBand webapp/static/js/__tests__/auth_utils.contract.test.js
+          npx jest --config=jest.config.js --runInBand \
+            webapp/static/js/__tests__/auth_utils.contract.test.js \
+            webapp/static/js/__tests__/data_framework.contract.test.js \
+            webapp/static/js/__tests__/ballot_lens_modern.placeholder.test.js
 
       - name: Contract checks summary
         if: always()
         run: |
           {
             echo "## Pre-Deploy QA (Contract checks, non-blocking)"
-            echo "- Backend contracts: cert-required + ML/pre-ingest API schema checks"
-            echo "- Frontend contracts: cert-required behavior in auth utilities"
+            echo "- Backend contracts: cert/auth + route-handler + error-path + deterministic ballot-lens pathway checks"
+            echo "- Frontend contracts: auth utils + data framework + ballot lens module checks"
+            echo "- Live integration marker policy: \`live_integration\` tests are excluded by default"
             echo "- Mode: non-blocking (signals quality while implementation hardens)"
             echo "- Next phase: tighten to blocking once stability and pass-rate are sustained"
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-and-deploy:
     name: Azure Deploy (dynamic webapp)
-    needs: qa-dl-compare
+    needs:
+      - qa-dl-compare
+      - contract-checks-nonblocking
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -641,7 +659,7 @@ jobs:
           base = os.environ.get("DYNAMIC_SITE_URL", "").strip().rstrip("/")
           strict = os.environ.get("POST_DEPLOY_DB_CONFIRM_STRICT", "true").strip().lower() == "true"
           timeout = int(os.environ.get("POST_DEPLOY_DB_CONFIRM_TIMEOUT_SEC", "45"))
-          max_attempts = max(1, int(os.environ.get("POST_DEPLOY_READY_MAX_ATTEMPTS", "8")))
+          max_attempts = max(1, int(os.environ.get("POST_DEPLOY_READY_MAX_ATTEMPTS", "12")))
           sleep_sec = max(1, int(os.environ.get("POST_DEPLOY_READY_SLEEP_SEC", "20")))
           out_path = Path("output/reports/postdeploy_db_confirmation_latest.json")
           out_path.parent.mkdir(parents=True, exist_ok=True)

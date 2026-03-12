@@ -50,6 +50,19 @@ SOCKETIO_CLIENT_CONFIG = {
 SOCKETIO_MESSAGE_QUEUE = os.environ.get("SOCKETIO_MESSAGE_QUEUE")
 SOCKETIO_MESSAGE_CHANNEL = os.environ.get("SOCKETIO_MESSAGE_CHANNEL", "socketio")
 
+# Cost/simplicity guard: Redis queueing is disabled by default unless explicitly allowed.
+# This prevents stale env configuration from re-enabling external Redis usage unexpectedly.
+_ALLOW_REDIS_QUEUE = os.environ.get("SOCKETIO_ALLOW_REDIS", "false").lower() in {"1", "true", "yes", "on"}
+if SOCKETIO_MESSAGE_QUEUE and str(SOCKETIO_MESSAGE_QUEUE).strip().lower().startswith(("redis://", "rediss://")):
+    if not _ALLOW_REDIS_QUEUE:
+        logger.warning({
+            "level": "WARNING",
+            "type": "socketio",
+            "message": "SOCKETIO_MESSAGE_QUEUE points to Redis but SOCKETIO_ALLOW_REDIS is false; disabling Redis queue.",
+            "session_id": None,
+        })
+        SOCKETIO_MESSAGE_QUEUE = None
+
 # ---------------------------------------------------------------------------
 # Multi-worker message queue: kombu + SQLAlchemy backend
 # ---------------------------------------------------------------------------

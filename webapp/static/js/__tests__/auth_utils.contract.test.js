@@ -1,6 +1,8 @@
 /* eslint-env jest */
 
 describe('AuthUtils certificate contract', () => {
+  let authUtils;
+
   function loadAuthUtilsScript() {
     const fs = require('fs');
     const path = require('path');
@@ -13,20 +15,23 @@ describe('AuthUtils certificate contract', () => {
     return winAny.AuthUtils;
   }
 
-  beforeEach(() => {
+  beforeAll(() => {
     document.head.innerHTML = '';
     document.body.innerHTML = '';
-    const winAny = /** @type {any} */ (window);
-    delete winAny.AuthUtils;
-    jest.resetModules();
+    authUtils = loadAuthUtilsScript();
+  });
+
+  beforeEach(() => {
     jest.clearAllMocks();
+    if (authUtils && typeof authUtils.clearAuthCache === 'function') {
+      authUtils.clearAuthCache();
+    }
   });
 
   test('ensureCertAvailable strict-fails on fetch exception', async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
     window.fetch = global.fetch;
 
-    const authUtils = loadAuthUtilsScript();
     const ok = await authUtils.ensureCertAvailable('/api/protected');
 
     expect(ok).toBe(false);
@@ -36,7 +41,6 @@ describe('AuthUtils certificate contract', () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 401 });
     window.fetch = global.fetch;
 
-    const authUtils = loadAuthUtilsScript();
     const ok = await authUtils.ensureCertAvailable('/api/protected');
 
     expect(ok).toBe(false);
@@ -46,7 +50,6 @@ describe('AuthUtils certificate contract', () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 });
     window.fetch = global.fetch;
 
-    const authUtils = loadAuthUtilsScript();
     const ok = await authUtils.ensureCertAvailable('/api/protected');
 
     expect(ok).toBe(true);
@@ -56,7 +59,6 @@ describe('AuthUtils certificate contract', () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 401 });
     window.fetch = global.fetch;
 
-    const authUtils = loadAuthUtilsScript();
     const onCertRequired = jest.fn();
 
     await expect(
@@ -73,7 +75,6 @@ describe('AuthUtils certificate contract', () => {
       .mockResolvedValueOnce({ ok: false, status: 401 });
     window.fetch = global.fetch;
 
-    const authUtils = loadAuthUtilsScript();
     const onCertRequired = jest.fn();
 
     const resp = await authUtils.fetchWithCertHandling('/upload/input', { method: 'POST' }, true, onCertRequired);

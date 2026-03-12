@@ -78,6 +78,10 @@ def create_file_io_blueprint() -> Blueprint:
     def heartbeat_route():
         return _call_handler("heartbeat")
 
+    @bp.route("/Heartbeat", methods=["GET"], endpoint="heartbeat_legacy")
+    def heartbeat_legacy_route():
+        return _call_handler("heartbeat")
+
     @bp.route("/clear_history", methods=["POST"], endpoint="clear_history")
     def clear_history_route():
         return _call_handler("clear_history")
