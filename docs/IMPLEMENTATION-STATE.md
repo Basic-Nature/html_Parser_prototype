@@ -278,7 +278,11 @@ Session 2 (URL → Same Domain):
 
 ---
 
-## 8. Next Steps
+## 8. Next Steps (Planned - Future Phases)
+
+The following steps represent Phase 2+ enhancements and are planned for future iterations:
+
+### Phase 2: Broader Learning Accumulation
 
 1. **Broader Learning Accumulation**
    - Run `python scripts/navigation_random_smoke.py --count 10 --seed 42 --persist-log`
@@ -290,12 +294,14 @@ Session 2 (URL → Same Domain):
    - Confirm higher execution rate (recipes matched)
    - Measure parsing time improvement
 
-3. **Full Parsing Integration**
+### Phase 3: Full Integration & Scale
+
+1. **Full Parsing Integration**
    - Enable full table extraction + metadata
    - Validate clean outputs (no empty tables, no junk)
    - End-to-end URL → parsing → database flow
 
-4. **Regression Testing**
+2. **Regression Testing**
    - Safe_parse() test suite
    - Format negotiation edge cases
    - Dynamic extraction robustness
@@ -304,6 +310,8 @@ Session 2 (URL → Same Domain):
 
 ## 9. Production Readiness Checklist
 
+Phase 1 (Current) - COMPLETE ✅
+
 - [x] Handler registry system functional
 - [x] Shared scaffold pattern implemented
 - [x] Navigation recipe infrastructure complete
@@ -311,9 +319,14 @@ Session 2 (URL → Same Domain):
 - [x] Data persistence strategy in place
 - [x] Smoke tests passing
 - [x] Documentation updated
-- [ ] Broader real-world testing (next phase)
-- [ ] Regression test suite (future phase)
-- [ ] Format negotiation rules (future phase)
+- [x] Production deployment ready
+
+Phase 2+ (Planned) - FUTURE WORK
+
+- [ ] Broader real-world testing (Phase 2)
+- [ ] Regression test suite (Phase 3)
+- [ ] Format negotiation rules (Phase 3)
+- [ ] Performance optimization (Phase 3)
 
 ---
 

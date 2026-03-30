@@ -548,9 +548,9 @@ See [NLP_ML_TRAINING_ASSESSMENT.md](NLP_ML_TRAINING_ASSESSMENT.md) for full benc
 
 ---
 
-## Future Enhancements
+## Future Enhancements (Not in Current Scope)
 
-### Phase 3 (Planned)
+### Phase 3 (PLANNED - Future)
 
 1. **Evaluation Dashboard**
    - Real-time precision/recall/F1 tracking

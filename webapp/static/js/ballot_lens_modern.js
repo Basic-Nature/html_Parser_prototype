@@ -1447,6 +1447,7 @@ function initResultsPreviewBar() {
   const previewBar = /** @type {HTMLDetailsElement|null} */ (document.getElementById('resultsPreviewBar'));
   const resultCountBadge = document.getElementById('resultCountBadge');
   const lastUpdatedPreview = document.getElementById('lastUpdatedPreview');
+  const promptStatusChip = document.getElementById('promptStatusChip');
   const resultsGrid = document.getElementById('resultsGrid');
   const pulseLoader = document.getElementById('pulseLoader');
   
@@ -1456,6 +1457,44 @@ function initResultsPreviewBar() {
   previewBar.open = false;
   
   let previousCount = 0;
+
+  const promptStatusMap = {
+    idle: { text: 'Prompt: Idle', className: 'prompt-status-idle' },
+    awaiting: { text: 'Prompt: Awaiting Input', className: 'prompt-status-awaiting' },
+    waiting: { text: 'Prompt: Standby', className: 'prompt-status-waiting' },
+    completed: { text: 'Prompt: Complete', className: 'prompt-status-completed' },
+    error: { text: 'Prompt: Error', className: 'prompt-status-error' },
+    cancelled: { text: 'Prompt: Cancelled', className: 'prompt-status-cancelled' },
+    hidden: { text: 'Prompt: Hidden', className: 'prompt-status-hidden' },
+  };
+  const promptStatusLegend = 'Legend: Idle=no active prompt | Awaiting=input required | Standby=waiting on parser | Complete=run finished | Error=run failed | Cancelled=run cancelled | Hidden=prompt dismissed with restore available';
+  let lastPromptStatusSignature = '';
+
+  function setPromptStatusChip(state = 'idle', detail = '') {
+    if (!promptStatusChip) return;
+    const normalized = String(state || 'idle').toLowerCase();
+    const normalizedDetail = String(detail || '').trim();
+    const signature = `${normalized}|${normalizedDetail}`;
+    if (signature === lastPromptStatusSignature) return;
+    lastPromptStatusSignature = signature;
+    const mapped = promptStatusMap[normalized] || promptStatusMap.idle;
+    promptStatusChip.className = `badge badge-soft prompt-status-chip ${mapped.className}`;
+    promptStatusChip.textContent = mapped.text;
+    // Concise aria-label (legend available via aria-describedby instead)
+    const ariaLabel = normalizedDetail ? `${mapped.text}. ${normalizedDetail}` : mapped.text;
+    promptStatusChip.setAttribute('aria-label', ariaLabel);
+    promptStatusChip.title = normalizedDetail
+      ? `${mapped.text}. ${normalizedDetail}\n${promptStatusLegend}`
+      : `${mapped.text}\n${promptStatusLegend}`;
+  }
+
+  try {
+    /** @type {any} */ (window).__setPromptStatusChip = setPromptStatusChip;
+  } catch (e) {
+    // no-op
+  }
+
+  setPromptStatusChip('idle');
   
   // Sync result count and last updated time
   function updateResultsPreview() {
@@ -1526,6 +1565,17 @@ function initResultsPreviewBar() {
   
   // Update time every minute
   setInterval(updateResultsPreview, 60000);
+}
+
+function syncPromptStatusChip(state, detail = '') {
+  try {
+    const setStatus = /** @type {any} */ (window).__setPromptStatusChip;
+    if (typeof setStatus === 'function') {
+      setStatus(state, detail);
+    }
+  } catch (e) {
+    // no-op
+  }
 }
 
 // Initialize mobile sidebar handlers on DOMContentLoaded
@@ -2639,6 +2689,32 @@ socket.on('session_state', /** @param {SessionStatePayload} data */ (data) => {
         LiveMessenger.alert('Parser run failed. Check the Debug Console for details.', { focusTarget: hintTarget });
       } else if (stateVal === 'CANCELLED') {
         LiveMessenger.alert('Parsing cancelled.', { focusTarget: hintTarget });
+      }
+
+      const promptModal = $('#promptModal');
+      const promptVisible = promptModal && !promptModal.classList.contains('hidden');
+      const hasActivePromptOptions = Array.isArray(activePromptOptions) && activePromptOptions.length > 0;
+      if (!hasActivePromptOptions) {
+        if (stateVal === 'RUNNING' || stateVal === 'PROCESSING' || stateVal === 'PARSING') {
+          syncPromptStatusChip('waiting', 'Parser is running. Waiting for the next interactive prompt.');
+        } else if (stateVal === 'COMPLETED') {
+          syncPromptStatusChip('completed', 'Run completed. No active prompt for this session.');
+        } else if (stateVal === 'ERROR') {
+          syncPromptStatusChip('error', 'Run failed. No active prompt.');
+        } else if (stateVal === 'CANCELLED') {
+          syncPromptStatusChip('cancelled', 'Run cancelled.');
+        }
+      }
+      if (promptVisible && !hasActivePromptOptions) {
+        if (stateVal === 'RUNNING' || stateVal === 'PROCESSING' || stateVal === 'PARSING') {
+          setPromptUiMode('standby', 'Parser is running. Waiting for the next interactive prompt...');
+        } else if (stateVal === 'COMPLETED') {
+          setPromptUiMode('standby', 'Run completed. No active prompt for this session.');
+        } else if (stateVal === 'ERROR') {
+          setPromptUiMode('standby', 'Run failed. No active prompt. Check logs for details.');
+        } else if (stateVal === 'CANCELLED') {
+          setPromptUiMode('standby', 'Run cancelled. No active prompt.');
+        }
       }
     }),
     'socket:session_state'
@@ -5431,6 +5507,7 @@ const promptMessageEl = $('#promptMessage');
 const promptInputEl = $('#promptInput');
 const promptSearchEl = $('#promptSearch');
 const promptOptionsEl = $('#promptOptions');
+const promptSelectionSummaryEl = $('#promptSelectionSummary');
 
 let promptFocusRestoreEl = null;
 let promptFocusTrapHandler = null;
@@ -5442,9 +5519,82 @@ let promptTopLayerMutationCount = 0;
 let promptTopLayerLastTs = 0;
 let lastForceClearTs = 0;
 let activePromptFingerprint = null;
+let _promptUiMode = 'idle';
 const PROMPT_DEDUPE_WINDOW_MS = 120000;
 const seenPromptFingerprints = new Map();
 const answeredPromptFingerprints = new Map();
+
+function ensurePromptStandbySlot() {
+  const promptModal = $('#promptModal');
+  if (!promptModal) return null;
+  const modalBody = promptModal.querySelector('.modal-body');
+  if (!modalBody) return null;
+  let standby = modalBody.querySelector('#promptStandbyState');
+  if (standby) return standby;
+
+  standby = document.createElement('div');
+  standby.id = 'promptStandbyState';
+  standby.className = 'prompt-standby-state hidden';
+  standby.setAttribute('role', 'status');
+  standby.setAttribute('aria-live', 'polite');
+  standby.textContent = 'No active prompt. Waiting for parser updates.';
+
+  if (promptOptionsEl && promptOptionsEl.parentNode === modalBody) {
+    modalBody.insertBefore(standby, promptOptionsEl);
+  } else {
+    modalBody.appendChild(standby);
+  }
+  return standby;
+}
+
+function setPromptUiMode(mode, detail = '') {
+  const promptModal = $('#promptModal');
+  const standby = ensurePromptStandbySlot();
+  _promptUiMode = mode;
+
+  if (!promptModal) return;
+
+  if (mode === 'active') {
+    promptModal.classList.remove('prompt-standby-active');
+    if (standby) standby.classList.add('hidden');
+    if (promptSearchEl instanceof HTMLInputElement) promptSearchEl.disabled = false;
+    if (promptInputEl instanceof HTMLInputElement) promptInputEl.disabled = false;
+    const submitBtn = $('#btnSubmitPrompt');
+    if (submitBtn instanceof HTMLButtonElement) submitBtn.disabled = false;
+    return;
+  }
+
+  // standby mode
+  const detailLower = String(detail || '').toLowerCase();
+  if (detailLower.includes('completed')) {
+    syncPromptStatusChip('completed', detail);
+  } else if (detailLower.includes('failed') || detailLower.includes('error')) {
+    syncPromptStatusChip('error', detail);
+  } else if (detailLower.includes('cancelled')) {
+    syncPromptStatusChip('cancelled', detail);
+  } else {
+    syncPromptStatusChip('waiting', detail || 'Waiting for parser updates.');
+  }
+  promptModal.classList.add('prompt-standby-active');
+  if (standby) {
+    standby.textContent = detail || 'No active prompt. Waiting for parser updates.';
+    standby.classList.remove('hidden');
+  }
+  if (promptSearchEl instanceof HTMLInputElement) promptSearchEl.disabled = true;
+  if (promptInputEl instanceof HTMLInputElement) promptInputEl.disabled = true;
+  const submitBtn = $('#btnSubmitPrompt');
+  if (submitBtn instanceof HTMLButtonElement) submitBtn.disabled = true;
+
+  selectedPromptOptions.clear();
+  if (promptSelectionSummaryEl) promptSelectionSummaryEl.classList.add('hidden');
+  activePromptOptions = [];
+  if (promptOptionsEl) {
+    const wait = document.createElement('div');
+    wait.className = 'text-muted small prompt-waiting-copy';
+    wait.textContent = detail || 'Waiting for the next interactive prompt...';
+    promptOptionsEl.replaceChildren(wait);
+  }
+}
 
 function _prunePromptFingerprints(map) {
   const now = Date.now();
@@ -5776,6 +5926,11 @@ function handlePromptLog(data) {
     let promptMessage = message || ctxMessage || '';
 
     if (message && /prompt\s+response\s+received/i.test(message)) {
+      const promptModal = $('#promptModal');
+      const promptVisible = promptModal && !promptModal.classList.contains('hidden');
+      if (promptVisible) {
+        setPromptUiMode('standby', 'Response received. Waiting for the next parser prompt...');
+      }
       return;
     }
 
@@ -6336,6 +6491,7 @@ function showPrompt({ title = 'Action required', message = '', options = [], pla
       try { forceClearPromptModalArtifacts({ includePendingOverlay: true, log: false, throttleMs: 150 }); } catch (e) { /* noop */ }
       activePromptMessage = message;
       activePromptOptions = Array.isArray(options) ? options : [];
+      syncPromptStatusChip('awaiting', message || 'Prompt is awaiting input.');
 
       debugLog('[showPrompt] Displaying', {
         title,
@@ -6363,6 +6519,7 @@ function showPrompt({ title = 'Action required', message = '', options = [], pla
         (/** @type {any} */ (window)).__tl_helpers.setElValue(promptSearchEl, '');
         if (promptSearchEl instanceof HTMLInputElement) promptSearchEl.placeholder = placeholder || 'Filter options...';
       }
+      setPromptUiMode('active');
       renderPromptOptions('');
 
       const promptModal = $('#promptModal');
@@ -6458,7 +6615,15 @@ function submitPrompt(/** @type {string|number|undefined|null} */ forcedValue) {
       session_id: currentSessionId,
       value,
     }));
-    hidePrompt({ preserveState: false, showRestore: false, reason: 'submit' });
+
+    // Keep prompt modal synchronized to parser lifecycle after submission.
+    setPromptUiMode('standby', 'Response submitted. Waiting for parser to provide the next prompt...');
+    if (promptMessageEl) {
+      promptMessageEl.textContent = 'Response submitted. Monitoring parser for next step.';
+    }
+    if (promptInputEl instanceof HTMLInputElement) {
+      promptInputEl.value = '';
+    }
   }, 'submitPrompt');
 }
 
@@ -6468,7 +6633,8 @@ function hidePrompt(options) {
     const preserveState = !!opts.preserveState;
     const showRestore = !!opts.showRestore;
     const reason = opts.reason || 'close';
-    const snapshot = showRestore ? {
+    const isStandby = !!($('#promptModal') && $('#promptModal').classList.contains('prompt-standby-active'));
+    const snapshot = (showRestore && !isStandby) ? {
       title: promptTitleEl ? promptTitleEl.textContent : 'Action required',
       message: activePromptMessage || (promptMessageEl ? promptMessageEl.textContent : ''),
       options: Array.isArray(activePromptOptions) ? activePromptOptions.slice() : [],
@@ -6548,6 +6714,14 @@ function hidePrompt(options) {
       activePromptOptions = [];
       selectedPromptOptions.clear();
       bundleExpandedState.clear();
+    }
+    setPromptUiMode('active');
+    if (reason === 'cancel') {
+      syncPromptStatusChip('cancelled', 'Prompt interaction cancelled.');
+    } else if (reason === 'close' && showRestore && snapshot) {
+      syncPromptStatusChip('hidden', 'Prompt hidden. Use Reopen prompt to continue.');
+    } else if (!preserveState) {
+      syncPromptStatusChip('idle', 'No active prompt.');
     }
     activePromptFingerprint = null;
   }, 'hidePrompt');

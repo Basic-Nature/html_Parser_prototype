@@ -319,6 +319,109 @@
     border-color: var(--border-dark, #333);
   }
 
+
+/* ============================================
+   QA Queue Lanes
+   ============================================ */
+
+.qa-queue-lane-panel {
+  margin: 0.75rem 0 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-light, #d9dee5);
+  border-radius: 0.5rem;
+  background: var(--surface-secondary, #fafafa);
+}
+
+.qa-queue-lane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.qa-queue-lane-title {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-primary, #22303d);
+}
+
+.qa-queue-lane-tabs {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+.qa-queue-tab {
+  border: 1px solid var(--border-light, #d9dee5);
+  background: var(--surface-variant, #f3f6fa);
+  color: var(--text-secondary, #506172);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.qa-queue-tab.active {
+  background: var(--brand-blue, #45818e);
+  color: #fff;
+  border-color: var(--brand-blue, #45818e);
+}
+
+.qa-queue-lane-body {
+  margin-top: 0.65rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.qa-queue-item {
+  border: 1px solid var(--border-light, #e0e6ed);
+  border-radius: 0.4rem;
+  background: #fff;
+  padding: 0.5rem;
+}
+
+.qa-queue-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.qa-queue-state,
+.qa-queue-action {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary, #516170);
+}
+
+.qa-queue-url {
+  font-size: 0.8rem;
+  color: var(--text-primary, #263340);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qa-queue-guidance {
+  font-size: 0.78rem;
+  color: var(--text-secondary, #5e6e7e);
+  margin-top: 0.2rem;
+}
+
+.qa-queue-meta {
+  font-size: 0.72rem;
+  color: var(--text-secondary, #7a8792);
+  margin-top: 0.2rem;
+}
+
+.qa-queue-empty {
+  font-size: 0.82rem;
+  color: var(--text-secondary, #738191);
+  padding: 0.35rem 0.2rem;
+}
   .qa-panel-header {
     border-bottom-color: var(--border-dark, #333);
   }

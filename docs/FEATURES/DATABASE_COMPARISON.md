@@ -68,20 +68,20 @@ To force re-parsing of URLs despite existing data:
 
 ```python
 # Python
-main(urls=urls, skip_database_check=True)
+main(urls=urls, force_reparse=True)
 ```
 
-```bash
-# CLI (future)
-python webapp/parser/html_election_parser.py --force-reparse
-```
+`force_reparse=True` takes precedence over database skip checks in centralized parser policy decisions.
 
 ## API Integration
 
 The database comparison logic is available via:
 
 ```python
-from webapp.parser.utils.database_comparison import check_existing_finalized_data
+from webapp.parser.utils.database_comparison import (
+   check_existing_finalized_data,
+   evaluate_url_processing_policy,
+)
 
 # Check a single URL
 data_exists, data_source, metadata = check_existing_finalized_data(
@@ -96,6 +96,14 @@ if data_exists:
     print(f"Metadata: {metadata}")
 else:
     print("No existing data - proceed with parsing")
+
+# Centralized decision helper used by parser routing
+decision = evaluate_url_processing_policy(
+   url="https://results.enr.clarityelections.com/GA/Fulton/...",
+   skip_database_check=False,
+   force_reparse=False,
+)
+print(decision["decision"], decision["should_skip"])
 ```
 
 ## Benefits

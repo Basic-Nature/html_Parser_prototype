@@ -125,10 +125,11 @@ This document provides the comprehensive architecture overview of the Smart Elec
 - Plugin-based and ML/NER-powered extraction
 - Returns candidate tables with context
 
-**`utils/ml_table_detector.py`**:
+**`utils/extraction_strategies.py`**:
 
-- ML-powered table detection and structure learning
-- Advanced extraction and anomaly detection
+- Layered table extraction strategies ordered by confidence and cost
+- Heuristic HTML, heading, pattern, and selectolax fallbacks
+- Strategy registry used by `table_core.py`
 
 #### Table Processing
 
@@ -145,7 +146,7 @@ This document provides the comprehensive architecture overview of the Smart Elec
 
 - NLP-powered entity recognition
 - Context enrichment and semantic analysis
-- Integrates with `ml_table_detector.py` for advanced parsing
+- Supports extraction and enrichment alongside `table_core.py`
 
 #### Browser & Network
 
@@ -251,7 +252,7 @@ URL Input
    ↓
 html_context (scout extraction paths)
    ├→ dynamic_table_extractor.py (find tables)
-   ├→ ml_table_detector.py (ML detection)
+   ├→ extraction_strategies.py (ranked extraction strategies)
    └→ spacy_utils.py (entity recognition)
    ↓
 table_core.py (harmonize + score)

@@ -173,6 +173,33 @@ python scripts/generate_county_handler.py California "Los Angeles" --navigation-
 
 ---
 
+## County Handler Extensibility Patterns (NY)
+
+Current county reference handlers live under `webapp/parser/handlers/states/new_york/county/`.
+
+### Rockland Pattern (fully customized)
+
+- Uses county-specific toggle keywords and button heuristics
+- Performs explicit click/toggle sequence before extraction
+- Applies county scoring vocabulary for contest and precinct signals
+
+### Westchester Pattern (baseline + retry)
+
+- Uses shared scan/select workflow
+- Uses `robust_table_extraction` through a retry wrapper
+- Escalates to snapshot mode on final retry via `retry_with_snapshot`
+
+### Recommended Extension Steps for New Counties
+
+1. Start from generated county scaffold.
+2. Add county-specific toggle keywords/selectors.
+3. Keep extraction through `robust_table_extraction(extraction_context=...)`.
+4. Wrap extraction with `retry_with_snapshot(max_attempts=3, backoff=2.0)`.
+5. Add navigation recipe entries for repeatable UI actions.
+6. Add county-focused tests under `webapp/tests/` for custom toggle logic and parse output contract.
+
+---
+
 ## Next Steps (Prioritized)
 
 ### 🔴 HIGH Priority
@@ -347,7 +374,7 @@ headers, data, contest, metadata = california.parse(
 
 1. **context_coordinator.py** - Indentation error (line 2027) - ✅ FIXED
 2. **Model Checkpoint** - Verify `models/contest_field_classifier.pt` exists
-3. **Vendor Base Classes** - Not yet implemented (blocks `--vendor` template)
+3. **Vendor Base Classes** - Not implemented (future scope, blocked `--vendor` template option)
 
 ### TODO: Medium Priority
 

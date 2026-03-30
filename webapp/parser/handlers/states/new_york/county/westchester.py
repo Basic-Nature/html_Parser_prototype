@@ -28,6 +28,7 @@ from webapp.parser.utils.browser_utils import (
 from webapp.parser.utils.contest_selector import select_contest_auto_first
 from webapp.parser.utils.html_scanner import scan_html_for_context
 from webapp.parser.utils.logger_singleton import logger
+from webapp.parser.utils.retry_utils import retry_with_snapshot
 from webapp.parser.utils.shared_logic import safe_get
 from webapp.parser.utils.table_core import robust_table_extraction
 
@@ -152,17 +153,29 @@ def parse(
         logger.info("[Westchester County] Autoscrolling to load all content...")
         autoscroll_until_stable(page, max_scrolls=10, scroll_delay=1000)
     
-    # === 5. Extract tables ===
-    result = robust_table_extraction(
+    # === 5. Extract tables (with retry + snapshot escalation) ===
+    extraction_context = {
+        **html_context,
+        "selected_contest": selected,
+        "coordinator": coordinator,
+        "session_id": session_id,
+        "state": state,
+        "county": county,
+        "handler": "ny.county.westchester",
+    }
+
+    @retry_with_snapshot(max_attempts=3, backoff=2.0, snapshot_on_final_fail=True)
+    def _extract_with_retry(page: Page, html_context: Dict[str, Any], **_kwargs):
+        return robust_table_extraction(
+            page=page,
+            extraction_context=html_context,
+        )
+
+    headers, data_rows = _extract_with_retry(
         page=page,
-        coordinator=coordinator,
-        html_context={**html_context, "selected_contest": selected},
+        html_context=extraction_context,
         session_id=session_id,
-        **kwargs,
     )
-    
-    headers = result.get("headers", [])
-    data_rows = result.get("data", [])
     
     # === 6. Build metadata ===
     metadata = {

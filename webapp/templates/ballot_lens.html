@@ -84,6 +84,10 @@
                   </div>
                 </div>
                 <div class="results-preview-meta" aria-live="polite">
+                  <span id="promptStatusChip" class="badge badge-soft prompt-status-chip prompt-status-idle" aria-label="Prompt: Idle" aria-describedby="promptStatusChipHelp">Prompt: Idle</span>
+                  <!-- Hidden help text for screen readers; contains legend of all chip states -->
+                  <span id="promptStatusChipHelp" style="display: none; visibility: hidden;">Legend: Idle=no active prompt | Awaiting=input required | Standby=waiting on parser | Complete=run finished | Error=run failed | Cancelled=run cancelled | Hidden=prompt dismissed with restore available</span>
+                  <span class="meta-sep" aria-hidden="true">•</span>
                   <span id="resultCountBadge" class="badge badge-soft">0 results</span>
                   <span class="meta-sep" aria-hidden="true">•</span>
                   <span id="lastUpdatedPreview" class="meta-muted" aria-label="Last updated time">—</span>

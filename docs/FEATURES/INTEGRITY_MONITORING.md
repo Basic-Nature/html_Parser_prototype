@@ -319,9 +319,9 @@ signal = compute_integrity_signal(
 
 ---
 
-## Future Enhancements
+## Future Enhancements (Not in Current Scope)
 
-### Phase 2 (Planned)
+### Phase 2 (PLANNED - Future)
 
 - **Vendor-specific baselines**: Track drift per state/county handler
 - **Alert priority ranking**: High/medium/low severity tiers
@@ -329,7 +329,7 @@ signal = compute_integrity_signal(
 - **Historical trend visualization**: Web UI dashboard with charts
 - **Threshold auto-tuning**: Learn optimal thresholds from feedback
 
-### Phase 3 (Research)
+### Phase 3 (RESEARCH - Future)
 
 - **Contextual drift detection**: Compare DOM similarity before/after alerts
 - **Segment-level attribution**: Which specific segments cause drift?
@@ -350,11 +350,11 @@ signal = compute_integrity_signal(
 
 ## Quick Reference
 
-**Trend file location**: `tools/debug_headless_output/context_digest_trends.json`  
-**Per-session digests**: `tools/debug_headless_output/context_digest_{session_id}.json`  
-**Analyzer script**: `tools/analyze_context_digest_trends.py`  
-**Schema version**: `1.1` (includes segment/unknown metrics)  
-**Rolling window size**: 120 digests (configurable via `_update_digest_trends()`)  
+**Trend file location**: `tools/debug_headless_output/context_digest_trends.json`
+**Per-session digests**: `tools/debug_headless_output/context_digest_{session_id}.json`
+**Analyzer script**: `tools/analyze_context_digest_trends.py`
+**Schema version**: `1.1` (includes segment/unknown metrics)
+**Rolling window size**: 120 digests (configurable via `_update_digest_trends()`)
 **Default thresholds**: Confidence: -0.08, Unknown: +0.10, Review: +5.0
 
 ---

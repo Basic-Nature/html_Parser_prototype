@@ -20,7 +20,7 @@ Machine learning and neural network approaches to table detection, extraction qu
 
 The ML framework enhances parser quality through:
 
-- **Table Detection**: Neural network-based identification of tabular content
+- **Table Extraction**: Layered structural extraction and heuristic table identification
 - **Entity Recognition**: NER (Named Entity Recognition) for candidate/office extraction
 - **Structure Learning**: Learn document structure from samples
 - **Quality Scoring**: ML-based confidence assessment
@@ -29,20 +29,19 @@ The ML framework enhances parser quality through:
 
 ## 🧠 ML Components
 
-### 1. Table Detection Model
+### 1. Table Extraction Pipeline
 
-**Purpose**: Identify tables in documents without explicit headers
+**Purpose**: Identify and harmonize election result tables from live pages or raw HTML
 
-**Input**: Raw HTML/text content  
-**Output**: List of likely tables with confidence scores
+**Input**: Raw HTML/text content or a Playwright page  
+**Output**: Headers and normalized data rows from the highest-confidence extraction path
 
-**Model**: Convolutional Neural Network (CNN)
+**Implementation**: Layered heuristics with structural parsing and optional NLP enrichment
 
 ```python
-# Usage
-from utils.ml_table_detector import detect_tables
-tables = detect_tables(content, confidence_threshold=0.7)
-# Returns: [(table_html, 0.95), (table_html, 0.82), ...]
+from webapp.parser.utils.table_core import robust_table_extraction
+
+headers, rows = robust_table_extraction(page, extraction_context={"session_id": "demo"})
 ```
 
 ### 2. Entity Recognition (NER)
@@ -70,7 +69,7 @@ entities = extract_entities(text)
 **Factors**:
 
 - Source document quality (text clarity, formatting)
-- Extraction method confidence (panel vs section vs ML)
+- Extraction method confidence (panel vs section vs heuristic fallback)
 - Data consistency (vote totals, duplicate checks)
 - Historical pattern matching
 
@@ -136,27 +135,19 @@ Accuracy (high/low):          91.2%
 # Install ML dependencies
 pip install -r requirements-ml.txt
 
-# Download pre-trained models (if needed)
-python -m utils.ml_table_detector --download-models
+# Download pre-trained NLP models (if needed)
 python -m utils.spacy_utils --download-models
 ```
 
 ### Basic Usage
 
 ```python
-from utils.ml_table_detector import detect_tables
 from utils.spacy_utils import extract_entities
+from webapp.parser.utils.table_core import robust_table_extraction
 
-# Parse HTML content
-html_content = "<html>...</html>"
-
-# Detect tables
-tables = detect_tables(html_content, threshold=0.7)
-
-# Extract entities from each table
-for table_html, confidence in tables:
-    entities = extract_entities(str(table_html))
-    process_candidates(entities['CANDIDATE'])
+headers, rows = robust_table_extraction(page, extraction_context={})
+entities = extract_entities(" ".join(headers))
+process_candidates(entities['CANDIDATE'])
 ```
 
 ## 🎓 Training & Fine-Tuning
@@ -187,42 +178,15 @@ For fine-tuning on specific document types:
 ### Fine-Tuning Process
 
 ```bash
-# Prepare training data
-python utils/ml_table_detector.py --prepare-dataset dataset.json
-
-# Fine-tune model
-python utils/ml_table_detector.py \
-  --train \
-  --dataset ./data/training_set.pkl \
-  --epochs 20 \
-  --batch-size 32
-
-# Evaluate
-python utils/ml_table_detector.py \
-  --evaluate \
-  --test-dataset ./data/test_set.pkl
+# Fine-tune the BERT NER model used for election entities
+python -m webapp.parser.health.fine_tune_bert_ner
 ```
 
 ## 📈 Optimization
 
 ### Hyperparameter Tuning
 
-```python
-# Grid search for optimal parameters
-from utils.ml_table_detector import optimize
-
-results = optimize(
-    param_grid={
-        'learning_rate': [0.001, 0.01, 0.1],
-        'batch_size': [16, 32, 64],
-        'epochs': [10, 20, 50]
-    },
-    metric='f1_score'
-)
-
-# Best parameters found
-print(results.best_params)
-```
+Focus optimization on extraction strategy thresholds, header scoring, and NER quality metrics.
 
 ### Performance Benchmarks
 

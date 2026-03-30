@@ -154,22 +154,6 @@ def strategy_heading_associated(page, context=None) -> List[StrategyResult]:
     return results
 
 
-def strategy_ml_detection(page, context=None) -> List[StrategyResult]:
-    """Use ML detector (already returns tables)."""
-    from .ml_table_detector import detect_tables_ml
-    html = safe_content(page)
-    if not html or len(html) < 80:
-        return []
-    res = []
-    tables = detect_tables_ml(html)
-    for idx, t in enumerate(tables):
-        headers = t.get("headers") if isinstance(t, dict) else []
-        data = t.get("data") if isinstance(t, dict) else []
-        if headers and data:
-            res.append((headers, data, {"ml_index": idx}))
-    return res
-
-
 def strategy_selectolax_fallback(page, context=None) -> List[StrategyResult]:
     """Parse tables using selectolax only (lowest priority)."""
     html = safe_content(page)
@@ -283,6 +267,6 @@ register_strategy(strategy_dom_repetition, "dom_repetition", priority=10)
 register_strategy(strategy_pattern_based, "patterns", priority=15)
 register_strategy(strategy_heading_associated, "heading_tables", priority=20)
 register_strategy(strategy_html_tables, "html_tables", priority=30)
-register_strategy(strategy_ml_detection, "ml_detection", priority=40)
+# Removed: strategy_ml_detection (ML table detector stub - implementation incomplete)
 register_strategy(strategy_selectolax_fallback, "selectolax_fallback", priority=90)
 register_strategy(strategy_nlp_fallback, "nlp_fallback", priority=100)

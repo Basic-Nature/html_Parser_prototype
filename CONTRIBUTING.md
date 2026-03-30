@@ -117,7 +117,7 @@ This project is designed to be scalable, readable, and resilient — please read
 - Improve **shared utilities** in `utils/` or `handlers/shared/`.
 - Enhance or document the **Web UI** (Flask app in `webapp/`) for a better user experience, especially for new coders or non-technical users.
 - **Expand the context library**: Add new context patterns, feedback, or corrections in `context_library.json` or contribute to `Context_Integration/context_organizer.py`.
-- **Improve ML/NLP extraction or entity recognition**: See `ml_table_detector.py` and `spacy_utils.py`.
+- **Improve ML/NLP extraction or entity recognition**: See `table_core.py`, `extraction_strategies.py`, and `spacy_utils.py`.
 - **Use or extend the correction bot**: See `health/manual_correction.py` and retraining scripts.
 - **Tune dynamic table extraction**: Add or improve extraction strategies, scoring, or patching logic in `utils/table_core.py` and `utils/dynamic_table_extractor.py`.
 - All corrections and feedback are logged for auditability and future learning.
@@ -127,7 +127,7 @@ This project is designed to be scalable, readable, and resilient — please read
 ### 🧠 Improving Context & Correction
 
 - To add new context patterns or feedback, edit `context_library.json` or contribute to `Context_Integration/context_organizer.py`.
-- To improve ML/NLP extraction or entity recognition, see `utils/ml_table_detector.py` and `utils/spacy_utils.py`.
+- To improve ML/NLP extraction or entity recognition, see `utils/table_core.py`, `utils/extraction_strategies.py`, and `utils/spacy_utils.py`.
 - To use or extend the correction bot, see `health/manual_correction.py` and retraining scripts.
 - All corrections and feedback are logged for auditability and future learning.
 

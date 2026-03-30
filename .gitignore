@@ -21,7 +21,8 @@ pip-wheel-metadata/
 .pytest_cache/
 .mypy_cache/
 .tox/
-
+.hypothesis/
+.coverage
 # -------------------------
 # Editor / OS
 # -------------------------

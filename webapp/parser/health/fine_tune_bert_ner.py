@@ -14,9 +14,10 @@ Environment Variables:
     BERT_NER_BASE_MODEL=dslim/bert-base-NER
 """
 import os
+import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import orjson
 from datasets import Dataset
@@ -58,6 +59,52 @@ LABEL2ID = {label: idx for idx, label in enumerate(ELECTION_ENTITY_LABELS)}
 ID2LABEL = {idx: label for label, idx in LABEL2ID.items()}
 
 
+def align_entity_spans_to_tokens(text: str, entities: List[Dict[str, Any]]) -> Tuple[List[str], List[str]]:
+    """
+    Properly align entity character spans to token positions using BIO tagging.
+    
+    Args:
+        text: Raw text string
+        entities: List of {"start": int, "end": int, "label": str}
+    
+    Returns:
+        (tokens, ner_tags) - parallel lists of tokens and BIO tags
+    """
+    # Tokenize preserving character positions
+    tokens = []
+    token_spans = []  # (start_char, end_char) for each token
+    
+    # Split on whitespace but track positions
+    for match in re.finditer(r'\S+', text):
+        tokens.append(match.group())
+        token_spans.append((match.start(), match.end()))
+    
+    # Initialize tags as "O" (outside)
+    ner_tags = ["O"] * len(tokens)
+    
+    # For each entity, find matching tokens using character offsets
+    for entity in entities:
+        ent_start = entity.get("start", 0)
+        ent_end = entity.get("end", 0)
+        label = entity.get("label", "")
+        
+        if not label or ent_start >= ent_end:
+            continue
+        
+        first_token = True
+        for i, (token_start, token_end) in enumerate(token_spans):
+            # Check if token overlaps with entity span
+            if token_start < ent_end and token_end > ent_start:
+                # Token overlaps with entity
+                if first_token:
+                    ner_tags[i] = f"B-{label}"
+                    first_token = False
+                else:
+                    ner_tags[i] = f"I-{label}"
+    
+    return tokens, ner_tags
+
+
 def load_ner_data_from_db() -> List[Dict[str, Any]]:
     """Load verified NER training examples from PostgreSQL."""
     with SessionLocal() as session:
@@ -70,15 +117,8 @@ def load_ner_data_from_db() -> List[Dict[str, Any]]:
             text = row[0]
             entities = row[1]  # JSONB: [{"start": 0, "end": 8, "label": "PERSON"}, ...]
             
-            # Convert to token-level tags
-            tokens = text.split()  # Simple tokenization (improve with spaCy)
-            ner_tags = ["O"] * len(tokens)
-            
-            # Map entity spans to token positions (simplified)
-            for ent in entities:
-                label = ent["label"]
-                # TODO: Improve token alignment with actual character offsets (start, end)
-                ner_tags[0] = f"B-{label}"  # Placeholder - needs proper alignment
+            # Properly align entity spans to token positions using character offsets
+            tokens, ner_tags = align_entity_spans_to_tokens(text, entities)
             
             data.append({"tokens": tokens, "ner_tags": ner_tags})
         
@@ -102,15 +142,8 @@ def load_ner_data_from_jsonl() -> List[Dict[str, Any]]:
                 text = example.get("text", "")
                 entities = example.get("entities", [])
                 
-                # Convert to token-level tags
-                tokens = text.split()
-                ner_tags = ["O"] * len(tokens)
-                
-                # Map entity spans to token positions
-                for ent in entities:
-                    label = ent.get("label")
-                    # TODO: Improve token alignment (start, end offsets)
-                    ner_tags[0] = f"B-{label}"  # Placeholder
+                # Properly align entity spans to token positions using character offsets
+                tokens, ner_tags = align_entity_spans_to_tokens(text, entities)
                 
                 data.append({"tokens": tokens, "ner_tags": ner_tags})
             except Exception as e:

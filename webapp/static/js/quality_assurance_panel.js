@@ -25,6 +25,8 @@ const QAPanel = (() => {
    * @property {string} created_at - ISO timestamp
    * @property {string} [promoted_at] - When promoted to DL2 (if applicable)
    * @property {string} [reviewer_principal] - Who promoted it (if applicable)
+   * @property {string} [qa_routing_state] - AUTO_PASS, WARN_REVIEW, HARD_FAIL
+   * @property {string} [review_priority] - low, medium, high
    */
 
   /**
@@ -46,6 +48,12 @@ const QAPanel = (() => {
    * @type {Set<string>}
    */
   const pendingPromotions = new Set();
+
+  /**
+   * Cache of latest queue lane payload.
+   * @type {null|{ total: number, state_filter?: string|null, groups?: Record<string, Array<any>> }}
+   */
+  let _queueActionsCache = null;
 
   // ============================================
   // API Communication
@@ -198,6 +206,183 @@ const QAPanel = (() => {
     }
   }
 
+  /**
+   * Fetch grouped queue orchestration lanes.
+   * @param {number} [limit=200]
+   * @param {string} [state='']
+   * @returns {Promise<{ total: number, state_filter?: string|null, groups: Record<string, Array<any>> }>}
+   */
+  async function getQueueActions(limit = 200, state = '') {
+    try {
+      const params = new URLSearchParams();
+      params.set('limit', String(limit));
+      if (state) params.set('state', String(state));
+      const response = await fetch(`/api/data-assurance/queue-actions?${params.toString()}`);
+      if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+
+      const payload = await response.json();
+      const normalized = {
+        total: Number(payload?.total || 0),
+        state_filter: payload?.state_filter || null,
+        groups: payload?.groups || {
+          auto_pass_candidates: [],
+          warn_review_queue: [],
+          hard_fail_retry_queue: [],
+        },
+      };
+      _queueActionsCache = normalized;
+      return normalized;
+    } catch (error) {
+      console.error('[QA] Failed to fetch queue actions:', error);
+      return {
+        total: 0,
+        state_filter: null,
+        groups: {
+          auto_pass_candidates: [],
+          warn_review_queue: [],
+          hard_fail_retry_queue: [],
+        },
+      };
+    }
+  }
+
+  /**
+   * Ensure queue lane host exists in the results preview area.
+   * @returns {HTMLElement|null}
+   */
+  function ensureQueueLaneHost() {
+    const resultsPreview = document.getElementById('resultsPreviewBar');
+    if (!resultsPreview) return null;
+    const previewContent = resultsPreview.querySelector('.results-preview-content');
+    if (!previewContent) return null;
+
+    let host = document.getElementById('qaQueueLanePanel');
+    if (host) return host;
+
+    host = document.createElement('section');
+    host.id = 'qaQueueLanePanel';
+    host.className = 'qa-queue-lane-panel';
+    host.setAttribute('aria-label', 'QA routing lanes');
+    host.innerHTML = [
+      '<div class="qa-queue-lane-header">',
+      '  <h3 class="qa-queue-lane-title">QA Queue Lanes</h3>',
+      '  <button type="button" class="btn btn-sm" id="qaQueueLaneRefresh" aria-label="Refresh QA queue lanes">Refresh</button>',
+      '</div>',
+      '<div class="qa-queue-lane-tabs" role="tablist" aria-label="QA queue lanes">',
+      '  <button type="button" class="qa-queue-tab active" role="tab" data-lane="ALL" aria-selected="true">All</button>',
+      '  <button type="button" class="qa-queue-tab" role="tab" data-lane="AUTO_PASS" aria-selected="false">AUTO_PASS</button>',
+      '  <button type="button" class="qa-queue-tab" role="tab" data-lane="WARN_REVIEW" aria-selected="false">WARN_REVIEW</button>',
+      '  <button type="button" class="qa-queue-tab" role="tab" data-lane="HARD_FAIL" aria-selected="false">HARD_FAIL</button>',
+      '</div>',
+      '<div class="qa-queue-lane-body" id="qaQueueLaneBody" role="region" aria-live="polite"></div>',
+    ].join('');
+
+    previewContent.appendChild(host);
+    return host;
+  }
+
+  /**
+   * Render queue lane content for selected tab.
+   * @param {{ total: number, state_filter?: string|null, groups: Record<string, Array<any>> }} payload
+   * @param {string} selectedLane
+   */
+  function renderQueueLaneBody(payload, selectedLane) {
+    const body = document.getElementById('qaQueueLaneBody');
+    if (!body) return;
+
+    const groups = payload?.groups || {};
+    const laneMap = {
+      AUTO_PASS: 'auto_pass_candidates',
+      WARN_REVIEW: 'warn_review_queue',
+      HARD_FAIL: 'hard_fail_retry_queue',
+    };
+
+    const allItems = [
+      ...(groups.auto_pass_candidates || []),
+      ...(groups.warn_review_queue || []),
+      ...(groups.hard_fail_retry_queue || []),
+    ];
+
+    const items = selectedLane === 'ALL'
+      ? allItems
+      : (groups[laneMap[selectedLane]] || []);
+
+    if (!items.length) {
+      body.innerHTML = '<div class="qa-queue-empty">No queued items for this lane.</div>';
+      return;
+    }
+
+    const topItems = items.slice(0, 8);
+    body.innerHTML = topItems.map((entry) => {
+      const url = String(entry?.source_url || entry?.url || '').trim();
+      const routing = String(entry?.qa_routing_state || selectedLane || 'WARN_REVIEW');
+      const action = String(entry?.queue_action?.action || '').trim();
+      const guidance = Array.isArray(entry?.next_run_guidance?.recommended_steps)
+        ? entry.next_run_guidance.recommended_steps[0] || 'Review guidance unavailable.'
+        : 'Review guidance unavailable.';
+      const trust = entry?.trust_score != null ? `Trust ${entry.trust_score}` : '';
+      return [
+        '<article class="qa-queue-item">',
+        `  <div class="qa-queue-item-head"><span class="qa-queue-state">${routing}</span><span class="qa-queue-action">${action}</span></div>`,
+        `  <div class="qa-queue-url" title="${url}">${url || 'N/A'}</div>`,
+        `  <div class="qa-queue-guidance">${guidance}</div>`,
+        `  <div class="qa-queue-meta">${trust}</div>`,
+        '</article>',
+      ].join('');
+    }).join('');
+  }
+
+  /**
+   * Refresh queue lanes and wire tab interactions.
+   * @returns {Promise<void>}
+   */
+  async function mountQueueLaneTabs() {
+    const host = ensureQueueLaneHost();
+    if (!host) return;
+
+    const tabs = /** @type {HTMLButtonElement[]} */ (Array.from(host.querySelectorAll('.qa-queue-tab')));
+    const refreshBtn = /** @type {HTMLButtonElement|null} */ (host.querySelector('#qaQueueLaneRefresh'));
+    let selectedLane = host.getAttribute('data-selected-lane') || 'ALL';
+
+    const stateParam = selectedLane === 'ALL' ? '' : selectedLane;
+    const payload = await getQueueActions(200, stateParam);
+
+    const groups = payload?.groups || {};
+    const counts = {
+      ALL: Number(payload?.total || 0),
+      AUTO_PASS: (groups.auto_pass_candidates || []).length,
+      WARN_REVIEW: (groups.warn_review_queue || []).length,
+      HARD_FAIL: (groups.hard_fail_retry_queue || []).length,
+    };
+
+    tabs.forEach((tab) => {
+      const lane = tab.getAttribute('data-lane') || 'ALL';
+      const count = counts[lane] || 0;
+      const label = lane === 'ALL' ? 'All' : lane;
+      tab.textContent = `${label} (${count})`;
+      const isActive = lane === selectedLane;
+      tab.classList.toggle('active', isActive);
+      tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      if (!tab.dataset.boundClick) {
+        tab.dataset.boundClick = '1';
+        tab.addEventListener('click', async () => {
+          host.setAttribute('data-selected-lane', lane);
+          selectedLane = lane;
+          await mountQueueLaneTabs();
+        });
+      }
+    });
+
+    if (refreshBtn && !refreshBtn.dataset.boundClick) {
+      refreshBtn.dataset.boundClick = '1';
+      refreshBtn.addEventListener('click', async () => {
+        await mountQueueLaneTabs();
+      });
+    }
+
+    renderQueueLaneBody(payload, selectedLane);
+  }
+
   // ============================================
   // UI Rendering: Status Badge
   // ============================================
@@ -273,6 +458,16 @@ const QAPanel = (() => {
     header.appendChild(titleEl);
     header.appendChild(badgeEl);
     panel.appendChild(header);
+
+    // Routing lane indicator (AUTO_PASS / WARN_REVIEW / HARD_FAIL)
+    if (qaStatus.qa_routing_state) {
+      const routingEl = document.createElement('div');
+      routingEl.className = `qa-routing qa-routing-${String(qaStatus.qa_routing_state).toLowerCase()}`;
+      const priority = qaStatus.review_priority ? ` (${qaStatus.review_priority})` : '';
+      routingEl.textContent = `Routing: ${qaStatus.qa_routing_state}${priority}`;
+      routingEl.setAttribute('aria-label', `Routing state ${qaStatus.qa_routing_state}${priority}`);
+      panel.appendChild(routingEl);
+    }
 
     // Issues list (if any)
     if (qaStatus.detected_issues && qaStatus.detected_issues.length > 0) {
@@ -479,6 +674,23 @@ const QAPanel = (() => {
     },
 
     /**
+     * Fetch grouped queue actions.
+     * @param {number} [limit]
+     * @param {string} [state]
+     */
+    async getQueueActions(limit, state) {
+      return getQueueActions(limit, state);
+    },
+
+    /**
+     * Mount/update queue lane tabs in the Results Preview area.
+     * @returns {Promise<void>}
+     */
+    async mountQueueLaneTabs() {
+      return mountQueueLaneTabs();
+    },
+
+    /**
      * Manually trigger promotion for a dataset
      * @param {string} dataset_id - Dataset identifier
      * @returns {Promise<void>}
@@ -502,6 +714,7 @@ const QAPanel = (() => {
      */
     clearCache() {
       classificationCache.clear();
+      _queueActionsCache = null;
     },
   };
 })();
@@ -541,6 +754,11 @@ function initQAPanelIntegration() {
 
   observer.observe(resultsGrid, { childList: true });
   /** @type {ResultsGridElement} */ (resultsGrid)._qaObserverAttached = true;
+
+  // Render lane tabs from live queue-actions endpoint for reviewer orchestration.
+  QAPanel.mountQueueLaneTabs().catch((error) => {
+    console.warn('[QA] Unable to mount queue lane tabs:', error?.message || error);
+  });
 }
 
 // Initialize QA panel integration when DOM is ready

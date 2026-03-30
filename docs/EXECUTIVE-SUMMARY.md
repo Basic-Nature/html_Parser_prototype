@@ -179,27 +179,35 @@ New Approach:
 
 ## Deployment Path
 
-### Phase 1 (NOW): Deploy Infrastructure
+### Phase 1 (COMPLETE): Infrastructure & Learning Framework ✅
 
-- Registry + shared scaffold in production
-- Learning log active
-- Begin capturing patterns
+- ✓ Registry + shared scaffold deployed
+- ✓ Learning log infrastructure operational
+- ✓ Recipe capture pipeline working
+- ✓ All integration tests passing
+- ✓ Documentation complete
 
-### Phase 2 (Next): Accumulate Learning Data
+### Phase 2 (PLANNED): Production Learning Accumulation
+
+**Estimated Timeline:** 1-2 weeks
 
 ```bash
-python scripts/navigation_random_smoke.py --count 20 --persist-log
+python scripts/navigation_random_smoke.py --count 50+ --persist-log
 ```
 
-- Run against diverse URLs
-- Build recipe library
-- Validate replay patterns accumulate
+- Run against diverse real-world URLs
+- Build comprehensive recipe library
+- Validate learned pattern replay effectiveness
+- Monitor parsing performance improvements
 
-### Phase 3 (Future): Integration
+### Phase 3 (PLANNED): Full Parsing Integration & Scale Validation
 
-- Enable full table extraction + metadata
-- End-to-end URL → parsing → database
-- Performance validation at scale
+**Estimated Timeline:** 2-3 weeks
+
+- Deploy validated recipes to production
+- Enable end-to-end URL → parsing → database flow
+- Performance profiling and optimization
+- Regression testing at scale
 
 ---
 

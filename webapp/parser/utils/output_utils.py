@@ -18,11 +18,18 @@ import orjson
 import pandas as pd
 
 from ..config import BASE_DIR, LOG_DIR, OUTPUT_CACHE, OUTPUT_DIR
+from .database_comparison import (
+    build_database_cross_check as _build_database_cross_check,
+)
+from .database_comparison import (
+    cross_check_profile_for_source,
+)
+from .database_comparison import (
+    should_fail_database_cross_check as _should_fail_database_cross_check,
+)
 from .logger_singleton import logger
 from .pivot import transform_wide_to_smart_standard
-from .rawjson_utils import (
-    extract_rawjson_enrichment_from_rows,
-)
+from .rawjson_utils import extract_rawjson_enrichment_from_rows
 from .rawjson_utils import (
     offload_rawjson_to_ndjson as _shared_offload_rawjson_to_ndjson,
 )
@@ -38,6 +45,11 @@ from .shared_logic import (
 )
 
 PERCENT_COL_REGEX = re.compile(r"(% Vote|Cumulative %|Percent Reported| - %)$", re.I)
+
+
+def _cross_check_profile_for_source(reference_source: Optional[str]) -> Dict[str, Any]:
+    """Compatibility wrapper re-exported for existing tests and callers."""
+    return cross_check_profile_for_source(reference_source)
 
 def coerce_percent_strings(row: dict):
     for k, v in row.items():
@@ -279,6 +291,7 @@ def deep_merge_dicts(dest, src) -> dict:
             dest[k] = v
     return dest
 
+
 def _slug(value: Optional[str], max_len: int = 80) -> str:
     if not isinstance(value, str):
         return "na"
@@ -498,6 +511,96 @@ def finalize_election_output(
         safe = coerce_percent_strings(safe)
         safe_rows.append(safe)
 
+    # Optional passive database cross-check against existing reference metadata.
+    # This does not block output writes unless fail-on-mismatch gate is enabled.
+    fail_cross_check = False
+    fail_reason = ""
+    try:
+        source_url = context.get("source_url") or context.get("url")
+        if source_url and not context.get("disable_database_cross_check", False):
+            reference_source = context.get("database_reference_source")
+            reference_metadata = context.get("database_reference_metadata")
+
+            if not reference_metadata:
+                from .database_comparison import fetch_database_reference_metadata
+
+                found, fetched_source, fetched_meta = fetch_database_reference_metadata(
+                    source_url,
+                    session_id=session_id,
+                    state=state_eff or None,
+                    county=county_eff or None,
+                    contest=contest_eff or None,
+                )
+                if found:
+                    reference_source = fetched_source
+                    reference_metadata = fetched_meta
+
+            cross_check = _build_database_cross_check(
+                source_url=source_url,
+                headers=headers_final,
+                rows=safe_rows,
+                contest=contest_eff,
+                state=state_eff,
+                county=county_eff,
+                reference_source=reference_source,
+                reference_metadata=reference_metadata,
+            )
+            context["database_cross_check"] = cross_check
+
+            if cross_check.get("status") == "mismatch":
+                if _should_fail_database_cross_check(context):
+                    fail_cross_check = True
+                    fail_reason = "database_cross_check_mismatch"
+                    context["quality_gate"] = {
+                        "status": "failed",
+                        "reason": fail_reason,
+                        "source": cross_check.get("reference_source"),
+                    }
+                logger.warning(
+                    {
+                        "level": "WARNING",
+                        "type": "database",
+                        "message": "[DatabaseCrossCheck] Extracted output mismatches reference metadata",
+                        "session_id": session_id,
+                        "source_url": source_url,
+                        "reference_source": cross_check.get("reference_source"),
+                        "mismatches": cross_check.get("mismatches", []),
+                    }
+                )
+            elif cross_check.get("status") == "match":
+                logger.info(
+                    {
+                        "level": "INFO",
+                        "type": "database",
+                        "message": "[DatabaseCrossCheck] Extracted output aligns with reference metadata",
+                        "session_id": session_id,
+                        "source_url": source_url,
+                        "reference_source": cross_check.get("reference_source"),
+                    }
+                )
+    except Exception as exc:
+        logger.warning(
+            {
+                "level": "WARNING",
+                "type": "database",
+                "message": f"[DatabaseCrossCheck] Unable to perform cross-check: {exc}",
+                "session_id": session_id,
+            }
+        )
+
+    if fail_cross_check:
+        logger.error(
+            {
+                "level": "ERROR",
+                "type": "database",
+                "message": "[DatabaseCrossCheck] Output blocked by fail-on-mismatch gate",
+                "session_id": session_id,
+                "reason": fail_reason,
+                "cross_check": context.get("database_cross_check"),
+            }
+        )
+        return {"csv_path": "", "metadata_path": ""}
+
     # Write CSV
     def _write_csv(path: str, fieldnames: list[str], rows: list[dict]) -> bool:
         try:
@@ -636,6 +739,7 @@ def finalize_election_output(
         "rawjson_summary": context.get("summary"),
         "rawjson_enrichment_slim": context.get("rawjson_enrichment_slim"),
         "structure_hash": context.get("structure_hash"),
+        "database_cross_check": context.get("database_cross_check"),
     }
     if bundle_mode == "aggregate":
         meta["bundle_mode"] = "aggregate"

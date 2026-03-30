@@ -589,13 +589,13 @@ WHERE context_type = 'field_selection'
 
 ### Implementation Plan
 
-***Phase 1: QA Panel Integration (In Progress)***
+Phase 1: QA Panel Integration (PARTIAL - Research Phase)
 
 - ✅ QA panel captures user corrections (`quality_assurance_panel.js`)
 - ✅ Corrections stored in DB (`/api/data-assurance/submit-correction`)
-- 🔄 TODO: Wire corrections into `ner_training_data` table
+- 🔬 TODO: Wire corrections into `ner_training_data` table
 
-***Phase 2: Incremental Training (Future)***
+Phase 2: Incremental Training (PLANNED - Future)
 
 - 🔬 TODO: Implement `incremental_train_spacy_ner(new_examples)`
 - 🔬 TODO: Avoid full retraining (just update weights on new data)
@@ -603,7 +603,7 @@ WHERE context_type = 'field_selection'
 
 ---
 
-## 10. Federated Learning (Future)
+## 10. Federated Learning (Research - Not in Scope)
 
 ### Concept
 
@@ -632,15 +632,15 @@ WHERE context_type = 'field_selection'
 - **Opt-in only** (deployments can disable federated sync)
 - **Differential privacy** (add noise to confidence scores before sharing)
 
-### Implementation Plan
+### Implementation Plan (Future Research)
 
-***Phase 1: Pattern Extraction (Future)***
+Phase 1: Pattern Extraction (PLANNED - Future)
 
 - 🔬 TODO: Implement `extract_anonymized_patterns(context_library)`
 - 🔬 TODO: Hash state/county/contest combos + aggregate confidence scores
 - 🔬 TODO: Export to `pattern_export.jsonl`
 
-***Phase 2: Pattern Sync (Future)***
+Phase 2: Pattern Sync (PLANNED - Future)
 
 - 🔬 TODO: Implement `sync_patterns_to_pool(pattern_export.jsonl, remote_url)`
 - 🔬 TODO: Download remote patterns via REST API

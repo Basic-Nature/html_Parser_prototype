@@ -80,10 +80,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { capture:true });
 
   // Harden target=_blank links
+  // Harden target=_blank links — read rel inside inner loop so each flag
+  // sees the already-updated attribute from the previous iteration.
   document.querySelectorAll('a[target="_blank"]').forEach(a => {
-    const rel = (a.getAttribute('rel')||'').toLowerCase();
     const needed = ['noopener','noreferrer'];
     needed.forEach(flag=>{
+      const rel = (a.getAttribute('rel')||'').toLowerCase();
       if (!rel.includes(flag))
         a.setAttribute('rel', (rel ? rel + ' ' : '') + flag);
     });

@@ -36,6 +36,7 @@ describe('data_framework bootstrap contract', () => {
 
   beforeEach(() => {
     document.head.innerHTML = '';
+    window.localStorage.clear();
     document.body.innerHTML = [
       '<div id="dataFrameworkConfig" data-api-url="/api/custom_warehouse" data-preview-url="/api/data_framework/preview" data-curated-url="/api/data_framework/curated" data-upload-url="/upload/input"></div>',
       '<table><thead><tr id="table-header"></tr></thead><tbody id="table-body"></tbody></table>',
@@ -89,6 +90,20 @@ describe('data_framework bootstrap contract', () => {
     expect(urls.some((u) => u.includes('/api/custom_warehouse'))).toBe(true);
   });
 
+  test('falls back to default warehouse api url when hydrated config is missing', async () => {
+    document.body.innerHTML = document.body.innerHTML.replace(
+      ' data-api-url="/api/custom_warehouse"',
+      ''
+    );
+
+    loadDataFrameworkScript();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flushAsync();
+
+    const urls = mockFetchInstance.mock.calls.map((args) => String(args[0] || ''));
+    expect(urls.some((u) => u.includes('/api/warehouse_election_results'))).toBe(true);
+  });
+
   test('enters read-only mode when auth-protected feed returns 401', async () => {
     loadDataFrameworkScript();
     document.dispatchEvent(new Event('DOMContentLoaded'));
@@ -99,5 +114,39 @@ describe('data_framework bootstrap contract', () => {
 
     expect(banner.classList.contains('d-none')).toBe(false);
     expect((message.textContent || '').toLowerCase()).toContain('read-only mode');
+  });
+
+  test('uses cached warehouse snapshot when priority endpoint is unavailable', async () => {
+    window.localStorage.setItem(
+      'df_warehouse_status_snapshot_v1',
+      JSON.stringify({
+        payload: {
+          expected_total: 4,
+          missing_total: 1,
+          by_priority: [{ priority: 'high', missing: 1 }],
+          available_years: [2024],
+          division_summary: [{ type: 'county', rows: 2 }],
+        },
+        captured_at: '2026-03-25T00:00:00Z',
+      })
+    );
+
+    mockFetchInstance.mockImplementation(async (url) => {
+      const target = String(url || '');
+      if (target.includes('/api/data_framework/warehouse_status')) {
+        return jsonResponse({ error: 'offline' }, 500);
+      }
+      if (target.includes('/api/custom_warehouse')) {
+        return jsonResponse([{ contest: 'President', candidate: 'Alice Johnson' }]);
+      }
+      return jsonResponse({ rows: [] });
+    });
+
+    loadDataFrameworkScript();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flushAsync();
+
+    expect(document.getElementById('warehousePriorityStatus').textContent).toContain('(cached)');
+    expect(document.getElementById('warehousePriorityMeta').textContent).toContain('Source: cached snapshot');
   });
 });

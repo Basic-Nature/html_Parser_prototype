@@ -1068,6 +1068,50 @@ th {
   flex-wrap: wrap;
 }
 
+.prompt-status-chip {
+  border: 1px solid transparent;
+  cursor: help;
+  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.prompt-status-idle {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--text-muted-strong);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.prompt-status-awaiting {
+  background: rgba(59, 130, 246, 0.2);
+  color: #bfdbfe;
+  border-color: rgba(59, 130, 246, 0.45);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.2) inset;
+}
+
+.prompt-status-waiting {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fde68a;
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.prompt-status-completed {
+  background: rgba(16, 185, 129, 0.18);
+  color: #86efac;
+  border-color: rgba(16, 185, 129, 0.45);
+}
+
+.prompt-status-error,
+.prompt-status-cancelled {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.prompt-status-hidden {
+  background: rgba(99, 102, 241, 0.15);
+  color: #c7d2fe;
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
 .text-muted-inline {
   font-size: 0.875rem;
   color: var(--text-muted);
@@ -1324,6 +1368,10 @@ th {
   .results-preview-meta {
     gap: var(--spacing-sm);
     font-size: 0.8rem;
+  }
+
+  .prompt-status-chip {
+    max-width: 100%;
   }
 
   .results-preview-content {
@@ -5646,6 +5694,28 @@ code {
   font-weight: 500;
   font-size: 0.875rem;
   text-align: center;
+}
+
+#promptStandbyState {
+  margin: 0.45rem 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 6px;
+  border: 1px dashed var(--border-color, #6b7280);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted, #a5b4c3);
+  font-size: 0.85rem;
+}
+
+#promptModal.prompt-standby-active #promptOptions,
+#promptModal.prompt-standby-active #promptSearch,
+#promptModal.prompt-standby-active #promptInput,
+#promptModal.prompt-standby-active #promptSelectionSummary {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+#promptModal .prompt-waiting-copy {
+  padding: 0.35rem 0.1rem;
 }
 /* ============================================
    Phase 2: Table Preview Component

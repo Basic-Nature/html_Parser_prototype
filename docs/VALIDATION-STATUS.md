@@ -119,16 +119,18 @@ Orchestrates all smoke tests in sequence.
 
 **Status:** By design. This validates the pipeline waits for sufficient confidence before replaying.
 
-## Next Steps
+## Next Steps (Planned Future Phases)
 
-### Phase: Broader Learning Accumulation
+The following steps represent Phase 2+ enhancements and are planned for future iterations after Phase 1:
+
+### Phase 2: Broader Learning Accumulation (Planned)
 
 **Goal:** Accumulate learned recipes from diverse real URLs.
 
 **Command:**
 
 ```bash
-python scripts/navigation_random_smoke.py --count 10 --seed 42 --persist-log
+python scripts/navigation_random_smoke.py --count 50+ --seed 42 --persist-log
 ```
 
 **Expected Outcome:**
@@ -137,13 +139,13 @@ python scripts/navigation_random_smoke.py --count 10 --seed 42 --persist-log
 - Telemetry logged for successful patterns
 - Learned recipes begin accumulating in `navigation_learning_log.jsonl`
 
-### Phase: Learned Recipe Replay Validation
+### Phase 3: Learned Recipe Replay Validation (Planned)
 
 **Goal:** Confirm accumulated recipes replay on follow-up runs.
 
 **Design:**
 
-1. Run Phase 1 (capture recipes)
+1. Run Phase 2 (capture recipes)
 2. Re-run same URLs
 3. Confirm higher execution rate (recipes matched and replayed)
 

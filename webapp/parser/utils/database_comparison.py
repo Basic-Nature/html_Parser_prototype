@@ -9,7 +9,9 @@ Supports:
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+import os
+import re
+from typing import Any, Dict, List, Optional
 
 from .logger_singleton import logger
 
@@ -338,3 +340,305 @@ def _check_verified_datasets(
             "session_id": session_id
         })
         return False, None
+
+
+def fetch_database_reference_metadata(
+    url: str,
+    *,
+    session_id: Optional[str] = None,
+    state: Optional[str] = None,
+    county: Optional[str] = None,
+    contest: Optional[str] = None,
+) -> tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+    """Fetch best-available reference metadata from database tables for a URL.
+
+    Unlike ``check_existing_finalized_data``, this helper does not query Google Sheets.
+    It is intended for lightweight cross-checking during output finalization.
+
+    Returns:
+        (found, source, metadata)
+        - source is ``verified_datasets`` or ``warehouse`` when found.
+    """
+    url = (url or "").strip()
+    if not url:
+        return False, None, None
+
+    verified_ok, verified_meta = _check_verified_datasets(
+        url,
+        session_id=session_id,
+        state=state,
+        county=county,
+        contest=contest,
+    )
+    warehouse_ok, warehouse_meta = _check_warehouse_database(
+        url,
+        session_id=session_id,
+        state=state,
+        county=county,
+        contest=contest,
+    )
+
+    if verified_ok:
+        merged = dict(verified_meta or {})
+        # Backfill missing cardinality fields from warehouse when available.
+        if warehouse_ok and isinstance(warehouse_meta, dict):
+            for field in ("candidate_count", "row_count", "contest", "state", "county"):
+                if merged.get(field) in (None, "") and warehouse_meta.get(field) not in (None, ""):
+                    merged[field] = warehouse_meta.get(field)
+        return True, "verified_datasets", merged
+
+    if warehouse_ok:
+        return True, "warehouse", warehouse_meta
+
+    return False, None, None
+
+
+def evaluate_url_processing_policy(
+    url: str,
+    *,
+    session_id: Optional[str] = None,
+    state: Optional[str] = None,
+    county: Optional[str] = None,
+    contest: Optional[str] = None,
+    skip_database_check: bool = False,
+    force_reparse: bool = False,
+) -> Dict[str, Any]:
+    """Return a single decision payload for URL skip/reparse logic.
+
+    This centralizes behavior that was previously spread across parser entry points.
+    """
+    normalized_url = (url or "").strip()
+    payload: Dict[str, Any] = {
+        "url": normalized_url,
+        "should_skip": False,
+        "decision": "process",
+        "data_source": None,
+        "metadata": None,
+        "checked": False,
+    }
+
+    if not normalized_url:
+        payload["should_skip"] = True
+        payload["decision"] = "invalid_url"
+        return payload
+
+    if force_reparse:
+        payload["decision"] = "force_reparse"
+        return payload
+
+    if skip_database_check:
+        payload["decision"] = "database_check_disabled"
+        return payload
+
+    payload["checked"] = True
+    data_exists, data_source, metadata = check_existing_finalized_data(
+        normalized_url,
+        session_id=session_id,
+        state=state,
+        county=county,
+        contest=contest,
+    )
+    if data_exists:
+        payload["should_skip"] = True
+        payload["decision"] = "skipped_data_exists"
+        payload["data_source"] = data_source
+        payload["metadata"] = metadata
+    return payload
+
+
+def cross_check_profile_for_source(reference_source: Optional[str]) -> Dict[str, Any]:
+    """Return tolerance/severity profile for database reference sources."""
+
+    def _bool_env(name: str, default: bool = False) -> bool:
+        raw = os.environ.get(name)
+        if raw is None:
+            return default
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+    def _int_env(name: str, default: int) -> int:
+        raw = os.environ.get(name)
+        if raw is None:
+            return default
+        try:
+            return int(raw)
+        except Exception:
+            return default
+
+    def _float_env(name: str, default: float) -> float:
+        raw = os.environ.get(name)
+        if raw is None:
+            return default
+        try:
+            return float(raw)
+        except Exception:
+            return default
+
+    source_key = re.sub(r"[^A-Za-z0-9]+", "_", (reference_source or "default").strip().upper())
+    defaults = {
+        "DEFAULT": {
+            "row_delta_abs": 2,
+            "row_delta_ratio": 0.10,
+            "candidate_delta_abs": 0,
+            "strict_labels": False,
+        },
+        "VERIFIED_DATASETS": {
+            "row_delta_abs": 1,
+            "row_delta_ratio": 0.05,
+            "candidate_delta_abs": 0,
+            "strict_labels": True,
+        },
+        "WAREHOUSE": {
+            "row_delta_abs": 3,
+            "row_delta_ratio": 0.15,
+            "candidate_delta_abs": 1,
+            "strict_labels": False,
+        },
+        "GOOGLE_SHEETS": {
+            "row_delta_abs": 2,
+            "row_delta_ratio": 0.10,
+            "candidate_delta_abs": 0,
+            "strict_labels": True,
+        },
+    }
+
+    base = dict(defaults.get(source_key, defaults["DEFAULT"]))
+    prefix = f"DB_CROSSCHECK_{source_key}"
+    base["row_delta_abs"] = _int_env(f"{prefix}_ROW_DELTA_ABS", base["row_delta_abs"])
+    base["row_delta_ratio"] = _float_env(f"{prefix}_ROW_DELTA_RATIO", base["row_delta_ratio"])
+    base["candidate_delta_abs"] = _int_env(f"{prefix}_CANDIDATE_DELTA_ABS", base["candidate_delta_abs"])
+    base["strict_labels"] = _bool_env(f"{prefix}_STRICT_LABELS", base["strict_labels"])
+    base["source_key"] = source_key
+    return base
+
+
+def should_fail_database_cross_check(context: Dict[str, Any]) -> bool:
+    """Decide whether a mismatch should block output finalization."""
+    if "database_cross_check_fail_on_mismatch" in context:
+        try:
+            return bool(context.get("database_cross_check_fail_on_mismatch"))
+        except Exception:
+            return False
+    raw = os.environ.get("DB_CROSSCHECK_FAIL_ON_MISMATCH")
+    return bool(raw and raw.strip().lower() in {"1", "true", "yes", "on"})
+
+
+def _compute_extracted_candidate_count(headers: List[str], rows: List[Dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+
+    candidate_values: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        candidate_val = row.get("Candidate")
+        if isinstance(candidate_val, str) and candidate_val.strip():
+            candidate_values.add(candidate_val.strip().lower())
+
+    if candidate_values:
+        return len(candidate_values)
+
+    header_candidates = {
+        h.split(" - ", 1)[0].strip().lower()
+        for h in (headers or [])
+        if isinstance(h, str) and " - " in h and "candidate" not in h.lower()
+    }
+    return len({h for h in header_candidates if h})
+
+
+def build_database_cross_check(
+    *,
+    source_url: str,
+    headers: List[str],
+    rows: List[Dict[str, Any]],
+    contest: str,
+    state: str,
+    county: str,
+    reference_source: Optional[str],
+    reference_metadata: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Build a structured comparison between extracted output and reference metadata."""
+    profile = cross_check_profile_for_source(reference_source)
+    extracted = {
+        "row_count": len(rows or []),
+        "candidate_count": _compute_extracted_candidate_count(headers or [], rows or []),
+        "contest": (contest or "").strip(),
+        "state": (state or "").strip(),
+        "county": (county or "").strip(),
+    }
+
+    reference = reference_metadata or {}
+    result: Dict[str, Any] = {
+        "status": "unavailable",
+        "source_url": source_url,
+        "reference_source": reference_source,
+        "profile": profile,
+        "reference": reference,
+        "extracted": extracted,
+        "mismatches": [],
+    }
+    if not reference:
+        return result
+
+    mismatches: List[Dict[str, Any]] = []
+
+    def _norm(v: Any) -> str:
+        return str(v or "").strip().lower()
+
+    for field in ("contest", "state", "county"):
+        ref_val = reference.get(field)
+        ext_val = extracted.get(field)
+        if ref_val and ext_val and _norm(ref_val) != _norm(ext_val):
+            mismatches.append(
+                {
+                    "field": field,
+                    "reference": ref_val,
+                    "extracted": ext_val,
+                    "severity": "error" if profile.get("strict_labels") else "warning",
+                }
+            )
+
+    ref_row_count = reference.get("row_count")
+    if isinstance(ref_row_count, int) and ref_row_count >= 0:
+        ext_row_count = extracted["row_count"]
+        if ref_row_count == 0 and ext_row_count > 0:
+            mismatches.append(
+                {
+                    "field": "row_count",
+                    "reference": ref_row_count,
+                    "extracted": ext_row_count,
+                    "severity": "warning",
+                }
+            )
+        elif ref_row_count > 0:
+            delta = abs(ext_row_count - ref_row_count)
+            ratio = delta / max(ref_row_count, 1)
+            if delta > int(profile.get("row_delta_abs", 2)) and ratio > float(profile.get("row_delta_ratio", 0.10)):
+                mismatches.append(
+                    {
+                        "field": "row_count",
+                        "reference": ref_row_count,
+                        "extracted": ext_row_count,
+                        "delta": delta,
+                        "delta_ratio": round(ratio, 3),
+                        "severity": "warning",
+                    }
+                )
+
+    ref_candidate_count = reference.get("candidate_count")
+    if isinstance(ref_candidate_count, int) and ref_candidate_count >= 0:
+        ext_candidate_count = extracted["candidate_count"]
+        delta = abs(ext_candidate_count - ref_candidate_count)
+        if delta > int(profile.get("candidate_delta_abs", 0)):
+            mismatches.append(
+                {
+                    "field": "candidate_count",
+                    "reference": ref_candidate_count,
+                    "extracted": ext_candidate_count,
+                    "delta": delta,
+                    "severity": "warning",
+                }
+            )
+
+    result["mismatches"] = mismatches
+    result["status"] = "match" if not mismatches else "mismatch"
+    return result

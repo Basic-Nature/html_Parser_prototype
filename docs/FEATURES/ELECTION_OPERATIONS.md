@@ -162,7 +162,7 @@ Recommendations for Next Shift:
 1. **Aggregate Results**
 
   ```bash
-  # Planned script (not yet in repo)
+  # Planned script (future enhancement - not yet in repo)
   # python scripts/aggregate_results.py --election-date 2024-11-05
   ```
 

@@ -56,7 +56,6 @@ from .extraction_strategies import (
     strategy_dom_repetition,
     strategy_heading_associated,
     strategy_html_tables,
-    strategy_ml_detection,
     strategy_nlp_fallback,
     strategy_pattern_based,
     strategy_selectolax_fallback,
@@ -204,7 +203,6 @@ def robust_table_extraction(
     ]
     # Pure HTML / text strategies (can run on snapshot concurrently)
     html_strategies = [
-        strategy_ml_detection,
         strategy_selectolax_fallback,
         strategy_nlp_fallback,
     ]
@@ -393,7 +391,6 @@ async def robust_table_extraction_async(
         strategy_html_tables,
     ]
     html_strategies = [
-        strategy_ml_detection,
         strategy_selectolax_fallback,
         strategy_nlp_fallback,
     ]

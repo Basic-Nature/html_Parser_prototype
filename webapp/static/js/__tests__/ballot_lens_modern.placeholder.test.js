@@ -94,4 +94,15 @@ describe('ballot_lens_modern sidebar hooks', () => {
     expect(overlay.classList.contains('visible')).toBe(false);
     expect(document.body.classList.contains('sidebar-right-open')).toBe(false);
   });
+
+  test('setOverlayVisible keeps overlay hidden on desktop widths', () => {
+    const overlay = document.getElementById('mobileSidebarOverlay');
+    window.innerWidth = 1280;
+
+    window.setOverlayVisible(true);
+
+    expect(overlay.classList.contains('visible')).toBe(false);
+    expect(overlay.getAttribute('aria-hidden')).toBe('true');
+    expect(document.body.classList.contains('no-scroll')).toBe(false);
+  });
 });

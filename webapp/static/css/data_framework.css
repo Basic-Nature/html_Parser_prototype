@@ -160,6 +160,29 @@
     letter-spacing:1px;
   }
 
+  .framework-topline {
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:.55em;
+    margin:-1em 0 1.4em;
+  }
+
+  .status-pill {
+    display:inline-flex;
+    align-items:center;
+    gap:.35em;
+    border-radius:999px;
+    border:1px solid rgba(0 255 231 /.42);
+    background:rgba(12 18 28 /.72);
+    color:#d8f9f3;
+    padding:.35em .8em;
+    font-size:.72rem;
+    font-weight:700;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+  }
+
   /* Upload block */
   .upload-section {
     background:rgba(255 255 255 /.10);
@@ -265,6 +288,13 @@
     padding:1.4em 1.3em;
     display:grid;
     gap:1.2em;
+    transition:transform var(--t-base),box-shadow var(--t-base),border-color var(--t-base);
+  }
+
+  .framework-panel:hover {
+    transform:translateY(-2px);
+    border-color:rgba(0 255 231 /.52);
+    box-shadow:0 14px 30px rgba(0 0 0 /.42),0 0 26px rgba(0 255 231 /.18);
   }
 
   .framework-panel-header {
@@ -1190,6 +1220,14 @@
     gap:1em;
     margin-bottom:1em;
     flex-wrap:wrap;
+    position:sticky;
+    top:0;
+    z-index:4;
+    padding:.6em .65em;
+    border-radius:12px;
+    border:1px solid rgba(0 255 231 /.26);
+    background:rgba(12 18 28 /.94);
+    backdrop-filter:blur(6px);
   }
   .table-toolbar .left-controls { flex:1 1 240px; }
   .table-toolbar .right-controls {

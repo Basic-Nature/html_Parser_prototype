@@ -2735,8 +2735,9 @@ def main(
         # --- 6.5. Database Comparison Check (Skip URLs with Existing Finalized Data) ---
         urls_to_process = []
         skip_database_check = bool(kwargs.get("skip_database_check", False))
+        force_reparse = bool(kwargs.get("force_reparse", False))
         
-        if not skip_database_check:
+        if not skip_database_check and not force_reparse:
             logger.info({
                 "level": "INFO",
                 "type": "database",
@@ -2744,21 +2745,24 @@ def main(
                 "session_id": session_id
             })
             
-            from .utils.database_comparison import check_existing_finalized_data
+            from .utils.database_comparison import evaluate_url_processing_policy
             
             for url in selected_urls:
                 # Infer state/county from URL for better matching
                 state_hint, county_hint = infer_state_county_from_url(url)
-                
-                # Check if finalized data exists
-                data_exists, data_source, metadata = check_existing_finalized_data(
+
+                decision = evaluate_url_processing_policy(
                     url,
                     session_id=session_id,
                     state=state_hint,
-                    county=county_hint
+                    county=county_hint,
+                    skip_database_check=skip_database_check,
+                    force_reparse=force_reparse,
                 )
-                
-                if data_exists:
+
+                if decision.get("should_skip"):
+                    data_source = decision.get("data_source")
+                    metadata = decision.get("metadata")
                     logger.info({
                         "level": "INFO",
                         "type": "database",
@@ -2798,7 +2802,7 @@ def main(
             logger.info({
                 "level": "INFO",
                 "type": "database",
-                "message": "[DatabaseComparison] Database check disabled - processing all URLs",
+                "message": "[DatabaseComparison] Database check disabled or force-reparse enabled - processing all URLs",
                 "session_id": session_id
             })
         

@@ -375,9 +375,9 @@ increment_counter("nav_agent_selenium_fail", 1)
 - [x] Enhanced button context logging
 - [x] CAPTCHA page structure learning
 
-### Phase 2: Pipeline Integration (Next)
+### Phase 2: Pipeline Integration (PLANNED - Future)
 
-**Target**: Q1 2026
+**Target**: Future release
 
 1. **Unified Selenium→Context Flow**
    - Route Selenium HTML through `html_scanner.py` for consistent tagging
@@ -394,9 +394,9 @@ increment_counter("nav_agent_selenium_fail", 1)
    - Map Playwright selectors to Selenium equivalents
    - Test recipe execution on Cloudflare-protected sites
 
-### Phase 3: Advanced Research (Future)
+### Phase 3: Advanced Research (PLANNED - Future)
 
-**Target**: Q2 2026
+**Target**: Future release
 
 1. **Automated CAPTCHA Handling**
    - Train classifier on `captcha_transition_log.jsonl` dataset

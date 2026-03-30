@@ -413,7 +413,9 @@ def parse_numeric(val: Any) -> Tuple[Optional[int], bool]:
     text = str(val).strip()
     pct = text.endswith("%")
     normalized = text.replace("%", "").replace(",", "")
-    if normalized.replace(".", "", 1).isdigit():
+    check = normalized.replace(".", "", 1)
+    # Support negative numbers: strip one leading minus before digit check
+    if check.lstrip("-").isdigit() and check.count("-") <= 1 and not check.endswith("-"):
         try:
             return int(float(normalized)), pct
         except Exception:

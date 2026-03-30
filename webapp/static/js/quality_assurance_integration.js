@@ -20,6 +20,7 @@
  * @typedef {Object} QAPanelAPI
  * @property {Function} classifyAndInject
  * @property {Function} clearCache
+ * @property {Function} [mountQueueLaneTabs]
  */
 
 /**
@@ -65,6 +66,21 @@ var __QAIntegration;
   console.log('[QA Integration] Initializing QA workflow integration');
 
   /**
+   * Simple debounce utility to prevent burst API calls.
+   * @template T
+   * @param {Function} fn - Function to debounce
+   * @param {number} delayMs - Delay in milliseconds
+   * @returns {Function} Debounced function
+   */
+  function createDebounce(fn, delayMs = 300) {
+    let timeoutId = null;
+    return function debounced(...args) {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => fn(...args), delayMs);
+    };
+  }
+
+  /**
    * Store parser metadata for classification
    * @type {Map<string, Object>}
    */
@@ -75,6 +91,21 @@ var __QAIntegration;
    * @type {Set<string>}
    */
   const classifiedResults = new Set();
+
+  /**
+   * Debounced queue lane refresh to prevent burst API calls during large classifications.
+   * Waits 300ms after last refresh request before actually refreshing.
+   */
+  const debouncedRefreshQueueLanes = createDebounce(async () => {
+    if (qaPanel && typeof qaPanel.mountQueueLaneTabs === 'function') {
+      try {
+        await qaPanel.mountQueueLaneTabs();
+        console.log('[QA Integration] Queue lanes refreshed (debounced)');
+      } catch (error) {
+        console.warn('[QA Integration] Queue lane refresh failed:', error?.message || error);
+      }
+    }
+  }, 300);
 
   // ============================================
   // Result Classification
@@ -202,6 +233,8 @@ var __QAIntegration;
     // Log summary after all requests are queued
     setTimeout(() => {
       console.log(`[QA Integration] Classification complete: ${classifiedCount} succeeded, ${errorCount} failed`);
+      // Use debounced refresh to avoid burst calls during large batch classifications
+      debouncedRefreshQueueLanes();
     }, resultCards.length * 150 + 1000);
   }
 

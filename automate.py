@@ -26,18 +26,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from scripts.automation_runtime import (
-    build_bootstrap_manifest,
-    build_completed_manifest,
-    build_failure_manifest,
-    execute_automation_stages,
-)
 from scripts.automation_policy import (
     classify_intended_environment,
     cleanup_ingested_stage_logs,
     collect_critical_failures,
     compute_health_score,
     run_report_retention,
+)
+from scripts.automation_runtime import (
+    build_bootstrap_manifest,
+    build_completed_manifest,
+    build_failure_manifest,
+    execute_automation_stages,
 )
 
 # Add project root to path
@@ -593,6 +593,73 @@ def run_pipeline_check() -> bool:
     )
 
 
+def run_smart_phase_b_check(*, strict: bool = False) -> bool:
+    """Run focused parser-adjacent Phase B validation tooling."""
+    logger.info("[AUTOMATE] Running smart Phase B validation (tools/smart_phase_b_validation.py)...")
+    summary_path = REPORT_DIR / "smart_phase_b_summary.json"
+    command = [
+        sys.executable,
+        "tools/smart_phase_b_validation.py",
+        "--summary-json",
+        str(summary_path),
+    ]
+    if strict:
+        command.append("--strict")
+    ok = _run_subprocess_stage(
+        "smart_phase_b_check",
+        command,
+        timeout=600,
+        description="Smart Phase B validation",
+    )
+    detail = _STAGE_DETAILS.get("smart_phase_b_check", {})
+    detail["summary_path"] = str(summary_path)
+    if summary_path.exists():
+        try:
+            loaded = json.loads(summary_path.read_text(encoding="utf-8"))
+            detail["smart_phase_b_summary"] = _json_safe(loaded)
+        except Exception as exc:
+            detail["smart_phase_b_summary_error"] = str(exc)
+    _record_stage_detail("smart_phase_b_check", detail)
+    return ok
+
+
+def run_smart_phase_b_check_with_scope(*, strict: bool = False, changed_scope: str = "parser-only") -> bool:
+    """Run smart phase B check with a specific changed-file scope."""
+    logger.info(
+        f"[AUTOMATE] Running smart Phase B validation with scope='{changed_scope}' "
+        f"(strict={bool(strict)})..."
+    )
+    summary_path = REPORT_DIR / "smart_phase_b_summary.json"
+    command = [
+        sys.executable,
+        "tools/smart_phase_b_validation.py",
+        "--changed-scope",
+        changed_scope,
+        "--summary-json",
+        str(summary_path),
+    ]
+    if strict:
+        command.append("--strict")
+
+    ok = _run_subprocess_stage(
+        "smart_phase_b_check",
+        command,
+        timeout=600,
+        description="Smart Phase B validation",
+    )
+    detail = _STAGE_DETAILS.get("smart_phase_b_check", {})
+    detail["summary_path"] = str(summary_path)
+    detail["changed_scope"] = changed_scope
+    if summary_path.exists():
+        try:
+            loaded = json.loads(summary_path.read_text(encoding="utf-8"))
+            detail["smart_phase_b_summary"] = _json_safe(loaded)
+        except Exception as exc:
+            detail["smart_phase_b_summary_error"] = str(exc)
+    _record_stage_detail("smart_phase_b_check", detail)
+    return ok
+
+
 def run_embedding_cache_preflight() -> bool:
     """Capture embedding cache health/status for every automation run manifest."""
     started = time.time()
@@ -777,6 +844,10 @@ def main():
     parser.add_argument("--self-check", action="store_true", help="Run UI robust check (tools/ui_robust_check.py) after other checks")
     parser.add_argument("--ballot-lens-check", action="store_true", help="Run UI verification (tools/ui_robust_check.py)")
     parser.add_argument("--pipeline-check", action="store_true", help="Run pipeline regression checker (scripts/pipeline_regression_check.py)")
+    parser.add_argument("--smart-phase-b-check", action="store_true", help="Run focused parser-adjacent smart validation stage")
+    parser.add_argument("--smart-phase-b-strict", action="store_true", help="Use strict mode for smart phase B validation")
+    parser.add_argument("--smart-phase-b-scope", choices=["all", "parser-only"], default="parser-only", help="Changed-file scope passed to smart phase B validation")
+    parser.add_argument("--smart-phase-b-critical", action="store_true", help="Treat smart phase B stage as critical when enabled")
     parser.add_argument("--compare-dl1-dl2", action="store_true", help="Run DL1 vs DL2 comparison report stage")
     parser.add_argument("--dl1-path", default="", help="Path to DL1 ground truth JSON for comparison stage")
     parser.add_argument("--dl2-path", default="", help="Path to DL2 parser output JSON for comparison stage")
@@ -835,6 +906,11 @@ def main():
         extra_stage_runners: dict[str, Any] = {}
         if args.docs_routing_gate:
             extra_stage_runners["docs_routing_gate"] = run_docs_routing_gate
+        if args.smart_phase_b_check:
+            extra_stage_runners["smart_phase_b_check"] = lambda: run_smart_phase_b_check_with_scope(
+                strict=bool(args.smart_phase_b_strict),
+                changed_scope=str(args.smart_phase_b_scope or "parser-only"),
+            )
 
         results = execute_automation_stages(
             args,
@@ -866,6 +942,11 @@ def main():
         always_critical_on_false: set[str] | None = None
         if args.docs_routing_gate and args.docs_routing_gate_strict:
             always_critical_on_false = {"docs_routing_gate"}
+        if args.smart_phase_b_check and args.smart_phase_b_critical:
+            if always_critical_on_false is None:
+                always_critical_on_false = {"smart_phase_b_check"}
+            else:
+                always_critical_on_false.add("smart_phase_b_check")
 
         critical_failures = collect_critical_failures(
             results=results,

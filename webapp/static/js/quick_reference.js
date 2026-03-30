@@ -300,3 +300,5 @@ if (document.readyState === 'loading') {
 } else {
   QuickReference.init();
 }
+
+/** @type {any} */ (window).QuickReference = QuickReference;
