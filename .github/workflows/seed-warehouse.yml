@@ -5,19 +5,19 @@ name: Seed Warehouse (manual data import)
 # Use this to push a clean dataset from Google Sheets into the Azure PostgreSQL instance.
 #
 # Steps:
-#   1. Temporarily open Azure PostgreSQL firewall to the GitHub runner IP.
-#   2. Run import_database_lite.py  →  warehouse_election_results
-#   3. Run import_voting_equipment.py  →  county_equipment  (optional)
-#   4. Revoke the firewall rule.
+#   1. Run on a self-hosted runner inside the VNet.
+#   2. Validate private DB connectivity from the runner.
+#   3. Run import_database_lite.py  →  warehouse_election_results.
+#   4. Run import_voting_equipment.py  →  county_equipment (optional).
 #
-# Required GitHub Secrets (already present from main_ballotlens.yml):
-#   AZUREAPPSERVICE_CLIENTID_*   — Azure login
-#   AZUREAPPSERVICE_TENANTID_*
-#   AZUREAPPSERVICE_SUBSCRIPTIONID_*
+# Required GitHub Secrets:
 #   POSTGRES_USER, POSTGRES_PASSWORD
 #   GOOGLE_SHEETS_DB_LITE_ID     — sheet ID for Finalized Data
 #   GOOGLE_SHEETS_SA_*           — service account credentials
 #   GUARDED_INGESTION_KEY        — used as --source-principal salt (optional)
+#
+# Runner labels expected:
+#   self-hosted, linux, x64, ballotlens-vnet
 
 on:
   workflow_dispatch:
@@ -44,6 +44,38 @@ on:
         default: "false"
         type: choice
         options: ["true", "false"]
+      verify_post_seed:
+        description: "Run post-seed SQL verification (row count + latest timestamps)"
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+      verify_timeout_sec:
+        description: "DB connect timeout for verification step (seconds)"
+        required: false
+        default: "15"
+      min_expected_warehouse_rows:
+        description: "Soft warning threshold: minimum warehouse_election_results rows (blank = disabled)"
+        required: false
+        default: ""
+      min_expected_distinct_states:
+        description: "Soft warning threshold: minimum distinct warehouse states (blank = disabled)"
+        required: false
+        default: ""
+      min_expected_equipment_rows:
+        description: "Soft warning threshold: minimum county_equipment rows when equipment import runs (blank = disabled)"
+        required: false
+        default: ""
+      fail_on_threshold_margin_breach:
+        description: "Fail verification when threshold miss exceeds margin"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+      threshold_fail_margin_pct:
+        description: "Fail margin percent for threshold misses (e.g. 10 = fail only if miss > 10%)"
+        required: false
+        default: "10"
       worksheet:
         description: "Override worksheet name (blank = first sheet)"
         required: false
@@ -69,22 +101,19 @@ env:
   GOOGLE_SHEETS_SA_AUTH_PROVIDER_CERT_URL: "https://www.googleapis.com/oauth2/v1/certs"
   GOOGLE_SHEETS_SA_CLIENT_CERT_URL: ${{ secrets.GOOGLE_SHEETS_SA_CLIENT_CERT_URL }}
   GOOGLE_SHEETS_SA_UNIVERSE_DOMAIN: "googleapis.com"
-  # Firewall rule name (unique per run to avoid conflicts)
-  FW_RULE_NAME: "gh-runner-seed-${{ github.run_id }}"
 
 jobs:
   seed-warehouse:
-    name: "Seed warehouse from Google Sheets"
-    runs-on: ubuntu-latest
+    name: "Seed warehouse from Google Sheets (VNet runner)"
+    runs-on: [self-hosted, linux, x64, ballotlens-vnet]
     permissions:
-      id-token: write
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python 3.12.10
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12.10"
 
@@ -93,26 +122,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install --no-cache-dir --prefer-binary -r requirements.txt
 
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
-
-      - name: Get runner public IP
-        id: runner_ip
-        run: echo "ip=$(curl -s https://api.ipify.org)" >> "$GITHUB_OUTPUT"
-
-      - name: Open PostgreSQL firewall for runner
+      - name: Preflight private DB connectivity
         run: |
-          az postgres flexible-server firewall-rule create \
-            --resource-group BallotLens_group \
-            --name ballotlens-server \
-            --rule-name "${{ env.FW_RULE_NAME }}" \
-            --start-ip-address "${{ steps.runner_ip.outputs.ip }}" \
-            --end-ip-address "${{ steps.runner_ip.outputs.ip }}"
-          echo "Firewall rule created for ${{ steps.runner_ip.outputs.ip }}"
+          python - <<'PY'
+          import os
+          import socket
+
+          host = os.environ["POSTGRES_HOST"]
+          port = int(os.environ.get("POSTGRES_PORT", "5432"))
+          try:
+              with socket.create_connection((host, port), timeout=8):
+                  print(f"Private connectivity check passed: {host}:{port}")
+          except OSError as exc:
+              raise SystemExit(
+                  f"Private connectivity check failed for {host}:{port}. "
+                  f"Confirm self-hosted runner is in VNet with private DNS route. Details: {exc}"
+              )
+          PY
 
       # ── Import Finalized Data ──────────────────────────────────────────────
       - name: Import Finalized Data → warehouse_election_results
@@ -146,15 +172,198 @@ jobs:
           echo "Running: python scripts/import_voting_equipment.py $YEAR_ARGS"
           eval python scripts/import_voting_equipment.py $YEAR_ARGS
 
-      # ── Cleanup (always runs) ──────────────────────────────────────────────
-      - name: Remove PostgreSQL firewall rule for runner
-        if: always()
+      - name: Post-seed SQL verification (optional)
+        if: ${{ inputs.verify_post_seed == 'true' && inputs.dry_run != 'true' && (inputs.import_finalized_data == 'true' || inputs.import_voting_equipment == 'true') }}
+        env:
+          VERIFY_TIMEOUT_SEC: ${{ inputs.verify_timeout_sec }}
+          EXPECT_FINALIZED: ${{ inputs.import_finalized_data }}
+          EXPECT_EQUIPMENT: ${{ inputs.import_voting_equipment }}
+          EQUIPMENT_YEARS: ${{ inputs.equipment_years }}
+          MIN_EXPECTED_WAREHOUSE_ROWS: ${{ inputs.min_expected_warehouse_rows }}
+          MIN_EXPECTED_DISTINCT_STATES: ${{ inputs.min_expected_distinct_states }}
+          MIN_EXPECTED_EQUIPMENT_ROWS: ${{ inputs.min_expected_equipment_rows }}
+          FAIL_ON_MARGIN_BREACH: ${{ inputs.fail_on_threshold_margin_breach }}
+          THRESHOLD_FAIL_MARGIN_PCT: ${{ inputs.threshold_fail_margin_pct }}
         run: |
-          az postgres flexible-server firewall-rule delete \
-            --resource-group BallotLens_group \
-            --name ballotlens-server \
-            --rule-name "${{ env.FW_RULE_NAME }}" \
-            --yes || echo "Firewall rule already removed or never created."
+          python - <<'PY'
+          import os
+          from urllib.parse import quote_plus
+
+          from sqlalchemy import create_engine, text
+
+          def parse_optional_int(name: str):
+              raw = (os.environ.get(name, "") or "").strip()
+              if not raw:
+                  return None
+              try:
+                  value = int(raw)
+              except ValueError as exc:
+                  raise SystemExit(f"Invalid integer for {name}: {raw}") from exc
+              if value < 0:
+                  raise SystemExit(f"{name} must be >= 0, got {value}")
+              return value
+
+          host = os.environ["POSTGRES_HOST"]
+          port = os.environ.get("POSTGRES_PORT", "5432")
+          db = os.environ["POSTGRES_DB"]
+          user = quote_plus(os.environ["POSTGRES_USER"])
+          password = quote_plus(os.environ["POSTGRES_PASSWORD"])
+          timeout = int(os.environ.get("VERIFY_TIMEOUT_SEC", "15"))
+
+          expect_finalized = os.environ.get("EXPECT_FINALIZED", "false") == "true"
+          expect_equipment = os.environ.get("EXPECT_EQUIPMENT", "false") == "true"
+          equipment_years_raw = (os.environ.get("EQUIPMENT_YEARS", "") or "").strip()
+
+          min_expected_warehouse_rows = parse_optional_int("MIN_EXPECTED_WAREHOUSE_ROWS")
+          min_expected_distinct_states = parse_optional_int("MIN_EXPECTED_DISTINCT_STATES")
+          min_expected_equipment_rows = parse_optional_int("MIN_EXPECTED_EQUIPMENT_ROWS")
+            fail_on_margin_breach = os.environ.get("FAIL_ON_MARGIN_BREACH", "false") == "true"
+
+            try:
+              threshold_fail_margin_pct = float((os.environ.get("THRESHOLD_FAIL_MARGIN_PCT", "10") or "10").strip())
+            except ValueError as exc:
+              raise SystemExit("THRESHOLD_FAIL_MARGIN_PCT must be numeric") from exc
+            if threshold_fail_margin_pct < 0:
+              raise SystemExit("THRESHOLD_FAIL_MARGIN_PCT must be >= 0")
+
+          requested_years = []
+          if equipment_years_raw:
+              for token in equipment_years_raw.split(","):
+                  token = token.strip()
+                  if token:
+                      requested_years.append(int(token))
+
+          db_url = (
+              f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
+              f"?sslmode=require&connect_timeout={timeout}"
+          )
+          warnings = []
+            severe_misses = []
+
+            def check_threshold(label: str, actual: int, minimum: int | None):
+              if minimum is None:
+                return
+              if actual >= minimum:
+                return
+              warnings.append(f"{label} below soft threshold: {actual} < {minimum}")
+              if minimum <= 0:
+                return
+              miss_pct = ((minimum - actual) / minimum) * 100.0
+              if fail_on_margin_breach and miss_pct > threshold_fail_margin_pct:
+                severe_misses.append(
+                  f"{label} miss {miss_pct:.2f}% exceeds fail margin {threshold_fail_margin_pct:.2f}%"
+                )
+
+          try:
+              engine = create_engine(db_url, pool_pre_ping=True)
+              with engine.connect() as conn:
+                  warehouse_count = conn.execute(text("SELECT COUNT(*) FROM warehouse_election_results")).scalar_one()
+                  warehouse_latest = conn.execute(text("SELECT MAX(processed_at) FROM warehouse_election_results")).scalar_one()
+                  warehouse_states = conn.execute(text("SELECT COUNT(DISTINCT state) FROM warehouse_election_results")).scalar_one()
+
+                  latest_batch = conn.execute(
+                      text(
+                          """
+                          SELECT batch_id::text, status::text, completed_at
+                          FROM batch_metadata
+                          WHERE source LIKE 'database_lite:%'
+                          ORDER BY started_at DESC NULLS LAST
+                          LIMIT 1
+                          """
+                      )
+                  ).first()
+
+                  equipment_count = conn.execute(text("SELECT COUNT(*) FROM county_equipment")).scalar_one()
+                  equipment_latest = conn.execute(text("SELECT MAX(imported_at) FROM county_equipment")).scalar_one()
+                  equipment_year_count = conn.execute(text("SELECT COUNT(DISTINCT year) FROM county_equipment")).scalar_one()
+                  observed_years = {
+                      int(row[0])
+                      for row in conn.execute(text("SELECT DISTINCT year FROM county_equipment WHERE year IS NOT NULL"))
+                  }
+
+              if expect_finalized and warehouse_count == 0:
+                  warnings.append("Finalized import was requested but warehouse_election_results row count is 0.")
+              if expect_equipment and equipment_count == 0:
+                  warnings.append("Equipment import was requested but county_equipment row count is 0.")
+
+                check_threshold("warehouse_election_results rows", warehouse_count, min_expected_warehouse_rows)
+                check_threshold("warehouse distinct states", warehouse_states, min_expected_distinct_states)
+                if expect_equipment:
+                  check_threshold("county_equipment rows", equipment_count, min_expected_equipment_rows)
+
+              missing_years = []
+              if expect_equipment and requested_years:
+                  missing_years = sorted(set(requested_years) - observed_years)
+                  if missing_years:
+                      warnings.append(f"Requested equipment years not found: {missing_years}")
+
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+                  f.write("\n## Post-Seed SQL Verification\n")
+                  f.write("- Mode: optional (enabled)\n")
+                  f.write(f"- DB endpoint: {host}:{port}\n")
+                  f.write(f"- Warehouse rows: {warehouse_count}\n")
+                  f.write(f"- Warehouse latest processed_at: {warehouse_latest}\n")
+                  f.write(f"- Warehouse distinct states: {warehouse_states}\n")
+                  f.write(f"- Soft threshold min warehouse rows: {min_expected_warehouse_rows}\n")
+                  f.write(f"- Soft threshold min distinct states: {min_expected_distinct_states}\n")
+                    f.write(f"- Fail on threshold margin breach: {fail_on_margin_breach}\n")
+                    f.write(f"- Threshold fail margin percent: {threshold_fail_margin_pct}\n")
+                  if latest_batch:
+                      f.write(f"- Latest database_lite batch: id={latest_batch[0]}, status={latest_batch[1]}, completed_at={latest_batch[2]}\n")
+                  else:
+                      f.write("- Latest database_lite batch: none found\n")
+                  f.write(f"- Equipment rows: {equipment_count}\n")
+                  f.write(f"- Equipment latest imported_at: {equipment_latest}\n")
+                  f.write(f"- Equipment distinct years: {equipment_year_count}\n")
+                  f.write(f"- Soft threshold min equipment rows: {min_expected_equipment_rows}\n")
+                  if requested_years:
+                      f.write(f"- Requested equipment years: {requested_years}\n")
+                      if missing_years:
+                          f.write(f"- Missing requested years: {missing_years}\n")
+                      else:
+                          f.write("- Missing requested years: none\n")
+                  if warnings:
+                      f.write("- Result: warning\n")
+                      for warning in warnings:
+                          f.write(f"- Warning: {warning}\n")
+                    if severe_misses:
+                      f.write("- Result override: fail (margin breach)\n")
+                      for severe in severe_misses:
+                        f.write(f"- Fail reason: {severe}\n")
+                  else:
+                      f.write("- Result: pass\n")
+
+              if warnings:
+                  for warning in warnings:
+                      print(f"::warning::{warning}")
+                  if severe_misses:
+                    for severe in severe_misses:
+                      print(f"::error::{severe}")
+                    raise SystemExit("Post-seed verification failed due to threshold margin breach.")
+              print("Post-seed SQL verification completed.")
+
+          except Exception as exc:
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+                  f.write("\n## Post-Seed SQL Verification\n")
+                  f.write("- Mode: optional (enabled)\n")
+                  f.write("- Result: fail\n")
+                  f.write(f"- Error: {exc}\n")
+              raise SystemExit(f"Post-seed verification failed: {exc}")
+          PY
+
+      - name: Post-seed SQL verification skipped
+        if: ${{ !(inputs.verify_post_seed == 'true' && inputs.dry_run != 'true' && (inputs.import_finalized_data == 'true' || inputs.import_voting_equipment == 'true')) }}
+        run: |
+          {
+            echo ""
+            echo "## Post-Seed SQL Verification"
+            echo "- Mode: optional"
+            echo "- Result: skipped"
+            echo "- verify_post_seed input: ${{ inputs.verify_post_seed }}"
+            echo "- dry_run input: ${{ inputs.dry_run }}"
+            echo "- finalized import requested: ${{ inputs.import_finalized_data }}"
+            echo "- equipment import requested: ${{ inputs.import_voting_equipment }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Seed summary
         if: always()
@@ -165,11 +374,19 @@ jobs:
             echo "- Dry-run: ${{ inputs.dry_run }}"
             echo "- Finalized Data import: ${{ inputs.import_finalized_data }}"
             echo "- Voting equipment import: ${{ inputs.import_voting_equipment }}"
+            echo "- Post-seed SQL verification enabled: ${{ inputs.verify_post_seed }}"
+            echo "- Verification DB timeout (sec): ${{ inputs.verify_timeout_sec }}"
+            echo "- Soft threshold min warehouse rows: ${{ inputs.min_expected_warehouse_rows || 'disabled' }}"
+            echo "- Soft threshold min distinct states: ${{ inputs.min_expected_distinct_states || 'disabled' }}"
+            echo "- Soft threshold min equipment rows: ${{ inputs.min_expected_equipment_rows || 'disabled' }}"
+            echo "- Fail on threshold margin breach: ${{ inputs.fail_on_threshold_margin_breach }}"
+            echo "- Threshold fail margin percent: ${{ inputs.threshold_fail_margin_pct }}"
             if [ -n "${{ inputs.equipment_years }}" ]; then
               echo "- Equipment years: ${{ inputs.equipment_years }}"
             else
               echo "- Equipment years: all"
             fi
-            echo "- Runner IP: ${{ steps.runner_ip.outputs.ip }}"
-            echo "- Firewall rule name: ${{ env.FW_RULE_NAME }}"
+            echo "- Runner mode: self-hosted VNet"
+            echo "- Runner labels: self-hosted,linux,x64,ballotlens-vnet"
+            echo "- DB access mode: private endpoint / private DNS"
           } >> "$GITHUB_STEP_SUMMARY"
