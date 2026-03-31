@@ -50,6 +50,8 @@ env:
   POST_DEPLOY_READY_SLEEP_SEC: "20"
   DYNAMIC_SITE_URL: "https://www.electionpulse.org/"
   DOCS_SITE_URL: "https://basic-nature.github.io/html_Parser_prototype/"
+  # Contract tests import the Flask app at module load time; provide a safe CI fallback.
+  GUARDED_INGESTION_KEY: ${{ secrets.GUARDED_INGESTION_KEY || 'ci-nonprod-guarded-ingestion-key' }}
 
 jobs:
   qa-dl-compare:
