@@ -716,21 +716,21 @@ jobs:
                       "error": str(exc),
                   }
 
-                def fetch_with_retry(path: str, *, validator, attempts: int, sleep_between: int, label: str):
-                  last = None
-                  for attempt in range(1, attempts + 1):
-                    candidate = fetch(path)
-                    candidate["attempt"] = attempt
-                    last = candidate
-                    try:
+          def fetch_with_retry(path: str, *, validator, attempts: int, sleep_between: int, label: str):
+              last = None
+              for attempt in range(1, attempts + 1):
+                  candidate = fetch(path)
+                  candidate["attempt"] = attempt
+                  last = candidate
+                  try:
                       if validator(candidate):
-                        return candidate
-                    except Exception:
+                          return candidate
+                  except Exception:
                       pass
-                    if attempt < attempts:
+                  if attempt < attempts:
                       print(f"{label} probe attempt {attempt}/{attempts} not ready; waiting {sleep_between}s...")
                       time.sleep(sleep_between)
-                  return last
+              return last
 
           checks = []
           failures = []
@@ -775,13 +775,13 @@ jobs:
                   failures.append("/health body must be valid JSON")
 
           if not failures:
-                url_status = fetch_with_retry(
+              url_status = fetch_with_retry(
                   "/api/url_status?limit=5&hide_pii=true&include_production=false",
                   validator=lambda candidate: not candidate["error"] and candidate["status"] == 200,
                   attempts=api_max_attempts,
                   sleep_between=api_sleep_sec,
                   label="/api/url_status",
-                )
+              )
               checks.append({"name": "api_url_status", **url_status})
               if url_status["error"] or url_status["status"] != 200:
                   failures.append(f"/api/url_status must return HTTP 200 (last_error={url_status['error']!r}, status={url_status['status']})")
@@ -801,13 +801,13 @@ jobs:
                   except Exception:
                       failures.append("/api/url_status body must be valid JSON")
 
-                warehouse_status = fetch_with_retry(
+              warehouse_status = fetch_with_retry(
                   "/api/data_framework/warehouse_status",
                   validator=lambda candidate: not candidate["error"] and candidate["status"] in (200, 403),
                   attempts=api_max_attempts,
                   sleep_between=api_sleep_sec,
                   label="/api/data_framework/warehouse_status",
-                )
+              )
               checks.append({"name": "api_data_framework_warehouse_status", **warehouse_status})
               if warehouse_status["error"]:
                   failures.append(f"/api/data_framework/warehouse_status request failed (last_error={warehouse_status['error']!r})")
