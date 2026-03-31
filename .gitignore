@@ -88,8 +88,10 @@ tmp/
 cache/
 tmp_parser_pid.txt
 
-# Keep committed fixtures directory
+# Keep committed fixtures directory (JSON indexes only — CSVs are regenerable, see scripts/convert_fec_csv_to_json.py)
 !webapp/parser/fixtures/
+!webapp/parser/fixtures/*.json
+webapp/parser/fixtures/fixture_audit_report.jsonl
 
 # -------------------------
 # Node / frontend
@@ -167,15 +169,15 @@ tools/debug_screenshots/
 
 # Local data/tests (exclude unless intentionally committed)
 data/
-tests/
+/tests/
+webapp/parser/tests/
 
 # Temporary documentation (working notes, session drafts)
 docs/temp/
 docs/scratch/
 docs/working/
 
-# Dev notes / scripts (do not ignore necessarily)
-scripts/install_poppler_ubuntu.sh
+# Dev notes / scripts
 
 # Windows temp
 %TEMP%/

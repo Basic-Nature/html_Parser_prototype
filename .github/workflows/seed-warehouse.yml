@@ -1,0 +1,175 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Seed Warehouse (manual data import)
+
+# Triggered manually only — never runs on push.
+# Use this to push a clean dataset from Google Sheets into the Azure PostgreSQL instance.
+#
+# Steps:
+#   1. Temporarily open Azure PostgreSQL firewall to the GitHub runner IP.
+#   2. Run import_database_lite.py  →  warehouse_election_results
+#   3. Run import_voting_equipment.py  →  county_equipment  (optional)
+#   4. Revoke the firewall rule.
+#
+# Required GitHub Secrets (already present from main_ballotlens.yml):
+#   AZUREAPPSERVICE_CLIENTID_*   — Azure login
+#   AZUREAPPSERVICE_TENANTID_*
+#   AZUREAPPSERVICE_SUBSCRIPTIONID_*
+#   POSTGRES_USER, POSTGRES_PASSWORD
+#   GOOGLE_SHEETS_DB_LITE_ID     — sheet ID for Finalized Data
+#   GOOGLE_SHEETS_SA_*           — service account credentials
+#   GUARDED_INGESTION_KEY        — used as --source-principal salt (optional)
+
+on:
+  workflow_dispatch:
+    inputs:
+      import_finalized_data:
+        description: "Import Finalized Data sheet → warehouse_election_results"
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+      import_voting_equipment:
+        description: "Import VerifiedVoting equipment data → county_equipment"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+      equipment_years:
+        description: "Comma-separated years for equipment import (blank = all). e.g. 2020,2022,2024"
+        required: false
+        default: ""
+      dry_run:
+        description: "Dry-run only (no DB writes)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+      worksheet:
+        description: "Override worksheet name (blank = first sheet)"
+        required: false
+        default: ""
+
+env:
+  POSTGRES_HOST: "ballotlens-server.postgres.database.azure.com"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "ballotlens-database"
+  POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+  POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+  POSTGRES_AUTH: "user"
+  DEPLOY_ENV: "ci"
+  # Google Sheets service account (assembled from individual secrets — Azure/CI pattern)
+  GOOGLE_SHEETS_SA_TYPE: "service_account"
+  GOOGLE_SHEETS_SA_PROJECT_ID: ${{ secrets.GOOGLE_SHEETS_SA_PROJECT_ID }}
+  GOOGLE_SHEETS_SA_PRIVATE_KEY_ID: ${{ secrets.GOOGLE_SHEETS_SA_PRIVATE_KEY_ID }}
+  GOOGLE_SHEETS_SA_PRIVATE_KEY: ${{ secrets.GOOGLE_SHEETS_SA_PRIVATE_KEY }}
+  GOOGLE_SHEETS_SA_CLIENT_EMAIL: ${{ secrets.GOOGLE_SHEETS_SA_CLIENT_EMAIL }}
+  GOOGLE_SHEETS_SA_CLIENT_ID: ${{ secrets.GOOGLE_SHEETS_SA_CLIENT_ID }}
+  GOOGLE_SHEETS_SA_AUTH_URI: "https://accounts.google.com/o/oauth2/auth"
+  GOOGLE_SHEETS_SA_TOKEN_URI: "https://oauth2.googleapis.com/token"
+  GOOGLE_SHEETS_SA_AUTH_PROVIDER_CERT_URL: "https://www.googleapis.com/oauth2/v1/certs"
+  GOOGLE_SHEETS_SA_CLIENT_CERT_URL: ${{ secrets.GOOGLE_SHEETS_SA_CLIENT_CERT_URL }}
+  GOOGLE_SHEETS_SA_UNIVERSE_DOMAIN: "googleapis.com"
+  # Firewall rule name (unique per run to avoid conflicts)
+  FW_RULE_NAME: "gh-runner-seed-${{ github.run_id }}"
+
+jobs:
+  seed-warehouse:
+    name: "Seed warehouse from Google Sheets"
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.10"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir --prefer-binary -r requirements.txt
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
+
+      - name: Get runner public IP
+        id: runner_ip
+        run: echo "ip=$(curl -s https://api.ipify.org)" >> "$GITHUB_OUTPUT"
+
+      - name: Open PostgreSQL firewall for runner
+        run: |
+          az postgres flexible-server firewall-rule create \
+            --resource-group BallotLens_group \
+            --name ballotlens-server \
+            --rule-name "${{ env.FW_RULE_NAME }}" \
+            --start-ip-address "${{ steps.runner_ip.outputs.ip }}" \
+            --end-ip-address "${{ steps.runner_ip.outputs.ip }}"
+          echo "Firewall rule created for ${{ steps.runner_ip.outputs.ip }}"
+
+      # ── Import Finalized Data ──────────────────────────────────────────────
+      - name: Import Finalized Data → warehouse_election_results
+        if: ${{ inputs.import_finalized_data == 'true' }}
+        run: |
+          ARGS="--sheet-id ${{ secrets.GOOGLE_SHEETS_DB_LITE_ID }}"
+          if [ -n "${{ inputs.worksheet }}" ]; then
+            ARGS="$ARGS --worksheet '${{ inputs.worksheet }}'"
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          echo "Running: python scripts/import_database_lite.py $ARGS"
+          eval python scripts/import_database_lite.py $ARGS
+
+      # ── Import Voting Equipment ────────────────────────────────────────────
+      - name: Import voting equipment → county_equipment
+        if: ${{ inputs.import_voting_equipment == 'true' }}
+        run: |
+          if [ -n "${{ inputs.equipment_years }}" ]; then
+            YEAR_ARGS=""
+            for yr in $(echo "${{ inputs.equipment_years }}" | tr ',' ' '); do
+              YEAR_ARGS="$YEAR_ARGS --year $yr"
+            done
+          else
+            YEAR_ARGS="--all-years"
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            YEAR_ARGS="$YEAR_ARGS --dry-run"
+          fi
+          echo "Running: python scripts/import_voting_equipment.py $YEAR_ARGS"
+          eval python scripts/import_voting_equipment.py $YEAR_ARGS
+
+      # ── Cleanup (always runs) ──────────────────────────────────────────────
+      - name: Remove PostgreSQL firewall rule for runner
+        if: always()
+        run: |
+          az postgres flexible-server firewall-rule delete \
+            --resource-group BallotLens_group \
+            --name ballotlens-server \
+            --rule-name "${{ env.FW_RULE_NAME }}" \
+            --yes || echo "Firewall rule already removed or never created."
+
+      - name: Seed summary
+        if: always()
+        run: |
+          {
+            echo "## Warehouse Seed Run"
+            echo "- Trigger: manual workflow_dispatch"
+            echo "- Dry-run: ${{ inputs.dry_run }}"
+            echo "- Finalized Data import: ${{ inputs.import_finalized_data }}"
+            echo "- Voting equipment import: ${{ inputs.import_voting_equipment }}"
+            if [ -n "${{ inputs.equipment_years }}" ]; then
+              echo "- Equipment years: ${{ inputs.equipment_years }}"
+            else
+              echo "- Equipment years: all"
+            fi
+            echo "- Runner IP: ${{ steps.runner_ip.outputs.ip }}"
+            echo "- Firewall rule name: ${{ env.FW_RULE_NAME }}"
+          } >> "$GITHUB_STEP_SUMMARY"

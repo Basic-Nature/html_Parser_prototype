@@ -317,7 +317,7 @@ html_Parser_prototype/
 │   │   ├── utils/
 │   │   │   ├── table_core.py               # Centralized table extraction/learning
 │   │   │   ├── dynamic_table_extractor.py  # Candidate table generator/scorer
-│   │   │   ├── extraction_strategies.py    # Layered heuristic extraction strategies
+│   │   │   ├── ml_table_detector.py        # ML/NLP table detection
 │   │   │   ├── shared_logger.py            # Logging utilities
 │   │   │   ├── user_prompt.py              # CLI/web prompt utilities
 │   │   │   └── ...                         # (browser, captcha, etc.)

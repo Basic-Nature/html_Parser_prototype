@@ -155,10 +155,39 @@ def _extract_votes(row: Dict[str, Any], headers: List[str]) -> Tuple[Optional[in
 
 
 def _load_sheet(sheet_id: str, worksheet_name: Optional[str]) -> Tuple[List[str], List[List[str]], str]:
-    creds_path = os.getenv("GOOGLE_SERVICE_ACCOUNT_PATH") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    if not creds_path:
-        raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_PATH is not set")
-    credentials = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
+    credentials = None
+
+    # 1. Try individual GOOGLE_SHEETS_SA_* env vars (Azure App Settings / CI secrets)
+    _SA_ENV_MAP = {
+        "type":                         "GOOGLE_SHEETS_SA_TYPE",
+        "project_id":                   "GOOGLE_SHEETS_SA_PROJECT_ID",
+        "private_key_id":               "GOOGLE_SHEETS_SA_PRIVATE_KEY_ID",
+        "private_key":                  "GOOGLE_SHEETS_SA_PRIVATE_KEY",
+        "client_email":                 "GOOGLE_SHEETS_SA_CLIENT_EMAIL",
+        "client_id":                    "GOOGLE_SHEETS_SA_CLIENT_ID",
+        "auth_uri":                     "GOOGLE_SHEETS_SA_AUTH_URI",
+        "token_uri":                    "GOOGLE_SHEETS_SA_TOKEN_URI",
+        "auth_provider_x509_cert_url":  "GOOGLE_SHEETS_SA_AUTH_PROVIDER_CERT_URL",
+        "client_x509_cert_url":         "GOOGLE_SHEETS_SA_CLIENT_CERT_URL",
+        "universe_domain":              "GOOGLE_SHEETS_SA_UNIVERSE_DOMAIN",
+    }
+    sa_dict = {k: os.getenv(v, "").strip() for k, v in _SA_ENV_MAP.items()}
+    if all(sa_dict.values()):
+        # Azure strips literal \n from multi-line secrets — restore them
+        sa_dict["private_key"] = sa_dict["private_key"].replace("\\n", "\n")
+        credentials = Credentials.from_service_account_info(sa_dict, scopes=SCOPES)
+
+    # 2. Fall back to a service-account JSON file on disk
+    if credentials is None:
+        creds_path = os.getenv("GOOGLE_SERVICE_ACCOUNT_PATH") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if not creds_path:
+            raise RuntimeError(
+                "Google Sheets credentials not found. Provide either:\n"
+                "  GOOGLE_SERVICE_ACCOUNT_PATH (path to service-account JSON), or\n"
+                "  GOOGLE_SHEETS_SA_* individual env vars (recommended for Azure/CI)."
+            )
+        credentials = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
+
     client = gspread.authorize(credentials)
     workbook = client.open_by_key(sheet_id)
     if worksheet_name:

@@ -803,3 +803,62 @@ class ChainOfCustody(Base):
     
     # Workflow Context
     workflow_step = String(50, nullable=True)  # step_1|step_2|step_3|step_4
+
+
+class CountyEquipment(Base):
+    """
+    County-level voting equipment records sourced from Verified Voting's The Verifier.
+
+    Source API (no scraping needed — direct CSV/JSON download):
+        https://verifiedvoting.org/api/api_sandbox.php?advanced&year=YYYY&download=csv
+        https://verifiedvoting.org/api/api_sandbox.php?advanced&year=YYYY&download=json
+
+    Available election years: 2006, 2008, 2010, 2012, 2014, 2016, 2018, 2020, 2022, 2024, 2026.
+    Loaded by: scripts/import_voting_equipment.py
+
+    Joins to ElectionResult / VoterDropoff / ValidationRecord via (year, state, county).
+    Enriches parsed results with equipment context stamped onto output metadata.
+    """
+
+    __tablename__ = "county_equipment"
+    __table_args__ = (
+        Index("ix_county_equipment_year_state", "year", "state"),
+        Index("ix_county_equipment_state_county", "state", "county"),
+        Index("ix_county_equipment_lookup", "year", "state", "county"),
+    )
+
+    id = Integer(primary_key=True)
+
+    # Jurisdiction
+    year = Integer(nullable=False)           # Election year this record covers
+    state = String(50, nullable=False)       # Full state name (normalized)
+    state_abbr = String(2, nullable=True)    # Two-letter abbreviation
+    county = String(150, nullable=False)     # County / parish / borough name (normalized)
+    jurisdiction = String(250, nullable=True)  # Sub-county jurisdiction when available
+
+    # Election Day — Standard Equipment (precinct voting, most voters)
+    std_vendor = String(200, nullable=True)   # e.g. "Dominion Voting Systems"
+    std_model = String(200, nullable=True)    # e.g. "ImageCast Precinct"
+    std_voting_method = String(100, nullable=True)
+    # Enum vocab: hand_marked_paper | bmd_all_voters | bmd_accessible_only |
+    #             dre_with_vvpat | dre_without_vvpat | hybrid_bmd_tabulator |
+    #             hand_count | optical_scan | unknown
+
+    # Election Day — Accessible Equipment (ADA / disability access)
+    acc_vendor = String(200, nullable=True)
+    acc_model = String(200, nullable=True)
+
+    # Mail Ballot Tabulation
+    mail_vendor = String(200, nullable=True)
+    mail_model = String(200, nullable=True)
+
+    # Raw payload (full API row stored as JSON string for forward compatibility)
+    raw_api_row = Text(nullable=True)
+
+    # Source traceability
+    api_year = Integer(nullable=True)        # Year param used in the API call
+    source_url = Text(nullable=True)         # Full URL used to fetch
+
+    # Audit
+    imported_at = DateTime(nullable=False, default=datetime.utcnow)
+    updated_at = DateTime(nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
