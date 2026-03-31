@@ -45,11 +45,15 @@ env:
   DL_COMPARE_DL1_PATH: ""
   DL_COMPARE_DL2_PATH: ""
   POST_DEPLOY_DB_CONFIRM_STRICT: ${{ github.event_name == 'workflow_dispatch' && inputs.post_deploy_db_confirm_strict || 'true' }}
-  POST_DEPLOY_DB_CONFIRM_TIMEOUT_SEC: "45"
+  POST_DEPLOY_DB_CONFIRM_TIMEOUT_SEC: "60"
   POST_DEPLOY_READY_MAX_ATTEMPTS: "12"
   POST_DEPLOY_READY_SLEEP_SEC: "20"
+  POST_DEPLOY_API_MAX_ATTEMPTS: "6"
+  POST_DEPLOY_API_SLEEP_SEC: "15"
   DYNAMIC_SITE_URL: "https://www.electionpulse.org/"
   DOCS_SITE_URL: "https://basic-nature.github.io/html_Parser_prototype/"
+  # Contract tests import the Flask app at module load time; provide a safe CI fallback.
+  FLASK_SECRET_KEY: ${{ secrets.FLASK_SECRET_KEY || 'ci-nonprod-flask-secret-key' }}
   # Contract tests import the Flask app at module load time; provide a safe CI fallback.
   GUARDED_INGESTION_KEY: ${{ secrets.GUARDED_INGESTION_KEY || 'ci-nonprod-guarded-ingestion-key' }}
 
@@ -61,7 +65,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           lfs: true
 
@@ -89,7 +93,7 @@ jobs:
           PY
 
       - name: Set up Python 3.12.10
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12.10'
 
@@ -145,7 +149,7 @@ jobs:
 
       - name: Upload DL compare QA artifacts
         if: always() && (hashFiles('output/reports/data_comparison_latest.json') != '' || hashFiles('output/reports/automation_run_latest.json') != '' || hashFiles('output/reports/logs/**') != '')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: dl-compare-qa-${{ github.run_id }}
           path: |
@@ -175,21 +179,25 @@ jobs:
     needs: qa-dl-compare
     runs-on: ubuntu-latest
     continue-on-error: true
+    env:
+      # Keep critical app-import requirements local to this job so collection doesn't fail.
+      FLASK_SECRET_KEY: ${{ secrets.FLASK_SECRET_KEY || 'ci-nonprod-flask-secret-key' }}
+      GUARDED_INGESTION_KEY: ${{ secrets.GUARDED_INGESTION_KEY || 'ci-nonprod-guarded-ingestion-key' }}
     permissions:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           lfs: true
 
       - name: Set up Python 3.12.10
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12.10'
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '20'
 
@@ -245,12 +253,12 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           lfs: true
 
       - name: Login to Azure
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
@@ -282,7 +290,7 @@ jobs:
         run: free -h
 
       - name: Set up Python 3.12.10
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12.10'
 
@@ -293,7 +301,7 @@ jobs:
             libgl1 libglib2.0-0 libsm6 libxrender1 libxext6 libpq-dev build-essential gcc
 
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -423,7 +431,7 @@ jobs:
 
       - name: Upload automation reports and logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: automation-reports-${{ github.run_id }}
           path: |
@@ -498,17 +506,17 @@ jobs:
           head -n 10 Dockerfile || true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to ACR (docker)
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ secrets.ACR_LOGIN_SERVER }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
       - name: Build and push image (no ACR Tasks)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
@@ -663,6 +671,8 @@ jobs:
           timeout = int(os.environ.get("POST_DEPLOY_DB_CONFIRM_TIMEOUT_SEC", "45"))
           max_attempts = max(1, int(os.environ.get("POST_DEPLOY_READY_MAX_ATTEMPTS", "12")))
           sleep_sec = max(1, int(os.environ.get("POST_DEPLOY_READY_SLEEP_SEC", "20")))
+          api_max_attempts = max(1, int(os.environ.get("POST_DEPLOY_API_MAX_ATTEMPTS", "6")))
+          api_sleep_sec = max(1, int(os.environ.get("POST_DEPLOY_API_SLEEP_SEC", "15")))
           out_path = Path("output/reports/postdeploy_db_confirmation_latest.json")
           out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -705,6 +715,22 @@ jobs:
                       "body": "",
                       "error": str(exc),
                   }
+
+                def fetch_with_retry(path: str, *, validator, attempts: int, sleep_between: int, label: str):
+                  last = None
+                  for attempt in range(1, attempts + 1):
+                    candidate = fetch(path)
+                    candidate["attempt"] = attempt
+                    last = candidate
+                    try:
+                      if validator(candidate):
+                        return candidate
+                    except Exception:
+                      pass
+                    if attempt < attempts:
+                      print(f"{label} probe attempt {attempt}/{attempts} not ready; waiting {sleep_between}s...")
+                      time.sleep(sleep_between)
+                  return last
 
           checks = []
           failures = []
@@ -749,7 +775,13 @@ jobs:
                   failures.append("/health body must be valid JSON")
 
           if not failures:
-              url_status = fetch("/api/url_status?limit=5&hide_pii=true")
+                url_status = fetch_with_retry(
+                  "/api/url_status?limit=5&hide_pii=true&include_production=false",
+                  validator=lambda candidate: not candidate["error"] and candidate["status"] == 200,
+                  attempts=api_max_attempts,
+                  sleep_between=api_sleep_sec,
+                  label="/api/url_status",
+                )
               checks.append({"name": "api_url_status", **url_status})
               if url_status["error"] or url_status["status"] != 200:
                   failures.append(f"/api/url_status must return HTTP 200 (last_error={url_status['error']!r}, status={url_status['status']})")
@@ -769,7 +801,13 @@ jobs:
                   except Exception:
                       failures.append("/api/url_status body must be valid JSON")
 
-              warehouse_status = fetch("/api/data_framework/warehouse_status")
+                warehouse_status = fetch_with_retry(
+                  "/api/data_framework/warehouse_status",
+                  validator=lambda candidate: not candidate["error"] and candidate["status"] in (200, 403),
+                  attempts=api_max_attempts,
+                  sleep_between=api_sleep_sec,
+                  label="/api/data_framework/warehouse_status",
+                )
               checks.append({"name": "api_data_framework_warehouse_status", **warehouse_status})
               if warehouse_status["error"]:
                   failures.append(f"/api/data_framework/warehouse_status request failed (last_error={warehouse_status['error']!r})")
@@ -812,7 +850,7 @@ jobs:
 
       - name: Upload post-deploy validation artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: postdeploy-live-db-confirmation-${{ github.run_id }}
           path: |
