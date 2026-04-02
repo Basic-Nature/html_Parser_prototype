@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-name: Seed Warehouse (manual data import)
+name: Seed Warehouse (LOCKED - moved to private ops repo)
 
 # Triggered manually only — never runs on push.
 # Use this to push a clean dataset from Google Sheets into the Azure PostgreSQL instance.
@@ -104,6 +104,8 @@ env:
 
 jobs:
   seed-warehouse:
+    # Public repo lockdown: DB mutation path has been migrated to private ops repo.
+    if: ${{ false }}
     name: "Seed warehouse from Google Sheets (VNet runner)"
     runs-on: [self-hosted, linux, x64, ballotlens-vnet]
     permissions:
