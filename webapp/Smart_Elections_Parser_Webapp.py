@@ -249,6 +249,7 @@ from webapp.parser.web_pipeline import (
 
 _DOWNLOAD_READY_SESSIONS: set[str] = set()
 _DOWNLOAD_READY_LOCK = threading.Lock()
+_DATA_FRAMEWORK_PREVIEW_CACHE_LOCK = threading.Lock()
 
 _API_LATENCY_CACHE_LOCK = threading.Lock()
 _API_LATENCY_CACHE: dict[str, dict[str, Any]] = {
@@ -4042,31 +4043,32 @@ def api_data_framework_preview():
 
     session = SessionLocal()
     try:
-        session.query(DataFrameworkPreviewCache).filter(DataFrameworkPreviewCache.expires_at < now).delete(synchronize_session=False)
-        session.commit()
-
-        query = session.query(DataFrameworkPreviewCache).filter(
-            DataFrameworkPreviewCache.session_id == session_id,
-            DataFrameworkPreviewCache.mode == mode,
-            DataFrameworkPreviewCache.expires_at > now,
-        )
-        if state:
-            query = query.filter(DataFrameworkPreviewCache.state == state)
-        if county:
-            query = query.filter(DataFrameworkPreviewCache.county == county)
-        if contest:
-            query = query.filter(DataFrameworkPreviewCache.contest == contest)
-        if year_val:
-            query = query.filter(DataFrameworkPreviewCache.year == year_val)
-        cached = query.order_by(DataFrameworkPreviewCache.created_at.desc()).first()
-        if cached and isinstance(cached.payload, dict):
-            cached.last_accessed = now
+        with _DATA_FRAMEWORK_PREVIEW_CACHE_LOCK:
+            session.query(DataFrameworkPreviewCache).filter(DataFrameworkPreviewCache.expires_at < now).delete(synchronize_session=False)
             session.commit()
-            payload = cached.payload.copy()
-            payload["cache_id"] = str(cached.id)
-            payload["expires_at"] = cached.expires_at.isoformat() if cached.expires_at else None
-            payload.setdefault("mode", mode)
-            return jsonify(payload)
+
+            query = session.query(DataFrameworkPreviewCache).filter(
+                DataFrameworkPreviewCache.session_id == session_id,
+                DataFrameworkPreviewCache.mode == mode,
+                DataFrameworkPreviewCache.expires_at > now,
+            )
+            if state:
+                query = query.filter(DataFrameworkPreviewCache.state == state)
+            if county:
+                query = query.filter(DataFrameworkPreviewCache.county == county)
+            if contest:
+                query = query.filter(DataFrameworkPreviewCache.contest == contest)
+            if year_val:
+                query = query.filter(DataFrameworkPreviewCache.year == year_val)
+            cached = query.order_by(DataFrameworkPreviewCache.created_at.desc()).first()
+            if cached and isinstance(cached.payload, dict):
+                cached.last_accessed = now
+                session.commit()
+                payload = cached.payload.copy()
+                payload["cache_id"] = str(cached.id)
+                payload["expires_at"] = cached.expires_at.isoformat() if cached.expires_at else None
+                payload.setdefault("mode", mode)
+                return jsonify(payload)
     finally:
         session.close()
 
@@ -4106,20 +4108,21 @@ def api_data_framework_preview():
 
     session = SessionLocal()
     try:
-        cache_row = DataFrameworkPreviewCache(
-            session_id=session_id,
-            mode=mode,
-            state=payload["meta"].get("state"),
-            county=payload["meta"].get("county"),
-            contest=payload["meta"].get("contest"),
-            year=payload["meta"].get("year") if isinstance(payload["meta"].get("year"), int) else None,
-            payload=payload,
-            expires_at=expires_at,
-        )
-        session.add(cache_row)
-        session.commit()
-        payload["cache_id"] = str(cache_row.id)
-        payload["expires_at"] = expires_at.isoformat()
+        with _DATA_FRAMEWORK_PREVIEW_CACHE_LOCK:
+            cache_row = DataFrameworkPreviewCache(
+                session_id=session_id,
+                mode=mode,
+                state=payload["meta"].get("state"),
+                county=payload["meta"].get("county"),
+                contest=payload["meta"].get("contest"),
+                year=payload["meta"].get("year") if isinstance(payload["meta"].get("year"), int) else None,
+                payload=payload,
+                expires_at=expires_at,
+            )
+            session.add(cache_row)
+            session.commit()
+            payload["cache_id"] = str(cache_row.id)
+            payload["expires_at"] = expires_at.isoformat()
     except Exception as exc:
         session.rollback()
         logger.warning({
@@ -7129,6 +7132,15 @@ def auth_welcome():
     # Get principal to verify cert is present
     principal, principal_source, cert_metadata = get_request_principal()
 
+    raw_target = request.args.get("next") or request.referrer or url_for("index")
+    parsed_target = urlparse(raw_target or "")
+    if parsed_target.scheme or parsed_target.netloc:
+        normalized_target = parsed_target.path or url_for("ballot_lens")
+        if parsed_target.query:
+            normalized_target = f"{normalized_target}?{parsed_target.query}"
+    else:
+        normalized_target = raw_target if str(raw_target or "").startswith("/") else url_for("ballot_lens")
+
     if not principal:
         return (
             render_template(
@@ -7139,7 +7151,7 @@ def auth_welcome():
                 session_id=None,
                 require_cert=True,
                 auth_reason="certificate_required",
-                target_url=request.args.get("next") or request.referrer or url_for("index"),
+                target_url=normalized_target,
             ),
             401,
         )
@@ -7159,7 +7171,7 @@ def auth_welcome():
         session_id=session_id,
         require_cert=False,
         auth_reason=None,
-        target_url=url_for("ballot_lens"),
+        target_url=normalized_target,
     )
 
 

@@ -88,6 +88,27 @@ _navigation_store = NavigationRecipeStore()
 NAVIGATION_RUNNER = NavigationInstructionRunner(_navigation_store)
 _CAPTCHA_DETECTION_COUNTS: Dict[str, int] = defaultdict(int)
 _RISK_PREVIOUS_BY_SESSION: Dict[str, Any] = {}
+_PIPELINE_STATE_LOCK = threading.RLock()
+_MAX_TRACKED_SESSION_STATE = max(100, int(os.getenv("PARSER_MAX_TRACKED_SESSIONS", "2000")))
+
+
+def _prune_session_state_if_needed() -> None:
+    """Bound in-memory session-tracking maps to avoid unbounded growth.
+
+    Keep this intentionally simple and low-overhead: when the map grows past
+    the cap, remove approximately half of the oldest inserted keys.
+    """
+    if len(_RISK_PREVIOUS_BY_SESSION) > _MAX_TRACKED_SESSION_STATE:
+        excess = len(_RISK_PREVIOUS_BY_SESSION) - _MAX_TRACKED_SESSION_STATE
+        drop_count = max(excess, _MAX_TRACKED_SESSION_STATE // 2)
+        for key in list(_RISK_PREVIOUS_BY_SESSION.keys())[:drop_count]:
+            _RISK_PREVIOUS_BY_SESSION.pop(key, None)
+
+    if len(_CAPTCHA_DETECTION_COUNTS) > _MAX_TRACKED_SESSION_STATE:
+        excess = len(_CAPTCHA_DETECTION_COUNTS) - _MAX_TRACKED_SESSION_STATE
+        drop_count = max(excess, _MAX_TRACKED_SESSION_STATE // 2)
+        for key in list(_CAPTCHA_DETECTION_COUNTS.keys())[:drop_count]:
+            _CAPTCHA_DETECTION_COUNTS.pop(key, None)
 
 
 def _normalize_unit_interval(value: Any, *, assume_percent_if_gt_one: bool = True) -> float | None:
@@ -184,7 +205,8 @@ def _apply_risk_assessment(
 
         previous_scores = None
         if session_id:
-            previous_scores = _RISK_PREVIOUS_BY_SESSION.get(session_id)
+            with _PIPELINE_STATE_LOCK:
+                previous_scores = _RISK_PREVIOUS_BY_SESSION.get(session_id)
 
         evaluator = CalculusRiskEvaluator(config=config)
 
@@ -201,7 +223,9 @@ def _apply_risk_assessment(
         )
 
         if session_id:
-            _RISK_PREVIOUS_BY_SESSION[session_id] = scores
+            with _PIPELINE_STATE_LOCK:
+                _RISK_PREVIOUS_BY_SESSION[session_id] = scores
+                _prune_session_state_if_needed()
 
         risk_assessment = {
             "risk_tier": scores.risk_tier,
@@ -282,18 +306,21 @@ def _captcha_detection_key(session_id: str | None, target_url: str) -> str:
 
 def _register_cloudflare_detection(session_id: str | None, target_url: str, agent: str) -> int:
     key = _captcha_detection_key(session_id, target_url)
-    _CAPTCHA_DETECTION_COUNTS[key] = _CAPTCHA_DETECTION_COUNTS.get(key, 0) + 1
+    with _PIPELINE_STATE_LOCK:
+        _CAPTCHA_DETECTION_COUNTS[key] = _CAPTCHA_DETECTION_COUNTS.get(key, 0) + 1
+        detection_count = _CAPTCHA_DETECTION_COUNTS[key]
+        _prune_session_state_if_needed()
     try:
         logger.info({
             "level": "INFO",
             "type": "browser",
-            "message": f"Cloudflare detection count={_CAPTCHA_DETECTION_COUNTS[key]} via {agent}.",
+            "message": f"Cloudflare detection count={detection_count} via {agent}.",
             "session_id": session_id,
             "url": target_url,
         })
     except Exception:
         pass
-    return _CAPTCHA_DETECTION_COUNTS[key]
+    return detection_count
 
 
 def _prompt_for_captcha_assist(

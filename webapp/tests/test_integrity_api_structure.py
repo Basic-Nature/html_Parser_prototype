@@ -59,6 +59,20 @@ def test_integrity_trends_response_shape(client):
     assert isinstance(payload["trends"], list)
 
 
+def test_integrity_route_method_contracts():
+    rules = {rule.rule: rule for rule in app.url_map.iter_rules()}
+
+    trends_rule = rules.get("/api/integrity_trends")
+    signal_rule = rules.get("/api/integrity_signal")
+
+    assert trends_rule is not None
+    assert signal_rule is not None
+    assert "GET" in trends_rule.methods
+    assert "POST" not in trends_rule.methods
+    assert "POST" in signal_rule.methods
+    assert "GET" not in signal_rule.methods
+
+
 def test_integrity_signal_response_shape_and_status(client):
     trends = _sample_trends()
     with patch("webapp.Smart_Elections_Parser_Webapp._load_integrity_trends", return_value=(trends, "mock-source", False)):

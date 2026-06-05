@@ -182,10 +182,61 @@ class SmartElectionsWorklist {
 
         // Modal close buttons
         document.querySelectorAll('.modal-close').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const target = /** @type {HTMLElement|null} */ (e.target);
-                this.closeModal(target ? target.closest('.modal') : null);
+            btn.addEventListener('click', /** @param {MouseEvent} e */ (e) => {
+                const targetEl = /** @type {HTMLElement|null} */ (e.target);
+                const modalEl = targetEl ? /** @type {HTMLElement|null} */ (targetEl.closest('.modal')) : null;
+                this.closeModal(modalEl);
             });
+        });
+
+        // Delegated actions for data-action attributes (CSP-friendly)
+        document.addEventListener('click', /** @param {MouseEvent} e */ (e) => {
+            const start = /** @type {HTMLElement|null} */ (e.target);
+            let node = start;
+            while (node) {
+                if (node.nodeType === 1 && node.dataset && node.dataset.action) break;
+                node = node.parentElement;
+            }
+            const el = node ? /** @type {HTMLElement} */ (node) : null;
+            if (!el) return;
+            const action = el.dataset.action;
+            const target = el.dataset.target;
+            const arg = el.dataset.arg;
+            switch (action) {
+                case 'close-modal':
+                    this.closeModal(document.getElementById(target));
+                    break;
+                case 'submit-assign-dl':
+                    this.submitAssignDL();
+                    break;
+                case 'save-dl1':
+                    this.submitDL1Form();
+                    break;
+                case 'save-dl2':
+                    this.submitDL2Form();
+                    break;
+                case 'run-preqc':
+                    this.runPreQC();
+                    break;
+                case 'open-edit':
+                    if (el.dataset.raceId) this.openEditModal(el.dataset.raceId);
+                    break;
+                case 'open-qc1':
+                    if (el.dataset.raceId) this.openQC1Modal(el.dataset.raceId);
+                    break;
+                case 'proceed-qc1':
+                    if (this.currentRace) this.openQC1Modal(this.currentRace.race_id);
+                    break;
+                case 'submit-qc1':
+                    this.submitQC1Form();
+                    break;
+                case 'submit-qc2':
+                    this.submitQC2Form();
+                    break;
+                default:
+                    // No-op for unknown actions
+                    break;
+            }
         });
 
         // Modal background click
@@ -318,8 +369,8 @@ class SmartElectionsWorklist {
                 <td class="col-qc2">${this.renderStatusBadge(race.qc2_status)}</td>
                 <td class="col-workflow">${this.renderWorkflowBadge(race.workflow_status)}</td>
                 <td class="col-actions">
-                    <button class="btn btn-secondary" onclick="worklist.openEditModal('${race.race_id}')">Edit</button>
-                    <button class="btn btn-primary" onclick="worklist.openQC1Modal('${race.race_id}')">QC1</button>
+                    <button class="btn btn-secondary" data-action="open-edit" data-race-id="${race.race_id}">Edit</button>
+                    <button class="btn btn-primary" data-action="open-qc1" data-race-id="${race.race_id}">QC1</button>
                 </td>
             </tr>
         `;
@@ -930,32 +981,6 @@ document.addEventListener('DOMContentLoaded', () => {
     worklist = new SmartElectionsWorklist();
     window['smartElectionsWorklist'] = worklist;
 });
-
-// Inline HTML handler bridges
-window['closeModal'] = (modalId) => {
-    const modal = document.getElementById(modalId);
-    if (worklist) {
-        worklist.closeModal(modal);
-        return;
-    }
-    if (modal) {
-        modal.classList.remove('active');
-        document.body.classList.remove('se-no-scroll');
-    }
-};
-
-window['saveDL1Record'] = () => worklist && worklist.submitDL1Form();
-window['saveDL2Record'] = () => worklist && worklist.submitDL2Form();
-window['runPreQCCheck'] = () => worklist && worklist.runPreQC();
-window['submitAssignDL'] = () => worklist && worklist.submitAssignDL();
-window['submitQC1'] = () => worklist && worklist.submitQC1Form();
-window['submitQC2'] = () => worklist && worklist.submitQC2Form();
-window['proceedToQC1'] = () => {
-    if (worklist && worklist.currentRace) {
-        worklist.openQC1Modal(worklist.currentRace.race_id);
-    }
-};
-
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {
     if (worklist) worklist.destroy();

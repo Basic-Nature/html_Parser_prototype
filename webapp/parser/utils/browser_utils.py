@@ -47,6 +47,7 @@ else:
             pass
 
 from ..config import CONTEXT_LIBRARY_PATH, HEADLESS_DEFAULT
+from ..config import OCR_DEBUG_DIR, ENABLE_OCR, TESSERACT_CMD
 from .logger_singleton import console, logger, prompt
 from .shared_logic import safe_get_first, safe_is_set, safe_lower
 
@@ -290,6 +291,11 @@ def safe_click(element: Optional[ElementType], logger=logger) -> bool:
         return False
 
 
+def safe_debug_stem(value: str, max_len: int = 80) -> str:
+    value = re.sub(r"[^A-Za-z0-9._-]+", "_", value or "selector")
+    return value.strip("_")[:max_len] or "selector"
+
+
 def capture_page_diagnostics(page: Optional[PageType], session_id: Optional[str] = None, note: str = "click_failure") -> dict:
     """
     Capture lightweight diagnostics on the page: HTML snapshot and a PNG screenshot.
@@ -299,41 +305,133 @@ def capture_page_diagnostics(page: Optional[PageType], session_id: Optional[str]
     if page is None:
         return out
     ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    safe_prefix = session_id or "debug"
+    safe_prefix = safe_debug_stem(session_id or "debug")
+    safe_note = safe_debug_stem(note or "click_failure")
     try:
-        html = safe_content(page, session_id=session_id)
-        html_path = os.path.abspath(f"{safe_prefix}__{note}__{ts}.html")
-        with open(html_path, "w", encoding="utf-8", errors="replace") as fh:
-            fh.write(html)
-        out["html"] = html_path
+        # Persist diagnostics to configured debug folder (HTML + PNG + optional OCR TXT)
+        try:
+            diags = save_diagnostics(page=page, session_id=session_id, note=note)
+            out.update(diags)
+        except Exception as e:
+            out["error"] = f"save_diagnostics:{e}"
+        try:
+            # Try to collect a small computed-style snapshot for body and first table (best-effort)
+            if hasattr(page, "evaluate"):
+                try:
+                    styles = page.evaluate(
+                        "() => { const nodes = Array.from(document.querySelectorAll('body, main, table')).slice(0,5); return nodes.map(n => ({tag: n.tagName, rect: n.getBoundingClientRect ? n.getBoundingClientRect().toJSON() : null, classes: n.className})); }"
+                    )
+                    out["styles"] = styles
+                except Exception as e:
+                    out["styles_error"] = str(e)
+        except Exception:
+            pass
     except Exception as e:
-        out["error"] = f"html_capture:{e}"
-    try:
-        if hasattr(page, "screenshot"):
-            png_path = os.path.abspath(f"{safe_prefix}__{note}__{ts}.png")
-            try:
-                page.screenshot(path=png_path, full_page=True)
-                out["screenshot"] = png_path
-            except Exception as e:
-                out["error"] = (out.get("error") or "") + f";screenshot:{e}"
-    except Exception:
-        pass
-    try:
-        # Try to collect a small computed-style snapshot for body and first table (best-effort)
-        if hasattr(page, "evaluate"):
-            try:
-                styles = page.evaluate(
-                    "() => { const nodes = Array.from(document.querySelectorAll('body, main, table')).slice(0,5); return nodes.map(n => ({tag: n.tagName, rect: n.getBoundingClientRect ? n.getBoundingClientRect().toJSON() : null, classes: n.className})); }"
-                )
-                out["styles"] = styles
-            except Exception as e:
-                out["styles_error"] = str(e)
-    except Exception:
-        pass
+        out["error"] = str(e)
     try:
         logger.info({"level": "INFO", "type": "diagnostic", "message": "Captured page diagnostics", "session_id": session_id, "diags": out})
     except Exception:
         pass
+    return out
+
+
+def save_diagnostics(
+    page: Optional[PageType],
+    session_id: Optional[str] = None,
+    note: str = "diagnostic",
+    url: Optional[str] = None,
+    vendor: Optional[str] = None,
+    index_filename: str = "diagnostics_index.jsonl",
+) -> dict:
+    """
+    Save HTML and PNG diagnostics into `OCR_DEBUG_DIR` and run OCR on the PNG
+    to produce a TXT file when `pytesseract` is available and `ENABLE_OCR` is True.
+    Appends a JSON line to an index file for ingestion into ML pipelines.
+    Returns a dict with paths written and any OCR text/metadata.
+    """
+    out = {"html": None, "screenshot": None, "ocr_txt": None, "index_entry": None, "error": None}
+    if page is None:
+        return out
+    try:
+        dump_dir = OCR_DEBUG_DIR
+        os.makedirs(dump_dir, exist_ok=True)
+        ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        parts = [session_id or "session", safe_debug_stem(note), safe_debug_stem(vendor or "")]
+        base = "__".join([p for p in parts if p])
+        base = f"{base}__{ts}"
+
+        # HTML
+        try:
+            html = safe_content(page, session_id=session_id)
+            html_path = os.path.join(dump_dir, f"{base}.html")
+            with open(html_path, "w", encoding="utf-8", errors="replace") as fh:
+                fh.write(html)
+            out["html"] = str(html_path)
+        except Exception as e:
+            out["error"] = (out.get("error") or "") + f";html:{e}"
+
+        # PNG
+        try:
+            if hasattr(page, "screenshot"):
+                png_path = os.path.join(dump_dir, f"{base}.png")
+                try:
+                    page.screenshot(path=png_path, full_page=True)
+                    out["screenshot"] = str(png_path)
+                except Exception as e:
+                    out["error"] = (out.get("error") or "") + f";screenshot:{e}"
+        except Exception:
+            pass
+
+        # OCR TXT (best-effort)
+        try:
+            if ENABLE_OCR:
+                try:
+                    import pytesseract
+                    from PIL import Image
+                except Exception:
+                    pytesseract = None
+                    Image = None
+                if pytesseract and out.get("screenshot"):
+                    try:
+                        if TESSERACT_CMD:
+                            try:
+                                pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+                            except Exception:
+                                pass
+                        img = Image.open(out["screenshot"]) if Image else None
+                        if img is not None:
+                            txt = pytesseract.image_to_string(img, config="--oem 1 --psm 6")
+                            txt_path = os.path.join(dump_dir, f"{base}.txt")
+                            with open(txt_path, "w", encoding="utf-8", errors="replace") as fh:
+                                fh.write(txt)
+                            out["ocr_txt"] = str(txt_path)
+                    except Exception as e:
+                        out["error"] = (out.get("error") or "") + f";ocr:{e}"
+
+        except Exception:
+            pass
+
+        # Write index entry
+        try:
+            index_path = os.path.join(dump_dir, index_filename)
+            entry = {
+                "timestamp": ts,
+                "session_id": session_id,
+                "note": note,
+                "vendor": vendor,
+                "url": url or safe_url(page),
+                "html": out.get("html"),
+                "screenshot": out.get("screenshot"),
+                "ocr_txt": out.get("ocr_txt"),
+            }
+            with open(index_path, "a", encoding="utf-8") as idx:
+                idx.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            out["index_entry"] = entry
+        except Exception as e:
+            out["error"] = (out.get("error") or "") + f";index:{e}"
+
+    except Exception as e:
+        out["error"] = (out.get("error") or "") + f";save_diagnostics:{e}"
     return out
 
 
@@ -482,7 +580,7 @@ def safe_click_with_retry(
 
     # Hard failure path captures diagnostics.
     try:
-        diags = capture_page_diagnostics(page, session_id=session_id, note=(selector or 'element_click').replace('/', '_'))
+        diags = capture_page_diagnostics(page, session_id=session_id, note=safe_debug_stem(selector or 'element_click'))
         logger.error({"level": "ERROR", "type": "browser", "message": f"All click attempts failed for selector={selector}; diagnostics captured.", "session_id": session_id, "diagnostics": diags, "error": str(last_exc)})
     except Exception:
         logger.error({"level": "ERROR", "type": "browser", "message": f"All click attempts failed for selector={selector}; diagnostics capture failed.", "session_id": session_id})

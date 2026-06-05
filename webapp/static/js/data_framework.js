@@ -226,6 +226,72 @@ document.addEventListener('DOMContentLoaded', () => {
     return status === 401 || status === 403;
   }
 
+  function shouldRetryStatus(status) {
+    return [408, 425, 429, 500, 502, 503, 504].includes(Number(status || 0));
+  }
+
+  function sleep(ms) {
+    return new Promise(resolve => window.setTimeout(resolve, ms));
+  }
+
+  /**
+   * @typedef {Object} FetchRetryOptions
+   * @property {string=} authReason
+   * @property {number=} retries
+   * @property {number=} baseDelayMs
+   * @property {Record<string, string>=} headers
+   */
+
+  /**
+   * @param {string} url
+   * @param {FetchRetryOptions=} options
+   */
+  async function fetchJsonWithRetry(url, {
+    authReason,
+    retries = 2,
+    baseDelayMs = 450,
+    headers = { 'Accept': 'application/json' }
+  } = {}) {
+    let lastError = null;
+    let lastStatus = null;
+
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        const response = await fetch(url, { headers });
+        lastStatus = response.status;
+        if (isAuthForbiddenStatus(response.status)) {
+          enterAuthRestrictedMode(authReason || 'Authentication required for protected Data Framework endpoints.');
+          return { ok: false, authBlocked: true, status: response.status, data: null, error: 'auth_forbidden' };
+        }
+
+        if (response.ok) {
+          const data = await response.json().catch(() => null);
+          return { ok: true, authBlocked: false, status: response.status, data, error: null };
+        }
+
+        if (!(attempt < retries && shouldRetryStatus(response.status))) {
+          break;
+        }
+      } catch (err) {
+        lastError = err;
+        if (!(attempt < retries)) {
+          break;
+        }
+      }
+
+      const backoff = Math.min(baseDelayMs * (2 ** attempt) + Math.floor(Math.random() * 180), 2600);
+      await sleep(backoff);
+    }
+
+    return {
+      ok: false,
+      authBlocked: false,
+      status: lastStatus,
+      data: null,
+      error: lastError ? String(lastError?.message || lastError) : 'request_failed'
+    };
+  }
+
   function enterAuthRestrictedMode(reason = 'Authentication required for protected Data Framework endpoints.') {
     authRestrictedMode = true;
     _authRestrictionReason = reason;
@@ -549,19 +615,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const url = new URL(priorityUrl, window.location.origin);
       if (priorityState) url.searchParams.set('state', priorityState);
       if (priorityYear) url.searchParams.set('year', priorityYear);
-      const response = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
-      if (isAuthForbiddenStatus(response.status)) {
-        enterAuthRestrictedMode('Authentication required for Data Framework priority and preview APIs.');
-        return;
-      }
-      if (!response.ok) {
+      const result = await fetchJsonWithRetry(url.toString(), {
+        authReason: 'Authentication required for Data Framework priority and preview APIs.',
+        retries: 2
+      });
+      if (result.authBlocked) return;
+      if (!result.ok) {
         const cached = readWarehouseStatusSnapshot();
         if (cached?.payload && applyPriorityPayload(cached.payload, true)) return;
         setPriorityStatus('Priority tracker unavailable.', 'error');
         setPriorityMeta('');
         return;
       }
-      const payload = await response.json().catch(() => null);
+      const payload = result.data;
       if (!payload) {
         const cached = readWarehouseStatusSnapshot();
         if (cached?.payload && applyPriorityPayload(cached.payload, true)) return;
@@ -585,13 +651,12 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const url = new URL(worklistOverviewUrl, window.location.origin);
       url.searchParams.set('limit', '200');
-      const response = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
-      if (isAuthForbiddenStatus(response.status)) {
-        enterAuthRestrictedMode('Authentication required for Data Framework worklist and DB-Lite feeds.');
-        return;
-      }
-      if (!response.ok) return;
-      const payload = await response.json().catch(() => null);
+      const result = await fetchJsonWithRetry(url.toString(), {
+        authReason: 'Authentication required for Data Framework worklist and DB-Lite feeds.',
+        retries: 2
+      });
+      if (result.authBlocked || !result.ok) return;
+      const payload = result.data;
       if (!payload || payload.success === false) return;
       worklistOverviewRecords = Array.isArray(payload.records) ? payload.records : [];
       _worklistOverviewMeta = {
@@ -1627,13 +1692,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!url) return null;
     if (authRestrictedMode) return null;
     try {
-      const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      if (isAuthForbiddenStatus(response.status)) {
-        enterAuthRestrictedMode('Authentication required for Data Framework preview feed.');
-        return null;
-      }
-      if (!response.ok) return null;
-      return await response.json().catch(() => null);
+      const result = await fetchJsonWithRetry(url, {
+        authReason: 'Authentication required for Data Framework preview feed.',
+        retries: 2
+      });
+      if (result.authBlocked || !result.ok) return null;
+      return result.data;
     } catch (err) {
       return null;
     }
@@ -1880,47 +1944,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function fetchCuratedDatasets() {
+  async function fetchCuratedDatasets() {
     if (!curatedUrl) return;
     if (authRestrictedMode) return;
     setStatusText(el.curatedStatus, 'Loading curated datasets...');
-    fetch(curatedUrl, { headers: { 'Accept': 'application/json' } })
-      .then(r => {
-        if (isAuthForbiddenStatus(r.status)) {
-          enterAuthRestrictedMode('Authentication required for curated datasets and preview feeds.');
-          return null;
-        }
-        return r.json().catch(() => null);
-      })
-      .then(data => {
-        if (!data) return;
-        curatedItems = Array.isArray(data?.items) ? data.items : [];
-        updateCuratedStateOptions(curatedItems);
-        updateCuratedCountyOptions(curatedItems);
-        filterCuratedItems();
-        if (!curatedItems.length && !getVizSourceRows().length) {
-          clearVisualization();
-        }
-        setStatusText(el.curatedStatus, curatedItems.length ? `Loaded ${curatedItems.length} datasets.` : 'No curated datasets available.');
-      })
-      .catch(err => {
-        curatedItems = [];
-        renderCuratedList([]);
-        setStatusText(el.curatedStatus, `Failed to load curated datasets: ${err?.message || err}`);
-      });
+    const result = await fetchJsonWithRetry(curatedUrl, {
+      authReason: 'Authentication required for curated datasets and preview feeds.',
+      retries: 2
+    });
+    if (result.authBlocked) return;
+    if (!result.ok || !result.data) {
+      curatedItems = [];
+      renderCuratedList([]);
+      setStatusText(el.curatedStatus, 'Failed to load curated datasets.');
+      return;
+    }
+    const data = result.data;
+    curatedItems = Array.isArray(data?.items) ? data.items : [];
+    updateCuratedStateOptions(curatedItems);
+    updateCuratedCountyOptions(curatedItems);
+    filterCuratedItems();
+    if (!curatedItems.length && !getVizSourceRows().length) {
+      clearVisualization();
+    }
+    setStatusText(el.curatedStatus, curatedItems.length ? `Loaded ${curatedItems.length} datasets.` : 'No curated datasets available.');
   }
 
   async function fetchDbLiteDataset(url, mapper) {
     if (!url) return { ok: false, rows: [] };
     if (authRestrictedMode) return { ok: false, rows: [] };
     try {
-      const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      if (isAuthForbiddenStatus(response.status)) {
-        enterAuthRestrictedMode('Authentication required for DB-Lite dataset feeds.');
-        return { ok: false, rows: [] };
-      }
-      if (!response.ok) return { ok: false, rows: [] };
-      const payload = await response.json().catch(() => null);
+      const result = await fetchJsonWithRetry(url, {
+        authReason: 'Authentication required for DB-Lite dataset feeds.',
+        retries: 2
+      });
+      if (result.authBlocked || !result.ok) return { ok: false, rows: [] };
+      const payload = result.data;
       const records = Array.isArray(payload?.records) ? payload.records : [];
       const rows = records.map(mapper).filter(Boolean);
       return {
@@ -1937,9 +1996,11 @@ document.addEventListener('DOMContentLoaded', () => {
   async function fetchFinalizedMetadata() {
     if (!statesCountiesUrl) return;
     try {
-      const response = await fetch(statesCountiesUrl, { headers: { 'Accept': 'application/json' } });
-      if (!response.ok) return;
-      const payload = await response.json().catch(() => null);
+      const result = await fetchJsonWithRetry(statesCountiesUrl, {
+        retries: 1
+      });
+      if (!result.ok) return;
+      const payload = result.data;
       if (!payload || payload.success === false) return;
       finalizedMetadata = {
         states: Array.isArray(payload.states) ? payload.states : [],
@@ -1963,13 +2024,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (vizCounty) url.searchParams.set('county', vizCounty);
       if (vizContest) url.searchParams.set('contest', vizContest);
 
-      const response = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
-      if (isAuthForbiddenStatus(response.status)) {
-        enterAuthRestrictedMode('Authentication required for DB-Lite finalized dataset queries.');
-        return;
-      }
-      if (!response.ok) return;
-      const payload = await response.json().catch(() => null);
+      const result = await fetchJsonWithRetry(url.toString(), {
+        authReason: 'Authentication required for DB-Lite finalized dataset queries.',
+        retries: 2
+      });
+      if (result.authBlocked || !result.ok) return;
+      const payload = result.data;
       if (!payload || payload.success === false) return;
       const records = Array.isArray(payload.records) ? payload.records : [];
       const rows = records.map(mapDbLiteFinalizedRecord).filter(Boolean);
@@ -2471,20 +2531,27 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (el.scaffoldJson) {
-    el.scaffoldJson.addEventListener('click', () => {
+    el.scaffoldJson.addEventListener('click', async () => {
       setStatus(el.status, 'info', 'Building scaffold...');
-      fetch(scaffoldJsonUrl + '?limit=200', { headers: { 'Accept': 'application/json' } })
-        .then(r => r.json())
-        .then(data => {
-          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-          downloadBlob(blob, 'data_framework_scaffold.json');
-          setStatus(el.status, 'ok', 'Scaffold JSON ready.');
-          showInfoToast('Scaffold JSON downloaded.');
-        })
-        .catch(err => {
-          setStatus(el.status, 'error', `Scaffold download failed: ${err}`);
-          showErrorToast('Scaffold JSON failed.');
+      try {
+        const result = await fetchJsonWithRetry(scaffoldJsonUrl + '?limit=200', {
+          authReason: 'Authentication required for scaffold JSON endpoint.',
+          retries: 1,
         });
+        if (result.authBlocked) return;
+        if (!result.ok || !result.data) {
+          setStatus(el.status, 'error', 'Scaffold download failed.');
+          showErrorToast('Scaffold JSON failed.');
+          return;
+        }
+        const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
+        downloadBlob(blob, 'data_framework_scaffold.json');
+        setStatus(el.status, 'ok', 'Scaffold JSON ready.');
+        showInfoToast('Scaffold JSON downloaded.');
+      } catch (err) {
+        setStatus(el.status, 'error', `Scaffold download failed: ${err}`);
+        showErrorToast('Scaffold JSON failed.');
+      }
     });
   }
 
@@ -3109,89 +3176,81 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- Data Fetch ----------
   function fetchData(showLoading = false) {
-    if (showLoading) {
-      setStatus(el.status, 'info', 'Loading data...');
-      renderSkeleton();
-    }
-    fetch(apiUrl, { headers: { 'Accept': 'application/json' } })
-      .then(async r => {
-        const ct = (r.headers.get('content-type') || '').toLowerCase();
-        if (!r.ok) {
-          const text = await r.text().catch(() => '');
-            if (text.trim().startsWith('<'))
-              throw new Error(`Server error ${r.status}. Received HTML.`);
-          throw new Error(`Server error ${r.status}: ${text.slice(0,200)}`);
-        }
-        if (!ct.includes('application/json')) {
-          const text = await r.text().catch(() => '');
-          if (text.trim().startsWith('<')) throw new Error('Unexpected HTML response.');
-          throw new Error(`Unexpected content-type: ${ct || 'unknown'}`);
-        }
-        return r.json().catch(e => { throw new Error(`Invalid JSON: ${e.message}`); });
-      })
-      .then(data => {
-        rawData = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.rows) ? data.rows
-          : Array.isArray(data?.items) ? data.items
-          : [];
-        if (!Array.isArray(rawData)) rawData = [];
-
-        warehouseVizRows = rawData.map(mapWarehouseVizRecord).filter(Boolean);
-        if (warehouseVizRows.length) {
-          writeVizSnapshot(VIZ_DATASET_WAREHOUSE, {
-            rowCount: warehouseVizRows.length,
-            options: {
-              years: Array.from(new Set(warehouseVizRows.map(row => getRowYear(row)).filter(Boolean))).sort((a, b) => Number(b) - Number(a))
-            },
-            selection: {
-              vizYear,
-              vizState,
-              vizCounty,
-              vizContest,
-            },
-          });
-          if (vizDataset === VIZ_DATASET_WAREHOUSE && !curatedSelection) {
-            applyVizDatasetRows(warehouseVizRows);
-            setPreviewStatus(`Warehouse SQL Core • ${warehouseVizRows.length} rows`);
-          }
-        }
-
-        if (!compactPreferenceSet && rawData.length) {
-          setCompactTable(rawData.length >= COMPACT_AUTO_THRESHOLD);
-        }
-
-        // Trim objects with non-plain types
-        rawData = rawData.map(r => {
-          if (r && typeof r === 'object' && !Array.isArray(r)) return r;
-          return {};
-        });
-
-        // Build allowlist / columns
-        allowedColumns.clear();
-        buildColumns();
-
-        if (!rawData.length) {
-          setStatus(el.status, 'error', 'No data found in the database.');
-        } else {
-          setStatus(el.status, 'ok', `Loaded ${rawData.length} rows.`);
-        }
-        fetchPriorityStatus();
-        render();
-      })
-      .catch(err => {
-        rawData = [];
-        allowedColumns.clear();
-        buildColumns();
-        render();
-        const msg = err?.message || String(err);
-        if (/does not exist/i.test(msg)) {
-          setStatus(el.status, 'error', 'Backend table missing. Waiting for initialization (reload shortly).');
-        } else {
-          setStatus(el.status, 'error', msg);
-        }
-        showErrorToast('Failed to load data.');
+    (async () => {
+      if (showLoading) {
+        setStatus(el.status, 'info', 'Loading data...');
+        renderSkeleton();
+      }
+      const result = await fetchJsonWithRetry(apiUrl, {
+        authReason: 'Authentication required for data framework table feed.',
+        retries: 2,
       });
+      if (result.authBlocked) return;
+      if (!result.ok || !result.data) {
+        throw new Error(`Server error ${result.status || 'unknown'}.`);
+      }
+      const data = result.data;
+      rawData = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.rows) ? data.rows
+        : Array.isArray(data?.items) ? data.items
+        : [];
+      if (!Array.isArray(rawData)) rawData = [];
+
+      warehouseVizRows = rawData.map(mapWarehouseVizRecord).filter(Boolean);
+      if (warehouseVizRows.length) {
+        writeVizSnapshot(VIZ_DATASET_WAREHOUSE, {
+          rowCount: warehouseVizRows.length,
+          options: {
+            years: Array.from(new Set(warehouseVizRows.map(row => getRowYear(row)).filter(Boolean))).sort((a, b) => Number(b) - Number(a))
+          },
+          selection: {
+            vizYear,
+            vizState,
+            vizCounty,
+            vizContest,
+          },
+        });
+        if (vizDataset === VIZ_DATASET_WAREHOUSE && !curatedSelection) {
+          applyVizDatasetRows(warehouseVizRows);
+          setPreviewStatus(`Warehouse SQL Core • ${warehouseVizRows.length} rows`);
+        }
+      }
+
+      if (!compactPreferenceSet && rawData.length) {
+        setCompactTable(rawData.length >= COMPACT_AUTO_THRESHOLD);
+      }
+
+      // Trim objects with non-plain types
+      rawData = rawData.map(r => {
+        if (r && typeof r === 'object' && !Array.isArray(r)) return r;
+        return {};
+      });
+
+      // Build allowlist / columns
+      allowedColumns.clear();
+      buildColumns();
+
+      if (!rawData.length) {
+        setStatus(el.status, 'error', 'No data found in the database.');
+      } else {
+        setStatus(el.status, 'ok', `Loaded ${rawData.length} rows.`);
+      }
+      fetchPriorityStatus();
+      render();
+    })().catch(err => {
+      rawData = [];
+      allowedColumns.clear();
+      buildColumns();
+      render();
+      const msg = err?.message || String(err);
+      if (/does not exist/i.test(msg)) {
+        setStatus(el.status, 'error', 'Backend table missing. Waiting for initialization (reload shortly).');
+      } else {
+        setStatus(el.status, 'error', msg);
+      }
+      showErrorToast('Failed to load data.');
+    });
   }
 
   // ---------- Init ----------

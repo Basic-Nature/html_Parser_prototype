@@ -679,7 +679,7 @@
   .auth-welcome-page .auth-welcome-header p {
     margin: 0;
     font-size: 14px;
-    color: #496175;
+    color: #30495c;
   }
 
   .auth-welcome-page .cert-status-badge {
@@ -734,7 +734,7 @@
     min-width: 120px;
     flex-shrink: 0;
     font-weight: 700;
-    color: #476070;
+    color: #2f4b5f;
   }
 
   .auth-welcome-page .cert-info-value {
@@ -742,7 +742,7 @@
     margin-left: 16px;
     text-align: right;
     word-break: break-word;
-    color: #1f2e39;
+    color: #122533;
   }
 
   .auth-welcome-page .cert-info-value.monospace {
@@ -751,7 +751,7 @@
     padding: 4px 8px;
     border-radius: 3px;
     background: #fff;
-    color: #506575;
+    color: #2a4152;
     font-size: 12px;
     font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   }
@@ -762,7 +762,7 @@
 
   .auth-welcome-page .session-id-text {
     font-size: 10px;
-    color: #7e909d;
+    color: #5e7484;
   }
 
   .auth-welcome-page .auth-welcome-explanation {
@@ -786,7 +786,7 @@
     gap: 8px;
     margin-top: 12px;
     font-size: 13px;
-    color: #495d6b;
+    color: #2f495c;
   }
 
   .auth-welcome-page .tier-badge {
@@ -836,6 +836,13 @@
     transition: background var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
   }
 
+  .auth-welcome-page .btn-auth:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+  }
+
   .auth-welcome-page .btn-auth.primary {
     background: #1f5f70;
     color: #fff;
@@ -861,7 +868,7 @@
     border-radius: 6px;
     border-left: 3px solid #dc2626;
     background: #fee2e2;
-    color: #8e1d1d;
+    color: #6e1515;
     font-size: 14px;
     line-height: 1.5;
   }
@@ -872,7 +879,7 @@
     border-radius: 6px;
     border-left: 3px solid #f59e0b;
     background: #fef3c7;
-    color: #874500;
+    color: #6b3500;
     font-size: 14px;
     line-height: 1.5;
   }
@@ -883,7 +890,7 @@
     border-top: 1px solid #dde6ec;
     text-align: center;
     font-size: 12px;
-    color: #667c8b;
+    color: #4a6070;
   }
 
   .auth-welcome-page .icon {

@@ -72,17 +72,17 @@
             <!-- Actions -->
             <div class="auth-welcome-actions">
                 {% if require_cert %}
-                <button class="btn-auth primary" id="continueBtn" onclick="returnHome()">
+                <button class="btn-auth primary" id="retryBtn">
+                    Check Certificate & Continue
+                </button>
+                <button class="btn-auth secondary" id="returnHomeBtn">
                     Return to Home
                 </button>
-                <button class="btn-auth secondary" id="retryBtn" onclick="retryProtected()">
-                    Try Again
-                </button>
                 {% else %}
-                <button class="btn-auth primary" id="continueBtn" onclick="continueToPlatform()">
+                <button class="btn-auth primary" id="continueBtn">
                     Continue to Parser
                 </button>
-                <button class="btn-auth secondary" id="certDetailsBtn" onclick="toggleCertDetails()">
+                <button class="btn-auth secondary" id="certDetailsBtn">
                     ℹ Show Details
                 </button>
                 {% endif %}
@@ -96,11 +96,28 @@
         </div>
     </div>
 
-    <script>
+    <script nonce="{{ g.csp_nonce }}">
         // Initialize page with certificate metadata from query params or session storage
         document.addEventListener('DOMContentLoaded', async function() {
             try {
                 const requireCert = document.body.getAttribute('data-require-cert') === '1';
+                const continueBtn = document.getElementById('continueBtn');
+                const retryBtn = document.getElementById('retryBtn');
+                const returnHomeBtn = document.getElementById('returnHomeBtn');
+                const certDetailsBtn = document.getElementById('certDetailsBtn');
+
+                if (continueBtn) {
+                    continueBtn.addEventListener('click', continueToPlatform);
+                }
+                if (retryBtn) {
+                    retryBtn.addEventListener('click', retryProtected);
+                }
+                if (returnHomeBtn) {
+                    returnHomeBtn.addEventListener('click', returnHome);
+                }
+                if (certDetailsBtn) {
+                    certDetailsBtn.addEventListener('click', toggleCertDetails);
+                }
                 if (requireCert) {
                     showWarningMessage('A client certificate is required to access this feature.');
                     document.getElementById('verifiedTime').textContent = new Date().toLocaleString();
@@ -265,6 +282,7 @@
 
         function showErrorMessage(message) {
             const container = document.getElementById('messageContainer');
+            container.innerHTML = '';
             const errorDiv = document.createElement('div');
             errorDiv.className = 'error-message';
             errorDiv.textContent = message;
@@ -273,6 +291,7 @@
 
         function showWarningMessage(message) {
             const container = document.getElementById('messageContainer');
+            container.innerHTML = '';
             const warningDiv = document.createElement('div');
             warningDiv.className = 'warning-message';
             warningDiv.textContent = message;
@@ -291,26 +310,7 @@
             }
         }
 
-        function continueToPlatform() {
-            // Get session ID from params or storage
-            const params = new URLSearchParams(window.location.search);
-            const sessionId = params.get('session_id') || document.getElementById('sessionId').textContent;
-            
-            if (sessionId && sessionId !== '—') {
-                // Redirect to main app with session
-                window.location.href = `/ballot_lens?session_id=${encodeURIComponent(sessionId)}`;
-            } else {
-                // Fallback: just redirect to main app
-                window.location.href = '/ballot_lens';
-            }
-        }
-
-        function returnHome() {
-            window.location.href = '/';
-        }
-
-        function retryProtected() {
-            // Get the original target page (the one that required cert)
+        function getTargetUrl() {
             const params = new URLSearchParams(window.location.search);
             let targetUrl = params.get('target_url') || params.get('next');
             if (!targetUrl) {
@@ -319,9 +319,86 @@
             if (!targetUrl || targetUrl === '/') {
                 targetUrl = '/ballot_lens';
             }
-            
-            // Reload the original target page; if cert is now available, it will proceed
-            window.location.href = targetUrl;
+            return targetUrl;
+        }
+
+        async function fetchCertificateInfo(sessionId) {
+            const query = new URLSearchParams();
+            query.set('ts', Date.now().toString());
+            if (sessionId && sessionId !== '—') {
+                query.set('session_id', sessionId);
+            }
+
+            const response = await fetch(`/api/auth/certificate_info?${query.toString()}`, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                cache: 'no-store',
+            });
+            if (!response.ok) {
+                return null;
+            }
+            return response.json().catch(() => null);
+        }
+
+        async function continueToPlatform() {
+            const params = new URLSearchParams(window.location.search);
+            const sessionId = params.get('session_id') || document.getElementById('sessionId').textContent;
+            const continueBtn = document.getElementById('continueBtn');
+            if (continueBtn) {
+                continueBtn.disabled = true;
+                continueBtn.textContent = 'Validating...';
+            }
+
+            try {
+                const certInfo = await fetchCertificateInfo(sessionId);
+                if (!certInfo || certInfo?.require_cert) {
+                    showWarningMessage('Certificate not detected yet. Select your certificate in the browser prompt, then try again.');
+                    return;
+                }
+                const targetUrl = getTargetUrl();
+                window.location.href = targetUrl;
+            } catch (err) {
+                showErrorMessage('Unable to verify certificate status right now. Please try again.');
+            } finally {
+                if (continueBtn) {
+                    continueBtn.disabled = false;
+                    continueBtn.textContent = 'Continue to Parser';
+                }
+            }
+        }
+
+        function returnHome() {
+            window.location.href = '/';
+        }
+
+        async function retryProtected() {
+            const params = new URLSearchParams(window.location.search);
+            const sessionId = params.get('session_id') || document.getElementById('sessionId').textContent;
+            const retryBtn = document.getElementById('retryBtn');
+            if (retryBtn) {
+                retryBtn.disabled = true;
+                retryBtn.textContent = 'Checking...';
+            }
+
+            try {
+                const certInfo = await fetchCertificateInfo(sessionId);
+                const targetUrl = getTargetUrl();
+
+                if (certInfo && !certInfo?.require_cert) {
+                    window.location.href = targetUrl;
+                    return;
+                }
+
+                showWarningMessage('Certificate still required. The next page load will prompt for certificate selection if needed.');
+                window.location.href = targetUrl;
+            } catch (err) {
+                showErrorMessage('Unable to re-check certificate status. Please try again.');
+            } finally {
+                if (retryBtn) {
+                    retryBtn.disabled = false;
+                    retryBtn.textContent = 'Check Certificate & Continue';
+                }
+            }
         }
 
         // Optional: Auto-continue after 3 seconds if cert is valid

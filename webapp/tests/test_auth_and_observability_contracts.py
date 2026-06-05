@@ -52,6 +52,19 @@ def test_api_auth_certificate_info_requires_cert_contract(client, monkeypatch):
     assert payload["reason"] == "certificate_info"
     assert isinstance(payload.get("auth_url"), str) and "/auth/welcome" in payload["auth_url"]
 
+def test_auth_welcome_sets_csp_nonce_header(client, monkeypatch):
+    monkeypatch.setattr(appmod, "get_request_principal", lambda: (None, None, None))
+
+    resp = client.get("/auth/welcome", headers={"Accept": "text/html"})
+
+    assert resp.status_code == 401
+    csp_header = resp.headers.get("Content-Security-Policy")
+    assert csp_header is not None
+    assert "script-src" in csp_header
+    assert "nonce-" in csp_header
+    assert b"script nonce=\"" in resp.data
+
+
 
 def test_api_auth_certificate_info_success_contract(client, monkeypatch):
     monkeypatch.setattr(appmod, "_require_client_cert", lambda _reason: None)

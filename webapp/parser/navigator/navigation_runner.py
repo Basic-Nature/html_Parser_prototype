@@ -118,6 +118,15 @@ class NavigationInstructionRunner:
                 timeout = step.get("timeout_ms")
                 optional = bool(step.get("optional"))
                 if selector:
+                    if self._is_enhanced_voting_page(page, target_url=context.get("url") or getattr(page, "url", None)) and self._should_soft_skip_selector_failure(selector):
+                        self._record_trace(
+                            trace,
+                            action,
+                            "skipped",
+                            selector=selector,
+                            reason="enhanced_voting_generic_selector",
+                        )
+                        return None
                     with self._page_lock:
                         wait_ok = False
                         last_wait_error = None
@@ -147,6 +156,15 @@ class NavigationInstructionRunner:
                 selector = step.get("selector")
                 optional = bool(step.get("optional"))
                 if selector:
+                    if self._is_enhanced_voting_page(page, target_url=context.get("url") or getattr(page, "url", None)) and self._should_soft_skip_selector_failure(selector):
+                        self._record_trace(
+                            trace,
+                            action,
+                            "skipped",
+                            selector=selector,
+                            reason="enhanced_voting_generic_selector",
+                        )
+                        return None
                     with self._page_lock:
                         click_ok = False
                         for candidate in self._selector_candidates(selector):
@@ -279,6 +297,30 @@ class NavigationInstructionRunner:
     def _should_soft_skip_selector_failure(selector: str) -> bool:
         lowered = (selector or "").lower()
         return ("county" in lowered) or ("precinct" in lowered)
+
+    def _is_enhanced_voting_page(self, page, target_url: Optional[str] = None) -> bool:
+        try:
+            url = str(target_url or getattr(page, "url", None) or "")
+        except Exception:
+            url = ""
+        lowered_url = url.lower()
+        if any(marker in lowered_url for marker in ["enhancedvoting", "enhanced-voting", "enhanced voting", "rockland"]):
+            return True
+
+        try:
+            html_source = page.content() or ""
+            lowered_html = html_source.lower()
+            if any(marker in lowered_html for marker in [
+                "view results by election district",
+                "results by election district",
+                "vote method",
+                "enhanced voting",
+            ]):
+                return True
+        except Exception:
+            pass
+
+        return False
 
     def _has_results_ready(self, page) -> bool:
         try:

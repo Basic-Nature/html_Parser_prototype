@@ -431,13 +431,27 @@ def evaluate_url_processing_policy(
         return payload
 
     payload["checked"] = True
-    data_exists, data_source, metadata = check_existing_finalized_data(
-        normalized_url,
-        session_id=session_id,
-        state=state,
-        county=county,
-        contest=contest,
-    )
+    try:
+        data_exists, data_source, metadata = check_existing_finalized_data(
+            normalized_url,
+            session_id=session_id,
+            state=state,
+            county=county,
+            contest=contest,
+        )
+    except Exception as exc:
+        logger.warning({
+            "level": "WARNING",
+            "type": "database",
+            "message": "[DatabaseComparison] Check failed; defaulting to process URL.",
+            "session_id": session_id,
+            "url": normalized_url,
+            "error": str(exc),
+        })
+        payload["decision"] = "database_check_failed_process"
+        payload["metadata"] = {"database_check_error": str(exc)}
+        return payload
+
     if data_exists:
         payload["should_skip"] = True
         payload["decision"] = "skipped_data_exists"

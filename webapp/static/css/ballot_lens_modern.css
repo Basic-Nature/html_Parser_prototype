@@ -315,7 +315,7 @@ small {
 
 /* Utilities */
 .text-muted {
-  color: var(--text-muted);
+  color: var(--text-muted-strong);
 }
 
 /* Data table heading moved from inline styles to class */
