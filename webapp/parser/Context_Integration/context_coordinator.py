@@ -17,6 +17,11 @@ import os
 import re
 import subprocess
 import threading
+from .context_write_policy import (
+    DEFAULT_CONTEXT_WRITE_POLICY,
+    ContextWriteKind,
+    ContextWritePolicy,
+)
 from collections import Counter, defaultdict
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -2020,39 +2025,147 @@ class ContextCoordinator(object):
             logger.error(f"[ContextCoordinator] Failed to load table structure: {e}", exc_info=True)
             return None
 
-    def organize_and_enrich(self, raw_context, **kwargs) -> Dict[str, Any]:
+    def organize_and_enrich(
+        self,
+        raw_context,
+        *,
+        write_kind: ContextWriteKind | str = ContextWriteKind.NONE,
+        write_policy: ContextWritePolicy | None = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Organize and enrich parser context.
+
+        Persistence is disabled by default. Callers must explicitly provide a
+        write_kind and a policy that permits that destination.
+
+        Raw parser output must never become canonical knowledge automatically.
+        """
+
         self.last_raw_context = raw_context
+
+        policy = write_policy or DEFAULT_CONTEXT_WRITE_POLICY
+
+        if isinstance(write_kind, str):
+            try:
+                write_kind = ContextWriteKind(write_kind.strip().lower())
+            except ValueError as exc:
+                raise ValueError(f"Unsupported context write kind: {write_kind!r}") from exc
+
+        if not policy.permits(write_kind):
+            raise PermissionError(
+                f"Context write kind {write_kind.value!r} is not permitted by the active policy."
+            )
+
         overrides = kwargs.pop("route_overrides", None)
         provided_plan = kwargs.pop("enrichment_plan", None)
-        enrichment_plan = provided_plan or self._build_enrichment_plan(raw_context, overrides=overrides)
+        enrichment_plan = provided_plan or self._build_enrichment_plan(
+            raw_context,
+            overrides=overrides,
+        )
+
         if enrichment_plan:
             kwargs["enrichment_plan"] = enrichment_plan
+
         result = self.organizer.organize_context(raw_context, **kwargs)
-        # Defensive: handle error dict or None
+
         if result is None:
             self.organized = {}
-            self._log_enrichment_snapshot(enrichment_plan, self.organized, summary=None)
+            self._log_enrichment_snapshot(
+                enrichment_plan,
+                self.organized,
+                summary=None,
+            )
             return self.organized
+
         if isinstance(result, dict) and "organized" in result:
             self.organized = result["organized"] if result["organized"] is not None else {}
         else:
             self.organized = result if isinstance(result, dict) else {}
-        if enrichment_plan and "disambiguation" in (enrichment_plan.get("routes") or []):
+
+        if enrichment_plan and "disambiguation" in (
+            enrichment_plan.get("routes") or []
+        ):
             threshold = 0.6
             if isinstance(raw_context, dict):
-                threshold = raw_context.get("keyword_priority_threshold", threshold)
+                threshold = raw_context.get(
+                    "keyword_priority_threshold",
+                    threshold,
+                )
+
             self.organized = self._apply_keyword_priority_resolution(
                 self.organized,
                 raw_context,
-                threshold=float(threshold) if isinstance(threshold, (int, float)) else 0.6,
+                threshold=float(threshold)
+                if isinstance(threshold, (int, float))
+                else 0.6,
             )
-            self.organized = self.organizer.apply_keyword_priority_hints(self.organized)
-            self.append_to_context_library(self.organized, path=self.organizer.context_library_path)
+            self.organized = self.organizer.apply_keyword_priority_hints(
+                self.organized
+            )
+
         self._enrich_contests_with_nlp()
+
+        if write_kind is not ContextWriteKind.NONE:
+            self._persist_organized_context(
+                self.organized,
+                raw_context=raw_context,
+                write_kind=write_kind,
+                write_policy=policy,
+            )
+
         summary = result.get("summary") if isinstance(result, dict) else None
-        self._log_enrichment_snapshot(enrichment_plan, self.organized, summary=summary)
+        self._log_enrichment_snapshot(
+            enrichment_plan,
+            self.organized,
+            summary=summary,
+        )
+
         return self.organized
-    
+    def _persist_organized_context(
+        self,
+        organized: Dict[str, Any],
+        *,
+        raw_context: Dict[str, Any] | None,
+        write_kind: ContextWriteKind,
+        write_policy: ContextWritePolicy,
+    ) -> bool:
+        """
+        Route an explicitly requested context write.
+
+        This is a compatibility boundary. Evidence may be recorded now, while
+        learned and canonical publication remain restricted.
+        """
+
+        if not write_policy.permits(write_kind):
+            raise PermissionError(
+                f"Context write kind {write_kind.value!r} is not permitted."
+            )
+
+        if write_kind is ContextWriteKind.RUNTIME:
+            logger.debug(
+                "[ContextCoordinator] Runtime context persistence requested; "
+                "no canonical write performed."
+            )
+            return True
+
+        if write_kind is ContextWriteKind.EVIDENCE:
+            return self.organizer.append_context_evidence(
+                organized,
+                raw_context=raw_context,
+            )
+
+        if write_kind is ContextWriteKind.LEARNED:
+            raise PermissionError(
+                "Learned context must be submitted through the review/promotion workflow."
+            )
+
+        if write_kind is ContextWriteKind.CANONICAL:
+            raise PermissionError(
+                "Canonical context requires explicit administrative promotion."
+            )
+
+        return True
     def predict_missing_fields(self, html_context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Use ContestFieldClassifier ML model to predict missing state/county/year/type fields.

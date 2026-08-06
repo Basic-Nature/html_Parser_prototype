@@ -442,6 +442,10 @@ def update_context_library(path, update_fn) -> None:
     SECURITY: Path validated before operations.
     If a dict is passed instead of a function, it will update the library with that dict.
     """
+    logger.warning(
+        "[DEPRECATED] update_context_library() is a legacy broad-write API. "
+        "Parser and enrichment code must use evidence or promotion services instead."
+    )
     with _CONTEXT_LOCK:
         lib = load_context_library(path)
         # Accept either a function or a dict

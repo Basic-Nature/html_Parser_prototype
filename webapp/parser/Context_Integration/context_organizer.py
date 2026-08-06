@@ -14,6 +14,7 @@ import types
 from collections import Counter, defaultdict
 from collections.abc import Hashable
 from datetime import datetime, timezone
+from pathlib import Path
 from difflib import get_close_matches
 from typing import Any
 
@@ -1735,8 +1736,6 @@ class ContextOrganizer(object):
             else:
                 metadata["year"] = "Unknown"
 
-            self.append_to_context_library(organized, path=self.context_library_path)
-
             if isinstance(self.last_raw_context, dict):
                 pass
             rje = raw_context.get("rawjson_enrichment") if isinstance(raw_context, dict) else None
@@ -1788,7 +1787,6 @@ class ContextOrganizer(object):
                 summary["final"] = {"state": state, "county": county, "handler_path": handler_path}
                 log.append(f"Final detected state: {state}, county: {county}, handler_path: {handler_path}")
 
-            self.append_to_context_library(organized, path=self.context_library_path)
             logger.info(f"[CONTEXT ORGANIZER] Organized context for {len(contests)} contests.")
             self.organized = organized
 
@@ -2147,11 +2145,93 @@ class ContextOrganizer(object):
 
         logger.info(f"[ContextOrganizer] User feedback submitted: {feedback_entry}")
 
-    def append_to_context_library(self, organized, path=None, merge_lists=True, deduplicate=True) -> None:
+    def append_context_evidence(
+        self,
+        organized,
+        *,
+        raw_context=None,
+        path=None,
+    ) -> bool:
         """
-        Robustly append or update the organized context into the context library JSON file.
-        - merge_lists: If True, lists are merged (with deduplication if deduplicate=True).
-        - deduplicate: If True, removes duplicates from merged lists based on dict content or value.
+        Append parser/enrichment output as reviewable evidence.
+
+        Evidence is not canonical or approved learned knowledge.
+        """
+
+        evidence_path = Path(
+            path
+            or os.path.join(
+                LOG_DIR,
+                "context_evidence.jsonl",
+            )
+        )
+
+        try:
+            evidence_path.parent.mkdir(parents=True, exist_ok=True)
+
+            raw_context = raw_context if isinstance(raw_context, dict) else {}
+            organized = organized if isinstance(organized, dict) else {}
+
+            metadata = organized.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+
+            record = {
+                "type": "context_observation",
+                "status": "pending_review",
+                "source": "parser_enrichment",
+                "confidence": metadata.get("confidence"),
+                "created_at": datetime.now(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
+                "jurisdiction": {
+                    "state": raw_context.get("state") or metadata.get("state"),
+                    "county": raw_context.get("county") or metadata.get("county"),
+                },
+                "provenance": {
+                    "session_id": raw_context.get("session_id"),
+                    "source_url": (
+                        raw_context.get("source_url")
+                        or raw_context.get("url")
+                    ),
+                    "source_type": (
+                        raw_context.get("source_type")
+                        or raw_context.get("format")
+                    ),
+                },
+                "observation": clean_for_json(remove_functions(organized)),
+            }
+
+            with open(evidence_path, "ab") as file_obj:
+                file_obj.write(orjson.dumps(record) + b"\n")
+
+            logger.info(
+                "[CONTEXT ORGANIZER] Recorded context evidence at %s",
+                evidence_path,
+            )
+            return True
+
+        except Exception as exc:
+            logger.error(
+                "[CONTEXT ORGANIZER] Failed to record context evidence: %s",
+                exc,
+                exc_info=True,
+            )
+            return False
+
+    def append_to_context_library(
+        self,
+        organized,
+        path=None,
+        merge_lists=True,
+        deduplicate=True,
+    ) -> bool:
+        """
+        Legacy compatibility method.
+
+        Do not call this from parser or enrichment code. This method broadly merges
+        organized data into the legacy context library and bypasses evidence review.
+        New code must use append_context_evidence() or the explicit promotion flow.
         """
         def merge_dicts(a, b) -> dict:
             """Recursively merge dict b into dict a."""
@@ -2196,8 +2276,10 @@ class ContextOrganizer(object):
             safe_update(library, organized_clean, logger)
             update_context_library(path, library)
             logger.info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
+            return True
         except Exception as e:
             logger.error(f"[CONTEXT ORGANIZER] Failed to append to context library: {e}")
+            return False
 
     def save_table_structure_to_db(self, contest, headers, context, ml_confidence=None, confirmed_by_user=False) -> None:
         """

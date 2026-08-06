@@ -22,6 +22,10 @@ import numpy as np
 import orjson
 from selectolax.parser import HTMLParser
 
+from ..Context_Integration.context_write_policy import (
+    ContextWriteKind,
+)
+
 from ..config import (
     CACHE_DIR,
     CONTEXT_CACHE_PATH,
@@ -81,7 +85,6 @@ from ..Context_Integration.Context_Library.constants import (
 from ..Context_Integration.librarian import (
     get_canonical_segment_label,
     load_context_library,
-    update_context_library,
 )
 from .embedding_cache import (
     get_embedding_from_memory,
@@ -99,9 +102,7 @@ from .shared_logic import (
     normalize_html_for_hash,
     safe_add,
     safe_append,
-    safe_append_cached_segment,
     safe_encode,
-    safe_extend,
     safe_filename,
     safe_get,
     safe_get_first,
@@ -2709,18 +2710,16 @@ def scan_html_for_context(
                 "source_url": page_url,
                 "timestamp": time.time(),
             })
-            # Update context library and prune embedding cache
-            if context_library is not None and safe_get(seg, "segment_hash", None):
-                update_context_library(
-                    CONTEXT_LIBRARY_PATH,
-                    lambda lib: safe_append_cached_segment(
-                        lib,
-                        safe_get(seg, "segment_hash", None),
-                        safe_get(seg, "ml_label", None)
-                    )
-                )
-                valid_hashes = set(safe_get(s, "segment_hash", None) for s in context_library.get("cached_segments", []))
-                prune_embedding_cache(valid_hashes)
+            # Raw parser segments are evidence, not canonical context.
+            # Keep them in the review result and evidence logs only.
+            if safe_get(seg, "segment_hash", None):
+                seg.setdefault("review_metadata", {})
+                seg["review_metadata"].update({
+                    "status": "pending_review",
+                    "source": "html_scanner",
+                    "source_url": page_url,
+                    "segment_hash": safe_get(seg, "segment_hash", None),
+                })
             segments_needing_review.append(seg)
         else:
             pattern_kb_matches.append({
@@ -2759,50 +2758,55 @@ def scan_html_for_context(
 
     # --- 7. Ensure All List Fields Are Lists ---
     for key in [
-        "contests", "panels", "tables", "candidate_panels", "location_panels",
-        "headings", "ballot_types", "results_timestamps", "party_labels", "vote_methods",
-        "pattern_kb_matches", "segments_needing_review", "selector_log",
-        "tagged_segments", "tagged_segments_with_attrs"
+        "contests",
+        "panels",
+        "tables",
+        "candidate_panels",
+        "location_panels",
+        "headings",
+        "ballot_types",
+        "results_timestamps",
+        "party_labels",
+        "vote_methods",
+        "pattern_kb_matches",
+        "segments_needing_review",
+        "segment_evidence",
+        "selector_log",
+        "tagged_segments",
+        "tagged_segments_with_attrs",
     ]:
         if key not in context_result or not isinstance(context_result[key], list):
             context_result[key] = []
 
-    # --- 8. Downstream Context Library Update ---
-    if context_library is not None:
-        if "cached_segments" not in context_library:
-            context_library["cached_segments"] = []
-        known_hashes = set(safe_get(seg, "segment_hash", None) for seg in context_library["cached_segments"])
-        for seg in segments_with_attrs:
-            if safe_get(seg, "segment_hash", None) and safe_get(seg, "segment_hash", None) not in known_hashes:
-                safe_append(
-                    context_library.get("cached_segments"),
-                    {
-                        "segment_hash": safe_get(seg, "segment_hash", None),
-                        "ml_label": safe_get(seg, "ml_label", None),
-                        "ml_confidence": safe_get(seg, "ml_confidence", None),
-                        "pattern_id": safe_get(seg, "pattern_id", None),
-                    },
-                    logger
-                )
-        update_context_library(
-            CONTEXT_LIBRARY_PATH,
-            lambda lib: safe_extend(
-                lib,
-                "cached_segments",
-                [
-                    {
-                        "segment_hash": safe_get(seg, "segment_hash", None),
-                        "ml_label": safe_get(seg, "ml_label", None),
-                        "ml_confidence": safe_get(seg, "ml_confidence", None),
-                        "pattern_id": safe_get(seg, "pattern_id", None),
-                    }
-                    for seg in segments_with_attrs
-                    if safe_get(seg, "segment_hash", None) and safe_get(seg, "segment_hash", None) not in known_hashes
-                ]
-            )
-        )
-        valid_hashes = set(safe_get(seg, "segment_hash", None) for seg in context_library.get("cached_segments", []))
-        prune_embedding_cache(valid_hashes)
+    # --- 8. Build Reviewable Segment Evidence ---
+    segment_evidence = []
+
+    for seg in segments_with_attrs:
+        segment_hash = safe_get(seg, "segment_hash", None)
+        if not segment_hash:
+            continue
+
+        segment_evidence.append({
+            "type": "segment_observation",
+            "status": "pending_review",
+            "source": "html_scanner",
+            "value": safe_get(seg, "html", "")[:500],
+            "canonical_value": None,
+            "confidence": safe_get(seg, "ml_confidence", None),
+            "label": safe_get(seg, "ml_label", None),
+            "pattern_id": safe_get(seg, "pattern_id", None),
+            "jurisdiction": {
+                "state": context_result.get("state"),
+                "county": context_result.get("county"),
+            },
+            "provenance": {
+                "session_id": session_id,
+                "source_url": page_url,
+                "segment_hash": segment_hash,
+            },
+        })
+
+    context_result["segment_evidence"] = segment_evidence
 
     # --- 9. Enrich, propagate, and validate context ---
     context_result = _enrich_and_validate_context(
@@ -2977,7 +2981,10 @@ def _fast_path_cache_hit(html, page_hash, page_url, context_cache, coordinator):
             logger.info({"level": "INFO", "type": "scan_html", "message": msg})
         fast_path_result = {h: context_cache[h] for h in segment_hashes}
         if coordinator is not None:
-            coordinator.organize_and_enrich(fast_path_result)
+            coordinator.organize_and_enrich(
+                fast_path_result,
+                write_kind=ContextWriteKind.NONE,
+            )
         return True
     if page_hash in context_cache:
         msg1 = f"[SCAN] Using cached context for {page_url}"
@@ -2990,7 +2997,10 @@ def _fast_path_cache_hit(html, page_hash, page_url, context_cache, coordinator):
             logger.info({"level": "INFO", "type": "scan_html", "message": msg2})
         cached_result = context_cache[page_hash]
         if coordinator is not None:
-            coordinator.organize_and_enrich(cached_result)
+            coordinator.organize_and_enrich(
+                cached_result,
+                write_kind=ContextWriteKind.NONE,
+            )
         return True
     return False
 
@@ -3284,10 +3294,22 @@ def _enrich_and_validate_context(
     }
     # Ensure all list fields are lists
     for key in [
-        "contests", "panels", "tables", "candidate_panels", "location_panels",
-        "headings", "ballot_types", "results_timestamps", "party_labels", "vote_methods",
-        "pattern_kb_matches", "segments_needing_review", "selector_log",
-        "tagged_segments", "tagged_segments_with_attrs"
+        "contests",
+        "panels",
+        "tables",
+        "candidate_panels",
+        "location_panels",
+        "headings",
+        "ballot_types",
+        "results_timestamps",
+        "party_labels",
+        "vote_methods",
+        "pattern_kb_matches",
+        "segments_needing_review",
+        "segment_evidence",
+        "selector_log",
+        "tagged_segments",
+        "tagged_segments_with_attrs",
     ]:
         if key not in dom_parts or not isinstance(dom_parts[key], list):
             dom_parts[key] = []
@@ -3355,7 +3377,10 @@ def _enrich_and_validate_context(
 
     # --- 5. Downstream enrichment via coordinator if present ---
     if coordinator is not None and hasattr(coordinator, "organize_and_enrich"):
-        organized = coordinator.organize_and_enrich(context_result)
+        organized = coordinator.organize_and_enrich(
+            context_result,
+            write_kind=ContextWriteKind.EVIDENCE,
+        )
         if organized and isinstance(organized, dict):
             safe_update(context_result, organized, logger)
             if "dom_parts" in organized:
