@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -39,7 +41,7 @@ def test_cert_required_response_json_contract():
     assert "/auth/welcome" in payload["auth_url"]
 
 
-def test_api_auth_certificate_info_requires_cert_contract(client, monkeypatch):
+def test_api_auth_certificate_info_returns_safe_status_contract(client, monkeypatch):
     monkeypatch.setattr(appmod, "REQUIRE_CERT_FOR_MUTATIONS", True)
     monkeypatch.setattr(appmod, "DEPLOY_ENV", "ci")
     monkeypatch.setattr(appmod, "get_request_principal", lambda: (None, None, None))
@@ -47,10 +49,12 @@ def test_api_auth_certificate_info_requires_cert_contract(client, monkeypatch):
     resp = client.get("/api/auth/certificate_info", headers={"Accept": "application/json"})
     payload = resp.get_json()
 
-    assert resp.status_code == 401
-    assert payload["error"] == "certificate_required"
-    assert payload["reason"] == "certificate_info"
-    assert isinstance(payload.get("auth_url"), str) and "/auth/welcome" in payload["auth_url"]
+    assert resp.status_code == 200
+    assert payload["authenticated"] is False
+    assert payload["certificate_present"] is False
+    assert payload["principal"] is None
+    assert isinstance(payload.get("challenge_url"), str)
+    assert isinstance(payload.get("session_context"), dict)
 
 def test_auth_welcome_sets_csp_nonce_header(client, monkeypatch):
     monkeypatch.setattr(appmod, "get_request_principal", lambda: (None, None, None))
@@ -62,8 +66,63 @@ def test_auth_welcome_sets_csp_nonce_header(client, monkeypatch):
     assert csp_header is not None
     assert "script-src" in csp_header
     assert "nonce-" in csp_header
-    assert b"script nonce=\"" in resp.data
 
+
+def test_auth_welcome_renders_external_assets(client, monkeypatch):
+    monkeypatch.setattr(appmod, "get_request_principal", lambda: (None, None, None))
+
+    resp = client.get("/auth/welcome", headers={"Accept": "text/html"})
+    html = resp.data.decode("utf-8")
+
+    assert resp.status_code == 401
+    assert 'href="/static/css/auth_welcome.css"' in html
+    assert 'src="/static/js/auth_welcome.js"' in html
+    assert '<script nonce="' not in html
+    assert '<script src="/static/js/auth_welcome.js"></script>' in html
+    assert '<a class="btn-auth primary" id="retryBtn"' in html or '<a class="btn-auth primary" id="continueBtn"' in html
+
+
+def test_auth_welcome_js_does_not_read_raw_next_query():
+    content = Path(appmod.__file__).resolve().parent.parent.joinpath('webapp', 'static', 'js', 'auth_welcome.js').read_text(encoding='utf-8')
+
+    assert "params.get('next')" not in content
+    assert "params.get('target_url')" not in content
+    assert 'data-target-url' in content
+
+
+def test_auth_welcome_js_only_uses_session_id_query_parameter():
+    content = Path(appmod.__file__).resolve().parent.parent.joinpath('webapp', 'static', 'js', 'auth_welcome.js').read_text(encoding='utf-8')
+
+    assert "params.get('session_id')" in content
+    assert "params.get('next')" not in content
+    assert "params.get('target_url')" not in content
+    assert "URLSearchParams(window.location.search)" in content
+    assert 'data-target-url' in content
+
+
+def test_auth_welcome_ignores_raw_next_and_target_url_query_values(client, monkeypatch):
+    monkeypatch.setattr(appmod, "get_request_principal", lambda: (None, None, None))
+
+    resp = client.get(
+        "/auth/welcome?next=//evil.example.com&target_url=//evil.example.com",
+        headers={"Accept": "text/html"},
+    )
+    html = resp.data.decode("utf-8")
+
+    assert resp.status_code == 401
+    assert 'data-target-url' in html
+    assert '//evil.example.com' not in html
+
+
+def test_auth_mode_policy(client, monkeypatch):
+    monkeypatch.setattr(appmod, 'AUTH_MODE', 'disabled')
+    assert appmod._auth_mode_requires_certificate() is False
+
+    monkeypatch.setattr(appmod, 'AUTH_MODE', 'optional')
+    assert appmod._auth_mode_requires_certificate() is False
+
+    monkeypatch.setattr(appmod, 'AUTH_MODE', 'required')
+    assert appmod._auth_mode_requires_certificate() is True
 
 
 def test_api_auth_certificate_info_success_contract(client, monkeypatch):
@@ -112,6 +171,98 @@ def test_api_ml_usage_contract(client, monkeypatch):
     assert resp.status_code == 200
     assert payload["success"] is True
     assert payload["telemetry"]["totals"]["events"] == 5
+
+
+def test_api_auth_status_returns_safe_review_without_cert(client, monkeypatch):
+    monkeypatch.setattr(appmod, "get_request_principal", lambda: (None, None, None))
+
+    resp = client.get("/api/auth/status", headers={"Accept": "application/json"})
+    payload = resp.get_json()
+
+    assert resp.status_code == 200
+    assert payload["authenticated"] is False
+    assert payload["certificate_present"] is False
+    assert payload["principal"] is None
+    assert isinstance(payload.get("challenge_url"), str)
+
+
+def test_auth_challenge_redirects_to_auth_welcome_when_no_cert(client, monkeypatch):
+    monkeypatch.setattr(appmod, "REQUIRE_CERT_FOR_MUTATIONS", True)
+    monkeypatch.setattr(appmod, "DEPLOY_ENV", "ci")
+    monkeypatch.setattr(appmod, "get_request_principal", lambda: (None, None, None))
+
+    resp = client.get("/auth/challenge?next=/ballot_lens", headers={"Accept": "text/html"})
+
+    assert resp.status_code in (301, 302)
+    parsed = urlparse(resp.headers.get("Location", ""))
+    assert parsed.path == "/auth/welcome"
+    assert parse_qs(parsed.query)["next"] == ["/ballot_lens"]
+
+
+def test_auth_challenge_redirects_to_target_when_cert_present(client, monkeypatch):
+    monkeypatch.setattr(appmod, "REQUIRE_CERT_FOR_MUTATIONS", True)
+    monkeypatch.setattr(appmod, "DEPLOY_ENV", "ci")
+    monkeypatch.setattr(appmod, "get_request_principal", lambda: ("cert:test-user", "x_arr_clientcert", {"cn": "Test User"}))
+
+    resp = client.get("/auth/challenge?next=/ballot_lens", headers={"Accept": "text/html"})
+
+    assert resp.status_code in (301, 302)
+    assert resp.headers.get("Location") == "/ballot_lens"
+
+
+def test_auth_challenge_rejects_auth_loop_destination(client, monkeypatch):
+    monkeypatch.setattr(appmod, "REQUIRE_CERT_FOR_MUTATIONS", True)
+    monkeypatch.setattr(appmod, "DEPLOY_ENV", "ci")
+    monkeypatch.setattr(appmod, "get_request_principal", lambda: ("cert:test-user", "x_arr_clientcert", {"cn": "Test User"}))
+
+    resp = client.get("/auth/challenge?next=/auth/welcome", headers={"Accept": "text/html"})
+
+    assert resp.status_code in (301, 302)
+    assert resp.headers.get("Location") == "/ballot_lens"
+
+
+def test_auth_challenge_rejects_protocol_relative_next(client, monkeypatch):
+    monkeypatch.setattr(appmod, "REQUIRE_CERT_FOR_MUTATIONS", True)
+    monkeypatch.setattr(appmod, "DEPLOY_ENV", "ci")
+    monkeypatch.setattr(appmod, "get_request_principal", lambda: ("cert:test-user", "x_arr_clientcert", {"cn": "Test User"}))
+
+    resp = client.get("/auth/challenge?next=//evil.example.com", headers={"Accept": "text/html"})
+
+    assert resp.status_code in (301, 302)
+    assert resp.headers.get("Location") == "/ballot_lens"
+
+
+def test_auth_status_does_not_expose_raw_certificate_metadata(client, monkeypatch):
+    monkeypatch.setattr(appmod, "get_request_principal", lambda: ("cert:test-user", "x_arr_clientcert", {"cn": "Test User", "subject_dn": "CN=Test User,OU=foo", "raw": "secret"}))
+
+    resp = client.get("/api/auth/status", headers={"Accept": "application/json"})
+    payload = resp.get_json()
+
+    assert resp.status_code == 200
+    assert payload["authenticated"] is True
+    assert payload["certificate_present"] is True
+    assert payload["cert_metadata"].get("cn") == "Test User"
+    assert "subject_dn" not in payload["cert_metadata"]
+    assert "raw" not in payload["cert_metadata"]
+    assert payload["session_context"]["host"] == "localhost"
+    assert payload["session_context"]["remote_addr"] == "127.0.0.1"
+
+
+def test_socketio_client_config_is_not_polling_only():
+    assert appmod.SOCKETIO_CLIENT_CONFIG["transports"] == ["websocket", "polling"]
+    assert appmod.SOCKETIO_CLIENT_CONFIG.get("upgrade") is True
+    assert appmod.SOCKETIO_CLIENT_CONFIG.get("pollingOnly") is None
+
+
+def test_api_auth_status_without_certificate_returns_200(client, monkeypatch):
+    monkeypatch.setattr(appmod, "get_request_principal", lambda: (None, None, None))
+
+    resp = client.get("/api/auth/status", headers={"Accept": "application/json"})
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["authenticated"] is False
+    assert payload["certificate_present"] is False
+    assert payload["challenge_url"].startswith("/auth/challenge")
 
 
 def test_api_ml_usage_failure_contract(client, monkeypatch):

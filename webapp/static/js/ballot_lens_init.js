@@ -23,7 +23,7 @@
   // Socket.IO config extraction: read data attribute from vendor script tag
   try {
     var configEl = document.querySelector('script[data-socketio-config]');
-    var defaultConfig = { transports: ['polling'], pollingOnly: true, pingInterval: 10000, pingTimeout: 60000 };
+    var defaultConfig = { transports: ['websocket', 'polling'], upgrade: true, pingInterval: 10000, pingTimeout: 60000 };
     if (configEl) {
       try {
         var configData = configEl.getAttribute('data-socketio-config');
@@ -46,7 +46,7 @@
       window.__SOCKETIO_CONFIG__ = defaultConfig;
     }
   } catch (e) {
-    window.__SOCKETIO_CONFIG__ = { transports: ['polling'], pollingOnly: true, pingInterval: 10000, pingTimeout: 60000 };
+    window.__SOCKETIO_CONFIG__ = { transports: ['websocket', 'polling'], upgrade: true, pingInterval: 10000, pingTimeout: 60000 };
   }
 
   // Attach delegated handlers for elements with `data-confirm` or `data-action` attributes

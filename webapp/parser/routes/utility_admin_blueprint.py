@@ -62,6 +62,10 @@ def create_utility_admin_blueprint() -> Blueprint:
     def api_auth_certificate_info_route():
         return _call_handler("api_auth_certificate_info")
 
+    @bp.route("/api/auth/status", methods=["GET"], endpoint="api_auth_status")
+    def api_auth_status_route():
+        return _call_handler("api_auth_status")
+
     @bp.route("/api/route_wrappers/monitor", methods=["GET"], endpoint="api_route_wrapper_monitor_snapshot")
     def api_route_wrapper_monitor_snapshot_route():
         return _call_handler("api_route_wrapper_monitor_snapshot")

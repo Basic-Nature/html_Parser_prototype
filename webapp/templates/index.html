@@ -48,6 +48,10 @@
                 <h3>Quality Metrics</h3>
                 <p>Monitor extraction confidence, data quality trends, and handler performance with interactive charts and detailed analytics, then open Health Preview (read-only) for operator task visibility.</p>
             </a>
+            <a class="feature" href="{{ url_for('ocr_diagnostics') }}" data-bs-toggle="tooltip" title="Inspect OCR binary and module availability for PDF parsing.">
+                <h3>OCR Diagnostics</h3>
+                <p>View the current runtime environment for OCR, including Tesseract/Poppler availability, Python module versions, and active environment variables.</p>
+            </a>
             <a class="feature" href="{{ url_for('history') }}" data-bs-toggle="tooltip" title="Audit prior changes and restore snapshots.">
                 <h3>Change History</h3>
                 <p>View the full history of URL hint changes and parser configuration updates for transparency and auditability.</p>

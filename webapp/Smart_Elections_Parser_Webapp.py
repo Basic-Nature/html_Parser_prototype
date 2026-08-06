@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import logging
 import os
 import socket
 from typing import Any, Callable, Tuple
@@ -42,10 +43,20 @@ if not SOCKETIO_ALLOWED_ORIGINS:
 
 SOCKETIO_CLIENT_CONFIG = {
     "transports": _SOCKETIO_CLIENT_TRANSPORTS,
-    "pollingOnly": True,
+    "upgrade": True,
     "pingInterval": int(_SOCKETIO_ENGINE_OPTIONS["ping_interval"] * 1000),
     "pingTimeout": int(_SOCKETIO_ENGINE_OPTIONS["ping_timeout"] * 1000),
 }
+
+AUTH_MODE = os.environ.get("AUTH_MODE", "required").strip().lower()
+if AUTH_MODE not in {"disabled", "optional", "required"}:
+    AUTH_MODE = "required"
+
+
+def _auth_mode_requires_certificate() -> bool:
+    if AUTH_MODE in {"disabled", "optional"}:
+        return False
+    return True
 
 SOCKETIO_MESSAGE_QUEUE = os.environ.get("SOCKETIO_MESSAGE_QUEUE")
 SOCKETIO_MESSAGE_CHANNEL = os.environ.get("SOCKETIO_MESSAGE_CHANNEL", "socketio")
@@ -55,12 +66,7 @@ SOCKETIO_MESSAGE_CHANNEL = os.environ.get("SOCKETIO_MESSAGE_CHANNEL", "socketio"
 _ALLOW_REDIS_QUEUE = os.environ.get("SOCKETIO_ALLOW_REDIS", "false").lower() in {"1", "true", "yes", "on"}
 if SOCKETIO_MESSAGE_QUEUE and str(SOCKETIO_MESSAGE_QUEUE).strip().lower().startswith(("redis://", "rediss://")):
     if not _ALLOW_REDIS_QUEUE:
-        logger.warning({
-            "level": "WARNING",
-            "type": "socketio",
-            "message": "SOCKETIO_MESSAGE_QUEUE points to Redis but SOCKETIO_ALLOW_REDIS is false; disabling Redis queue.",
-            "session_id": None,
-        })
+        logging.warning("SOCKETIO_MESSAGE_QUEUE points to Redis but SOCKETIO_ALLOW_REDIS is false; disabling Redis queue.")
         SOCKETIO_MESSAGE_QUEUE = None
 
 # ---------------------------------------------------------------------------
@@ -448,19 +454,74 @@ def _request_wants_json() -> bool:
     return False
 
 
+DISALLOWED_AUTH_NEXT_PREFIXES = (
+    "/auth/welcome",
+    "/auth/challenge",
+    "/api/auth/",
+)
+
+def sanitize_internal_next(raw_next: str | None, fallback: str = "/") -> str:
+    if not raw_next or not isinstance(raw_next, str):
+        return fallback
+    raw = raw_next.strip()
+    if len(raw) > 2048:
+        return fallback
+    if "\x00" in raw or any(ord(ch) < 32 for ch in raw):
+        return fallback
+    if raw.startswith("//") or raw.startswith("\\") or "\\" in raw:
+        return fallback
+    parsed = urlparse(raw)
+    if parsed.scheme or parsed.netloc:
+        return fallback
+    if not raw.startswith("/"):
+        return fallback
+    if ".." in parsed.path.split("/"):
+        return fallback
+    if parsed.path and not parsed.path.startswith("/"):
+        return fallback
+    normalized_path = parsed.path or "/"
+    if any(normalized_path.startswith(prefix) for prefix in DISALLOWED_AUTH_NEXT_PREFIXES):
+        return fallback
+    normalized_query = f"?{parsed.query}" if parsed.query else ""
+    normalized_frag = f"#{parsed.fragment}" if parsed.fragment else ""
+    return f"{normalized_path}{normalized_query}{normalized_frag}"
+
+
+def _sanitize_cert_metadata_for_status(cert_metadata: dict | None) -> dict:
+    if not isinstance(cert_metadata, dict):
+        return {}
+    allowed = {
+        "cn",
+        "issuer",
+        "serial_number",
+        "issued_date",
+        "expiry_date",
+        "expiry_days",
+        "key_algorithm",
+        "is_expired",
+    }
+    return {k: cert_metadata[k] for k in allowed if k in cert_metadata}
+
+
 def _cert_required_response(reason: str):
     wants_json = _request_wants_json()
+    fallback_path = request.path or "/"
+    if request.query_string:
+        qs = request.query_string.decode("utf-8", "ignore")
+        if qs:
+            fallback_path += f"?{qs}"
+    auth_next = sanitize_internal_next(request.args.get("next"), fallback=fallback_path)
     if wants_json:
         return jsonify({
             "error": "certificate_required",
             "reason": reason,
-            "auth_url": url_for("auth_welcome", next=request.url),
+            "auth_url": url_for("auth_welcome", next=auth_next),
         }), 401
-    return redirect(url_for("auth_welcome", next=request.url))
+    return redirect(url_for("auth_welcome", next=auth_next))
 
 
 def _require_client_cert(reason: str):
-    if not REQUIRE_CERT_FOR_MUTATIONS:
+    if not _auth_mode_requires_certificate() or not REQUIRE_CERT_FOR_MUTATIONS:
         return None
     if DEPLOY_ENV == "local" and _is_local_request():
         return None
@@ -479,7 +540,7 @@ def _require_client_cert(reason: str):
 
 
 def _require_cert_for_socket_action(action: str, session_id: str | None = None) -> bool:
-    if not REQUIRE_CERT_FOR_MUTATIONS:
+    if not _auth_mode_requires_certificate() or not REQUIRE_CERT_FOR_MUTATIONS:
         return True
     if DEPLOY_ENV == "local" and _is_local_request():
         return True
@@ -6448,6 +6509,105 @@ def quality_dashboard():
     return render_template("quality_dashboard.html")
 
 
+def _probe_module_version(module_name: str) -> dict[str, Any]:
+    try:
+        spec = importlib.util.find_spec(module_name)
+    except Exception:
+        return {"installed": False, "version": None, "notes": ["Failed to inspect module spec."]}
+
+    if spec is None:
+        return {"installed": False, "version": None, "notes": []}
+
+    try:
+        module = importlib.import_module(module_name)
+        version = getattr(module, "__version__", None)
+        if version is None and hasattr(module, "version"):
+            version = module.version
+    except Exception as exc:
+        return {"installed": False, "version": None, "notes": [f"Import failed: {exc}"]}
+
+    return {"installed": True, "version": str(version) if version is not None else "unknown", "notes": []}
+
+
+def _probe_binary(binary_name: str, env_var: str | None = None, is_path_dir: bool = False) -> dict[str, Any]:
+    env_value = os.environ.get(env_var) if env_var else None
+    result = {
+        "binary_name": binary_name,
+        "env_var": env_var,
+        "env_value": env_value,
+        "resolved_path": None,
+        "available": False,
+        "version": None,
+        "notes": [],
+    }
+
+    candidate = None
+    if env_value:
+        env_path = os.path.expanduser(env_value)
+        if is_path_dir and os.path.isdir(env_path):
+            candidate = os.path.join(env_path, binary_name)
+            if os.name == "nt":
+                candidate = os.path.join(env_path, f"{binary_name}.exe")
+        elif os.path.isfile(env_path) and os.access(env_path, os.X_OK):
+            candidate = env_path
+        elif not is_path_dir and shutil.which(env_path):
+            candidate = shutil.which(env_path)
+        else:
+            result["notes"].append(f"Environment variable {env_var} points to a non-executable path.")
+
+    if not candidate:
+        candidate = shutil.which(binary_name)
+
+    if candidate:
+        result["resolved_path"] = os.path.abspath(candidate)
+        result["available"] = True
+        try:
+            version_proc = subprocess.run(
+                [result["resolved_path"], "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env=os.environ,
+            )
+            result["version"] = (version_proc.stdout or version_proc.stderr).strip().splitlines()[0]
+        except Exception as exc:
+            result["notes"].append(f"Version probe failed: {exc}")
+    else:
+        result["notes"].append(f"Could not locate binary {binary_name}.")
+
+    return result
+
+
+def _build_ocr_diagnostics() -> dict[str, Any]:
+    diagnostics = {
+        "platform": platform.platform(),
+        "python_version": platform.python_version(),
+        "deploy_env": os.environ.get("DEPLOY_ENV", "local"),
+        "enable_ocr": bool(os.environ.get("ENABLE_OCR", "true").lower() in ("1", "true", "yes")),
+        "enable_ocr_force": bool(os.environ.get("ENABLE_OCR_FORCE", "false").lower() in ("1", "true", "yes")),
+        "tesseract_cmd_env": os.environ.get("TESSERACT_CMD"),
+        "poppler_path_env": os.environ.get("POPPLER_PATH"),
+        "pytesseract": _probe_module_version("pytesseract"),
+        "pdf2image": _probe_module_version("pdf2image"),
+        "fitz": _probe_module_version("fitz"),
+        "tesseract": _probe_binary("tesseract", env_var="TESSERACT_CMD"),
+        "pdftoppm": _probe_binary("pdftoppm", env_var="POPPLER_PATH", is_path_dir=True),
+    }
+    return diagnostics
+
+
+def ocr_diagnostics():
+    """OCR environment and runtime diagnostics page."""
+    diagnostics = _build_ocr_diagnostics()
+    return render_template("ocr_diagnostics.html", diagnostics=diagnostics)
+
+
+def api_ocr_diagnostics():
+    """Return OCR environment diagnostics as JSON for observability."""
+    diagnostics = _build_ocr_diagnostics()
+    return jsonify(diagnostics)
+
+
 def _load_integrity_trends() -> tuple[list[dict[str, Any]], str, bool]:
     """Load integrity trends from primary file locations with cached fallback.
 
@@ -7007,25 +7167,50 @@ app.config["_OBSERVABILITY_ROUTE_HANDLERS"] = {
     "api_ml_vocab_alignment_suggestions": api_ml_vocab_alignment_suggestions,
     "api_ml_vocab_alignment_suggestions_export": api_ml_vocab_alignment_suggestions_export,
     "api_preingest_url_glimpse": api_preingest_url_glimpse,
+    "api_ocr_diagnostics": api_ocr_diagnostics,
 }
+
+def api_auth_status():
+    """
+    Return a safe inspection payload for the current auth state.
+    This endpoint does not require a client certificate and can be polled
+    to determine whether a certificate is present or the user is authenticated.
+    """
+    principal, principal_source, cert_metadata = get_request_principal()
+    next_target = sanitize_internal_next(request.args.get("next"), fallback=url_for("ballot_lens"))
+    response = {
+        "authenticated": bool(principal and principal.startswith("cert:")),
+        "certificate_present": bool(principal and principal.startswith("cert:")),
+        "principal": principal,
+        "principal_source": principal_source,
+        "cert_metadata": _sanitize_cert_metadata_for_status(cert_metadata),
+        "challenge_url": url_for("auth_challenge", next=next_target),
+        "session_context": {
+            "host": request.host or "unknown",
+            "remote_addr": request.remote_addr or "unknown",
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    if cert_metadata and cert_metadata.get("cn"):
+        try:
+            from webapp.parser.utils.privilege_tiers import get_principal_tier
+            tier = get_principal_tier(principal, principal_source)
+            if tier:
+                response["privilege_tier"] = tier.value
+        except Exception:
+            response["privilege_tier"] = "STANDARD_USER"
+    return jsonify(response)
+
 
 def api_auth_certificate_info():
     """
-    Return certificate metadata for the current session.
-    This endpoint is used by the auth welcome page to display cert info to users.
+    Legacy compatibility alias for auth status.
+    This endpoint now behaves as a safe inspection endpoint.
     """
-    principal, principal_source, cert_metadata = get_request_principal()
-    cert_resp = _require_client_cert("certificate_info")
-    if cert_resp:
-        return cert_resp
-    if not principal:
-        return jsonify({
-            "error": "No certificate found",
-            "principal": None,
-            "cert_metadata": None
-        }), 401
-    
-    # Build response with certificate metadata
+    return api_auth_status()
+
+
+def api_route_wrapper_monitor_snapshot():
     response = {
         "principal": principal,
         "principal_source": principal_source,
@@ -7120,6 +7305,7 @@ app.config["_UTILITY_ADMIN_ROUTE_HANDLERS"] = {
     "api_validate_urls": api_validate_urls,
     "api_url_status": api_url_status,
     "api_auth_certificate_info": api_auth_certificate_info,
+    "api_auth_status": api_auth_status,
     "api_route_wrapper_monitor_snapshot": api_route_wrapper_monitor_snapshot,
 }
 
@@ -7132,14 +7318,10 @@ def auth_welcome():
     # Get principal to verify cert is present
     principal, principal_source, cert_metadata = get_request_principal()
 
-    raw_target = request.args.get("next") or request.referrer or url_for("index")
-    parsed_target = urlparse(raw_target or "")
-    if parsed_target.scheme or parsed_target.netloc:
-        normalized_target = parsed_target.path or url_for("ballot_lens")
-        if parsed_target.query:
-            normalized_target = f"{normalized_target}?{parsed_target.query}"
-    else:
-        normalized_target = raw_target if str(raw_target or "").startswith("/") else url_for("ballot_lens")
+    normalized_target = sanitize_internal_next(
+        request.args.get("next") or request.referrer or url_for("index"),
+        fallback=url_for("ballot_lens"),
+    )
 
     if not principal:
         return (
@@ -7175,12 +7357,30 @@ def auth_welcome():
     )
 
 
+def auth_challenge():
+    """
+    Trigger a client certificate negotiation challenge and redirect to the target URL.
+    This endpoint is used by the welcome page to present the browser with the mTLS client
+    certificate request and then continue the user to the requested destination.
+    """
+    next_url = sanitize_internal_next(request.args.get("next"), fallback=url_for("ballot_lens"))
+    cert_resp = _require_client_cert("auth_challenge")
+    if cert_resp:
+        return cert_resp
+
+    normalized_target = next_url
+
+    return redirect(normalized_target)
+
+
 app.config["_PUBLIC_PAGES_ROUTE_HANDLERS"] = {
     "index": index,
     "ballot_lens": ballot_lens,
     "ballot_lens_modern": ballot_lens_modern,
     "worklist": worklist,
     "auth_welcome": auth_welcome,
+    "auth_challenge": auth_challenge,
+    "ocr_diagnostics": ocr_diagnostics,
 }
 
 

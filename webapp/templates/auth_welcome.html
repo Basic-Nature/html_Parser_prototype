@@ -5,9 +5,13 @@
     <title>Certificate Authentication - Smart Elections Parser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth_welcome.css') }}">
 </head>
-<body class="auth-welcome-page" data-require-cert="{{ '1' if require_cert else '0' }}" data-target-url="{{ target_url|default('/') }}">
+<body class="auth-welcome-page" data-require-cert="{{ '1' if require_cert else '0' }}">
+    <div id="authWelcomeConfig"
+         data-challenge-url="{{ url_for('auth_challenge', next=target_url) }}"
+         data-target-url="{{ target_url }}"
+         data-require-cert="{{ '1' if require_cert else '0' }}"></div>
     <div class="auth-welcome-container">
         <div class="auth-welcome-card">
             <!-- Header -->
@@ -72,16 +76,16 @@
             <!-- Actions -->
             <div class="auth-welcome-actions">
                 {% if require_cert %}
-                <button class="btn-auth primary" id="retryBtn">
+                <a class="btn-auth primary" id="retryBtn" href="{{ url_for('auth_challenge', next=target_url) }}">
                     Check Certificate & Continue
-                </button>
-                <button class="btn-auth secondary" id="returnHomeBtn">
+                </a>
+                <a class="btn-auth secondary" id="returnHomeBtn" href="/">
                     Return to Home
-                </button>
+                </a>
                 {% else %}
-                <button class="btn-auth primary" id="continueBtn">
+                <a class="btn-auth primary" id="continueBtn" href="{{ target_url }}">
                     Continue to Parser
-                </button>
+                </a>
                 <button class="btn-auth secondary" id="certDetailsBtn">
                     ℹ Show Details
                 </button>
@@ -96,320 +100,6 @@
         </div>
     </div>
 
-    <script nonce="{{ g.csp_nonce }}">
-        // Initialize page with certificate metadata from query params or session storage
-        document.addEventListener('DOMContentLoaded', async function() {
-            try {
-                const requireCert = document.body.getAttribute('data-require-cert') === '1';
-                const continueBtn = document.getElementById('continueBtn');
-                const retryBtn = document.getElementById('retryBtn');
-                const returnHomeBtn = document.getElementById('returnHomeBtn');
-                const certDetailsBtn = document.getElementById('certDetailsBtn');
-
-                if (continueBtn) {
-                    continueBtn.addEventListener('click', continueToPlatform);
-                }
-                if (retryBtn) {
-                    retryBtn.addEventListener('click', retryProtected);
-                }
-                if (returnHomeBtn) {
-                    returnHomeBtn.addEventListener('click', returnHome);
-                }
-                if (certDetailsBtn) {
-                    certDetailsBtn.addEventListener('click', toggleCertDetails);
-                }
-                if (requireCert) {
-                    showWarningMessage('A client certificate is required to access this feature.');
-                    document.getElementById('verifiedTime').textContent = new Date().toLocaleString();
-                    return;
-                }
-                const detailsSection = document.getElementById('certInfoSection');
-                const detailsBtn = document.getElementById('certDetailsBtn');
-                if (detailsSection && detailsBtn) {
-                    detailsSection.classList.add('is-hidden');
-                    detailsBtn.textContent = 'ℹ Show Details';
-                }
-                // Get cert metadata from URL params or fetch from API
-                const params = new URLSearchParams(window.location.search);
-                const certData = params.get('cert_data');
-                const sessionId = params.get('session_id');
-                
-                let metadata = null;
-                
-                if (certData) {
-                    // Decode base64 cert data from URL
-                    try {
-                        metadata = JSON.parse(atob(certData));
-                    } catch (e) {
-                        console.error('Failed to parse cert data:', e);
-                    }
-                } else if (sessionId) {
-                    // Fetch from API
-                    try {
-                        const resp = await fetch(`/api/auth/certificate_info?session_id=${encodeURIComponent(sessionId)}`);
-                        if (resp.ok) {
-                            const data = await resp.json();
-                            metadata = data.cert_metadata;
-                        }
-                    } catch (e) {
-                        console.error('Failed to fetch cert metadata:', e);
-                    }
-                }
-                
-                // Populate the page with metadata
-                if (metadata) {
-                    populateCertInfo(metadata);
-                    updateStatusBadge(metadata);
-                    updateTierBadge(metadata);
-                }
-                
-                // Show session ID
-                if (sessionId) {
-                    document.getElementById('sessionId').textContent = sessionId;
-                }
-                
-                // Show verification time
-                document.getElementById('verifiedTime').textContent = new Date().toLocaleString();
-                
-            } catch (error) {
-                console.error('Error initializing auth page:', error);
-                showErrorMessage('Failed to load certificate information. Please try again.');
-            }
-        });
-
-        function populateCertInfo(metadata) {
-            if (!metadata) return;
-            
-            // Common Name
-            if (metadata.cn) {
-                document.getElementById('certCN').textContent = metadata.cn;
-            }
-            
-            // Issuer
-            if (metadata.issuer) {
-                document.getElementById('certIssuer').textContent = metadata.issuer;
-            }
-            
-            // Serial Number
-            if (metadata.serial_number) {
-                document.getElementById('certSerial').textContent = metadata.serial_number;
-            }
-            
-            // Issued date (if available)
-            if (metadata.issued_date) {
-                try {
-                    const issuedDate = new Date(metadata.issued_date).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                    });
-                    document.getElementById('certIssued').textContent = issuedDate;
-                } catch (e) {
-                    document.getElementById('certIssued').textContent = metadata.issued_date;
-                }
-            }
-            
-            // Expiry date
-            if (metadata.expiry_date) {
-                try {
-                    const expiryDate = new Date(metadata.expiry_date).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                    });
-                    let expiryText = expiryDate;
-                    
-                    // Add days until expiry if available
-                    if (metadata.expiry_days !== undefined) {
-                        const days = parseInt(metadata.expiry_days);
-                        if (days > 0) {
-                            expiryText += ` (${days} days)`;
-                        } else if (days === 0) {
-                            expiryText += ' (expires today)';
-                        } else {
-                            expiryText += ' (expired)';
-                        }
-                    }
-                    
-                    document.getElementById('certExpiry').textContent = expiryText;
-                } catch (e) {
-                    document.getElementById('certExpiry').textContent = metadata.expiry_date;
-                }
-            }
-            
-            // Key Algorithm
-            if (metadata.key_algorithm) {
-                document.getElementById('certAlgorithm').textContent = metadata.key_algorithm;
-            }
-        }
-
-        function updateStatusBadge(metadata) {
-            const badge = document.getElementById('statusBadge');
-            if (!metadata) return;
-            
-            if (metadata.is_expired) {
-                badge.textContent = 'Certificate Expired';
-                badge.className = 'cert-status-badge expired';
-                showErrorMessage('⚠️ Your certificate has expired. Please renew it to continue.');
-            } else if (metadata.expiry_days !== undefined && metadata.expiry_days < 30) {
-                badge.textContent = `Expires Soon (${metadata.expiry_days} days)`;
-                badge.className = 'cert-status-badge warning';
-                if (metadata.expiry_days < 7) {
-                    showWarningMessage(`⚠️ Your certificate expires in ${metadata.expiry_days} days. Please renew it soon.`);
-                }
-            } else {
-                badge.textContent = 'Certificate Valid';
-                badge.className = 'cert-status-badge valid';
-            }
-        }
-
-        function updateTierBadge(metadata) {
-            const tierBadge = document.getElementById('tierBadge');
-            if (!metadata) return;
-            
-            const tier = (metadata.privilege_tier || 'STANDARD_USER').toUpperCase();
-            const tierDisplay = {
-                'ROOT_ADMIN': { text: 'Root Administrator', class: 'admin' },
-                'ADMIN_FULL_TRUST': { text: 'Full Trust Admin', class: 'admin' },
-                'ADMIN_REVIEWER': { text: 'Admin Reviewer', class: 'reviewer' },
-                'STANDARD_USER': { text: 'Standard User', class: 'standard' }
-            };
-            
-            const tierInfo = tierDisplay[tier] || tierDisplay['STANDARD_USER'];
-            tierBadge.textContent = tierInfo.text;
-            tierBadge.className = `tier-badge ${tierInfo.class}`;
-        }
-
-        function showErrorMessage(message) {
-            const container = document.getElementById('messageContainer');
-            container.innerHTML = '';
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'error-message';
-            errorDiv.textContent = message;
-            container.appendChild(errorDiv);
-        }
-
-        function showWarningMessage(message) {
-            const container = document.getElementById('messageContainer');
-            container.innerHTML = '';
-            const warningDiv = document.createElement('div');
-            warningDiv.className = 'warning-message';
-            warningDiv.textContent = message;
-            container.appendChild(warningDiv);
-        }
-
-        function toggleCertDetails() {
-            const section = document.getElementById('certInfoSection');
-            const btn = document.getElementById('certDetailsBtn');
-            if (section.classList.contains('is-hidden')) {
-                section.classList.remove('is-hidden');
-                btn.textContent = '✓ Hide Details';
-            } else {
-                section.classList.add('is-hidden');
-                btn.textContent = 'ℹ Show Details';
-            }
-        }
-
-        function getTargetUrl() {
-            const params = new URLSearchParams(window.location.search);
-            let targetUrl = params.get('target_url') || params.get('next');
-            if (!targetUrl) {
-                targetUrl = document.body.getAttribute('data-target-url') || '';
-            }
-            if (!targetUrl || targetUrl === '/') {
-                targetUrl = '/ballot_lens';
-            }
-            return targetUrl;
-        }
-
-        async function fetchCertificateInfo(sessionId) {
-            const query = new URLSearchParams();
-            query.set('ts', Date.now().toString());
-            if (sessionId && sessionId !== '—') {
-                query.set('session_id', sessionId);
-            }
-
-            const response = await fetch(`/api/auth/certificate_info?${query.toString()}`, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' },
-                cache: 'no-store',
-            });
-            if (!response.ok) {
-                return null;
-            }
-            return response.json().catch(() => null);
-        }
-
-        async function continueToPlatform() {
-            const params = new URLSearchParams(window.location.search);
-            const sessionId = params.get('session_id') || document.getElementById('sessionId').textContent;
-            const continueBtn = document.getElementById('continueBtn');
-            if (continueBtn) {
-                continueBtn.disabled = true;
-                continueBtn.textContent = 'Validating...';
-            }
-
-            try {
-                const certInfo = await fetchCertificateInfo(sessionId);
-                if (!certInfo || certInfo?.require_cert) {
-                    showWarningMessage('Certificate not detected yet. Select your certificate in the browser prompt, then try again.');
-                    return;
-                }
-                const targetUrl = getTargetUrl();
-                window.location.href = targetUrl;
-            } catch (err) {
-                showErrorMessage('Unable to verify certificate status right now. Please try again.');
-            } finally {
-                if (continueBtn) {
-                    continueBtn.disabled = false;
-                    continueBtn.textContent = 'Continue to Parser';
-                }
-            }
-        }
-
-        function returnHome() {
-            window.location.href = '/';
-        }
-
-        async function retryProtected() {
-            const params = new URLSearchParams(window.location.search);
-            const sessionId = params.get('session_id') || document.getElementById('sessionId').textContent;
-            const retryBtn = document.getElementById('retryBtn');
-            if (retryBtn) {
-                retryBtn.disabled = true;
-                retryBtn.textContent = 'Checking...';
-            }
-
-            try {
-                const certInfo = await fetchCertificateInfo(sessionId);
-                const targetUrl = getTargetUrl();
-
-                if (certInfo && !certInfo?.require_cert) {
-                    window.location.href = targetUrl;
-                    return;
-                }
-
-                showWarningMessage('Certificate still required. The next page load will prompt for certificate selection if needed.');
-                window.location.href = targetUrl;
-            } catch (err) {
-                showErrorMessage('Unable to re-check certificate status. Please try again.');
-            } finally {
-                if (retryBtn) {
-                    retryBtn.disabled = false;
-                    retryBtn.textContent = 'Check Certificate & Continue';
-                }
-            }
-        }
-
-        // Optional: Auto-continue after 3 seconds if cert is valid
-        setTimeout(function() {
-            const statusBadge = document.getElementById('statusBadge');
-            if (statusBadge.classList.contains('valid')) {
-                // User can still click, but we could auto-continue after brief delay
-                // Uncomment to enable auto-continue:
-                // continueToPlatform();
-            }
-        }, 3000);
-    </script>
+    <script src="{{ url_for('static', filename='js/auth_welcome.js') }}"></script>
 </body>
 </html>

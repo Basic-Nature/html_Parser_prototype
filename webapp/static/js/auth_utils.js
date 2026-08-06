@@ -24,10 +24,8 @@ const AuthUtils = (() => {
    * @param {string} targetUrl
    */
   function defaultCertRequiredHandler(targetUrl) {
-    const target = (typeof targetUrl === 'string' && targetUrl.trim())
-      ? targetUrl
-      : window.location.href;
-    const next = encodeURIComponent(target);
+    const currentPath = window.location.pathname + window.location.search + window.location.hash;
+    const next = encodeURIComponent(currentPath);
     window.location.href = `/auth/welcome?next=${next}`;
   }
 
@@ -58,21 +56,20 @@ const AuthUtils = (() => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), CERT_CHECK_TIMEOUT_MS);
         
-        const resp = await fetch('/api/auth/certificate_info', {
+        const resp = await fetch('/api/auth/status', {
           headers: { 'Accept': 'application/json' },
           signal: controller.signal
         });
         
         clearTimeout(timeoutId);
         
-        if (resp && resp.status === 401) {
-          // No valid cert—let browser prompt naturally on next mutation
-          return false;
-        }
-        
         if (resp && resp.ok) {
-          certCheckLastOk = Date.now();
-          return true;
+          const data = await resp.json();
+          if (data && data.authenticated) {
+            certCheckLastOk = Date.now();
+            return true;
+          }
+          return false;
         }
         
         return false;

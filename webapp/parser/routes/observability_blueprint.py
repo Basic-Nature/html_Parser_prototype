@@ -66,4 +66,8 @@ def create_observability_blueprint() -> Blueprint:
     def api_preingest_url_glimpse_route():
         return _call_handler("api_preingest_url_glimpse")
 
+    @bp.route("/api/ocr_diagnostics", methods=["GET"], endpoint="api_ocr_diagnostics")
+    def api_ocr_diagnostics_route():
+        return _call_handler("api_ocr_diagnostics")
+
     return bp

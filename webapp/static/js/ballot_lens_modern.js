@@ -1213,17 +1213,19 @@ const _TablePreview = (() => {
     }
     certCheckInFlight = (async () => {
       try {
-        const resp = await fetch('/api/auth/certificate_info', {
+        const resp = await fetch('/api/auth/status', {
           headers: { 'Accept': 'application/json' }
         });
-        if (resp && resp.status === 401) {
-          showCertRequiredModal(targetUrl || window.location.href);
-          return false;
-        }
         if (resp && resp.ok) {
+          const data = await resp.json();
+          if (!data || !data.authenticated) {
+            showCertRequiredModal(targetUrl || window.location.href);
+            return false;
+          }
           certCheckLastOk = Date.now();
+          return true;
         }
-        return resp && resp.ok;
+        return false;
       } catch (e) {
         return false;
       } finally {

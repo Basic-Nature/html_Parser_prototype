@@ -1,0 +1,11 @@
+.diagnostics-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.diagnostics-card { background: #111827; border: 1px solid #374151; border-radius: .75rem; padding: 1.25rem; color: #f8fafc; }
+.diagnostics-card h2 { margin-top: 0; font-size: 1.1rem; }
+.diagnostics-table { width: 100%; border-collapse: collapse; margin-top: .75rem; }
+.diagnostics-table th, .diagnostics-table td { padding: .5rem .75rem; border-bottom: 1px solid rgba(255,255,255,.08); }
+.diagnostics-table th { text-align: left; color: #cbd5e1; font-weight: 600; }
+.diagnostics-note { color: #fbbf24; font-size: .95rem; line-height: 1.4; }
+.diag-success { color: #4ade80; }
+.diag-failure { color: #f87171; }
+.panel-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: 1rem; }
+.panel-actions a { text-decoration: none; }

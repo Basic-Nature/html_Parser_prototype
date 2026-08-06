@@ -46,4 +46,12 @@ def create_public_pages_blueprint() -> Blueprint:
     def auth_welcome_route():
         return _call_handler("auth_welcome")
 
+    @bp.route("/auth/challenge", methods=["GET"], endpoint="auth_challenge")
+    def auth_challenge_route():
+        return _call_handler("auth_challenge")
+
+    @bp.route("/ocr_diagnostics", methods=["GET"], endpoint="ocr_diagnostics")
+    def ocr_diagnostics_route():
+        return _call_handler("ocr_diagnostics")
+
     return bp

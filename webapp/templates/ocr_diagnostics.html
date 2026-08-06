@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>OCR Diagnostics - Smart Elections Parser</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ocr_diagnostics.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body class="bg-dark text-light">
+    <div class="container py-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3 mb-4">
+            <div>
+                <h1 class="h3 mb-1">OCR Diagnostics</h1>
+                <p class="text-muted">Inspect OCR runtime readiness, binary availability, and key environment settings used by PDF fallback.</p>
+            </div>
+            <div class="panel-actions">
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('index') }}">Home</a>
+                <a class="btn btn-outline-info btn-sm" href="{{ url_for('quality_dashboard') }}">Quality Metrics</a>
+                <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('health_dashboard') }}">Health Dashboard</a>
+            </div>
+        </div>
+
+        <div class="diagnostics-grid">
+            <div class="diagnostics-card">
+                <h2>Runtime</h2>
+                <table class="diagnostics-table">
+                    <tr><th>Platform</th><td>{{ diagnostics.platform }}</td></tr>
+                    <tr><th>Python Version</th><td>{{ diagnostics.python_version }}</td></tr>
+                    <tr><th>Deploy Env</th><td>{{ diagnostics.deploy_env }}</td></tr>
+                    <tr><th>ENABLE_OCR</th><td class="{{ 'diag-success' if diagnostics.enable_ocr else 'diag-failure' }}">{{ diagnostics.enable_ocr }}</td></tr>
+                    <tr><th>ENABLE_OCR_FORCE</th><td class="{{ 'diag-success' if diagnostics.enable_ocr_force else 'diag-failure' }}">{{ diagnostics.enable_ocr_force }}</td></tr>
+                    <tr><th>TESSERACT_CMD env</th><td>{{ diagnostics.tesseract_cmd_env or 'unset' }}</td></tr>
+                    <tr><th>POPPLER_PATH env</th><td>{{ diagnostics.poppler_path_env or 'unset' }}</td></tr>
+                </table>
+            </div>
+            <div class="diagnostics-card">
+                <h2>Tesseract</h2>
+                <table class="diagnostics-table">
+                    <tr><th>Installed</th><td class="{{ 'diag-success' if diagnostics.tesseract.available else 'diag-failure' }}">{{ diagnostics.tesseract.available }}</td></tr>
+                    <tr><th>Path</th><td>{{ diagnostics.tesseract.resolved_path or 'not found' }}</td></tr>
+                    <tr><th>Version</th><td>{{ diagnostics.tesseract.version or 'unknown' }}</td></tr>
+                </table>
+                {% if diagnostics.tesseract.notes %}
+                <div class="diagnostics-note">Notes: {{ diagnostics.tesseract.notes | join(' ') }}</div>
+                {% endif %}
+            </div>
+            <div class="diagnostics-card">
+                <h2>Poppler / pdftoppm</h2>
+                <table class="diagnostics-table">
+                    <tr><th>Installed</th><td class="{{ 'diag-success' if diagnostics.pdftoppm.available else 'diag-failure' }}">{{ diagnostics.pdftoppm.available }}</td></tr>
+                    <tr><th>Resolved Path</th><td>{{ diagnostics.pdftoppm.resolved_path or 'not found' }}</td></tr>
+                    <tr><th>Version</th><td>{{ diagnostics.pdftoppm.version or 'unknown' }}</td></tr>
+                </table>
+                {% if diagnostics.pdftoppm.notes %}
+                <div class="diagnostics-note">Notes: {{ diagnostics.pdftoppm.notes | join(' ') }}</div>
+                {% endif %}
+            </div>
+            <div class="diagnostics-card">
+                <h2>Python Modules</h2>
+                <table class="diagnostics-table">
+                    <tr><th>pytesseract</th><td>{{ diagnostics.pytesseract.installed }}</td></tr>
+                    <tr><th>pdf2image</th><td>{{ diagnostics.pdf2image.installed }}</td></tr>
+                    <tr><th>fitz</th><td>{{ diagnostics.fitz.installed }}</td></tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="diagnostics-card mt-4">
+            <h2>Diagnostic Notes</h2>
+            <ul class="mb-0">
+                {% for item in diagnostics.tesseract.notes %}
+                    <li>{{ item }}</li>
+                {% endfor %}
+                {% for item in diagnostics.pdftoppm.notes %}
+                    <li>{{ item }}</li>
+                {% endfor %}
+                {% if not diagnostics.pytesseract.installed %}
+                    <li>Python module <code>pytesseract</code> is not installed.</li>
+                {% endif %}
+                {% if not diagnostics.pdf2image.installed %}
+                    <li>Python module <code>pdf2image</code> is not installed.</li>
+                {% endif %}
+                {% if not diagnostics.fitz.installed %}
+                    <li>Python module <code>fitz</code> is not installed.</li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
