@@ -1,28 +1,25 @@
-# Git LFS tracked patterns for large artifacts
-# Track candidate_summary_index.json wherever it appears
-candidate_summary_index.json filter=lfs diff=lfs merge=lfs -text
-webapp/parser/fixtures/candidate_summary_index.json filter=lfs diff=lfs merge=lfs -text
+# Default text normalization
+* text=auto
 
-# Optionally track other large fixtures (uncomment if desired)
-# webapp/parser/fixtures/*.jsonl filter=lfs diff=lfs merge=lfs -text
-# *.pdf filter=lfs diff=lfs merge=lfs -text*.psd filter=lfs diff=lfs merge=lfs -text
-log/table_builder_cache/*.json filter=lfs diff=lfs merge=lfs -text
-log/*.jsonl filter=lfs diff=lfs merge=lfs -text
-*.jsonl filter=lfs diff=lfs merge=lfs -text
-*.json filter=lfs diff=lfs merge=lfs -text
-# Keep DL compare regression fixtures as plain git text (avoid CI LFS hydration dependency)
-tests/testdata/dl_compare_dl1_sample.json -filter -diff -merge text
-tests/testdata/dl_compare_dl2_sample.json -filter -diff -merge text
+*.py text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Large generated parser/reference artifacts
+webapp/parser/fixtures/candidate_summary_index.json filter=lfs diff=lfs merge=lfs -text
+webapp/parser/fixtures/election_results_index.json filter=lfs diff=lfs merge=lfs -text
+webapp/parser/fixtures/fixture_audit_report.jsonl filter=lfs diff=lfs merge=lfs -text
+
+# Model weights and large binary artifacts
 *.safetensors filter=lfs diff=lfs merge=lfs -text
-log/*.json filter=lfs diff=lfs merge=lfs -text
-log/*.sqlite3 filter=lfs diff=lfs merge=lfs -text
-*.sqlite3 filter=lfs diff=lfs merge=lfs -text
 *.ckpt filter=lfs diff=lfs merge=lfs -text
 *.pt filter=lfs diff=lfs merge=lfs -text
-*.db filter=lfs diff=lfs merge=lfs -text
 *.pth filter=lfs diff=lfs merge=lfs -text
 *.tar filter=lfs diff=lfs merge=lfs -text
-
-webapp/parser/Context_Integration/Context_Library/** filter=lfs diff=lfs merge=lfs -text
-fine_tuned_spacy_ner/** filter=lfs diff=lfs merge=lfs -text
-fine_tuned_table_headers/** filter=lfs diff=lfs merge=lfs -text

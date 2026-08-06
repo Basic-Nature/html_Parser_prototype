@@ -91,7 +91,14 @@ tmp_parser_pid.txt
 # Keep committed fixtures directory (JSON indexes only — CSVs are regenerable, see scripts/convert_fec_csv_to_json.py)
 !webapp/parser/fixtures/
 !webapp/parser/fixtures/*.json
-webapp/parser/fixtures/fixture_audit_report.jsonl
+
+# Parser runtime state and telemetry
+webapp/parser/Context_Integration/Context_Library/migration_state.json
+webapp/parser/Context_Integration/Context_Library/empty_entries_watch.jsonl
+webapp/parser/log/ml_usage_telemetry.jsonl
+
+# Local diagnostic output
+run_pdf_output.txt
 
 # -------------------------
 # Node / frontend

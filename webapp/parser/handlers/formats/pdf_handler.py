@@ -1076,6 +1076,88 @@ def _prepare_output_context(base: dict | None, extra: dict | None = None) -> dic
     return ctx
 
 
+def _build_ocr_evidence(
+    pdf_path: str,
+    fitz_mode: str | None,
+    page_text_map: list[dict] | None,
+    fitz_text_len: int,
+    clean_text: str | None,
+    raw_text: str | None,
+    ocr_used: bool,
+    ocr_confidence_avg: float | None,
+    ocr_params: dict | None,
+    ocr_runs: list[dict] | None,
+    page_summaries: list[dict] | None,
+    line_records: list[dict] | None,
+    metadata: dict,
+) -> dict:
+    ocr_text_len = None
+    if ocr_used and isinstance(page_summaries, list):
+        ocr_text_len = int(sum((entry.get("raw_chars") or 0) for entry in page_summaries))
+    elif isinstance(raw_text, str):
+        ocr_text_len = len(raw_text)
+
+    evidence: dict[str, object] = {
+        "provenance": {
+            "input_file": os.path.basename(pdf_path),
+            "pdf_path": pdf_path,
+            "pdf_page_total": metadata.get("pdf_page_total"),
+            "fitz_mode": fitz_mode,
+            "fitz_page_count": len(page_text_map or []),
+            "fitz_char_count": sum((entry.get("char_count") or 0) for entry in (page_text_map or [])),
+            "ocr_used": bool(ocr_used),
+            "ocr_focus_windows": metadata.get("ocr_focus_windows"),
+            "contest_probe": metadata.get("contest_probe"),
+        },
+        "alternatives": {
+            "fitz_text_length": fitz_text_len,
+            "ocr_text_length": ocr_text_len,
+            "raw_text_length": len(raw_text or ""),
+            "clean_text_length": len(clean_text or ""),
+            "fitz_mode_used": fitz_mode,
+            "ocr_params": ocr_params or {},
+            "ocr_runs": ocr_runs or [],
+            "ocr_raw_text_path": metadata.get("ocr_raw_text_path"),
+            "ocr_clean_text_path": metadata.get("ocr_clean_text_path"),
+        },
+        "confidence": {
+            "ocr_confidence_avg": ocr_confidence_avg,
+            "ocr_run_count": len(ocr_runs or []),
+        },
+        "review": {
+            "page_line_source": metadata.get("page_line_source"),
+            "page_line_total": len(line_records or []),
+            "page_line_pages": len(page_summaries or []),
+            "page_line_summary": (page_summaries or [])[:10],
+            "line_record_sample": [],
+        },
+    }
+
+    if ocr_used and isinstance(page_summaries, list):
+        evidence["alternatives"]["ocr_text_length"] = int(sum((entry.get("raw_chars") or 0) for entry in page_summaries))
+
+    if line_records:
+        sample = []
+        for rec in (line_records or [])[:10]:
+            sample.append({
+                "page": rec.get("page"),
+                "page_line_index": rec.get("page_line_index"),
+                "global_line_index": rec.get("global_line_index"),
+                "text": (rec.get("text") or "")[:200],
+            })
+        evidence["review"]["line_record_sample"] = sample
+
+    # Preserve high-level diagnostics already captured in metadata
+    if metadata.get("contest_detection"):
+        evidence["contest_detection"] = metadata.get("contest_detection")
+    if metadata.get("contest_probe"):
+        evidence["contest_probe"] = metadata.get("contest_probe")
+    if metadata.get("contest_probe_autopick"):
+        evidence["contest_probe_autopick"] = metadata.get("contest_probe_autopick")
+
+    return evidence
+
+
 def _table_looks_bad(headers: list[str], rows: list[dict]) -> bool:
     return utils_table_looks_bad(headers, rows)
 
@@ -2241,13 +2323,23 @@ def _try_columnar_reconstruction(
 
 def _log_ocr_environment(session_id=None):
     try:
+        resolved_tesseract = None
+        try:
+            resolved_tesseract = getattr(pytesseract.pytesseract, "tesseract_cmd", None)
+        except Exception:
+            resolved_tesseract = None
+
         info = {
             "platform": platform.platform(),
             "pytesseract": bool(pytesseract),
             "pdf2image": bool(pdf2image),
             "poppler_path_env": bool(CONFIG_POPPLER_PATH),
+            "poppler_path_resolved": _detect_poppler_path(),
             "pdftoppm_in_path": bool(shutil.which("pdftoppm")),
-            "tesseract_cmd_set": bool(CONFIG_TESSERACT_CMD),
+            "pdftocairo_in_path": bool(shutil.which("pdftocairo")),
+            "tesseract_cmd_env": bool(CONFIG_TESSERACT_CMD),
+            "tesseract_cmd_resolved": resolved_tesseract,
+            "tesseract_in_path": bool(shutil.which("tesseract")),
             "ENABLE_OCR": bool(ENABLE_OCR),
             "ENABLE_OCR_FORCE": bool(ENABLE_OCR_FORCE),
         }
@@ -4450,6 +4542,7 @@ def _finalize_structured_table_output(
             "session_id": session_id,
             "ocr_confidence_avg": metadata.get("ocr_confidence_avg"),
             "ocr_used": metadata.get("ocr_used"),
+            "ocr_evidence": metadata.get("ocr_evidence"),
         }
     )
 
@@ -4921,6 +5014,22 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
     metadata["page_lines_fallback"] = bool(page_lines_fallback)
     if page_summaries:
         metadata["page_line_summary"] = page_summaries[:25]
+
+    metadata["ocr_evidence"] = _build_ocr_evidence(
+        pdf_path=pdf_path,
+        fitz_mode=metadata.get("fitz_mode_used"),
+        page_text_map=page_text_map,
+        fitz_text_len=sum((entry.get("char_count") or 0) for entry in (page_text_map or [])),
+        clean_text=clean_text,
+        raw_text=all_text,
+        ocr_used=bool(metadata.get("ocr_used")),
+        ocr_confidence_avg=metadata.get("ocr_confidence_avg"),
+        ocr_params=metadata.get("ocr_params"),
+        ocr_runs=metadata.get("ocr_runs"),
+        page_summaries=page_summaries,
+        line_records=line_records,
+        metadata=metadata,
+    )
 
     try:
         logger.info({

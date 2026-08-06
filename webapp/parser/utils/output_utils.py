@@ -738,6 +738,7 @@ def finalize_election_output(
         "rawjson_enrichment_extended": context.get("rawjson_enrichment"),
         "rawjson_summary": context.get("summary"),
         "rawjson_enrichment_slim": context.get("rawjson_enrichment_slim"),
+        "ocr_evidence": context.get("ocr_evidence"),
         "structure_hash": context.get("structure_hash"),
         "database_cross_check": context.get("database_cross_check"),
     }
