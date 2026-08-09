@@ -24,7 +24,7 @@ Successfully implemented three critical UI improvements to the Modal Restore Ban
 
   ```javascript
   const isEmptyHeartbeat = (log) => {
-    return (log.type === 'other' || log.type === 'heartbeat') 
+    return (log.type === 'other' || log.type === 'heartbeat')
       && (!log.message || log.message.trim() === '[heartbeat]');
   };
   ```

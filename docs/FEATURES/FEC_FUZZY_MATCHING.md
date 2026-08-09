@@ -1,93 +1,142 @@
 ---
 layout: default
-title: FEC Fuzzy Matching
+title: FEC Candidate Matching Audit
 ---
 
-## FEC Fuzzy Matching
+# FEC Candidate Matching Audit
 
-Machine learning-powered candidate matching against Federal Election Commission (FEC) records for validation and deduplication.
+Election Pulse currently includes optional FEC name-matching support in the
+fixture-index build workflow.
 
-> **Note**: See [fec_fuzzy.md](../fec_fuzzy.md) for complete technical documentation
+This capability is an audit aid.
 
-## 🎯 Overview
+It is not a canonical candidate-identity authority and must not independently
+promote or rewrite election records.
 
-The FEC Fuzzy Matching system:
+## Current implementation
 
-- Matches extracted candidates against FEC database
-- Handles name variations and misspellings
-- Identifies duplicate candidates
-- Improves data quality and integrity
-- Cross-validates with official records
+The current implementation authority is:
 
-## 📖 Quick Reference
-
-### Matching Process
-
-```tree
-Extracted Candidate "John Doe"
-    ↓
-Query FEC Database
-    ↓
-Find Similar Candidates
-├─ "John Doe" (100% match)
-├─ "Jon Doe" (95% match)
-└─ "John D." (85% match)
-    ↓
-Select Best Match (if > threshold)
-    ↓
-Validate & Link to FEC ID
+```text
+scripts/build_election_index.py
 ```
 
-### Usage Example
+The index builder exposes:
 
-```python
-from utils.fec_fuzzy import match_candidate
-
-result = match_candidate(
-    name="John Doe",
-    office="Governor",
-    state="NY",
-    year=2024,
-    threshold=0.85
-)
-
-# Result:
-# {
-#    'fec_id': 'C00123456',
-#    'official_name': 'John Q Doe',
-#    'match_score': 0.92,
-#    'confidence': 'high'
-# }
+```text
+--audit-against-fec
+--fec-index
 ```
 
-## 🔧 Configuration
+The default FEC index path is:
 
-```python
-# Fuzzy matching thresholds
-FUZZY_MATCH_THRESHOLD = 0.85      # Min similarity score
-CONFIDENCE_HIGH = 0.95             # High confidence match
-CONFIDENCE_MEDIUM = 0.75           # Medium confidence
-CONFIDENCE_LOW = 0.50              # Low confidence
-
-# FEC Database
-FEC_DATABASE_URL = "https://api.fec.gov/v1/"
-FEC_API_KEY = os.getenv("FEC_API_KEY")
+```text
+webapp/parser/fixtures/candidate_summary_index.json
 ```
 
-## 📊 Algorithm Details
+The matching path operates on the local FEC candidate-summary index rather than
+calling the FEC API during the comparison.
 
-- **String Similarity**: Levenshtein distance with jaro-winkler weighting
-- **Phonetic Matching**: Soundex for name variations
-- **Context Weighting**: Office, jurisdiction, and party factors
-- **Historical Data**: Past elections improve matching
+## Matching function
 
----
+The current helper is:
 
-See [fec_fuzzy.md](../fec_fuzzy.md) for:
+```text
+fuzzy_match_candidate(name, candidates_index)
+```
 
-- Complete algorithm documentation
-- Performance tuning guide
-- Troubleshooting procedures
-- API integration examples
+It normalizes the supplied name to uppercase and compares it against the
+`CLYMER` value in candidate-summary records.
 
-**Last Updated**: FEC fuzzy matching reference
+When RapidFuzz is available, the implementation uses:
+
+```text
+rapidfuzz.fuzz.token_sort_ratio
+```
+
+When RapidFuzz is unavailable, it falls back to:
+
+```text
+difflib.SequenceMatcher
+```
+
+The current acceptance threshold is:
+
+```text
+score >= 70
+```
+
+The helper returns the best FEC candidate identifier and score when the
+threshold is met.
+
+## Audit behavior
+
+FEC matching is optional and is enabled only when the fixture-index builder is
+run with:
+
+```text
+--audit-against-fec
+```
+
+When enabled, the builder loads the configured local candidate-summary index and
+may attach an FEC identifier to generated index records.
+
+Lower-scoring accepted matches may also be written to the fixture audit report
+for review.
+
+## Current limitation
+
+The present `build_election_index.py` flow groups records by party and county,
+and the optional FEC-matching call currently receives the value held in the
+`party` variable.
+
+That means this path should be treated as experimental/audit behavior rather
+than as validated candidate identity resolution.
+
+A future candidate-level implementation should pass an actual candidate name
+and preserve enough source evidence to review the match.
+
+## Verification boundary
+
+A fuzzy match means only that two strings are similar under the implemented
+comparison.
+
+It does not prove:
+
+- candidate identity;
+- contest identity;
+- party identity;
+- election eligibility;
+- source correctness.
+
+Any durable identity decision should retain source provenance and use explicit
+verification or review policy.
+
+## Example invocation
+
+```text
+python scripts/build_election_index.py --audit-against-fec
+```
+
+A custom candidate-summary index may be supplied with `--fec-index`.
+
+## Change policy
+
+Before changing FEC matching behavior, verify:
+
+1. which field is being matched;
+2. which FEC index supplies the comparison record;
+3. which similarity algorithm is active;
+4. which threshold is used;
+5. how ambiguous matches are recorded;
+6. whether the result is audit-only or eligible for reviewed promotion.
+
+## Invariants
+
+1. FEC fuzzy matching is an audit aid, not election truth.
+2. current behavior is defined by `scripts/build_election_index.py`.
+3. matching uses a local candidate-summary index.
+4. the current acceptance threshold is 70.
+5. string similarity does not independently establish identity.
+6. ambiguous or lower-confidence matches remain reviewable.
+7. canonical election data is not silently rewritten by a fuzzy match.

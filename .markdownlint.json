@@ -1,3 +1,35 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:acae3089e4d690870eaa76d9deb15ad747ba317d2577b913c320d43a2175ebac
-size 361
+{
+  "default": true,
+  "MD001": {
+    "front_matter_title": ""
+  },
+  "MD013": false,
+  "MD024": false,
+  "MD025": {
+    "front_matter_title": ""
+  },
+  "MD033": {
+    "allowed_elements": [
+      "img",
+      "br"
+    ]
+  },
+  "MD041": false,
+  "MD046": {
+    "style": "fenced"
+  },
+  "MD029": {
+    "style": "one_or_ordered"
+  },
+  "MD009": {
+    "strict": true
+  },
+  "MD012": {
+    "maximum": 1
+  },
+  "MD022": true,
+  "MD031": true,
+  "MD032": true,
+  "MD040": true,
+  "MD060": true
+}

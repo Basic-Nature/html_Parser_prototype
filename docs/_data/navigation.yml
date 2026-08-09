@@ -1,73 +1,97 @@
-# Jekyll Navigation Configuration for Smart Elections Parser Documentation
-# This file defines the hierarchical navigation structure displayed in GitHub Pages sidebar
+# Public GitHub Pages navigation.
+# URLs are source-root relative and are passed through Jekyll's relative_url
+# filter by docs/_layouts/default.html.
 
 main:
   - title: Home
-    url: /html_Parser_prototype/
+    url: /
 
-  - title: Core Architecture
-    url: /html_Parser_prototype/CORE/ARCHITECTURE.html
+  - title: Architecture
+    url: /ARCHITECTURE/README.html
     items:
-      - title: System Architecture
-        url: /html_Parser_prototype/CORE/ARCHITECTURE.html
-      - title: Data Models
-        url: /html_Parser_prototype/CORE/DATA_MODELS.html
+      - title: System Overview
+        url: /ARCHITECTURE/system_overview.html
+      - title: Parser Pipeline
+        url: /ARCHITECTURE/parser_pipeline.html
+      - title: Evidence Model
+        url: /ARCHITECTURE/evidence_model.html
+      - title: Context System
+        url: /ARCHITECTURE/context_system.html
+      - title: Canonical Election Model
+        url: /ARCHITECTURE/canonical_election_model.html
+      - title: Storage Architecture
+        url: /ARCHITECTURE/storage_architecture.html
+      - title: Automation
+        url: /ARCHITECTURE/automation.html
+
+  - title: Core
+    url: /CORE/README.html
+    items:
+      - title: Implemented Contracts
+        url: /CORE/implemented_contracts.html
       - title: Constants Reference
-        url: /html_Parser_prototype/CORE/CONSTANTS.html
+        url: /CORE/constants_reference.html
 
-  - title: Deployment
-    url: /html_Parser_prototype/DEPLOYMENT/DEPLOYMENT.html
+  - title: Quality
+    url: /QUALITY/README.html
     items:
-      - title: Deployment Guide
-        url: /html_Parser_prototype/DEPLOYMENT/DEPLOYMENT.html
-      - title: CI Topology
-        url: /html_Parser_prototype/DEPLOYMENT/CI_TOPOLOGY.html
-      - title: Security & Authentication
-        url: /html_Parser_prototype/DEPLOYMENT/SECURITY.html
-      - title: Operations & Monitoring
-        url: /html_Parser_prototype/DEPLOYMENT/OPERATIONS.html
-
-  - title: Quality Assurance
-    url: /html_Parser_prototype/QUALITY/VERIFICATION.html
-    items:
-      - title: Verification Framework
-        url: /html_Parser_prototype/QUALITY/VERIFICATION.html
-      - title: Quarantine System
-        url: /html_Parser_prototype/QUALITY/QUARANTINE_SYSTEM.html
-      - title: ML Framework
-        url: /html_Parser_prototype/QUALITY/ML_FRAMEWORK.html
-
-  - title: Features & Guides
-    url: /html_Parser_prototype/FEATURES/GUIDES.html
-    items:
-      - title: Developer Guides
-        url: /html_Parser_prototype/FEATURES/GUIDES.html
-      - title: FEC Fuzzy Matching
-        url: /html_Parser_prototype/FEATURES/FEC_FUZZY_MATCHING.html
+      - title: Verification
+        url: /QUALITY/verification.html
       - title: Confidence Framework
-        url: /html_Parser_prototype/FEATURES/CONFIDENCE_FRAMEWORK.html
-      - title: Election Operations
-        url: /html_Parser_prototype/FEATURES/ELECTION_OPERATIONS.html
-      - title: Integrity Guidelines
-        url: /html_Parser_prototype/FEATURES/INTEGRITY_GUIDELINES.html
+        url: /QUALITY/confidence_framework.html
+      - title: Integrity Monitoring
+        url: /QUALITY/integrity_monitoring.html
+      - title: Quarantine System
+        url: /QUALITY/quarantine_system.html
+      - title: ML Quality
+        url: /QUALITY/ml_quality.html
 
   - title: Governance
-    url: /html_Parser_prototype/GOVERNANCE/GOVERNANCE.html
+    url: /GOVERNANCE/README.html
+    items:
+      - title: Integrity Guidelines
+        url: /GOVERNANCE/integrity_guidelines.html
+
+  - title: Deployment
+    url: /DEPLOYMENT/README.html
+    items:
+      - title: CI/CD
+        url: /DEPLOYMENT/ci_cd.html
+      - title: Application Deployment
+        url: /DEPLOYMENT/deployment.html
+      - title: Post-Deploy Verification
+        url: /DEPLOYMENT/post_deploy_verification.html
+      - title: Election Operations
+        url: /DEPLOYMENT/election_operations.html
+      - title: Deployment Security
+        url: /DEPLOYMENT/security/README.html
+      - title: CSP Model
+        url: /DEPLOYMENT/security/csp_model.html
+      - title: CSP Deployment Checklist
+        url: /DEPLOYMENT/security/csp_deployment_checklist.html
 
   - title: Development
-    url: /html_Parser_prototype/DEVELOPMENT/todos.html
+    url: /DEVELOPMENT/guides.html
     items:
+      - title: Developer Guides
+        url: /DEVELOPMENT/guides.html
+      - title: Google Sheets Credentials
+        url: /DEVELOPMENT/google_sheets_credentials.html
       - title: TODO Overview
-        url: /html_Parser_prototype/DEVELOPMENT/TODOS_OVERVIEW.html
-      - title: All TODOs
-        url: /html_Parser_prototype/DEVELOPMENT/todos.html
-      - title: High Priority
-        url: /html_Parser_prototype/DEVELOPMENT/todos_high.html
-      - title: Medium Priority
-        url: /html_Parser_prototype/DEVELOPMENT/todos_medium.html
-      - title: Low Priority
-        url: /html_Parser_prototype/DEVELOPMENT/todos_low.html
+        url: /DEVELOPMENT/todos_overview.html
+      - title: Generated TODOs
+        url: /DEVELOPMENT/generated/todos.html
+      - title: High Priority TODOs
+        url: /DEVELOPMENT/generated/todos_high.html
       - title: Project Audit
-        url: /html_Parser_prototype/DEVELOPMENT/project_audit.html
+        url: /DEVELOPMENT/generated/project_audit.html
       - title: Pipeline Map
-        url: /html_Parser_prototype/DEVELOPMENT/pipeline_map.html
+        url: /DEVELOPMENT/generated/pipeline_map.html
+
+  - title: Features
+    url: /FEATURES/FEC_FUZZY_MATCHING.html
+    items:
+      - title: FEC Candidate Matching Audit
+        url: /FEATURES/FEC_FUZZY_MATCHING.html
+      - title: Database Comparison
+        url: /FEATURES/DATABASE_COMPARISON.html

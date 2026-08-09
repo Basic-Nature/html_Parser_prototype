@@ -1,104 +1,81 @@
 # GitHub Actions Workflows
 
-## Active Workflows ✅
+Election Pulse uses separate workflows for separate delivery responsibilities.
 
-### 1. Azure Deployment (`main_ballotlens.yml`)
+## Active workflows
 
-**Purpose**: Deploy `webapp/` folder to Azure App Service  
-**Triggers**:
+### `main_ballotlens.yml`
 
-- Push to `main` branch when webapp files change
-- Manual dispatch
+This is the active Azure application deployment workflow.
 
-**What it does**:
+The filename retains historical Ballot Lens naming, but the workflow deploys the
+broader Election Pulse application.
 
-1. Builds Docker container with Python app + dependencies
-2. Pushes image to Azure Container Registry (ACR)
-3. Deploys to Azure Web App (BallotLens)
-4. Configures environment variables and app settings
-5. Verifies HTTPS redirect working
+Use the workflow itself and `docs/DEPLOYMENT/ci_cd.md` as the authority for its
+current triggers, deployment steps, security settings, and post-deploy checks.
 
-**Status**: ✅ Working correctly
+### `jekyll-gh-pages.yml`
 
----
+This is the active static documentation workflow.
 
-### 2. GitHub Pages Deployment (`jekyll-gh-pages.yml`)
+It:
 
-**Purpose**: Deploy `docs/` folder to GitHub Pages (Jekyll)  
-**Triggers**:
+- builds `docs/` with Jekyll on a GitHub-hosted runner;
+- installs Ruby and Bundler in CI rather than requiring them on developer
+  machines;
+- validates required generated HTML pages before deployment;
+- rejects generated local links that still target `.md` source files;
+- uploads the generated `_site` artifact;
+- deploys the artifact through GitHub Pages;
+- performs non-blocking route probes after deployment.
 
-- Push to `main` branch when docs files change
-- Manual dispatch
+The public documentation site is:
 
-**What it does**:
+<https://basic-nature.github.io/html_Parser_prototype/>
 
-1. Builds Jekyll site from `docs/` folder
-2. Deploys to GitHub Pages
-3. Makes documentation available at: <https://basic-nature.github.io/html_Parser_prototype/>
+### `seed-warehouse.yml`
 
-**Status**: ✅ Working correctly
+This is a hard-disabled experimental data-transport workflow.
 
----
+It is retained as implementation history for an earlier Google Sheets to
+PostgreSQL transport experiment. It is not an active application deployment
+path and should not be treated as permanent private-operations architecture.
 
-## Deployment Philosophy
+## Workflow boundaries
 
-**Note**: Previous workflows for fixture validation and markdown linting have been removed. Those tasks (fixture management, linting) are handled in local development, not in CI/CD.
+Documentation-only changes should use the Pages workflow.
 
-### What belongs in CI/CD
+Application/runtime changes should use the Azure workflow according to that
+workflow's path filters.
 
-✅ **Azure deployment** - Deploy production webapp code  
-✅ **GitHub Pages** - Deploy documentation site
+A repository change may legitimately trigger more than one workflow when it
+crosses those responsibility boundaries.
 
-### What doesn't belong in CI/CD
+## Documentation quality
 
-❌ **Fixture data commits** - Manage locally or post-deployment on Azure  
-❌ **npm dependency scans** - Run locally with `npm run lint:md` if needed  
-❌ **Database migrations** - Run manually after Azure deployment
+The Pages workflow performs two different classes of checks:
 
----
+1. Markdown quality checks are visibility-oriented and non-blocking.
+2. Generated Pages artifact checks are blocking because an invalid generated
+   site should not be deployed.
 
-## Workflow Maintenance
+Repository maintainers can also run the local documentation verification gate:
 
-### Testing workflows locally
-
-```bash
-# Use act (https://github.com/nektos/act)
-act -j build-and-deploy  # Test Azure deployment
-act -j build             # Test GitHub Pages build
+```powershell
+& .\scripts\maintenance\verification_gate.ps1
 ```
 
-### Monitoring workflow runs
+Local Ruby is optional. The authoritative Pages build occurs in GitHub Actions,
+where the workflow provisions Ruby and Bundler.
 
-- GitHub Actions tab: <https://github.com/Basic-Nature/html_Parser_prototype/actions>
-- Check for failures after pushing to `main`
-- Azure deployment takes ~10-15 minutes
-- GitHub Pages deployment takes ~2-3 minutes
+## Security and secrets
 
----
+Do not place secret values in workflow documentation.
 
-## Troubleshooting
+Deployment credentials and runtime secrets belong in their configured GitHub or
+Azure secret stores.
 
-### Azure deployment fails
+For current deployment contracts and security boundaries, see:
 
-1. Check Azure secrets are set: `ACR_LOGIN_SERVER`, `ACR_USERNAME`, `ACR_PASSWORD`
-2. Verify `Dockerfile` exists in repo root
-3. Check Azure resource group `BallotLens_group` exists
-4. Review logs in Actions tab
-
-### GitHub Pages deployment fails
-
-1. Ensure `docs/` folder exists with valid Jekyll content
-2. Check `Gemfile` and `Gemfile.lock` are committed
-3. Verify Pages is enabled in repo settings
-4. Review build logs in Actions tab
-
-### Permission errors (403)
-
-- Workflows can't push to repo by default
-- Add `permissions: contents: write` to workflow if commits needed
-- Better: Don't commit from CI, handle data locally
-
----
-
-**Last Updated**: February 5, 2026  
-**Maintained by**: Development team
+- `docs/DEPLOYMENT/ci_cd.md`
+- `docs/DEPLOYMENT/security/README.md`

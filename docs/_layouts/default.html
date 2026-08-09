@@ -6,16 +6,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% if page.title %}{{ page.title }}{% else %}{{ site.title | default: "Smart Elections Parser" }}{% endif %}</title>
-  
-  <!-- Styles -->
+  <title>{% if page.title %}{{ page.title }} | {% endif %}{{ site.title | default: "Election Pulse Documentation" }}</title>
+
   <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
   <link rel="stylesheet" href="{{ '/assets/css/custom-utils.css' | relative_url }}">
-  
-  <!-- Mermaid for diagram rendering -->
+
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
   <script>
-    // Configure Mermaid before it initializes
     window.mermaidConfig = {
       startOnLoad: false,
       theme: 'dark',
@@ -24,11 +21,49 @@
   </script>
 </head>
 <body>
-  <div class="main-content">
-    {{ content }}
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <div class="docs-shell">
+    <aside class="docs-sidebar" aria-label="Documentation navigation">
+      <a class="docs-brand" href="{{ '/' | relative_url }}">
+        Election Pulse
+        <span>Project Documentation</span>
+      </a>
+
+      <nav class="docs-nav">
+        {% for item in site.data.navigation.main %}
+          <div class="docs-nav-group">
+            <a
+              class="docs-nav-primary{% if page.url == item.url %} active{% endif %}"
+              href="{{ item.url | relative_url }}"
+            >
+              {{ item.title }}
+            </a>
+
+            {% if item.items %}
+              <ul>
+                {% for child in item.items %}
+                  <li>
+                    <a
+                      class="{% if page.url == child.url %}active{% endif %}"
+                      href="{{ child.url | relative_url }}"
+                    >
+                      {{ child.title }}
+                    </a>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </nav>
+    </aside>
+
+    <main id="main-content" class="main-content docs-main" tabindex="-1">
+      {{ content }}
+    </main>
   </div>
-  
-  <!-- Custom scripts -->
+
   <script src="{{ '/assets/js/custom.js' | relative_url }}"></script>
 </body>
 </html>

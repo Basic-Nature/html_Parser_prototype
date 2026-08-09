@@ -1,91 +1,27 @@
-theme: jekyll-theme-primer
-baseurl: "/html_Parser_prototype"
-url: "https://basic-nature.github.io"
+title: "Election Pulse Documentation"
+description: "Architecture, quality, governance, deployment, and development documentation for Election Pulse."
 
-# Markdown processor configuration
+theme: jekyll-theme-primer
+
+url: "https://basic-nature.github.io"
+baseurl: "/html_Parser_prototype"
+
 markdown: kramdown
 kramdown:
   input: GFM
   hard_wrap: true
 
-# Exclude files from Jekyll build
+plugins:
+  - jekyll-relative-links
+
+relative_links:
+  enabled: true
+  collections: false
+
 exclude:
-  - Gemfile
-  - Gemfile.lock
-  - vendor/
-  - README.md
-  - LICENSE
-  - install.bat
-  - install.sh
-  - install.py
-  - "*.py"
-  - "*.sh"
-  - "*.bat"
+  - archived/
   - node_modules/
+  - vendor/
   - "*.json"
-  - "*.txt"
   - "*.log"
-  - ".git*"
-  - "archived/"
-
-plugins: []
-
-# Jekyll Collections Configuration
-collections:
-  core:
-    output: true
-    permalink: /core/:path/
-  deployment:
-    output: true
-    permalink: /deployment/:path/
-  quality:
-    output: true
-    permalink: /quality/:path/
-  features:
-    output: true
-    permalink: /features/:path/
-  governance:
-    output: true
-    permalink: /governance/:path/
-  development:
-    output: true
-    permalink: /development/:path/
-
-# Collection defaults
-defaults:
-  # Core collection
-  - scope:
-      path: "CORE"
-      type: "core"
-    values:
-      layout: "default"
-  # Deployment collection
-  - scope:
-      path: "DEPLOYMENT"
-      type: "deployment"
-    values:
-      layout: "default"
-  # Quality collection
-  - scope:
-      path: "QUALITY"
-      type: "quality"
-    values:
-      layout: "default"
-  # Features collection
-  - scope:
-      path: "FEATURES"
-      type: "features"
-    values:
-      layout: "default"
-  # Governance collection
-  - scope:
-      path: "GOVERNANCE"
-      type: "governance"
-    values:
-      layout: "default"
-  # Development collection
-  - scope:
-      path: "DEVELOPMENT"
-      type: "development"
-    values:
-      layout: "default"
+  - "*.txt"

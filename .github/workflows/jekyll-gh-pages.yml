@@ -1,32 +1,20 @@
-# Sample workflow for building and deploying a Jekyll site to GitHub Pages
 name: GitHub Pages Docs - Jekyll Build & Deploy
 
 on:
-  # Runs on pushes targeting the default branch
   push:
     branches: ["main"]
     paths:
-      # Explicit guard: docs workflow should not run for Azure/webapp-only changes
-      - '!webapp/**'
-      - '!scripts/**'
-      - '!automate.py'
-      - '!.github/workflows/main_ballotlens.yml'
-      - 'docs/**'
-      - 'Gemfile'
-      - 'Gemfile.lock'
-      - '.github/workflows/jekyll-gh-pages.yml'
-
-  # Allows you to run this workflow manually from the Actions tab
+      - "docs/**"
+      - "Gemfile"
+      - "Gemfile.lock"
+      - ".github/workflows/jekyll-gh-pages.yml"
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
   group: "pages"
   cancel-in-progress: false
@@ -36,65 +24,149 @@ jobs:
     name: Docs Quality (non-blocking)
     runs-on: ubuntu-latest
     continue-on-error: true
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      - name: Markdown lint (docs only)
+          node-version: "20"
+
+      - name: Markdown lint
         run: |
           npm install -g markdownlint-cli
-          markdownlint "docs/**/*.md" \
-            --config .markdownlint.json \
-            --disable MD013 MD024
+          markdownlint "docs/**/*.md"             --config .markdownlint.json             --disable MD013 MD024
+
       - name: Docs quality summary
         if: always()
         run: |
           {
             echo "## Docs Quality"
-            echo "- Scope: docs/** markdown checks"
-            echo "- Mode: non-blocking (visibility only)"
+            echo "- Scope: docs/**/*.md"
+            echo "- Mode: non-blocking visibility check"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Build job
   build:
-    name: Build Docs (Jekyll)
+    name: Build and Validate Docs
     runs-on: ubuntu-latest
     needs: docs-quality
+
     env:
       NODE_OPTIONS: "--trace-deprecation"
       PAGES_ARTIFACT_NAME: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
+
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: 3.2
+          ruby-version: "3.2"
+
       - name: Install Bundler and dependencies
         run: |
           gem install bundler
           bundle config set --local path vendor/bundle
           bundle install --jobs 4 --retry 3
-      - name: Build site with Jekyll (bundle exec)
-        run: bundle exec jekyll build --source ./docs --destination ./_site
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+
+      - name: Build site with Jekyll
+        run: |
+          bundle exec jekyll build             --source ./docs             --destination ./_site
+
+      - name: Validate generated Pages artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required=(
+            "_site/index.html"
+            "_site/ARCHITECTURE/README.html"
+            "_site/CORE/README.html"
+            "_site/QUALITY/README.html"
+            "_site/GOVERNANCE/README.html"
+            "_site/DEPLOYMENT/README.html"
+            "_site/DEVELOPMENT/guides.html"
+            "_site/FEATURES/FEC_FUZZY_MATCHING.html"
+          )
+
+          for path in "${required[@]}"; do
+            if [[ ! -f "$path" ]]; then
+              echo "::error::Required generated page is missing: $path"
+              exit 1
+            fi
+            echo "Verified: $path"
+          done
+
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          class LinkParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.hrefs = []
+
+              def handle_starttag(self, tag, attrs):
+                  if tag.lower() != "a":
+                      return
+                  for key, value in attrs:
+                      if key.lower() == "href" and value:
+                          self.hrefs.append(value)
+
+          bad = []
+          html_files = sorted(Path("_site").rglob("*.html"))
+
+          for html_path in html_files:
+              parser = LinkParser()
+              parser.feed(
+                  html_path.read_text(
+                      encoding="utf-8",
+                      errors="replace",
+                  )
+              )
+
+              for href in parser.hrefs:
+                  parsed = urlsplit(href)
+                  if parsed.scheme or parsed.netloc:
+                      continue
+
+                  path = parsed.path.lower()
+                  if path.endswith(".md"):
+                      bad.append((str(html_path), href))
+
+          if bad:
+              print("Generated local links still reference Markdown source files:")
+              for source, href in bad[:100]:
+                  print(f"  {source}: {href}")
+              raise SystemExit(1)
+
+          print(
+              f"Validated {len(html_files)} generated HTML files: "
+              "no local .md href targets remain."
+          )
+          PY
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
         with:
           name: ${{ env.PAGES_ARTIFACT_NAME }}
+          path: ./_site
 
-  # Deployment job
   deploy:
-    name: Deploy Docs (GitHub Pages)
+    name: Deploy Docs
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
@@ -107,32 +179,38 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy
     continue-on-error: true
+
     steps:
-      - name: Probe key docs routes
+      - name: Probe key published docs routes
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
+
           BASE="https://basic-nature.github.io/html_Parser_prototype/"
           URLS=(
             "$BASE"
-            "${BASE}DOCUMENTATION-INDEX"
-            "${BASE}FEATURES/"
-            "${BASE}DEVELOPMENT/"
+            "${BASE}ARCHITECTURE/README.html"
+            "${BASE}CORE/README.html"
+            "${BASE}QUALITY/README.html"
+            "${BASE}GOVERNANCE/README.html"
+            "${BASE}DEPLOYMENT/README.html"
           )
-          for u in "${URLS[@]}"; do
-            echo "Probing: $u"
-            final=$(curl -L -s -o /dev/null -w "%{url_effective}" "$u")
-            code=$(curl -L -s -o /dev/null -w "%{http_code}" "$u")
-            echo "  final=$final status=$code"
-            if [ "$code" -ge 400 ]; then
-              echo "  warning: route returned HTTP $code"
+
+          for url in "${URLS[@]}"; do
+            code=$(curl -L -s -o /dev/null -w "%{http_code}" "$url")
+            echo "$code $url"
+
+            if [[ "$code" -ge 400 ]]; then
+              echo "::warning::Published docs route returned HTTP $code: $url"
             fi
           done
+
       - name: Docs routing summary
         if: always()
         run: |
           {
             echo "## Docs Routing Smoke"
             echo "- Site: https://basic-nature.github.io/html_Parser_prototype/"
-            echo "- Mode: non-blocking (visibility only)"
-            echo "- Purpose: detect link/route regressions without blocking docs deploy"
+            echo "- Mode: non-blocking post-deploy visibility check"
+            echo "- Build-time artifact validation is blocking."
           } >> "$GITHUB_STEP_SUMMARY"

@@ -1,7 +1,9 @@
-/* Utility styles for docs JS interactions (use instead of inline styles) */
+/* Utility styles for docs JS interactions and documentation navigation. */
+
 .pre-with-copy {
   position: relative;
 }
+
 .copy-button {
   position: absolute;
   top: 8px;
@@ -9,16 +11,18 @@
   padding: 6px 10px;
   font-size: 12px;
   border-radius: 6px;
-  border: 1px solid rgba(0,255,231,0.12);
+  border: 1px solid rgba(0, 255, 231, 0.12);
   background: rgba(26, 34, 40, 0.75);
   color: #e6e8ea;
   opacity: 0;
   transition: opacity 0.15s ease, transform 0.12s ease;
   cursor: pointer;
 }
+
 .copy-button.visible {
   opacity: 1;
 }
+
 .mermaid-loading {
   text-align: center;
   color: #00ffe7;
@@ -28,18 +32,170 @@
   border-radius: 8px;
   margin: 10px 0;
 }
+
 .pointer {
   cursor: pointer !important;
 }
+
 .flash-highlight {
   box-shadow: 0 0 12px rgba(0, 255, 231, 0.6);
   transition: box-shadow 0.3s ease;
 }
+
 .hover-elevated {
-  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
   transform: translateY(-2px);
   transition: box-shadow 0.18s ease, transform 0.12s ease;
 }
 
-/* Small helper to ensure focusable/clickable elements show pointer */
-.pointer, a.pointer { cursor: pointer; }
+.pointer,
+a.pointer {
+  cursor: pointer;
+}
+
+/* GitHub Pages documentation shell */
+
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: -5rem;
+  z-index: 2000;
+  padding: 0.65rem 0.9rem;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #111111;
+  font-weight: 700;
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+.docs-shell {
+  width: min(1500px, calc(100% - 2rem));
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.docs-shell .main-content {
+  max-width: none;
+  width: 100%;
+  margin: 2rem 0;
+}
+
+.docs-sidebar {
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  margin: 2rem 0;
+  padding: 1rem;
+  border: 1px solid rgba(0, 255, 231, 0.2);
+  border-radius: 18px;
+  background: rgba(26, 35, 42, 0.92);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(8px);
+  z-index: 2;
+}
+
+.docs-brand {
+  display: block;
+  padding: 0.35rem 0.5rem 0.9rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(0, 255, 231, 0.18);
+  color: #e6e8ea;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.docs-brand span {
+  display: block;
+  margin-top: 0.2rem;
+  color: #9fb4c4;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.docs-nav-group {
+  margin: 0.25rem 0 0.75rem;
+}
+
+.docs-nav a {
+  display: block;
+  border-radius: 8px;
+  color: #c6e2f7;
+  line-height: 1.35;
+}
+
+.docs-nav a:hover,
+.docs-nav a:focus-visible,
+.docs-nav a.active {
+  background: rgba(0, 255, 231, 0.1);
+  color: #ffffff;
+  text-shadow: none;
+}
+
+.docs-nav-primary {
+  padding: 0.5rem 0.6rem;
+  font-weight: 800;
+}
+
+.docs-nav ul {
+  margin: 0.2rem 0 0.25rem;
+  padding: 0 0 0 0.65rem;
+  list-style: none;
+  border-left: 1px solid rgba(0, 255, 231, 0.16);
+}
+
+.docs-nav li {
+  margin: 0.08rem 0;
+}
+
+.docs-nav li a {
+  padding: 0.34rem 0.55rem;
+  color: #9fb4c4;
+  font-size: 0.9rem;
+}
+
+.docs-main:focus {
+  outline: none;
+}
+
+@media (max-width: 900px) {
+  .docs-shell {
+    width: min(100% - 1rem, 1200px);
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .docs-sidebar {
+    position: static;
+    max-height: none;
+    margin: 0.75rem 0 0;
+  }
+
+  .docs-shell .main-content {
+    margin-top: 1rem;
+  }
+
+  .docs-nav {
+    columns: 2;
+    column-gap: 1rem;
+  }
+
+  .docs-nav-group {
+    break-inside: avoid;
+  }
+}
+
+@media (max-width: 620px) {
+  .docs-nav {
+    columns: 1;
+  }
+}
