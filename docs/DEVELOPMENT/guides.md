@@ -376,7 +376,7 @@ def test_parse_real_sample(handler):
 
 - [System Architecture](../ARCHITECTURE/system_overview.md) - Architecture overview
 - [Data Models & Schema](../ARCHITECTURE/canonical_election_model.md) - Data structures
-- [Verification Framework](../QUALITY/VERIFICATION.md) - Testing & QA
+- [Verification Framework](../QUALITY/verification.md) - Testing & QA
 
 **Sources**:
 

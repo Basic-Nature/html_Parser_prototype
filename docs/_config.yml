@@ -20,6 +20,9 @@ relative_links:
 
 exclude:
   - archived/
+  - implementation-history/
+  - implementation-phases/
+  - session-logs/
   - node_modules/
   - vendor/
   - "*.json"
