@@ -43,3 +43,7 @@ tools/debug_headless_output/
 tools/screenshots/
 hint-report/
 node_modules/
+
+# Election Pulse production-image exclusions
+webapp/ms-playwright/
+webapp/parser/fixtures/fixture_audit_report.jsonl

@@ -11,9 +11,9 @@ on:
       - '!.github/workflows/jekyll-gh-pages.yml'
       - 'webapp/**'
       - 'scripts/**'
+      - '!scripts/maintenance/**'
       - 'tests/testdata/**'
       - 'Dockerfile'
-      - '.Dockerfile'
       - '.dockerignore'
       - 'requirements.txt'
       - 'requirements-dev.txt'
@@ -353,7 +353,7 @@ jobs:
           pip install --no-cache-dir --prefer-binary -r requirements.txt
 
       - name: Install Playwright browsers (runner)
-        run: python -m playwright install --with-deps
+        run: python -m playwright install --with-deps chromium
 
       - name: Remove unnecessary files from site-packages
         run: |
@@ -366,10 +366,6 @@ jobs:
         run: |
           rm -rf ~/.cache/pip build/ dist/ *.egg-info
 
-      - name: Copy Playwright browsers into webapp for deployment (if needed elsewhere)
-        run: |
-          mkdir -p webapp/ms-playwright
-          cp -r ~/.cache/ms-playwright/* webapp/ms-playwright/ || true
 
       - name: Show disk usage after cleanup
         run: df -h
@@ -495,14 +491,11 @@ jobs:
 
       - name: Verify Dockerfile
         run: |
-          if [ ! -f "Dockerfile" ] && [ -f ".Dockerfile" ]; then
-            echo "Found .Dockerfile, renaming to Dockerfile..."
-            mv .Dockerfile Dockerfile
-          fi
           if [ ! -f "Dockerfile" ]; then
-            echo "ERROR: Dockerfile not found at repo root. Create Dockerfile (not .Dockerfile)."
+            echo "ERROR: Dockerfile not found at repo root."
             exit 1
           fi
+
           head -n 10 Dockerfile || true
 
       - name: Set up Docker Buildx
@@ -525,6 +518,8 @@ jobs:
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
           platforms: linux/amd64
+          cache-from: type=gha,scope=ballotlens
+          cache-to: type=gha,mode=max,scope=ballotlens
 
       - name: Configure Web App to use custom container
         run: |
