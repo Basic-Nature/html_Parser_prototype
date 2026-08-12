@@ -57,6 +57,12 @@ dist/
 eggs/
 
 # -------------------------
+# Runtime lock exclusions
+# -------------------------
+pipeline.lock
+*.pid
+
+# -------------------------
 # Logs, runtime data, temporary outputs
 # -------------------------
 *.log
@@ -176,8 +182,6 @@ tools/debug_screenshots/
 
 # Local data/tests (exclude unless intentionally committed)
 data/
-/tests/
-webapp/parser/tests/
 
 # Temporary documentation (working notes, session drafts)
 docs/temp/
@@ -188,3 +192,10 @@ docs/working/
 
 # Windows temp
 %TEMP%/
+
+# Generated test artifacts
+tests/ocr_output/
+tests/pathway_run_output.txt
+tests/**/output/
+tests/**/artifacts/
+tests/**/screenshots/

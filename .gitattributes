@@ -11,6 +11,8 @@
 *.md text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+*.ps1 text eol=lf
+*.sh text eol=lf
 
 # Large generated parser/reference artifacts
 webapp/parser/fixtures/candidate_summary_index.json filter=lfs diff=lfs merge=lfs -text
