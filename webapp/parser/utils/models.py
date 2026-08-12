@@ -23,13 +23,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
-    inspect,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.orm import backref, declarative_base, relationship
 
-from .logger_singleton import logger
 
 Base = declarative_base()
 
@@ -472,25 +470,3 @@ class Alert(Base):
 
     def __repr__(self):
         return f"<Alert(id={self.id}, level={self.level})>"
-
-def main():
-    """
-    Create all tables in the configured database.
-    """
-    try:
-        from .db_utils import get_engine
-    except ImportError:
-        raise RuntimeError("get_engine not available. Cannot create tables.")
-    try:
-        engine = get_engine()
-        logger.info("[MODELS] Creating all tables in the configured database...")
-        Base.metadata.create_all(engine)
-        inspector = inspect(engine)
-        tables = inspector.get_table_names()
-        logger.info(f"[MODELS] Tables present after creation: {tables}")
-        logger.info("[MODELS] All tables created successfully.")
-    except Exception as e:
-        logger.error(f"[MODELS][ERROR] Failed to create tables: {e}")
-
-if __name__ == "__main__":
-    main()
