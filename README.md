@@ -1,504 +1,672 @@
-# Smart Elections Parser
+# Election Pulse
 
-## Overview
+**Evidence-backed election data parsing, normalization, validation, and analysis.**
 
-Smart Elections Parser is a robust, modular, and integrity-focused precinct-level election result scraper and analyzer. It is designed to adapt to the ever-changing landscape of U.S. election reporting, supporting both traditional and modern web formats, and is built for extensibility, transparency, and auditability.
+Election Pulse is an open-source election data platform designed to transform fragmented and inconsistent election information into structured, traceable, and auditable data.
+
+Election results are published across thousands of jurisdictions using different websites, vendors, file formats, naming conventions, ballot methods, reporting structures, and document layouts. Election Pulse provides a common framework for acquiring that information, interpreting it, preserving the evidence behind each transformation, and producing a canonical representation suitable for analysis and public review.
+
+The project began as a flexible election-results parser. As its capabilities expanded across HTML, JSON, CSV, spreadsheets, APIs, and PDF/OCR sources, the larger problem became clear:
+
+> **Election data should not only be machine-readable. It should be explainable, comparable, and auditable back to its source.**
+
+Election Pulse is being built around that principle.
 
 ---
 
-## � Documentation Navigation
+## What Election Pulse Does
 
-> **Consolidated documentation in `docs/` folder** - All ~50 markdown files have been organized into clear categories with cross-links.
+Election Pulse provides a pipeline for turning heterogeneous election sources into normalized election data.
 
-### Quick Links
-
-| Purpose | Document | Read Time |
-| --------- | ---------- | ----------- |
-| **🚀 Getting Started** | [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | 10 min |
-| **🏗️ Architecture & Design** | [architecture.md](docs/architecture.md) | 20 min |
-| **📋 Quick Reference** | [QUICK_REFERENCES.md](docs/QUICK_REFERENCES.md) | Lookup |
-| **🔐 Quarantine System** | [QUARANTINE_SYSTEM_GUIDE.md](docs/QUARANTINE_SYSTEM_GUIDE.md) | 15 min |
-| **✅ System Governance** | [SYSTEM_GOVERNANCE.md](docs/SYSTEM_GOVERNANCE.md) | 15 min |
-| **🔍 Verification Framework** | [VERIFICATION_ARCHITECTURE.md](docs/VERIFICATION_ARCHITECTURE.md) | 20 min |
-| **🔐 Certificate Auth** | [CERT_AUTH_IMPLEMENTATION.md](docs/CERT_AUTH_IMPLEMENTATION.md) | 15 min |
-| **☁️ Azure Deployment** | [AZURE_DEPLOYMENT_CHECKLIST.md](docs/AZURE_DEPLOYMENT_CHECKLIST.md) | 10 min |
-
-### Documentation Organization
-
-```tree
-docs/
-├── architecture.md                    # Core system design & data flow
-├── index.md                          # Main documentation hub
-├── DEPLOYMENT_GUIDE.md               # Local/Docker/Azure setup
-├── QUICK_REFERENCES.md               # API/CLI quick lookup
-├── QUARANTINE_SYSTEM_GUIDE.md        # Transparent quarantine pipeline
-├── SYSTEM_GOVERNANCE.md              # Ethical principles & privilege model
-├── VERIFICATION_ARCHITECTURE.md      # Verification framework design
-├── WAREHOUSE_VERIFICATION_GUIDE.md   # Gated warehouse verification
-├── CERTAINTY_CAUTION_FRAMEWORK.md    # Confidence scoring system
-├── CERT_AUTH_IMPLEMENTATION.md       # Certificate authentication
-├── CERT_AUTH_REFERENCE.md           # Cert auth quick reference
-├── CERT_AUTH_STEP5_CHECKLIST.md     # Phase 5 implementation tasks
-├── AZURE_DEPLOYMENT_CHECKLIST.md    # Azure production checklist
-├── ELECTION_OPERATIONS_PLAYBOOK.md  # Operational procedures
-├── handlers.md                       # Handler architecture & routing
-├── fec_fuzzy.md                      # FEC candidate fuzzy matching
-├── session-logs/                     # Archived session reports (by date)
-├── implementation-phases/            # Archived phase completion reports
-├── implementation-history/           # Archived implementation records
-└── archived/                         # Historical/deprecated docs
+```text
+Election Sources
+      │
+      ├── HTML
+      ├── JSON / APIs
+      ├── CSV / Spreadsheets
+      └── PDF / OCR
+      │
+      ▼
+Acquisition & Detection
+      │
+      ▼
+Parsing & Extraction
+      │
+      ▼
+Entity Resolution & Normalization
+      │
+      ▼
+Canonical Election Model
+      │
+      ├── Evidence & Provenance
+      ├── Validation & Reconciliation
+      ├── Learned Context
+      └── Integrity Signals
+      │
+      ▼
+BallotLens / Data Assurance / APIs / Exports
 ```
 
-### For Different Audiences
-
-***👨‍💻 Developers***
-
-1. Start: [architecture.md](docs/architecture.md) (overview of system layers)
-2. Reference: [QUICK_REFERENCES.md](docs/QUICK_REFERENCES.md) (APIs and common tasks)
-3. Deep Dive: [handlers.md](docs/handlers.md) (handler routing and patterns)
-
-***🚀 DevOps/Deployment***
-
-1. Start: [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) (local → Docker → Azure)
-2. Reference: [AZURE_DEPLOYMENT_CHECKLIST.md](docs/AZURE_DEPLOYMENT_CHECKLIST.md) (production checklist)
-3. Troubleshooting: [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md#known-issues--fixes)
-
-***🔐 Security/Compliance***
-
-1. Start: [SYSTEM_GOVERNANCE.md](docs/SYSTEM_GOVERNANCE.md) (ethical principles)
-2. Deep Dive: [VERIFICATION_ARCHITECTURE.md](docs/VERIFICATION_ARCHITECTURE.md) (verification framework)
-3. Operational: [ELECTION_OPERATIONS_PLAYBOOK.md](docs/ELECTION_OPERATIONS_PLAYBOOK.md) (procedures)
-
-***👥 Project Managers/Stakeholders***
-
-1. Start: [QUARANTINE_SYSTEM_GUIDE.md](docs/QUARANTINE_SYSTEM_GUIDE.md) (transparency overview)
-2. Status: [CERT_AUTH_IMPLEMENTATION.md](docs/CERT_AUTH_IMPLEMENTATION.md) (current phase status)
-3. Reference: [CURRENT_SESSION_INDEX.md](docs/CURRENT_SESSION_INDEX.md) (work tracking)
+Rather than requiring every downstream feature to understand every election vendor or source format, Election Pulse aims to establish a common election-data contract between acquisition, analysis, and presentation.
 
 ---
 
-## �🚀 What's New (2026)
+## Core Architectural Domains
 
-### Major Additions
+Election Pulse is organized conceptually around **domains** rather than individual implementation files.
 
-- **Adaptive Navigation for Election Pages**
-  - Autoscroll now tracks tables seen and stops when no new tables load, logging telemetry to tune timeouts.
-  - Navigator consumes `navigation_keyword_bias.jsonl` plus new precinct/county recipes to open election tabs before scrolling.
-  - HTML fallback prefers in-DOM table extraction before prompting for downloads when both are present.
+Each domain has a defined responsibility and should communicate with other domains through explicit contracts.
 
-- **HTML-First Parsing + Context Bridge**
-  - HTML handling is the primary path for DOM-based election sites.
-  - `context_organizer.py` maps DOM skeletons into context entries used by the router and handlers.
-  - The bridge into format handlers is gated by available context and confirmed election signals.
+## Acquisition
 
-- **Dynamic Table Extraction & Structure Learning**
-  - Centralized in `table_core.py` and `dynamic_table_extractor.py`
-  - Multi-strategy extraction: HTML tables, repeated DOM, pattern-based, ML/NLP, and plugin-based
-  - Table structure learning, harmonization, and feedback are now fully centralized
-  - ML/NER-powered entity annotation and structure verification
-  - Dynamic scoring and patching: extraction methods are scored and can "fill in the blanks" using information from other strategies
-- **Navigation Feedback Loop → Manual Correction**
-  - Every navigation run logs per-step telemetry to `log/navigation_learning_log.jsonl` via `ContextCoordinator.record_navigation_feedback()`.
-  - `webapp/parser/health/navigation_feedback_ingest.py` converts the log into `navigation_feedback_selection_log.jsonl`, so the manual correction bot can auto-review successes/failures, feed ML retraining, or fast-track new recipes without extra tooling.
-- **Azure Health Control Center**
-  - `/health_dashboard` surfaces an internal operations console: launch health tasks (manual correction, log/cache cleanup, dataset promotion), review logs, and audit system safeguards—accessible when `ENABLE_HEALTH_TASKS=true`.
-  - Each job streams stdout to the browser so you can supervise Azure deployments even when shell access is limited.
+Locates and retrieves election information from public sources.
 
-- **Context-Aware Orchestration**
-  - `context_coordinator.py` and `context_organizer.py` orchestrate advanced context analysis, NLP, and ML integrity checks
-  - Persistent context library (`context_library.json`) for learning from user feedback and corrections
-  - Automated anomaly detection, clustering, and integrity checks (see `Integrity_check.py`)
+Sources may include:
 
-- **Web UI & CLI Parity**
-  - Flask-based web interface for managing URLs, running the parser, and reviewing output
-  - Real-time log streaming via SocketIO
-  - Data management dashboard for uploads, downloads, and URL hint management
-  - Azure Health console for launching health scripts with live log streaming
-  - Folder uploads are guarded by ingestion keys to prevent untrusted intake
+* election-results websites
+* downloadable election files
+* structured APIs
+* JSON exports
+* CSV and spreadsheet datasets
+* PDF election reports
+* scanned or image-based documents
 
-- **Handler Architecture**
-  - Modular state/county/format handlers in `handlers/`
-  - Handlers can delegate to county-level or format-level logic
-  - Shared logic and utilities for contest selection, table extraction, and output formatting
+Acquisition is responsible for finding the source—not deciding what the election data ultimately means.
 
-- **Election Integrity & Transparency**
-  - ML/NER-based anomaly detection and cross-field validation
-  - Persistent logs and feedback loops for user corrections and audit trails
-  - Manual correction bot and retraining pipeline for continuous improvement
-  - All outputs are saved with rich metadata and context for reproducibility
+## Parsing
 
-- **Security & Compliance**
-  - Path traversal and injection protections on all file/database operations
-  - .env-driven configuration for all sensitive settings
-  - Internal NLP/ML models replace external AI APIs for verification workflows
-  - No credentials or session tokens are stored; web UI can be secured for public deployment
+Extracts candidate, contest, jurisdiction, precinct, vote-method, and result information from acquired sources.
 
----
+The parser supports multiple strategies, including:
 
-## 🧭 Design Philosophy
+* structured-data parsing
+* HTML/DOM analysis
+* vendor-aware handlers
+* state and county handlers
+* dynamic fallback logic
+* table recognition
+* PDF extraction
+* OCR-assisted extraction
 
-- **Single Source of Truth:** All table extraction, harmonization, and feedback logic is centralized for maintainability and learning.
-- **Extensible & Pluggable:** New extraction strategies, handlers, and ML models can be added without breaking the pipeline.
-- **Human-in-the-Loop:** User feedback is integrated at every stage, from contest selection to table correction.
-- **Election Integrity First:** Every step is logged, auditable, and designed to surface anomalies or suspicious data.
-- **Web & CLI Parity:** All features are available via both the command line and the web interface.
+Source-specific behavior should remain modular while producing common downstream structures.
 
----
+## Normalization
 
-## 🔧 Features
+Transforms source-specific terminology into consistent election entities.
 
-- **Multi-Strategy Table Extraction:** HTML tables, repeated DOM, pattern-based, ML/NLP, plugin, and fallback NLP extraction.
-- **Dynamic Scoring & Patching:** Extraction strategies are scored (ML/NER + heuristics); missing info is patched from other strategies when possible.
-- **Persistent Context Library:** Learns from user corrections and feedback for smarter future extraction.
-- **Contest & Handler Routing:** Dynamic state/county/format handler routing with fuzzy matching and context enrichment.
-- **Election Integrity Checks:** ML/NER anomaly detection, cross-field validation, and audit logs.
-- **Web UI:** Real-time log streaming, data management, and user-friendly contest/table review.
-- **Batch & Parallel Processing:** Multiprocessing support for large-scale scraping.
-- **Security:** Path safety, .env config, and no credential storage.
-- **Optimized PDF Parsing:** pdf2image acceleration when Poppler is installed (automatic fallback to PyMuPDF otherwise).
+Examples include resolving differences such as:
 
----
-
-- **Headless or GUI Mode**: Browser launches headlessly by default unless CAPTCHA triggers a human interaction.
-- **CAPTCHA-Resilient**: Dynamically detects and pauses for Cloudflare verification with a visible browser.
-- **Race-Year Detection**: Scans HTML to find available election years and contests.
-- **State-Aware Routing**: Automatically detects state context and delegates to appropriate handler module.
-- **Format-Aware Fallback**: Supports CSV, JSON, PDF, and HTML formats with pluggable handlers.
-- **Output Sorting**: Results saved in nested folders by state, county, and race.
-- **URL Selection**: Loads URLs from `urls.txt` and lets users select specific targets.
-- **.env Driven**: Easily override behavior such as CAPTCHA timeouts or headless preferences.
-
-- **Web UI Ready**: All user prompts are modular for future web interface integration.
-
----
-
-## 🖥️ Web UI (Optional)
-
-**The Smart Elections Parser can be used in two ways:**
-
-1. **Standalone Python Script:**
-   - Run `html_election_parser.py` directly from your IDE or terminal for full CLI control.
-   - No web server required.
-
-2. **Web UI (Optional):**
-   - A modern Flask-based web interface is included for users who prefer a graphical experience or are new to coding.
-   - **Key Features of the Web UI:**
-     - **Dashboard:** Overview of the parser and quick access to all tools.
-     - **URL Hint Manager:** Add, edit, import/export, and validate custom URL-to-handler mappings.
-     - **Change History:** View and restore previous configurations for transparency and auditability.
-     - **Run Parser:** Trigger the parser from the browser and view real-time output in a styled terminal-like area.
-     - **Live Feedback:** See parser logs as they happen (via WebSockets).
-     - **Azure Health Control Center:** Queue manual correction, retraining, and log-cleanup scripts with live stdout streaming.
-     - **Accessible:** Designed for both technical and non-technical users, making it ideal for teams, researchers, and those learning to code.
-   - **How to Use the Web UI:**
-     1. Install requirements:  
-        `pip install -r requirements.txt`
-        - Python 3.12 (Windows) tested combo: `pip install -r requirements.txt -c constraints/local-py312.txt`
-        `python -m spacy download en_core_web_sm`
-     2. **Set up your `.env` file** (or set environment variables in your shell or IDE launch configuration):
-        - Required variables include:
-          - `FLASK_SECRET_KEY`
-          - `POSTGRES_USER`
-          - `POSTGRES_PASSWORD`
-          - `POSTGRES_DB`
-          - `POSTGRES_HOST`
-          - `POSTGRES_PORT`
-          - `DATA_API_URL`
-          - `CSP_MODE`
-        - You can copy `.env.template` to `.env` and fill in your values.
-        - **For local development:**
-          - Install [python-dotenv](https://pypi.org/project/python-dotenv/) to automatically load variables from `.env`:
-
-            ```sh
-
-            pip install python-dotenv
-
-            ```
-
-          - **Note:** `python-dotenv` is not included in `requirements.txt` and is not needed in production or on Azure.
-     3. Start the web server:  
-        `python -m webapp.Smart_Elections_Parser_Webapp`
-     4. Open your browser to `http://localhost:5000`
-   - **Note:**  
-     If you run `python -m webapp.Smart_Elections_Parser_Webapp` directly, you must ensure all required environment variables are set, or the app will not start.
-   - The web UI is optional—**all core parser features remain available via the CLI**.
-
----
-
-### ⚙️ Setting Environment Variables
-
-Before running the web server, you must set the required environment variables. You can do this in several ways:
-
-**Option 1: Use a `.env` file (recommended for local development):**
-
-- Copy `.env.template` to `.env` and fill in your values.
-- Install `python-dotenv` locally:
-
-  ```sh
-
-  pip install python-dotenv
-
-  ```
-
-- The app will automatically load variables from `.env` if present.
-
-**Option 2: Set environment variables in your shell before running (Windows Command Prompt):**
-
-```sh
-set FLASK_SECRET_KEY=yourkey
-set POSTGRES_USER=postgres
-set POSTGRES_PASSWORD=yourpassword
-set POSTGRES_DB=warehouse_election_results
-set POSTGRES_HOST=localhost
-set POSTGRES_PORT=5432
-set DATA_API_URL=/api/warehouse_election_results
-set CSP_MODE=STRICT
-python -m webapp.Smart_Elections_Parser_Webapp
+```text
+Election Day
+ED
+Polling Place
+In-Person Election Day
 ```
 
-**Or, on Linux/macOS:**
+or jurisdiction and contest naming variations across different election systems.
 
-```sh
-export FLASK_SECRET_KEY=yourkey
-export POSTGRES_USER=postgres
-export POSTGRES_PASSWORD=yourpassword
-export POSTGRES_DB=warehouse_election_results
-export POSTGRES_HOST=localhost
-export POSTGRES_PORT=5432
-export DATA_API_URL=/api/warehouse_election_results
-export CSP_MODE=STRICT
-python -m webapp.Smart_Elections_Parser_Webapp
+Normalization must preserve the original value alongside its canonical interpretation whenever that distinction matters.
+
+## Canonical Election Model
+
+The canonical model is the common language of Election Pulse.
+
+Conceptually, it represents entities such as:
+
+```text
+Election
+├── Jurisdictions
+├── Precincts
+├── Contests
+│   ├── Candidates / Choices
+│   ├── Vote Methods
+│   └── Results
+├── Evidence
+├── Provenance
+└── Validation
 ```
 
-Alternatively, you can set these variables in your IDE launch configuration.
+Downstream systems should increasingly consume canonical election objects rather than interpreting raw parser output independently.
 
-**Production (Azure):**
-
-- Set environment variables in the Azure App Service configuration panel.
-- Do **not** include `.env` or `python-dotenv` in your production deployment.
+This separation is central to keeping Election Pulse scalable as additional states, counties, vendors, and source formats are added.
 
 ---
 
-## How to Add a New State/County Handler, or Format
+## Evidence Before Assumption
 
-1. **State/County Handler:**
-   - Create a new handler in `handlers/states/` or `handlers/counties/`.
-   - Implement a `parse(page, html_context)` function.
-   - Register your handler in `state_router.py`.
+Election Pulse distinguishes **parser evidence** from **knowledge**.
 
-2. **Custom Noisy Labels/Patterns:**
-   - In your handler, pass `noisy_labels` and `noisy_label_patterns` to `select_contest()` for contest filtering.
+A parser observation is not automatically a fact.
 
-3. **Format Handler:**
-   - Add your handler to `utils/format_router.py` and register it in `route_format_handler`.
+For example, a source might contain:
 
-4. **User Prompts:**
-   - Use `prompt_user_input()` for all user input to allow easy web UI integration later.
-   - Example:
+```text
+MEMBER ASSEMBLY
+```
 
-     ``python
-     from utils.user_prompt import prompt_user_input
-     url = prompt_user_input("Enter URL: ")
-     ``
+while the canonical system may resolve it to:
+
+```text
+Member of the Assembly
+```
+
+The system should be capable of retaining:
+
+```text
+Raw observation
+        │
+        ▼
+Resolution rule / alias
+        │
+        ▼
+Canonical entity
+        │
+        ▼
+Confidence + provenance
+```
+
+Evidence may include information such as:
+
+* source URL
+* source file
+* raw text
+* DOM location
+* table/header relationship
+* OCR region
+* extraction method
+* parser version
+* timestamp
+* confidence
+* normalization rule
+* human review status
+
+The goal is not simply to produce a value.
+
+The goal is to preserve enough information to explain **where that value came from and how it was interpreted**.
 
 ---
 
-## 🗂 Folder Structure
+## Context and Knowledge System
 
-``
+Election Pulse is moving away from using a single context store as a mixture of configuration, observations, logs, and learned information.
 
-```bash
+The evolving context architecture separates these responsibilities:
+
+```text
+Context System
+│
+├── Canonical
+│   ├── jurisdictions
+│   ├── contest vocabularies
+│   ├── ballot-method mappings
+│   ├── party aliases
+│   └── parser rules
+│
+├── Learned
+│   ├── approved corrections
+│   ├── confidence-scored patterns
+│   └── source-specific observations
+│
+├── Runtime
+│   ├── migration state
+│   ├── telemetry
+│   ├── temporary evidence
+│   └── diagnostic state
+│
+└── Indexes
+    ├── lookup indexes
+    ├── generated caches
+    └── semantic/search indexes
+```
+
+A learned observation should not silently become canonical knowledge.
+
+Promotion into trusted context should be explicit, reviewable, confidence-aware, and attributable to its source.
+
+---
+
+## Precinct-Level Election Data
+
+A major goal of Election Pulse is maintaining comparable precinct-level election results.
+
+The standard output model treats each precinct as a row while retaining every candidate and available voting method.
+
+Conceptually:
+
+```text
+Precinct
+% Precincts Reporting
+
+Election Day Total
+Early Voting Total
+Absentee Mail Total
+Provisional Total
+
+Candidate A - Election Day
+Candidate A - Early Voting
+Candidate A - Absentee Mail
+Candidate A - Provisional
+Candidate A - Total Votes
+
+Candidate B - Election Day
+...
+
+Grand Total
+```
+
+Candidates and vote methods should not disappear merely because their reported count is zero.
+
+This preserves cross-precinct comparability and allows later validation to distinguish **zero votes** from **missing information**.
+
+---
+
+## Validation and Data Assurance
+
+Parsing is only the beginning.
+
+Election Pulse is designed to validate relationships within the extracted data.
+
+Examples include checking whether:
+
+* candidate totals equal their vote-method totals
+* candidate votes reconcile with reported contest totals
+* ballot-method totals reconcile
+* precincts appear more than once
+* expected candidates or methods are missing
+* source totals disagree with calculated totals
+* unexpected structural changes occurred
+* extracted data differs materially from previously verified structures
+
+Potential discrepancies should be surfaced rather than silently corrected.
+
+The system is intended to support investigation—not manufacture certainty where the underlying source is ambiguous.
+
+---
+
+## PDF and OCR Processing
+
+Election documents create a particularly difficult extraction problem.
+
+PDFs may contain:
+
+* selectable text
+* embedded tables
+* scanned pages
+* handwritten information
+* rotated pages
+* inconsistent layouts
+* page-spanning precincts
+* degraded scans
+* mixed machine and handwritten content
+
+Election Pulse therefore treats OCR output as **evidence**, not unquestionable truth.
+
+The intended flow is:
+
+```text
+Document
+   │
+   ▼
+Extraction / OCR
+   │
+   ▼
+Evidence
+   │
+   ▼
+Structural Interpretation
+   │
+   ▼
+Normalization
+   │
+   ▼
+Confidence / Validation
+   │
+   ▼
+Canonical Election Data
+```
+
+Ambiguous extraction should remain identifiable for automated or human review.
+
+---
+
+## BallotLens
+
+**BallotLens** is the primary interactive parsing and analysis interface within Election Pulse.
+
+Its role is evolving from a parser frontend into a workspace where users can:
+
+* submit election sources
+* inspect parser behavior
+* review extracted structures
+* examine evidence
+* analyze results
+* investigate discrepancies
+* access diagnostic information
+* interact with Election Pulse's broader data framework
+
+The UI is being developed alongside stricter Content Security Policy practices, external JavaScript/CSS assets, certificate-aware authentication, and reusable frontend components.
+
+---
+
+## Election Analysis and Visualization
+
+Normalized election data enables analysis that would be difficult to perform reliably against raw county websites.
+
+Planned and evolving analytical capabilities include:
+
+* county and precinct maps
+* contest comparisons
+* vote-method analysis
+* turnout analysis
+* presidential vs. down-ballot vote comparisons
+* geographic outlier detection
+* drop-off analysis
+* discrepancy visualization
+* CVR-assisted investigation where public cast-vote records are available
+
+Visualizations should remain connected to the underlying evidence and data provenance rather than becoming detached statistical products.
+
+---
+
+## Integrity by Design
+
+Election Pulse is intended to help investigate election data without assuming that an unusual result proves wrongdoing.
+
+An anomaly is a reason to investigate.
+
+It is not itself a conclusion.
+
+Possible explanations for unusual election data can include:
+
+* ballot design
+* jurisdiction-specific reporting rules
+* uncontested contests
+* legitimate voter behavior
+* reporting corrections
+* parsing errors
+* source-data errors
+* incomplete reporting
+* unusual ballot types
+* genuine discrepancies
+
+Election Pulse should make these situations easier to identify, reproduce, and examine while preserving the distinction between **observation, evidence, interpretation, and conclusion**.
+
+---
+
+## Repository Structure
+
+The repository is progressively being organized around stable architectural responsibilities.
+
+```text
 html_Parser_prototype/
+│
 ├── webapp/
-│   ├── Smart_Elections_Parser_Webapp.py    # Flask web UI
 │   ├── parser/
-│   │   ├── html_election_parser.py         # Main CLI orchestrator
-│   │   ├── state_router.py                 # Dynamic handler routing
-│   │   ├── utils/
-│   │   │   ├── table_core.py               # Centralized table extraction/learning
-│   │   │   ├── dynamic_table_extractor.py  # Candidate table generator/scorer
-│   │   │   ├── ml_table_detector.py        # ML/NLP table detection
-│   │   │   ├── shared_logger.py            # Logging utilities
-│   │   │   ├── user_prompt.py              # CLI/web prompt utilities
-│   │   │   └── ...                         # (browser, captcha, etc.)
-│   │   ├── Context_Integration/
-│   │   │   ├── context_coordinator.py      # Context/NLP/ML orchestrator
-│   │   │   ├── context_organizer.py        # Context enrichment, clustering, DB
-│   │   │   └── Integrity_check.py          # Election integrity/anomaly checks
 │   │   ├── handlers/
-│   │   │   ├── states/                     # State/county handlers
-│   │   │   ├── formats/                    # Format handlers (csv, pdf, json, html)
-│   │   │   └── shared/                     # Shared handler logic
-│   │   ├── templates/                      # Web UI templates
-│   │   ├── input/                          # Input data
-│   │   ├── output/                         # Output data
-│   │   ├── log/                            # Logs
-│   │   ├── .env
-│   │   ├── .env.template
-│   │   └── requirements.txt
-```bash
----
-## 🧪 How to Use
-
-### Install Requirements
-
-   pip install -r requirements.txt
-   python -m spacy download en_core_web_sm
-
-### 🤖 Run Automated Scripts
-
-For comprehensive automation including pipeline audits, health checks, web asset validation, and testing:
-
-```bash
-python automate.py  # Run all automated tasks
+│   │   ├── Context_Integration/
+│   │   ├── health/
+│   │   ├── routes/
+│   │   └── utils/
+│   │
+│   ├── static/
+│   ├── templates/
+│   └── tests/
+│
+├── docs/
+│   ├── ARCHITECTURE/
+│   ├── CORE/
+│   ├── DEPLOYMENT/
+│   ├── DEVELOPMENT/
+│   ├── FEATURES/
+│   ├── GOVERNANCE/
+│   ├── QUALITY/
+│   └── implementation-history/
+│
+├── scripts/
+├── tools/
+├── tests/
+├── alembic/
+├── Dockerfile
+├── requirements.txt
+└── README.md
 ```
 
-Options:
+Historical implementation documents are intentionally being separated from authoritative architecture documentation.
 
-- `--skip-web`: Skip web asset checks (JS/CSS/HTML linting)
-- `--skip-health`: Skip health bots and integrity checks
-- `--skip-tests`: Skip automated tests
-- `--skip-webapp-check`: Skip webapp import validation
-
-**Note:** When running on localhost (default), warnings are automatically suppressed for cleaner output. This includes deprecation warnings, future warnings, and pending deprecation warnings. The system detects localhost by checking if `POSTGRES_HOST` is set to `localhost` or `127.0.0.1`, or if `FLASK_ENV` is set to `development`.
-
-This central script ensures the project stays healthy and up-to-date.
-
-### 📦 Poppler Setup (PDF acceleration)
-
-- **Windows (local development):**
-  1. Download the latest Poppler build from [https://github.com/oschwartz10612/poppler-windows/releases](https://github.com/oschwartz10612/poppler-windows/releases) and unzip it (for example to `C:\poppler`).
-  2. Set the environment variable so the parser can find the binaries:
-
-     ```powershell
-     setx POPPLER_PATH "C:\\poppler\\Library\\bin"
-     ```
-
-  3. Restart any running parser/webapp processes so the change takes effect.
-- **Linux / Azure (production):**
-  - Install Poppler utilities during provisioning or container build:
-
-    ```bash
-    sudo apt-get update
-    sudo apt-get install -y poppler-utils
-    ```
-
-  - The handler automatically detects `pdftoppm`/`pdftocairo` once they are on PATH.
-- **Verification:** rerun a PDF-heavy sample (for example the Minnesota 2016 PDF) and confirm the logs no longer emit `pdf2image conversion failed` messages.
-
-### Add URLs
-
-- Populate `urls.txt` with target election result URLs.
-- `state_router.py` when dynamic state detection fails.
-
-### Run Parser (Web UI)
-
-   python -m webapp.Smart_Elections_Parser_Webapp
-
-- <Same as above with "" and folder path>
-- \cd ...full path...\html_Parser_prototype\
-- Then visit [http://localhost:5000](http://localhost:5000) in your browser or more likely the printed to terminal IP address pasted into browser of choice. This script activates the postgreSQL database so it must be ran first.
-
-### Run Parser (CLI)
-
-   python -m webapp.parser.html_election_parser
-
-- `(uncomment the "")
-- ``
-- if terminal already in root folder; otherwise,
-  (replace full path with the actual path to the folder)
-  "cd ...full path...\html_Parser_prototype"
+This allows the repository to preserve how the project evolved without forcing developers to determine which historical design still represents the current system.
 
 ---
 
-## 📦 Output Format
+## Documentation
 
-All parsed results are saved in a structured, transparent, and auditable format:
+Detailed documentation lives under [`docs/`](docs/).
 
-### 📁 Directory Structure
+The architecture documentation is intended to become the authoritative explanation of the major Election Pulse domains:
 
-output/{state}/{county}/{race}/{contest}_results.csv
+```text
+docs/ARCHITECTURE/
+├── README.md
+├── system_overview.md
+├── parser_pipeline.md
+├── canonical_election_model.md
+├── evidence_model.md
+├── context_system.md
+├── storage_architecture.md
+└── automation.md
+```
 
-**Example:**
+Core contracts and reference material belong under:
 
-`output/arizona/maricopa/us_senate/kari_lake_results.csv`
+```text
+docs/CORE/
+├── README.md
+├── implemented_contracts.md
+└── constants_reference.md
+```
 
-### 📄 Output Files
-
-For each contest, the following files are generated:
-
-- **CSV Results:**  
-   Tabular results for the contest, ready for analysis.
-
-- **Metadata JSON:**  
-   Includes key information such as:
-  - `state`
-  - `county`
-  - `year`
-  - `race`
-  - `contest`
-  - `handler`
-  - `timestamp`
-  - Additional extraction context
-
-- **Audit Trail:**  
-   A detailed log of extraction steps, harmonization, user corrections, and any anomalies detected, ensuring full transparency and reproducibility.
+Implementation history is preserved separately so architectural documentation can describe the system **as it exists now**.
 
 ---
 
-## 🧩 Extending the Parser
+## Testing
 
-Add New Extraction Strategies: Implement in table_core.py or as a plugin.
-Add Handlers: Place new state/county/format handlers in handlers/.
-Election Integrity: All new logic should log decisions and support auditability.
+Election Pulse contains tests covering areas such as:
 
-- **Add New States**: Create a new file in `handlers/states/` (e.g. `georgia.py`) and implement a `parse()` method.
-- **Add Format Support**: Add new file in `handlers/formats/` and map in `format_router.py`.
-- **Shared Behavior**: Use `utils/shared_logic.py` for common race detection, total extraction, etc.
+* parser behavior
+* URL ingestion
+* download discovery
+* state scaffolding
+* vocabulary loading
+* canonical parser safety
+* integrity signaling
+* result reconciliation
+* local data synchronization
+* OCR accuracy
+* credential behavior
+* frontend utilities
+* browser interaction
 
----
+The testing structure is also being consolidated as part of the broader architecture stabilization effort.
 
-## 🔐 Security & Integrity
+For Python tests:
 
-- **Headless Scraping:** All scraping runs headlessly by default; a visible browser is launched only if CAPTCHA is triggered.
-- **.env Protection:** Sensitive settings are managed via `.env`, which is excluded from version control (`.gitignore`).
-- **No Credential Storage:** No credentials or session tokens are stored at any time.
-- **Path Safety:** All file and database operations are path-safe and `.env`-configured to prevent injection or traversal attacks.
-- **Web UI Security:** The web interface can be protected with authentication when deployed publicly.
-- **Auditability:** All user feedback and corrections are logged for transparency and audit trails.
-- **Election Integrity:** ML/NER-powered anomaly detection, cross-field validation, and persistent logs enforce data integrity.
+```bash
+python -m pytest
+```
 
----
+Targeted suites may also be executed directly while test organization is being consolidated.
 
-## 🚧 Roadmap
-
-- Multi-race selection prompt
-- Retry logic for failed URLs
-- Browser fingerprint obfuscation
-- Contributor upload queue (for handler patches)
-- YAML config option for handler metadata
-- Web UI for user prompts and batch management
+Frontend tests are available through the project's Node tooling.
 
 ---
 
-## 🛡️ Smart Elections Ambition
+## Local Development
 
-Smart Elections Parser is built to set a new standard for election data integrity and transparency. Every extraction, correction, and output is:
+Clone the repository:
 
-- **Auditable:** Full logs and metadata for every step.
-- **Verifiable:** ML/NER-powered anomaly detection and structure validation.
-- **Correctable:** Human-in-the-loop feedback at every stage.
-- **Extensible:** Ready for new formats, handlers, and AI/ML improvements.
-- **Secure:** Designed for safe, compliant, and transparent operation.
+```bash
+git clone https://github.com/Basic-Nature/html_Parser_prototype.git
+cd html_Parser_prototype
+```
 
-## 📄 License
+Create a virtual environment:
 
-MIT License (TBD)
+```bash
+python -m venv .venv
+```
+
+Activate it.
+
+### Windows PowerShell
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+### Linux / macOS
+
+```bash
+source .venv/bin/activate
+```
+
+Install dependencies:
+
+```bash
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Use `.env.template` as the starting point for local configuration.
+
+```text
+.env.template → local configuration template
+.env         → local secrets/configuration; never commit
+```
+
+Environment-specific credentials and secrets must not be committed to the repository.
 
 ---
 
-## 🙋‍♀️ Contributors
+## Development Principles
 
-- Lead Dev: [Juancarlos Barragan]
-- Elections Research: TBD
-- Format Extraction: TBD
+Election Pulse development follows several important principles.
+
+### Preserve evidence
+
+Do not discard source information simply because a canonical value has been produced.
+
+### Prefer structured sources
+
+When an official structured JSON, API, CSV, or spreadsheet source exists, prefer it over reconstructing the same information from presentation HTML.
+
+### Never silently invent election data
+
+Missing values, extraction failures, and ambiguous structures should remain distinguishable from legitimate zero values.
+
+### Preserve candidates and vote methods
+
+Candidates and reporting methods must remain represented even when their vote count is zero.
+
+### Centralize reusable behavior
+
+Generic parsing, normalization, evidence, validation, logging, and output behavior should live in shared components rather than being duplicated across jurisdiction handlers.
+
+### Keep jurisdiction logic modular
+
+State, county, vendor, and source-specific behavior should extend shared contracts rather than replace them.
+
+### Separate runtime evidence from learned knowledge
+
+Temporary parser observations must not automatically modify trusted knowledge.
+
+### Make discrepancies visible
+
+Validation failures should produce evidence and review signals rather than hidden corrections.
+
+### Keep transformations auditable
+
+Where practical, a normalized result should be traceable through the transformations that produced it.
+
+---
+
+## Current Development Focus
+
+Election Pulse is currently undergoing an architecture stabilization and consolidation phase.
+
+Major priorities include:
+
+1. **Canonical Election Model**
+   Establish a common representation consumed across parser, validation, analytics, and UI systems.
+
+2. **Evidence Model**
+   Standardize provenance, confidence, source observations, and transformation history.
+
+3. **Context System**
+   Separate canonical knowledge, approved learned context, runtime state, and generated indexes.
+
+4. **Parser Contracts**
+   Align HTML, structured-data, PDF, OCR, state, county, and fallback parsers around shared interfaces.
+
+5. **Data Assurance**
+   Strengthen reconciliation, validation, anomaly detection, and audit workflows.
+
+6. **BallotLens UI**
+   Consolidate the parser interface into a clearer evidence-aware analytical workspace.
+
+7. **Visualization**
+   Develop interactive geographic and election-analysis tools using normalized data.
+
+8. **Documentation**
+   Replace fragmented implementation notes with concise domain-oriented architectural documentation.
+
+---
+
+## Project Philosophy
+
+Election systems are decentralized by design.
+
+Election data is therefore messy by nature.
+
+Different jurisdictions can legitimately use different:
+
+* terminology
+* ballot structures
+* voting methods
+* reporting systems
+* vendors
+* file formats
+* aggregation methods
+
+A trustworthy election-data platform cannot solve that complexity by pretending it does not exist.
+
+Election Pulse instead attempts to preserve those differences while providing a common structure through which they can be compared and analyzed.
+
+The long-term objective is simple to state even if it is difficult to build:
+
+> **Every normalized election result should be traceable to evidence, every important transformation should be explainable, and every discrepancy should be reproducible enough for independent review.**
+
+That is the standard Election Pulse is being built toward.
+
+---
+
+## Contributing
+
+Election Pulse is under active development and architectural consolidation.
+
+Contributions involving election-source support, parsing, validation, testing, documentation, security, accessibility, visualization, or data-quality research are welcome.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development and contribution guidance.
+
+Security issues should be reported according to [`SECURITY.md`](SECURITY.md).
+
+---
+
+## License
+
+See [`LICENSE`](LICENSE) for licensing information.
+
+---
+
+## Election Pulse
+
+**Acquire the source. Preserve the evidence. Normalize the data. Validate the result. Make it auditable.**

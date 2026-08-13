@@ -1,336 +1,871 @@
-# CONTRIBUTING.md
+﻿# Contributing to Election Pulse
 
-## Contributing to the Smart Elections Parser
+Thank you for contributing to Election Pulse.
 
-We welcome contributions from developers, data analysts, civic technologists, and election transparency advocates!  
-This project is designed to be scalable, readable, and resilient — please read below for how to help contribute meaningfully.
+Election Pulse is an evidence-backed election data platform for acquiring, parsing, normalizing, validating, and analyzing election information across heterogeneous public sources.
 
----
--Strategy going forward for mass handling of large datasets.
-**Python + SQLAlchemy + PostgreSQL** and **C#/.NET + PostgreSQL** to maximize strengths, minimize weaknesses, and support scalable, high-performance batch election parsing and data warehousing:
+Contributions are welcome across parsing, data modeling, validation, testing, documentation, security, accessibility, visualization, deployment, and election-data research.
 
----
-
-## 1. Architectural Overview
-
-- **PostgreSQL**: Central data warehouse for all parsed election data, metadata, and ML results.
-- **Python (SQLAlchemy, FastAPI, ML stack)**: Handles HTML parsing, ML/NLP, rapid prototyping, and orchestration of batch jobs.
-- **C#/.NET (Entity Framework Core, Dapper)**: Handles high-performance, parallel data ingestion, ETL, and analytics/reporting, especially for large-scale or Windows-centric deployments.
+Because election data is sensitive to interpretation and small transformations can materially affect downstream analysis, Election Pulse places particular emphasis on **traceability, reproducibility, and preserving source evidence**.
 
 ---
 
-## 2. Division of Responsibilities
+## Before You Contribute
 
-| Component | Language/Stack | Role/Strengths |
-| --- | --- | --- |
-| HTML Parsing, ML/NLP | Python | Flexible, rapid dev, best for spaCy, transformers, and custom parsing logic |
-| Batch Orchestration | Python | Orchestrate batch jobs, manage queues, call C#/.NET for heavy ETL if needed |
-| High-Performance ETL | C#/.NET | Bulk data loading, parallel processing, data normalization, warehouse management |
-| Data Warehouse | PostgreSQL | Central, normalized, scalable storage for all election data, accessible by both stacks |
-| API Layer | Python (FastAPI) or C# (.NET WebAPI) | Expose data/services to UIs, dashboards, or external consumers |
-| Analytics/Reporting | C#/.NET or Python | Use the best tool for the job: .NET for enterprise BI, Python for ad hoc analysis |
+Please become familiar with the project's core principles:
 
----
+1. Preserve source evidence.
+2. Never invent missing election data.
+3. Distinguish zero values from missing values.
+4. Prefer structured official sources when available.
+5. Normalize without destroying the original representation.
+6. Keep source-specific behavior modular.
+7. Centralize reusable parsing and validation logic.
+8. Do not promote parser observations directly into trusted knowledge.
+9. Surface discrepancies rather than silently correcting them.
+10. Keep important transformations reproducible and auditable.
 
-## 3. Integration Points
-
-- **Shared Database Schema**: Define a robust, version-controlled schema in PostgreSQL for all election data, results, and metadata.
-- **Batch Processing**:
-- Python parses HTML, extracts data, and writes to staging tables.
-- C#/.NET services pick up batches from staging, perform high-speed ETL, normalization, and load into warehouse tables.
-- **Parallelization**:
-- Use Python’s multiprocessing for moderate parallelism (e.g., 10–50 concurrent jobs).
-- For massive scale (100s–1000s of jobs), use C#/.NET for orchestrating and running parallel ETL, leveraging .NET’s async and threading strengths.
-- **API/Service Layer**:
-- Expose endpoints for triggering batch jobs, querying results, and monitoring status.
-- Use FastAPI (Python) for ML/LM endpoints; use .NET WebAPI for enterprise integration if needed.
+These principles take priority over making a parser merely "work" for one source.
 
 ---
 
-## 4. Strengths & Weaknesses
+## Repository Direction
 
-- **Python**: Flexible, great for ML and rapid iteration; less ideal for massive, concurrent, CPU-bound ETL.
-- **C#/.NET**: High-throughput, strongly-typed, parallel ETL and analytics; more verbose, less flexible for ML/NLP.
-- **PostgreSQL**: True data warehouse—partitioned tables, indexes, and analytics support.
+Election Pulse is undergoing architectural consolidation.
 
----
+Some parts of the repository predate the current domain-oriented architecture and may contain:
 
-## 5. Sample Workflow
+* legacy interfaces
+* duplicated parsing logic
+* experimental utilities
+* historical context-library behavior
+* transitional storage patterns
+* source-specific assumptions
+* deprecated documentation
+* temporary debugging tools
 
-1. **Python** parses thousands of county/state HTMLs, extracts raw results, and writes to `staging_election_results` in PostgreSQL.
-2. **C#/.NET** service (triggered on schedule or by API) reads from staging, performs validation, normalization, and loads into `warehouse_election_results`.
-3. **Python** ML jobs (e.g., anomaly detection, NER) run on warehouse data and write results back to PostgreSQL.
-4. **APIs** (Python or .NET) expose data for dashboards, reporting, or further analysis.
+Finding one of these patterns does not necessarily mean it should be copied into new code.
 
----
+When modifying an older component, first determine whether an existing shared abstraction should now own that behavior.
 
-## 6. Best Practices
+The authoritative architecture is progressively being documented under:
 
-- **Schema Management**: Use Alembic (Python) and EF Core Migrations (.NET) to keep schema in sync.
-- **Data Contracts**: Define clear data models and document them for both stacks.
-- **Batch IDs/Metadata**: Tag all data with batch IDs, source, and processing status for traceability.
-- **Monitoring**: Use logging and monitoring in both stacks to track job status and performance.
-- **Testing**: Integration tests to ensure both Python and .NET can read/write the same data correctly.
-
----
-
-## 7. Scalability & Performance
-
-- For moderate batch sizes, Python multiprocessing is sufficient.
-- For very large-scale, use C#/.NET for ETL and parallelization, possibly with a job queue (e.g., RabbitMQ, Celery, or Hangfire for .NET).
-- Use PostgreSQL features (partitioning, indexing, materialized views) to optimize warehouse queries.
-
----
-
-## 8. Summary Table
-
-|Task/Component|Python|C#/.NET|PostgreSQL|
-|---|---|---|---|
-|HTML/ML Parsing|✔️|||
-|ML/NER/AI|✔️|||
-|Batch Orchestration|✔️ (small/med)|✔️ (large)||
-|High-Perf ETL||✔️||
-|Data Warehouse|||✔️|
-|API Layer|✔️/✔️|✔️/✔️||
-|Analytics/Reporting|✔️/✔️|✔️/✔️||
-
----
-
-**Next Steps:**
-
-- Define your PostgreSQL schema and data contracts.
-- Build your Python batch/ML pipeline and API.
-- Build a C#/.NET ETL/analytics service for high-throughput needs.
-- Use the database as the integration point.
-
-*Let us know if you want a sample schema, API template, or batch orchestration code for either stack!*
-
-### 🧠 What You Can Help With
-
-- Add or update a **state or county handler** in `handlers/states/` or `handlers/states/<state>/county/`.
-- Improve or add **format handlers** under `handlers/formats/` (CSV, JSON, PDF, HTML).
-- Contribute **test URLs** for election sites in `urls.txt`.
-- Expand **race/year/contest detection** logic in `utils/html_scanner.py`.
-- Optimize **CAPTCHA resilience** in `utils/captcha_tools.py`.
-- Strengthen **modularity, orchestration, and UX** in `html_election_parser.py`.
-- Add **bot tasks** in `health/health_router.py` for automation, correction, or notifications.
-- Improve **shared utilities** in `utils/` or `handlers/shared/`.
-- Enhance or document the **Web UI** (Flask app in `webapp/`) for a better user experience, especially for new coders or non-technical users.
-- **Expand the context library**: Add new context patterns, feedback, or corrections in `context_library.json` or contribute to `Context_Integration/context_organizer.py`.
-- **Improve ML/NLP extraction or entity recognition**: See `table_core.py`, `extraction_strategies.py`, and `spacy_utils.py`.
-- **Use or extend the correction bot**: See `health/manual_correction.py` and retraining scripts.
-- **Tune dynamic table extraction**: Add or improve extraction strategies, scoring, or patching logic in `utils/table_core.py` and `utils/dynamic_table_extractor.py`.
-- All corrections and feedback are logged for auditability and future learning.
-
----
-
-### 🧠 Improving Context & Correction
-
-- To add new context patterns or feedback, edit `context_library.json` or contribute to `Context_Integration/context_organizer.py`.
-- To improve ML/NLP extraction or entity recognition, see `utils/table_core.py`, `utils/extraction_strategies.py`, and `utils/spacy_utils.py`.
-- To use or extend the correction bot, see `health/manual_correction.py` and retraining scripts.
-- All corrections and feedback are logged for auditability and future learning.
-
----
-
-### 🤖 Adding ML and NLP
-
-- Place new bot scripts in `health/` and register them in `health/health_router.py`.
-- health can automate corrections, retraining, notifications, or data integrity checks.
-- See `health/manual_correction.py` for an example of a correction/retraining bot.
-
----
-
-### 🧩 Dynamic Table Extraction & Scoring
-
-- Extraction is now multi-strategy and uses scoring/patching.
-- To add or tune extraction strategies, edit `utils/table_core.py` or `utils/dynamic_table_extractor.py`.
-- To expand the keyword libraries for locations, percent, etc., edit the keyword sets at the top of `table_core.py`.
-- To contribute new scoring or patching logic, see the `extract_all_tables_with_location` function in `table_core.py`.
-
----
-
-### 🧭 Handler Registration & Shared Utilities
-
-- Handlers are modular and can delegate to shared/context logic.
-- Use shared utilities and context-aware orchestration in new handlers.
-- Register handlers for new states, counties, or formats in `state_router.py` or `utils/format_router.py`.
-
----
-
-### 🛡️ Election Integrity & Auditability
-
-- All outputs are auditable: logs, metadata, and correction trails are saved.
-- To contribute to or extend integrity checks, see `Context_Integration/Integrity_check.py`.
-- Ensure your handler or utility logs key decisions and supports auditability.
-
----
-
-### 🛠️ Dev Setup
-
-1. Clone the repository:
-
-   ```bash
-   git clone https://github.com/SmartElections/parser.git
-   cd parser
-   ```
-
-2. Install dependencies:
-
-   ```bash
-   pip install -r requirements.txt
-   pip install -r requirements-dev.txt  # linting & hooks
-   npm install
-   ```
-
-3. Create your `.env` file:
-
-   ```bash
-   cp .env.template .env
-   ```
-
-   Then edit `.env` as needed for HEADLESS mode, CAPTCHA_TIMEOUT, etc.
-
----
-
-### 🧪 Running the Parser
-
-**CLI (Recommended for advanced users):**
-
-```bash
-python -m webapp.parser.html_election_parser
+```text
+docs/ARCHITECTURE/
 ```
 
-You’ll be prompted to select from `urls.txt`, then walk through format/state handler detection, CAPTCHA solving, and CSV extraction.
+Historical implementation documents belong under:
 
-**Web UI (Optional, recommended for new users or those who prefer a graphical interface):**
-
-```bash
-python webapp/Smart_Elections_Parser_Webapp.py
+```text
+docs/implementation-history/
 ```
 
-- Open your browser to [http://localhost:5000](http://localhost:5000) or the link printed in terminal (often the printed IP Address).
-- The Web UI provides a dashboard, URL hint manager, change history, and a "Run Parser" page with real-time output.
-- This is ideal for teams, researchers, and those learning to code—no Python experience required to use the main features!
+Historical documentation should not be treated as the current architectural contract unless explicitly identified as such.
 
 ---
 
-### 🧹 Static Analysis & Tooling
+## Architectural Domains
 
-- Run `npm run check-js` to ensure browser scripts parse cleanly.
-- Use `npm run lint` for the standard ESLint pass; `npm run lint:strict` enforces zero warnings for CI.
-- Apply quick fixes with `npm run lint:fix` or auto-delete dead imports via the ESLint unused-imports plugin.
-- Run `npm run lint:web` for the JavaScript/TypeScript suite only; `npm run test` now runs the full `verify:all` pipeline (syntax, ESLint strict, `tsc --noEmit`, Ruff, and MyPy).
-- Lint Python code with `npm run lint:python`; use `npm run typecheck:py` (or `npm run verify:python`) to run MyPy; both are wired into `npm run verify:all` for full coverage.
-- The TypeScript pass currently covers the Node-side tooling in `scripts/`. Front-end modules can opt in later by moving to `.ts` files or enabling `// @ts-check`.
-- Install git hooks via `pre-commit install` to run ESLint, TypeScript, Ruff, and MyPy automatically on commit.
+Changes should have a clear architectural owner.
+
+The major Election Pulse domains are:
+
+```text
+Acquisition
+    ↓
+Parsing
+    ↓
+Normalization
+    ↓
+Canonical Election Model
+    ↓
+Evidence / Validation / Context
+    ↓
+Analysis / APIs / Presentation
+```
+
+Supporting domains include:
+
+```text
+Integrity
+Storage
+Automation
+Security
+Observability
+Deployment
+```
+
+Before introducing a new module or abstraction, ask:
+
+> Which domain owns this responsibility?
+
+If the answer is unclear, the design should usually be clarified before additional implementation is added.
 
 ---
 
-### 🧭 How to Add a State or County Handler
+## Parser Contributions
 
-- Add a new file in `handlers/states/<state>.py` or `handlers/states/<state>/county/<county>.py`.
-- **Required:** Export a `parse(page, html_context)` function that returns:
+Election sources vary substantially between jurisdictions and vendors.
 
-  ```python
-  return headers, data_rows, contest, metadata
-  ```
+A parser contribution may involve:
 
-  - `headers`: List of column headers
-  - `data_rows`: List of row dicts or lists
-  - `contest`: String describing the contest/race
-  - `metadata`: Dict with at least `state`, `county`, and `race` (if available)
+* HTML or DOM extraction
+* structured JSON or API parsing
+* CSV or spreadsheet parsing
+* PDF extraction
+* OCR
+* vendor-specific behavior
+* state-specific behavior
+* county-specific behavior
+* dynamic fallback behavior
 
-- **Optional:** Export `list_available_contests(page)` if the site supports user contest selection.
-- **Always:** Use `prompt_user_input()` for any user prompts (import from `utils.user_prompt`).
-- **Register** your handler in `state_router.py` for automatic routing.
+Source-specific handlers should identify differences in the source while relying on shared components for behavior that is not jurisdiction-specific.
 
-**Example:**
+### Prefer Shared Logic
+
+Do not duplicate generic behavior inside a state or county handler when it belongs in shared parser infrastructure.
+
+Examples include:
+
+* candidate normalization
+* vote-method normalization
+* table interpretation
+* evidence creation
+* totals calculation
+* metadata cleaning
+* output construction
+* discrepancy detection
+* common DOM operations
+
+A handler should primarily describe what makes its source different.
+
+---
+
+## Prefer Structured Sources
+
+When the same official election information is available through multiple representations, prefer the most structured reliable source.
+
+A typical preference order is:
+
+```text
+Official API / JSON
+        ↓
+CSV / Spreadsheet
+        ↓
+Structured HTML
+        ↓
+PDF with selectable data
+        ↓
+OCR / image extraction
+```
+
+This is a guideline rather than an absolute rule.
+
+Source authority, completeness, provenance, and reporting structure must also be considered.
+
+Do not replace a higher-quality official source with a visually convenient but less reliable representation.
+
+---
+
+## Canonical Election Data
+
+Parser implementations should increasingly produce or feed a common canonical election representation.
+
+Conceptually:
+
+```text
+Election
+├── Jurisdictions
+├── Precincts
+├── Contests
+│   ├── Candidates / Choices
+│   ├── Vote Methods
+│   └── Results
+├── Evidence
+├── Provenance
+└── Validation
+```
+
+Downstream systems should not independently reinterpret raw parser structures when the canonical layer can provide that interpretation once.
+
+When introducing a new field, consider whether it represents:
+
+* source evidence
+* canonical election data
+* derived analysis
+* validation state
+* runtime state
+* learned knowledge
+* presentation metadata
+
+These categories should not be mixed casually.
+
+---
+
+## Precinct Output Requirements
+
+Precinct-level output must preserve cross-precinct comparability.
+
+Each precinct should retain every known candidate and applicable vote method, including legitimate zero values.
+
+Typical vote methods include:
+
+```text
+Election Day
+Early Voting
+Absentee Mail
+Provisional
+```
+
+Additional methods may be introduced when the source reports them.
+
+For each candidate, the output should preserve the available method breakdown and candidate total.
+
+Never remove a candidate or method solely because its value is zero.
+
+### Zero Is Not Missing
+
+These states are semantically different:
+
+```text
+0
+missing
+unavailable
+not reported
+not applicable
+parse failure
+```
+
+Do not silently convert one into another.
+
+---
+
+## Evidence and Provenance
+
+Parser evidence must remain distinguishable from canonical knowledge.
+
+For example:
+
+```text
+Raw source value
+        ↓
+Parser observation
+        ↓
+Normalization / resolution
+        ↓
+Canonical value
+```
+
+Where appropriate, evidence should preserve information such as:
+
+* source URL
+* source file
+* raw value
+* extraction method
+* DOM location
+* table relationship
+* OCR region
+* jurisdiction
+* parser or rule version
+* timestamp
+* confidence
+* normalization rule
+* review status
+
+Do not discard useful raw evidence after normalization merely because the normalized value appears correct.
+
+---
+
+## Context and Learned Knowledge
+
+Election Pulse distinguishes among:
+
+```text
+Canonical Knowledge
+Learned Knowledge
+Runtime State
+Parser Evidence
+Generated Indexes
+Telemetry
+```
+
+These categories must not be treated as interchangeable storage.
+
+### Parser Evidence Is Not Knowledge
+
+A parser discovering a pattern during one run does not automatically make that pattern authoritative.
+
+### Learned Knowledge Requires Promotion
+
+Learned observations should be:
+
+* attributable
+* confidence-aware
+* reviewable
+* reproducible
+* explicitly approved where required
+
+before becoming trusted reusable context.
+
+### Runtime State Does Not Belong in Canonical Context
+
+Temporary information such as:
+
+* migration state
+* telemetry
+* diagnostic output
+* temporary parser evidence
+* cache state
+* process locks
+
+must not silently become canonical knowledge.
+
+---
+
+## Election Integrity and Anomaly Detection
+
+Election Pulse may identify unusual patterns, reconciliation failures, or statistical anomalies.
+
+Contributors must preserve the distinction between:
+
+```text
+Observation
+    ↓
+Evidence
+    ↓
+Validation
+    ↓
+Interpretation
+    ↓
+Conclusion
+```
+
+An anomaly does not by itself establish misconduct, fraud, error, or any other cause.
+
+Code and documentation should describe what the data demonstrates without assigning unsupported explanations.
+
+Prefer language such as:
+
+```text
+discrepancy detected
+reconciliation failed
+unexpected ratio
+requires review
+source mismatch
+insufficient evidence
+```
+
+over unsupported causal conclusions.
+
+---
+
+## Validation Requirements
+
+Election data transformations should be validated wherever practical.
+
+Important checks include:
+
+* candidate totals equal method totals
+* contest totals reconcile
+* precinct totals reconcile
+* reported ballot-method totals reconcile
+* duplicate precincts are detected
+* candidates are not silently omitted
+* vote methods are not silently omitted
+* missing values remain distinguishable from zero
+* parser failures remain visible
+* source metadata is preserved
+
+A failed reconciliation should normally produce a validation signal rather than being silently repaired.
+
+---
+
+## PDF and OCR Contributions
+
+OCR should be treated as an evidence-generation process.
+
+OCR output is not automatically authoritative election data.
+
+Contributions involving PDF or OCR processing should account for conditions such as:
+
+* scanned pages
+* selectable text
+* handwritten marks
+* rotated pages
+* degraded images
+* page-spanning tables
+* mixed layouts
+* ambiguous characters
+* incomplete extraction
+
+When confidence is insufficient, preserve the ambiguity for review.
+
+Do not manufacture a clean value merely because downstream code expects one.
+
+---
+
+## Testing
+
+New behavior should normally include tests.
+
+Tests may cover:
+
+* unit behavior
+* parser contracts
+* normalization
+* jurisdiction handlers
+* structured-source parsing
+* fallback behavior
+* reconciliation
+* evidence preservation
+* security
+* frontend behavior
+* OCR behavior
+* integration pathways
+
+Run the Python test suite with:
+
+```bash
+python -m pytest
+```
+
+For targeted development, run the smallest relevant suite first and expand validation before merging.
+
+Example:
+
+```bash
+python -m pytest webapp/tests/test_context_write_policy.py -q
+```
+
+Also verify changed Python modules compile:
+
+```bash
+python -m compileall webapp
+```
+
+Before committing, check the diff for whitespace errors:
+
+```bash
+git diff --check
+```
+
+Not every local environment currently contains every optional testing dependency. If a test cannot run because of an environment dependency, document that limitation rather than reporting the suite as passing.
+
+---
+
+## Test Data
+
+Election test fixtures should use real or explicitly controlled source data.
+
+Do not fabricate election totals for parser previews or validation demonstrations unless a test explicitly requires synthetic data and clearly identifies it as synthetic.
+
+Regression fixtures should remain:
+
+* small when possible
+* deterministic
+* attributable
+* reviewable
+* free of secrets
+
+Large generated datasets should not automatically be committed to Git.
+
+---
+
+## Git LFS
+
+Git LFS should be reserved for files that genuinely benefit from large-file storage.
+
+Good candidates may include:
+
+* large generated election indexes
+* model weights
+* large binary datasets
+* checkpoints
+* large immutable artifacts
+
+Ordinary files such as these generally belong in normal Git:
+
+```text
+small JSON
+JSONL configuration
+Python
+JavaScript
+CSS
+Markdown
+vocabularies
+schemas
+small fixtures
+```
+
+Avoid broad rules such as:
+
+```text
+*.json
+*.jsonl
+```
+
+because they make ordinary configuration and reference data difficult to review.
+
+Prefer explicit paths for known large artifacts.
+
+---
+
+## Runtime and Generated Files
+
+Do not commit runtime state unless it is intentionally maintained as a fixture or reference artifact.
+
+Examples that generally should remain untracked include:
+
+* process locks
+* PID files
+* telemetry
+* temporary parser output
+* OCR diagnostics
+* generated caches
+* local databases
+* local environment files
+* temporary migration state
+* debug output
+
+If a generated artifact must be committed, document why it belongs in source control.
+
+---
+
+## Secrets and Credentials
+
+Never commit:
+
+* passwords
+* private keys
+* production certificates
+* API secrets
+* access tokens
+* database credentials
+* populated local `.env` files
+
+Use:
+
+```text
+.env.template
+```
+
+to document required environment variables without including sensitive values.
+
+If you discover a committed credential, treat it as compromised and follow the project's security process.
+
+See:
+
+```text
+SECURITY.md
+```
+
+for security reporting guidance.
+
+---
+
+## Code Organization
+
+Reusable logic should have one clear owner.
+
+Before adding a helper, search for an existing implementation.
+
+Avoid creating parallel versions such as:
+
+```text
+normalize_candidate()
+normalize_candidate_name()
+clean_candidate()
+canonicalize_candidate()
+fix_candidate_name()
+```
+
+unless those functions intentionally represent different stages.
+
+Prefer one documented contract over several subtly different implementations.
+
+---
+
+## Logging
+
+Use the project's shared logging infrastructure rather than ad hoc debugging output.
+
+Avoid committing temporary statements such as:
 
 ```python
-from utils.table_utils import extract_table_data
-from utils.user_prompt import prompt_user_input
-
-def parse(page, html_context):
-    # Optionally prompt user for contest if needed
-    # contest = prompt_user_input("Select contest: ")
-    headers, data = extract_table_data(page)
-    contest = "Some Contest"
-    metadata = {
-        "state": html_context.get("state", "Unknown"),
-        "county": html_context.get("county", "Unknown"),
-        "race": contest
-    }
-    return headers, data, contest, metadata
+print(...)
 ```
 
----
+or:
 
-### 🧩 How to Add a Format Handler
+```javascript
+console.log(...)
+```
 
-- Add a new file in `handlers/formats/` (e.g., `csv_handler.py`, `pdf_handler.py`).
-- Export a `parse(page, html_context)` or `parse(file_path, html_context)` function.
-- Return the same `(headers, data, contest, metadata)` tuple.
-- Register your handler in `utils/format_router.py`.
+unless they intentionally belong to supported CLI or frontend behavior.
 
----
+Runtime verbosity should respect the project's configured logging behavior and environment settings.
 
-### 🧼 Coding Standards & Best Practices
-
-- **Clarity over cleverness:** Write code that’s easy to read and maintain.
-- **No hardcoded race/candidate strings:** Use shared logic or config where possible.
-- **Always include all vote methods:** Even if count is 0, for comparability.
-- **Uniform headers:** Use `utils.table_utils.normalize_headers()` for consistency.
-- **Use `Pathlib`:** Prefer over `os.path` for file operations.
-- **Logging:** Use the `logging` module, not `print`, for all output except user prompts.
-- **User prompts:** Always use `prompt_user_input()` for CLI/web UI compatibility.
-- **Docstrings and comments:** Document all functions and tricky logic.
-- **Test in both headless and GUI modes:** Ensure browser automation works in both.
-- **Return metadata:** Always return enough metadata for output routing (`output/<state>/<county>/<race>.csv`).
-- **Reuse utilities:** Use tools from `utils/` or `handlers/shared/` instead of duplicating logic.
-- **Document handler-specific config:** At the top of your handler file.
+Do not log secrets or sensitive authentication material.
 
 ---
 
-### 🖥️ Web UI Contributions
+## Configuration
 
-- The Web UI (in `webapp/`) is **optional** but highly valuable for users who prefer a graphical interface or are new to coding.
-- You can contribute by:
-  - Improving the dashboard, forms, or real-time output display.
-  - Adding new features (e.g., search, filtering, user authentication).
-  - Enhancing accessibility and documentation for non-technical users.
-  - Writing clear instructions and tooltips to help new users understand each feature.
-- The Web UI is designed to make the parser accessible to everyone, regardless of coding experience.
+Behavior that differs between environments should normally be configurable rather than hardcoded.
 
----
+Examples include:
 
-### 📂 Folder Structure (Quick Glance)
+* logging level
+* output generation
+* authentication behavior
+* deployment environment
+* diagnostics
+* optional parser behavior
 
-- `handlers/`: State and format-specific scrapers.
-- `utils/`: Shared browser, captcha, and format logic.
-- `health/`: Correction/retraining/automation autonomous service.
-- `Context_Integration/`: Context, ML/NLP, and integrity modules.
-- `input/`: Input files like PDFs or JSONs.
-- `output/`: Where CSVs go.
-- `urls.txt`: List of URLs to cycle.
-- `.env`: Controls mode, timeouts, etc.
-- `context_library.json`: Persistent context/feedback.
-- `webapp/`: Flask-based Web UI (optional).
+Use existing configuration mechanisms before introducing another configuration source.
 
 ---
 
-### 💡 Tips for Effective Contributions
+## Documentation Contributions
 
-- Test your handler with real and edge-case data.
-- Use the troubleshooting guide (`docs/troubleshooting.md`) if you get stuck.
-- Check logs for errors and tuple structure issues.
-- If contributing to the Web UI, test both CLI and web workflows to ensure compatibility.
-- When contributing to context or correction, ensure your changes are logged and auditable.
+Documentation should describe the current system unless it is explicitly historical.
+
+### Current Architecture
+
+Place authoritative architecture documentation under:
+
+```text
+docs/ARCHITECTURE/
+```
+
+### Core Contracts
+
+Stable implemented contracts and reference material belong under:
+
+```text
+docs/CORE/
+```
+
+### Historical Documentation
+
+Superseded designs, implementation summaries, and migration history belong under:
+
+```text
+docs/implementation-history/
+```
+
+Do not leave an obsolete design beside the current architecture without clearly identifying which one is authoritative.
+
+### Documentation Should Explain Why
+
+Useful documentation should explain:
+
+* responsibility
+* inputs
+* outputs
+* contracts
+* boundaries
+* invariants
+* failure behavior
+* interaction with other domains
+
+Avoid documentation that merely reproduces the current function list.
 
 ---
 
-### 💬 Questions?
+## Markdown
 
-File an issue or start a discussion. We're happy to walk you through a contribution!
+Markdown in the repository should pass the configured Markdown linting rules.
 
-Thanks for helping improve election transparency! 🗳️
+Keep:
+
+* heading levels consistent
+* fenced code blocks labeled
+* lists formatted consistently
+* links relative where appropriate
+* trailing whitespace removed
+* excessively implementation-specific documentation out of root files
+
+The root Markdown files should remain concise entry points.
+
+Detailed implementation documentation belongs under `docs/`.
+
+---
+
+## Branch and Commit Practices
+
+Keep commits focused.
+
+Prefer:
+
+```text
+one architectural concern
+one bug fix
+one refactor
+one documentation consolidation
+```
+
+over mixing unrelated changes into a single commit.
+
+Examples:
+
+```text
+fix: preserve missing vote methods during normalization
+
+refactor: separate parser evidence from learned context persistence
+
+docs: consolidate canonical election architecture
+
+test: add reconciliation coverage for precinct totals
+
+chore: narrow LFS tracking for parser fixtures
+```
+
+Before committing:
+
+```bash
+git status --short
+git diff --check
+git diff --cached --check
+```
+
+Review what is actually staged:
+
+```bash
+git diff --cached --name-status
+git diff --cached --stat
+```
+
+Do not rely on a broad "stage all" operation when unrelated runtime, generated, or experimental files are present.
+
+---
+
+## Pull Requests
+
+A pull request should make it possible for another contributor to understand:
+
+1. What changed?
+2. Why was the change necessary?
+3. Which architectural domain owns the behavior?
+4. What evidence or source exposed the problem?
+5. How was the change validated?
+6. Does it alter a canonical contract?
+7. Does it affect stored or learned context?
+8. Are there known limitations?
+
+For parser changes, include the jurisdiction, vendor, source format, or representative source involved when appropriate.
+
+For validation fixes, explain the discrepancy being detected or resolved.
+
+For architecture changes, explain which responsibility is moving and why.
+
+---
+
+## Adding Jurisdiction Support
+
+Do not begin by copying an entire existing county handler.
+
+First determine:
+
+```text
+What is already generic?
+        ↓
+What is vendor-specific?
+        ↓
+What is state-specific?
+        ↓
+What is county-specific?
+```
+
+Only the genuinely jurisdiction-specific behavior should live in the narrowest handler.
+
+If multiple jurisdictions require the same workaround, that is usually evidence that the behavior belongs in a shared or vendor-level component.
+
+---
+
+## Adding a New Vote Method
+
+If a source introduces an additional legitimate vote method, preserve it.
+
+Do not force every source into only:
+
+```text
+Election Day
+Early Voting
+Absentee Mail
+Provisional
+```
+
+Those are common methods, not an exhaustive ontology.
+
+New methods should be normalized through the canonical vote-method system while preserving the source terminology and evidence.
+
+---
+
+## Adding a New Candidate or Contest Pattern
+
+Do not hardcode a new alias into an unrelated parser merely to make one page work.
+
+Determine whether the information belongs in:
+
+```text
+canonical vocabulary
+jurisdiction-specific rule
+vendor rule
+learned context
+parser heuristic
+```
+
+and preserve provenance for learned additions.
+
+This distinction is important for preventing source-specific observations from becoming global assumptions.
+
+---
+
+## Definition of Done
+
+A contribution is generally ready when:
+
+* the responsibility belongs in the correct domain
+* shared behavior has not been unnecessarily duplicated
+* source evidence is preserved
+* missing values remain distinct from zero
+* canonical structures remain compatible or intentionally versioned
+* relevant validation exists
+* relevant tests pass
+* documentation is updated when contracts change
+* runtime artifacts are not accidentally committed
+* secrets are absent
+* the staged diff contains only intended changes
+* the change can be explained and reproduced by another contributor
+
+---
+
+## Questions and Architectural Changes
+
+For substantial changes, prefer discussing the architecture before building a second competing implementation.
+
+This is particularly important for changes involving:
+
+* the Canonical Election Model
+* evidence structures
+* context persistence
+* parser contracts
+* storage
+* authentication
+* validation semantics
+* ML/NLP promotion
+* jurisdiction routing
+* output contracts
+
+The objective is not to prevent experimentation.
+
+It is to prevent successful experiments from becoming permanent architectural fragmentation.
+
+---
+
+## Final Principle
+
+When uncertain about how Election Pulse should handle election information, prefer the design that preserves the most trustworthy path back to the original evidence.
+
+**Acquire the source. Preserve the evidence. Normalize the data. Validate the result. Make it auditable.**
