@@ -35,52 +35,80 @@ const AuthUtils = (() => {
    * @returns {Promise} Promise resolving to boolean: true if cert present and valid, false otherwise
    */
   async function ensureCertAvailable(targetUrl) {
-    if (typeof targetUrl !== 'string') {
-      targetUrl = window.location.href;
+    if (typeof targetUrl !== 'string' || !targetUrl.trim()) {
+      targetUrl = window.location.pathname + window.location.search;
     }
+
     const now = Date.now();
-    
-    // Return cached success if within cooldown
-    if (certCheckLastOk && (now - certCheckLastOk) < CERT_CHECK_COOLDOWN_MS) {
+
+    if (
+      certCheckLastOk
+      && (now - certCheckLastOk) < CERT_CHECK_COOLDOWN_MS
+    ) {
       return true;
     }
-    
-    // Return existing in-flight check to prevent duplicate requests
+
     if (certCheckInFlight) {
       return certCheckInFlight;
     }
-    
-    // Perform cert check via API
+
     certCheckInFlight = (async () => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), CERT_CHECK_TIMEOUT_MS);
-        
-        const resp = await fetch('/api/auth/status', {
-          headers: { 'Accept': 'application/json' },
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (resp && resp.ok) {
-          const data = await resp.json();
-          if (data && data.authenticated) {
-            certCheckLastOk = Date.now();
-            return true;
+
+        const timeoutId = setTimeout(
+          () => controller.abort(),
+          CERT_CHECK_TIMEOUT_MS
+        );
+
+        const next = encodeURIComponent(
+          targetUrl
+        );
+
+        const resp = await fetch(
+          `/api/auth/status?next=${next}&ts=${Date.now()}`,
+          {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+            },
+            cache: 'no-store',
+            signal: controller.signal,
           }
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!resp || !resp.ok) {
           return false;
         }
-        
+
+        const data = await resp
+          .json()
+          .catch(() => null);
+
+        if (!data) {
+          return false;
+        }
+
+        const gateSatisfied = (
+          data.certificate_present === true
+          || data.certificate_action_required === false
+        );
+
+        if (gateSatisfied) {
+          certCheckLastOk = Date.now();
+          return true;
+        }
+
         return false;
-      } catch (e) {
-        // Strict-fail on unknown cert status to avoid inconsistent mutation behavior.
+      } catch (error) {
         return false;
       } finally {
         certCheckInFlight = null;
       }
     })();
-    
+
     return certCheckInFlight;
   }
 

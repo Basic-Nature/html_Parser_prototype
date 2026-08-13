@@ -48,15 +48,64 @@ SOCKETIO_CLIENT_CONFIG = {
     "pingTimeout": int(_SOCKETIO_ENGINE_OPTIONS["ping_timeout"] * 1000),
 }
 
-AUTH_MODE = os.environ.get("AUTH_MODE", "required").strip().lower()
-if AUTH_MODE not in {"disabled", "optional", "required"}:
-    AUTH_MODE = "required"
+# ElectionPulse application certificate-enforcement policy.
+#
+# This is intentionally separate from Azure App Service's TLS/client-cert
+# mode. Azure is currently configured as Optional Interactive User.
+AUTH_MODE = os.environ.get(
+    "AUTH_MODE",
+    "required",
+).strip().lower()  # legacy compatibility only
+
+_CERT_MODE_RAW = os.environ.get(
+    "CERT_ENFORCEMENT_MODE",
+    "",
+).strip().lower()
+
+if _CERT_MODE_RAW:
+    CERT_ENFORCEMENT_MODE = _CERT_MODE_RAW
+else:
+    # Preserve historical ElectionPulse behavior while retiring ambiguous
+    # use of the word "optional" inside application policy.
+    CERT_ENFORCEMENT_MODE = (
+        "disabled"
+        if AUTH_MODE in {"disabled", "optional"}
+        else "mutations"
+    )
+
+if CERT_ENFORCEMENT_MODE not in {
+    "disabled",
+    "mutations",
+}:
+    logging.warning(
+        "Invalid CERT_ENFORCEMENT_MODE=%r; "
+        "defaulting to 'mutations'.",
+        CERT_ENFORCEMENT_MODE,
+    )
+
+    CERT_ENFORCEMENT_MODE = (
+        "mutations"
+    )
+
+AZURE_CLIENT_CERT_MODE = (
+    os.environ.get(
+        "AZURE_CLIENT_CERT_MODE",
+        "optional_interactive_user",
+    )
+    .strip()
+    .lower()
+    .replace("-", "_")
+    .replace(" ", "_")
+)
 
 
 def _auth_mode_requires_certificate() -> bool:
-    if AUTH_MODE in {"disabled", "optional"}:
-        return False
-    return True
+    # Compatibility name retained while callers migrate to the clearer
+    # CERT_ENFORCEMENT_MODE terminology.
+    return (
+        CERT_ENFORCEMENT_MODE
+        == "mutations"
+    )
 
 SOCKETIO_MESSAGE_QUEUE = os.environ.get("SOCKETIO_MESSAGE_QUEUE")
 SOCKETIO_MESSAGE_CHANNEL = os.environ.get("SOCKETIO_MESSAGE_CHANNEL", "socketio")
@@ -505,20 +554,54 @@ def _sanitize_cert_metadata_for_status(cert_metadata: dict | None) -> dict:
 
 def _cert_required_response(reason: str):
     wants_json = _request_wants_json()
-    fallback_path = request.path or "/"
+
+    fallback_path = (
+        request.path
+        or "/"
+    )
+
     if request.query_string:
-        qs = request.query_string.decode("utf-8", "ignore")
-        if qs:
-            fallback_path += f"?{qs}"
-    auth_next = sanitize_internal_next(request.args.get("next"), fallback=fallback_path)
+        query_string = (
+            request.query_string
+            .decode(
+                "utf-8",
+                "ignore",
+            )
+        )
+
+        if query_string:
+            fallback_path += (
+                f"?{query_string}"
+            )
+
+    auth_next = sanitize_internal_next(
+        request.args.get("next"),
+        fallback=fallback_path,
+    )
+
+    auth_url = url_for(
+        "auth_welcome",
+        next=auth_next,
+    )
+
+    challenge_url = url_for(
+        "auth_challenge",
+        next=auth_next,
+    )
+
     if wants_json:
         return jsonify({
             "error": "certificate_required",
             "reason": reason,
-            "auth_url": url_for("auth_welcome", next=auth_next),
+            "auth_url": auth_url,
+            "challenge_url": challenge_url,
+            "certificate_policy": CERT_ENFORCEMENT_MODE,
+            "azure_client_cert_mode": AZURE_CLIENT_CERT_MODE,
         }), 401
-    return redirect(url_for("auth_welcome", next=auth_next))
 
+    return redirect(
+        auth_url
+    )
 
 def _require_client_cert(reason: str):
     if not _auth_mode_requires_certificate() or not REQUIRE_CERT_FOR_MUTATIONS:
@@ -745,49 +828,68 @@ HEALTH_TASK_DEFINITIONS: dict[str, dict] = {
         "description": "Run the entire BotPipeline: clean logs, migrate context, manual correction, and retraining.",
         "command": ["-m", "webapp.parser.health.health_router"],
         "danger": True,
+        "minimum_tier": 2,
+        "effect": "mixed_privileged_maintenance",
     },
     "manual_correction_auto": {
         "label": "Manual Correction (Auto)",
         "description": "Auto-accept new context entries without prompts using manual_correction_bot --auto.",
         "command": ["-m", "webapp.parser.health.manual_correction_bot", "--auto"],
         "danger": True,
+        "minimum_tier": 2,
+        "effect": "learned_context_update",
     },
     "manual_correction_enhanced": {
         "label": "Manual Correction (Enhanced)",
         "description": "Launch manual_correction_bot with enhanced review (interactive, slower but precise).",
         "command": ["-m", "webapp.parser.health.manual_correction_bot", "--enhanced"],
         "danger": True,
+        "minimum_tier": 1,
+        "effect": "review_assisted_context_update",
     },
     "retrain_table_models": {
         "label": "Retrain Table Models",
         "description": "Trigger retrain_table_structure_models to refresh structure detection weights.",
         "command": ["-m", "webapp.parser.health.retrain_table_structure_models"],
+        "danger": True,
+        "minimum_tier": 2,
+        "effect": "model_training",
     },
     "scan_misaligned": {
         "label": "Scan Misaligned NER",
         "description": "Run scan_misaligned_ner to flag mismatched training samples before retraining.",
         "command": ["-m", "webapp.parser.health.scan_misaligned_ner"],
+        "minimum_tier": 1,
+        "effect": "training_data_diagnostics",
     },
     "log_cache_cleaner": {
         "label": "Log & Cache Cleaner",
         "description": "Execute log_cache_cleaner_bot to dedupe/cap JSONL files and watch sizes.",
         "command": ["-m", "webapp.parser.health.log_cache_cleaner_bot"],
+        "minimum_tier": 2,
+        "effect": "runtime_cache_maintenance",
     },
     "context_migration": {
         "label": "Context Migration",
         "description": "Run context_migration to sync historical context formats with the latest schema.",
         "command": ["-m", "webapp.parser.health.context_migration"],
+        "minimum_tier": 2,
+        "effect": "context_schema_migration",
     },
     "integrity_check_summary": {
         "label": "Integrity Check Summary",
         "description": "Stream Integrity_check findings for the current context library.",
         "command": ["-m", "webapp.parser.health.integrity_check_runner"],
+        "minimum_tier": 1,
+        "effect": "integrity_diagnostics",
     },
     "dataset_promotion_latest": {
         "label": "Dataset Promotion (Latest)",
         "description": "Promote the newest output folder into warehouse_election_results with guarded batching.",
         "command": ["-m", "webapp.parser.health.dataset_promotion"],
         "danger": True,
+        "minimum_tier": 3,
+        "effect": "canonical_promotion",
     },
 }
 
@@ -828,17 +930,209 @@ def _health_auth_response(for_html: bool = False):
     return None if allowed else resp
 
 
+def _health_task_access_context(task_key: str) -> dict:
+    definition = HEALTH_TASK_DEFINITIONS.get(
+        task_key
+    )
+
+    if not definition:
+        raise KeyError(
+            task_key
+        )
+
+    principal, principal_source, _ = (
+        get_request_principal()
+    )
+
+    from webapp.parser.utils.privilege_tiers import (
+        PrivilegeTier,
+        get_principal_tier,
+    )
+
+    actual_tier = get_principal_tier(
+        principal,
+        principal_source,
+    )
+
+    required_tier = PrivilegeTier(
+        int(
+            definition.get(
+                "minimum_tier",
+                int(
+                    PrivilegeTier.ADMIN_REVIEWER
+                ),
+            )
+        )
+    )
+
+    return {
+        "allowed": bool(
+            principal
+            and int(actual_tier)
+            >= int(required_tier)
+        ),
+
+        "principal_source": (
+            principal_source
+        ),
+
+        "actual_tier": (
+            actual_tier.name
+        ),
+
+        "actual_level": (
+            int(actual_tier)
+        ),
+
+        "required_tier": (
+            required_tier.name
+        ),
+
+        "required_level": (
+            int(required_tier)
+        ),
+
+        "effect": str(
+            definition.get(
+                "effect"
+            )
+            or "unspecified"
+        ),
+    }
+
+
+def _require_health_task_tier(task_key: str):
+    context = _health_task_access_context(
+        task_key
+    )
+
+    if context[
+        "allowed"
+    ]:
+        return None
+
+    return jsonify({
+        "error": "Forbidden",
+
+        "reason": (
+            "insufficient_health_task_privilege"
+        ),
+
+        "task": task_key,
+
+        "effect": context[
+            "effect"
+        ],
+
+        "required_tier": context[
+            "required_tier"
+        ],
+
+        "required_level": context[
+            "required_level"
+        ],
+
+        "actual_tier": context[
+            "actual_tier"
+        ],
+
+        "actual_level": context[
+            "actual_level"
+        ],
+
+        "principal_source": context[
+            "principal_source"
+        ],
+    }), 403
+
+
 def _public_health_task_definitions() -> list[dict]:
+    from webapp.parser.utils.privilege_tiers import (
+        PrivilegeTier,
+        get_principal_tier,
+    )
+
+    # This is UI/read-only metadata. Backend launch authorization is still
+    # performed independently by _require_health_task_tier().
+    principal, principal_source, _ = (
+        get_request_principal()
+    )
+
+    actual_tier = get_principal_tier(
+        principal,
+        principal_source,
+    )
+
     entries = []
-    for key, meta in HEALTH_TASK_DEFINITIONS.items():
+
+    for key, meta in (
+        HEALTH_TASK_DEFINITIONS.items()
+    ):
+        minimum_tier = PrivilegeTier(
+            int(
+                meta.get(
+                    "minimum_tier",
+                    int(
+                        PrivilegeTier.ADMIN_REVIEWER
+                    ),
+                )
+            )
+        )
+
+        tier_authorized = bool(
+            principal
+            and int(actual_tier)
+            >= int(minimum_tier)
+        )
+
         entries.append({
             "key": key,
-            "label": meta["label"],
-            "description": meta["description"],
-            "danger": bool(meta.get("danger")),
-        })
-    return entries
 
+            "label": meta[
+                "label"
+            ],
+
+            "description": meta[
+                "description"
+            ],
+
+            # Presentation metadata only.
+            # NEVER use this value as an authorization decision.
+            "danger": bool(
+                meta.get(
+                    "danger"
+                )
+            ),
+
+            "minimum_tier": (
+                minimum_tier.name
+            ),
+
+            "minimum_level": (
+                int(minimum_tier)
+            ),
+
+            "effect": str(
+                meta.get(
+                    "effect"
+                )
+                or "unspecified"
+            ),
+
+            "current_tier": (
+                actual_tier.name
+            ),
+
+            "current_level": (
+                int(actual_tier)
+            ),
+
+            "tier_authorized": (
+                tier_authorized
+            ),
+        })
+
+    return entries
 
 def _get_health_tasks() -> list[dict]:
     with _HEALTH_TASK_LOCK:
@@ -4697,21 +4991,67 @@ def api_list_health_tasks():
 
 
 def api_start_health_task():
-    auth_error = _health_auth_response()
+    # HEALTH_TASK_TOKEN authenticates access to the control-plane
+    # endpoint. It is intentionally NOT a user privilege grant.
+    auth_error = (
+        _health_auth_response()
+    )
+
     if auth_error:
         return auth_error
-    cert_resp = _require_client_cert("health_task_start")
+
+    # Preserve the current certificate requirement independently
+    # from the privilege-tier decision below.
+    cert_resp = _require_client_cert(
+        "health_task_start"
+    )
+
     if cert_resp:
         return cert_resp
-    data = request.get_json(silent=True) or {}
-    task_key = str(data.get("task") or "").strip()
-    if not task_key:
-        return jsonify({"error": "Task key required."}), 400
-    if task_key not in HEALTH_TASK_DEFINITIONS:
-        return jsonify({"error": "Unknown task."}), 404
-    record = _launch_health_task(task_key)
-    return jsonify({"task": record})
 
+    data = request.get_json(
+        silent=True
+    ) or {}
+
+    task_key = str(
+        data.get(
+            "task"
+        )
+        or ""
+    ).strip()
+
+    if not task_key:
+        return jsonify({
+            "error": "Task key required."
+        }), 400
+
+    if (
+        task_key
+        not in HEALTH_TASK_DEFINITIONS
+    ):
+        return jsonify({
+            "error": "Unknown task."
+        }), 404
+
+    # Authorization is determined by the request principal and
+    # ElectionPulse privilege tier, not by possession of the
+    # health token alone.
+    privilege_error = (
+        _require_health_task_tier(
+            task_key
+        )
+    )
+
+    if privilege_error:
+        return privilege_error
+
+    record = _launch_health_task(
+        task_key
+    )
+
+    return jsonify({
+        "task": record
+    })
 
 def api_health_task_detail(task_id: str):
     auth_error = _health_auth_response()
@@ -7171,36 +7511,223 @@ app.config["_OBSERVABILITY_ROUTE_HANDLERS"] = {
 }
 
 def api_auth_status():
-    """
-    Return a safe inspection payload for the current auth state.
-    This endpoint does not require a client certificate and can be polled
-    to determine whether a certificate is present or the user is authenticated.
-    """
-    principal, principal_source, cert_metadata = get_request_principal()
-    next_target = sanitize_internal_next(request.args.get("next"), fallback=url_for("ballot_lens"))
-    response = {
-        "authenticated": bool(principal and principal.startswith("cert:")),
-        "certificate_present": bool(principal and principal.startswith("cert:")),
-        "principal": principal,
-        "principal_source": principal_source,
-        "cert_metadata": _sanitize_cert_metadata_for_status(cert_metadata),
-        "challenge_url": url_for("auth_challenge", next=next_target),
-        "session_context": {
-            "host": request.host or "unknown",
-            "remote_addr": request.remote_addr or "unknown",
-        },
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-    if cert_metadata and cert_metadata.get("cn"):
-        try:
-            from webapp.parser.utils.privilege_tiers import get_principal_tier
-            tier = get_principal_tier(principal, principal_source)
-            if tier:
-                response["privilege_tier"] = tier.value
-        except Exception:
-            response["privilege_tier"] = "STANDARD_USER"
-    return jsonify(response)
+    # Authoritative request-scoped authentication/certificate state.
+    #
+    # Session state is included only for UX continuity. Certificate presence
+    # is derived solely from the current request principal.
 
+    principal, principal_source, cert_metadata = (
+        get_request_principal()
+    )
+
+    certificate_present = bool(
+        principal
+        and principal.startswith(
+            "cert:"
+        )
+    )
+
+    authenticated = bool(
+        principal
+    )
+
+    next_target = sanitize_internal_next(
+        request.args.get("next"),
+        fallback=url_for(
+            "ballot_lens"
+        ),
+    )
+
+    try:
+        session_id = resolve_session_id(
+            {},
+            create_if_missing=False,
+        )
+    except Exception:
+        session_id = None
+
+    try:
+        from webapp.parser.utils.privilege_tiers import (
+            get_principal_tier,
+        )
+
+        tier = get_principal_tier(
+            principal,
+            principal_source,
+        )
+    except Exception:
+        tier = None
+
+    if tier is not None:
+        raw_tier_name = (
+            getattr(
+                tier,
+                "name",
+                None,
+            )
+            or getattr(
+                tier,
+                "value",
+                None,
+            )
+            or "STANDARD_USER"
+        )
+
+        if isinstance(
+            raw_tier_name,
+            str,
+        ):
+            privilege_tier = (
+                raw_tier_name
+            )
+        else:
+            privilege_tier = {
+                0: "STANDARD_USER",
+                1: "ADMIN_REVIEWER",
+                2: "ADMIN_FULL_TRUST",
+                3: "ROOT_ADMIN",
+            }.get(
+                int(raw_tier_name),
+                "STANDARD_USER",
+            )
+
+        try:
+            privilege_level = (
+                int(tier)
+            )
+        except Exception:
+            privilege_level = {
+                "STANDARD_USER": 0,
+                "ADMIN_REVIEWER": 1,
+                "ADMIN_FULL_TRUST": 2,
+                "ROOT_ADMIN": 3,
+            }.get(
+                privilege_tier,
+                0,
+            )
+
+        privilege_display = (
+            getattr(
+                tier,
+                "name_display",
+                None,
+            )
+            or privilege_tier
+            .replace("_", " ")
+            .title()
+        )
+
+    else:
+        privilege_tier = (
+            "STANDARD_USER"
+        )
+
+        privilege_level = 0
+
+        privilege_display = (
+            "Standard User"
+        )
+
+    local_certificate_bypass = bool(
+        DEPLOY_ENV == "local"
+        and _is_local_request()
+    )
+
+    certificate_required_for_mutations = bool(
+        _auth_mode_requires_certificate()
+        and REQUIRE_CERT_FOR_MUTATIONS
+        and not local_certificate_bypass
+    )
+
+    response = {
+        "authenticated": authenticated,
+
+        "certificate_present": (
+            certificate_present
+        ),
+
+        "certificate_required_for_mutations": (
+            certificate_required_for_mutations
+        ),
+
+        "certificate_action_required": bool(
+            certificate_required_for_mutations
+            and not certificate_present
+        ),
+
+        "principal": principal,
+
+        "principal_source": (
+            principal_source
+        ),
+
+        "cert_metadata": (
+            _sanitize_cert_metadata_for_status(
+                cert_metadata
+            )
+        ),
+
+        "privilege_tier": (
+            privilege_tier
+        ),
+
+        "privilege_level": (
+            privilege_level
+        ),
+
+        "privilege_display": (
+            privilege_display
+        ),
+
+        "certificate_policy": (
+            CERT_ENFORCEMENT_MODE
+        ),
+
+        "azure_client_cert_mode": (
+            AZURE_CLIENT_CERT_MODE
+        ),
+
+        "challenge_url": url_for(
+            "auth_challenge",
+            next=next_target,
+        ),
+
+        "auth_url": url_for(
+            "auth_welcome",
+            next=next_target,
+        ),
+
+        "status_source": (
+            "current_request_principal"
+        ),
+
+        "session_context": {
+            "session_id": session_id,
+
+            "host": (
+                request.host
+                or "unknown"
+            ),
+
+            "remote_addr": (
+                request.remote_addr
+                or "unknown"
+            ),
+
+            # Explicit contract: session/cache state is never certificate proof.
+            "certificate_proof_cached": False,
+        },
+
+        "timestamp": (
+            datetime.now(
+                timezone.utc
+            ).isoformat()
+        ),
+    }
+
+    return jsonify(
+        response
+    )
 
 def api_auth_certificate_info():
     """
@@ -7310,68 +7837,170 @@ app.config["_UTILITY_ADMIN_ROUTE_HANDLERS"] = {
 }
 
 def auth_welcome():
-    """
-    Render the certificate authentication welcome screen.
-    This page displays certificate information to the user and allows them to proceed
-    to the main application or view additional details.
-    """
-    # Get principal to verify cert is present
-    principal, principal_source, cert_metadata = get_request_principal()
+    principal, principal_source, cert_metadata = (
+        get_request_principal()
+    )
+
+    certificate_present = bool(
+        principal
+        and principal.startswith(
+            "cert:"
+        )
+    )
 
     normalized_target = sanitize_internal_next(
-        request.args.get("next") or request.referrer or url_for("index"),
-        fallback=url_for("ballot_lens"),
+        (
+            request.args.get("next")
+            or request.referrer
+            or url_for("index")
+        ),
+        fallback=url_for(
+            "ballot_lens"
+        ),
     )
 
-    if not principal:
-        return (
-            render_template(
-                "auth_welcome.html",
-                principal=None,
-                principal_source=None,
-                cert_metadata=None,
-                session_id=None,
-                require_cert=True,
-                auth_reason="certificate_required",
-                target_url=normalized_target,
-            ),
-            401,
-        )
-    
-    # Get session ID if available
     try:
-        session_id = resolve_session_id({}, create_if_missing=False)
+        session_id = resolve_session_id(
+            {},
+            create_if_missing=False,
+        )
     except Exception:
         session_id = None
-    
-    # Pass metadata to template
-    return render_template(
-        "auth_welcome.html",
-        principal=principal,
-        principal_source=principal_source,
-        cert_metadata=cert_metadata,
-        session_id=session_id,
-        require_cert=False,
-        auth_reason=None,
-        target_url=normalized_target,
+
+    certificate_required = bool(
+        _auth_mode_requires_certificate()
+        and REQUIRE_CERT_FOR_MUTATIONS
+        and not (
+            DEPLOY_ENV == "local"
+            and _is_local_request()
+        )
+        and not certificate_present
     )
 
+    challenge_attempted = (
+        str(
+            request.args.get(
+                "challenged"
+            )
+            or ""
+        )
+        .strip()
+        .lower()
+        in {
+            "1",
+            "true",
+            "yes",
+        }
+    )
+
+    status_code = (
+        401
+        if certificate_required
+        else 200
+    )
+
+    return (
+        render_template(
+            "auth_welcome.html",
+
+            principal=principal,
+
+            principal_source=(
+                principal_source
+            ),
+
+            cert_metadata=(
+                cert_metadata
+                if certificate_present
+                else None
+            ),
+
+            session_id=session_id,
+
+            require_cert=(
+                certificate_required
+            ),
+
+            certificate_present=(
+                certificate_present
+            ),
+
+            challenge_attempted=(
+                challenge_attempted
+            ),
+
+            auth_reason=(
+                "certificate_required"
+                if certificate_required
+                else None
+            ),
+
+            target_url=(
+                normalized_target
+            ),
+
+            certificate_policy=(
+                CERT_ENFORCEMENT_MODE
+            ),
+
+            azure_client_cert_mode=(
+                AZURE_CLIENT_CERT_MODE
+            ),
+        ),
+
+        status_code,
+    )
 
 def auth_challenge():
-    """
-    Trigger a client certificate negotiation challenge and redirect to the target URL.
-    This endpoint is used by the welcome page to present the browser with the mTLS client
-    certificate request and then continue the user to the requested destination.
-    """
-    next_url = sanitize_internal_next(request.args.get("next"), fallback=url_for("ballot_lens"))
-    cert_resp = _require_client_cert("auth_challenge")
-    if cert_resp:
-        return cert_resp
+    # Explicit navigation checkpoint.
+    #
+    # Only the current request principal can satisfy certificate presence.
+    # Existing session/cache state is intentionally ignored.
 
-    normalized_target = next_url
+    next_url = sanitize_internal_next(
+        request.args.get("next"),
+        fallback=url_for(
+            "ballot_lens"
+        ),
+    )
 
-    return redirect(normalized_target)
+    if (
+        not _auth_mode_requires_certificate()
+        or not REQUIRE_CERT_FOR_MUTATIONS
+    ):
+        return redirect(
+            next_url
+        )
 
+    if (
+        DEPLOY_ENV == "local"
+        and _is_local_request()
+    ):
+        return redirect(
+            next_url
+        )
+
+    principal, _, _ = (
+        get_request_principal()
+    )
+
+    if (
+        principal
+        and principal.startswith(
+            "cert:"
+        )
+    ):
+        return redirect(
+            next_url
+        )
+
+    return redirect(
+        url_for(
+            "auth_welcome",
+            next=next_url,
+            challenged="1",
+        )
+    )
 
 app.config["_PUBLIC_PAGES_ROUTE_HANDLERS"] = {
     "index": index,

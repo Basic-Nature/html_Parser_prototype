@@ -43,6 +43,8 @@
   }
 
   function getTargetUrl() {
+    // The server has already sanitized this navigation target.
+    // Never re-read raw next/target_url query values in the browser.
     return defaultTargetUrl;
   }
 
@@ -150,26 +152,62 @@
     }
   }
 
-  function updateStatusBadge(metadata) {
+  function updateStatusBadge(status) {
     const badge = document.getElementById('statusBadge');
-    if (!badge || !metadata) {
+
+    if (!badge || !status) {
       return;
     }
+
+    if (status.certificate_present !== true) {
+      if (status.certificate_action_required === true) {
+        badge.textContent = 'Certificate Not Presented';
+        badge.className = 'cert-status-badge warning';
+
+        showWarningMessage(
+          'A certificate is required for this protected action. '
+          + 'Use Check Certificate & Continue to make a fresh '
+          + 'certificate-challenge request.'
+        );
+      } else {
+        badge.textContent = 'Certificate Not Required';
+        badge.className = 'cert-status-badge valid';
+      }
+
+      return;
+    }
+
+    const metadata = status.cert_metadata || {};
 
     if (metadata.is_expired) {
       badge.textContent = 'Certificate Expired';
       badge.className = 'cert-status-badge expired';
-      showErrorMessage('⚠️ Your certificate has expired. Please renew it to continue.');
+
+      showErrorMessage(
+        '?? Your certificate has expired. Please renew it to continue.'
+      );
+
       return;
     }
 
-    if (metadata.expiry_days !== undefined && metadata.expiry_days !== null && Number(metadata.expiry_days) < 30) {
-      const days = Number(metadata.expiry_days);
+    if (
+      metadata.expiry_days !== undefined
+      && metadata.expiry_days !== null
+      && Number(metadata.expiry_days) < 30
+    ) {
+      const days = Number(
+        metadata.expiry_days
+      );
+
       badge.textContent = `Expires Soon (${days} days)`;
       badge.className = 'cert-status-badge warning';
+
       if (days < 7) {
-        showWarningMessage(`⚠️ Your certificate expires in ${days} days. Please renew it soon.`);
+        showWarningMessage(
+          `?? Your certificate expires in ${days} days. Please renew it soon.`
+        );
       }
+
       return;
     }
 
@@ -177,22 +215,49 @@
     badge.className = 'cert-status-badge valid';
   }
 
-  function updateTierBadge(metadata) {
-    if (!metadata) {
+  function updateTierBadge(status) {
+    if (!status) {
       return;
     }
+
     const tierBadge = document.getElementById('tierBadge');
+
     if (!tierBadge) {
       return;
     }
-    const tier = (metadata.privilege_tier || 'STANDARD_USER').toUpperCase();
+
+    const tier = String(
+      status.privilege_tier
+      || 'STANDARD_USER'
+    ).toUpperCase();
+
     const tierDisplay = {
-      ROOT_ADMIN: { text: 'Root Administrator', class: 'admin' },
-      ADMIN_FULL_TRUST: { text: 'Full Trust Admin', class: 'admin' },
-      ADMIN_REVIEWER: { text: 'Admin Reviewer', class: 'reviewer' },
-      STANDARD_USER: { text: 'Standard User', class: 'standard' },
+      ROOT_ADMIN: {
+        text: 'Root Administrator',
+        class: 'admin',
+      },
+
+      ADMIN_FULL_TRUST: {
+        text: 'Full Trust Admin',
+        class: 'admin',
+      },
+
+      ADMIN_REVIEWER: {
+        text: 'Admin Reviewer',
+        class: 'reviewer',
+      },
+
+      STANDARD_USER: {
+        text: 'Standard User',
+        class: 'standard',
+      },
     };
-    const tierInfo = tierDisplay[tier] || tierDisplay.STANDARD_USER;
+
+    const tierInfo = (
+      tierDisplay[tier]
+      || tierDisplay.STANDARD_USER
+    );
+
     tierBadge.textContent = tierInfo.text;
     tierBadge.className = `tier-badge ${tierInfo.class}`;
   }
@@ -205,60 +270,92 @@
     const detailsSection = document.getElementById('certInfoSection');
 
     if (continueBtn) {
-      continueBtn.addEventListener('click', continueToPlatform);
-    }
-    if (retryBtn) {
-      retryBtn.addEventListener('click', retryProtected);
-    }
-    if (returnHomeBtn) {
-      returnHomeBtn.addEventListener('click', returnHome);
-    }
-    if (certDetailsBtn) {
-      certDetailsBtn.addEventListener('click', toggleCertDetails);
+      continueBtn.addEventListener(
+        'click',
+        continueToPlatform
+      );
     }
 
-    if (requireCert) {
-      showWarningMessage('A client certificate is required to access this feature.');
-      const verifiedTimeEl = document.getElementById('verifiedTime');
-      if (verifiedTimeEl) {
-        verifiedTimeEl.textContent = new Date().toLocaleString();
-      }
-      return;
+    if (retryBtn) {
+      retryBtn.addEventListener(
+        'click',
+        retryProtected
+      );
+    }
+
+    if (returnHomeBtn) {
+      returnHomeBtn.addEventListener(
+        'click',
+        returnHome
+      );
+    }
+
+    if (certDetailsBtn) {
+      certDetailsBtn.addEventListener(
+        'click',
+        toggleCertDetails
+      );
     }
 
     if (detailsSection && certDetailsBtn) {
-      detailsSection.classList.add('is-hidden');
-      certDetailsBtn.textContent = 'ℹ Show Details';
+      detailsSection.classList.add(
+        'is-hidden'
+      );
+
+      certDetailsBtn.textContent = (
+        '? Show Details'
+      );
     }
 
-    const verifiedTimeEl = document.getElementById('verifiedTime');
-    if (verifiedTimeEl) {
-      verifiedTimeEl.textContent = new Date().toLocaleString();
-    }
-    const sessionIdEl = document.getElementById('sessionId');
-    if (sessionIdEl) {
-      // Only parse session_id from query parameters for display.
-      // Do NOT allow raw next/target_url values to override the server-provided
-      // navigation targets rendered into data attributes.
-      const params = new URLSearchParams(window.location.search);
-      const sessionId = params.get('session_id');
-      if (sessionId) {
-        sessionIdEl.textContent = sessionId;
-      }
-    }
-
+    // Always read fresh request-scoped status, including on the
+    // certificate-required page.
     const data = await loadAuthStatus();
+
     if (!data) {
       return;
     }
 
-    if (data.cert_metadata) {
-      populateCertInfo(data.cert_metadata);
-      updateStatusBadge(data.cert_metadata);
-    } else {
-      updateStatusBadge({});
+    updateStatusBadge(
+      data
+    );
+
+    updateTierBadge(
+      data
+    );
+
+    if (
+      data.certificate_present === true
+      && data.cert_metadata
+    ) {
+      populateCertInfo(
+        data.cert_metadata
+      );
     }
-    updateTierBadge(data);
+
+    const checkedTimeEl = document.getElementById(
+      'verifiedTime'
+    );
+
+    if (checkedTimeEl) {
+      checkedTimeEl.textContent = (
+        new Date().toLocaleString()
+      );
+    }
+
+    const sessionIdEl = document.getElementById(
+      'sessionId'
+    );
+
+    if (sessionIdEl) {
+      const sessionId = (
+        data.session_context?.session_id
+      );
+
+      sessionIdEl.textContent = (
+        sessionId
+        || '?'
+      );
+    }
   }
 
   document.addEventListener('DOMContentLoaded', initialize);

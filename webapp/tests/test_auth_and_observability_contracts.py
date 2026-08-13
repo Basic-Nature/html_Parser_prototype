@@ -90,14 +90,24 @@ def test_auth_welcome_js_does_not_read_raw_next_query():
     assert 'data-target-url' in content
 
 
-def test_auth_welcome_js_only_uses_session_id_query_parameter():
-    content = Path(appmod.__file__).resolve().parent.parent.joinpath('webapp', 'static', 'js', 'auth_welcome.js').read_text(encoding='utf-8')
+def test_auth_welcome_js_uses_server_session_context_not_query_parameter():
+    content = Path(appmod.__file__).resolve().parent.parent.joinpath(
+        "webapp",
+        "static",
+        "js",
+        "auth_welcome.js",
+    ).read_text(encoding="utf-8")
 
-    assert "params.get('session_id')" in content
+    # Navigation target comes only from the server-sanitized data attribute.
     assert "params.get('next')" not in content
     assert "params.get('target_url')" not in content
-    assert "URLSearchParams(window.location.search)" in content
-    assert 'data-target-url' in content
+    assert "data-target-url" in content
+
+    # Session ID is UX context supplied by authoritative /api/auth/status.
+    # It is not accepted from the query string and is never certificate proof.
+    assert "params.get('session_id')" not in content
+    assert "data.session_context?.session_id" in content
+    assert "/api/auth/status" in content
 
 
 def test_auth_welcome_ignores_raw_next_and_target_url_query_values(client, monkeypatch):
@@ -115,13 +125,13 @@ def test_auth_welcome_ignores_raw_next_and_target_url_query_values(client, monke
 
 
 def test_auth_mode_policy(client, monkeypatch):
-    monkeypatch.setattr(appmod, 'AUTH_MODE', 'disabled')
+    monkeypatch.setattr(appmod, 'CERT_ENFORCEMENT_MODE', 'disabled')
     assert appmod._auth_mode_requires_certificate() is False
 
-    monkeypatch.setattr(appmod, 'AUTH_MODE', 'optional')
+    monkeypatch.setattr(appmod, 'CERT_ENFORCEMENT_MODE', 'disabled')
     assert appmod._auth_mode_requires_certificate() is False
 
-    monkeypatch.setattr(appmod, 'AUTH_MODE', 'required')
+    monkeypatch.setattr(appmod, 'CERT_ENFORCEMENT_MODE', 'mutations')
     assert appmod._auth_mode_requires_certificate() is True
 
 
@@ -426,3 +436,786 @@ def test_api_preingest_url_glimpse_runtime_failure_contract(client, monkeypatch)
     assert resp.status_code == 500
     assert payload["success"] is False
     assert "glimpse failed" in payload["error"]
+
+
+
+# --- certificate status/challenge production-readiness contracts ---
+
+def test_auth_status_distinguishes_sso_from_client_certificate(
+    client,
+    monkeypatch,
+):
+    from webapp.parser.utils.privilege_tiers import PrivilegeTier
+
+    monkeypatch.setattr(
+        appmod,
+        "get_request_principal",
+        lambda: (
+            "sso:test-oid",
+            "sso_oid",
+            None,
+        ),
+    )
+
+    with patch(
+        "webapp.parser.utils.privilege_tiers.get_principal_tier",
+        return_value=PrivilegeTier.ADMIN_REVIEWER,
+    ):
+        response = client.get(
+            "/api/auth/status",
+            headers={
+                "Accept": "application/json",
+            },
+        )
+
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["authenticated"] is True
+    assert payload["certificate_present"] is False
+    assert payload["privilege_tier"] == "ADMIN_REVIEWER"
+    assert payload["privilege_level"] == 1
+    assert payload["status_source"] == "current_request_principal"
+    assert payload["session_context"]["certificate_proof_cached"] is False
+
+
+def test_auth_status_session_is_context_not_certificate_proof(
+    client,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        appmod,
+        "get_request_principal",
+        lambda: (
+            None,
+            None,
+            None,
+        ),
+    )
+
+    monkeypatch.setattr(
+        appmod,
+        "resolve_session_id",
+        lambda *_args, **_kwargs: "sess-ui-only",
+    )
+
+    response = client.get(
+        "/api/auth/status",
+        headers={
+            "Accept": "application/json",
+        },
+    )
+
+    payload = response.get_json()
+
+    assert payload["session_context"]["session_id"] == "sess-ui-only"
+    assert payload["session_context"]["certificate_proof_cached"] is False
+    assert payload["certificate_present"] is False
+
+
+def test_auth_challenge_marks_unsatisfied_navigation(
+    client,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        appmod,
+        "CERT_ENFORCEMENT_MODE",
+        "mutations",
+    )
+
+    monkeypatch.setattr(
+        appmod,
+        "REQUIRE_CERT_FOR_MUTATIONS",
+        True,
+    )
+
+    monkeypatch.setattr(
+        appmod,
+        "DEPLOY_ENV",
+        "ci",
+    )
+
+    monkeypatch.setattr(
+        appmod,
+        "get_request_principal",
+        lambda: (
+            None,
+            None,
+            None,
+        ),
+    )
+
+    response = client.get(
+        "/auth/challenge?next=/ballot_lens",
+        headers={
+            "Accept": "text/html",
+        },
+    )
+
+    assert response.status_code in (
+        301,
+        302,
+    )
+
+    parsed = urlparse(
+        response.headers.get(
+            "Location",
+            "",
+        )
+    )
+
+    query = parse_qs(
+        parsed.query
+    )
+
+    assert parsed.path == "/auth/welcome"
+    assert query["next"] == ["/ballot_lens"]
+    assert query["challenged"] == ["1"]
+
+
+def test_shared_auth_js_uses_authoritative_status_payload():
+    auth_utils_path = (
+        Path(appmod.__file__)
+        .resolve()
+        .parent
+        / "static"
+        / "js"
+        / "auth_utils.js"
+    )
+
+    content = auth_utils_path.read_text(
+        encoding="utf-8"
+    )
+
+    assert "/api/auth/status" in content
+    assert "/api/auth/certificate_info" not in content
+    assert "data.certificate_present === true" in content
+    assert "data.certificate_action_required === false" in content
+
+
+def test_auth_welcome_js_uses_server_sanitized_target():
+    auth_welcome_js = (
+        Path(appmod.__file__)
+        .resolve()
+        .parent
+        / "static"
+        / "js"
+        / "auth_welcome.js"
+    )
+
+    content = auth_welcome_js.read_text(
+        encoding="utf-8"
+    )
+
+    assert "data-target-url" in content
+    assert "params.get('next')" not in content
+    assert "params.get('target_url')" not in content
+    assert "/api/auth/status" in content
+
+
+def test_certificate_enforcement_policy_has_unambiguous_names(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        appmod,
+        "CERT_ENFORCEMENT_MODE",
+        "disabled",
+    )
+
+    assert (
+        appmod._auth_mode_requires_certificate()
+        is False
+    )
+
+    monkeypatch.setattr(
+        appmod,
+        "CERT_ENFORCEMENT_MODE",
+        "mutations",
+    )
+
+    assert (
+        appmod._auth_mode_requires_certificate()
+        is True
+    )
+
+
+
+# --- health control-plane privilege contracts ---
+
+def _post_health_task_with_tier(
+    client,
+    monkeypatch,
+    tier,
+    task_key,
+):
+    # Isolate user privilege from the already-tested health-token
+    # and certificate gates.
+    monkeypatch.setattr(
+        appmod,
+        "_health_auth_response",
+        lambda *_args, **_kwargs: None,
+    )
+
+    monkeypatch.setattr(
+        appmod,
+        "_require_client_cert",
+        lambda _reason: None,
+    )
+
+    monkeypatch.setattr(
+        appmod,
+        "get_request_principal",
+        lambda: (
+            "cert:test-health-user",
+            "x_arr_clientcert",
+            {
+                "cn": "Test Health User"
+            },
+        ),
+    )
+
+    monkeypatch.setattr(
+        (
+            "webapp.parser.utils."
+            "privilege_tiers."
+            "get_principal_tier"
+        ),
+        lambda *_args, **_kwargs: tier,
+    )
+
+    launched = []
+
+    monkeypatch.setattr(
+        appmod,
+        "_launch_health_task",
+        lambda task: (
+            launched.append(
+                task
+            )
+            or {
+                "id": "test-task",
+                "task": task,
+                "status": "running",
+            }
+        ),
+    )
+
+    response = client.post(
+        "/api/health_tasks",
+        json={
+            "task": task_key,
+        },
+        headers={
+            "Accept": (
+                "application/json"
+            ),
+        },
+    )
+
+    return (
+        response,
+        launched,
+    )
+
+
+def test_health_token_alone_is_not_user_privilege(
+    client,
+    monkeypatch,
+):
+    # Simulate the health token gate already having succeeded.
+    monkeypatch.setattr(
+        appmod,
+        "_health_auth_response",
+        lambda *_args, **_kwargs: None,
+    )
+
+    monkeypatch.setattr(
+        appmod,
+        "_require_client_cert",
+        lambda _reason: None,
+    )
+
+    # No request principal: token possession alone cannot launch.
+    monkeypatch.setattr(
+        appmod,
+        "get_request_principal",
+        lambda: (
+            None,
+            None,
+            None,
+        ),
+    )
+
+    launched = []
+
+    monkeypatch.setattr(
+        appmod,
+        "_launch_health_task",
+        lambda task: launched.append(
+            task
+        ),
+    )
+
+    response = client.post(
+        "/api/health_tasks",
+        json={
+            "task": (
+                "integrity_check_summary"
+            ),
+        },
+        headers={
+            "Accept": (
+                "application/json"
+            ),
+        },
+    )
+
+    payload = (
+        response.get_json()
+    )
+
+    assert (
+        response.status_code
+        == 403
+    )
+
+    assert payload[
+        "reason"
+    ] == (
+        "insufficient_health_task_privilege"
+    )
+
+    assert payload[
+        "actual_tier"
+    ] == "STANDARD_USER"
+
+    assert launched == []
+
+
+def test_standard_user_cannot_launch_health_tasks(
+    client,
+    monkeypatch,
+):
+    from webapp.parser.utils.privilege_tiers import (
+        PrivilegeTier,
+    )
+
+    response, launched = (
+        _post_health_task_with_tier(
+            client,
+            monkeypatch,
+            PrivilegeTier.STANDARD_USER,
+            "integrity_check_summary",
+        )
+    )
+
+    payload = (
+        response.get_json()
+    )
+
+    assert (
+        response.status_code
+        == 403
+    )
+
+    assert payload[
+        "required_tier"
+    ] == "ADMIN_REVIEWER"
+
+    assert payload[
+        "actual_tier"
+    ] == "STANDARD_USER"
+
+    assert launched == []
+
+
+def test_admin_reviewer_can_run_integrity_diagnostics(
+    client,
+    monkeypatch,
+):
+    from webapp.parser.utils.privilege_tiers import (
+        PrivilegeTier,
+    )
+
+    response, launched = (
+        _post_health_task_with_tier(
+            client,
+            monkeypatch,
+            PrivilegeTier.ADMIN_REVIEWER,
+            "integrity_check_summary",
+        )
+    )
+
+    assert (
+        response.status_code
+        == 200
+    )
+
+    assert launched == [
+        "integrity_check_summary"
+    ]
+
+
+def test_admin_reviewer_cannot_retrain_models(
+    client,
+    monkeypatch,
+):
+    from webapp.parser.utils.privilege_tiers import (
+        PrivilegeTier,
+    )
+
+    response, launched = (
+        _post_health_task_with_tier(
+            client,
+            monkeypatch,
+            PrivilegeTier.ADMIN_REVIEWER,
+            "retrain_table_models",
+        )
+    )
+
+    payload = (
+        response.get_json()
+    )
+
+    assert (
+        response.status_code
+        == 403
+    )
+
+    assert payload[
+        "effect"
+    ] == "model_training"
+
+    assert payload[
+        "required_tier"
+    ] == "ADMIN_FULL_TRUST"
+
+    assert launched == []
+
+
+def test_full_trust_admin_can_retrain_models(
+    client,
+    monkeypatch,
+):
+    from webapp.parser.utils.privilege_tiers import (
+        PrivilegeTier,
+    )
+
+    response, launched = (
+        _post_health_task_with_tier(
+            client,
+            monkeypatch,
+            PrivilegeTier.ADMIN_FULL_TRUST,
+            "retrain_table_models",
+        )
+    )
+
+    assert (
+        response.status_code
+        == 200
+    )
+
+    assert launched == [
+        "retrain_table_models"
+    ]
+
+
+def test_full_trust_admin_cannot_promote_canonical_dataset(
+    client,
+    monkeypatch,
+):
+    from webapp.parser.utils.privilege_tiers import (
+        PrivilegeTier,
+    )
+
+    response, launched = (
+        _post_health_task_with_tier(
+            client,
+            monkeypatch,
+            PrivilegeTier.ADMIN_FULL_TRUST,
+            "dataset_promotion_latest",
+        )
+    )
+
+    payload = (
+        response.get_json()
+    )
+
+    assert (
+        response.status_code
+        == 403
+    )
+
+    assert payload[
+        "effect"
+    ] == "canonical_promotion"
+
+    assert payload[
+        "required_tier"
+    ] == "ROOT_ADMIN"
+
+    assert launched == []
+
+
+def test_root_admin_can_promote_canonical_dataset(
+    client,
+    monkeypatch,
+):
+    from webapp.parser.utils.privilege_tiers import (
+        PrivilegeTier,
+    )
+
+    response, launched = (
+        _post_health_task_with_tier(
+            client,
+            monkeypatch,
+            PrivilegeTier.ROOT_ADMIN,
+            "dataset_promotion_latest",
+        )
+    )
+
+    assert (
+        response.status_code
+        == 200
+    )
+
+    assert launched == [
+        "dataset_promotion_latest"
+    ]
+
+
+def test_health_task_registry_has_explicit_minimum_tier_and_effect():
+    from webapp.parser.utils.privilege_tiers import (
+        PrivilegeTier,
+    )
+
+    for (
+        task_key,
+        definition,
+    ) in (
+        appmod
+        .HEALTH_TASK_DEFINITIONS
+        .items()
+    ):
+        assert (
+            "minimum_tier"
+            in definition
+        ), task_key
+
+        assert (
+            "effect"
+            in definition
+        ), task_key
+
+        assert str(
+            definition[
+                "effect"
+            ]
+        ).strip(), task_key
+
+        level = int(
+            definition[
+                "minimum_tier"
+            ]
+        )
+
+        # No control-plane task is available to an ordinary
+        # STANDARD_USER volunteer.
+        assert level >= int(
+            PrivilegeTier.ADMIN_REVIEWER
+        )
+
+    assert (
+        appmod
+        .HEALTH_TASK_DEFINITIONS[
+            "retrain_table_models"
+        ][
+            "minimum_tier"
+        ]
+        == int(
+            PrivilegeTier.ADMIN_FULL_TRUST
+        )
+    )
+
+    assert (
+        appmod
+        .HEALTH_TASK_DEFINITIONS[
+            "dataset_promotion_latest"
+        ][
+            "minimum_tier"
+        ]
+        == int(
+            PrivilegeTier.ROOT_ADMIN
+        )
+    )
+
+
+
+# --- health task metadata / UI alignment contracts ---
+
+def test_retraining_is_high_impact_presentation_metadata():
+    definition = (
+        appmod
+        .HEALTH_TASK_DEFINITIONS[
+            "retrain_table_models"
+        ]
+    )
+
+    assert (
+        definition[
+            "danger"
+        ]
+        is True
+    )
+
+    assert (
+        definition[
+            "effect"
+        ]
+        == "model_training"
+    )
+
+    assert (
+        definition[
+            "minimum_tier"
+        ]
+        == 2
+    )
+
+
+def test_public_health_metadata_reflects_reviewer_tier(
+    monkeypatch,
+):
+    from webapp.parser.utils.privilege_tiers import (
+        PrivilegeTier,
+    )
+
+    monkeypatch.setattr(
+        appmod,
+        "get_request_principal",
+        lambda: (
+            "cert:reviewer",
+            "x_arr_clientcert",
+            {
+                "cn": "Reviewer",
+            },
+        ),
+    )
+
+    monkeypatch.setattr(
+        (
+            "webapp.parser.utils."
+            "privilege_tiers."
+            "get_principal_tier"
+        ),
+        lambda *_args, **_kwargs: (
+            PrivilegeTier.ADMIN_REVIEWER
+        ),
+    )
+
+    with appmod.app.test_request_context(
+        "/health"
+    ):
+        entries = {
+            item["key"]: item
+            for item
+            in appmod
+            ._public_health_task_definitions()
+        }
+
+    assert entries[
+        "integrity_check_summary"
+    ][
+        "tier_authorized"
+    ] is True
+
+    assert entries[
+        "manual_correction_enhanced"
+    ][
+        "tier_authorized"
+    ] is True
+
+    assert entries[
+        "retrain_table_models"
+    ][
+        "tier_authorized"
+    ] is False
+
+    assert entries[
+        "dataset_promotion_latest"
+    ][
+        "tier_authorized"
+    ] is False
+
+    assert entries[
+        "integrity_check_summary"
+    ][
+        "current_tier"
+    ] == "ADMIN_REVIEWER"
+
+
+def test_health_dashboard_template_exposes_effect_and_tier_metadata():
+    template_path = (
+        Path(appmod.__file__)
+        .resolve()
+        .parent
+        / "templates"
+        / "health_dashboard.html"
+    )
+
+    content = (
+        template_path.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert "task.minimum_tier" in content
+    assert "task.effect" in content
+    assert "task.tier_authorized" in content
+
+    assert (
+        'data-task-minimum-tier='
+        in content
+    )
+
+    assert (
+        'data-task-authorized='
+        in content
+    )
+
+
+def test_health_dashboard_js_preserves_backend_tier_lock():
+    js_path = (
+        Path(appmod.__file__)
+        .resolve()
+        .parent
+        / "static"
+        / "js"
+        / "health_dashboard.js"
+    )
+
+    content = js_path.read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "insufficient_health_task_privilege"
+        in content
+    )
+
+    assert (
+        "taskTierAuthorized"
+        in content
+    )
+
+    assert (
+        "button.dataset.taskMinimumTier"
+        in content
+    )
+
+    # Browser logic mirrors the backend only for UX.
+    # Backend remains independently authoritative.
+    assert (
+        "!taskTierAuthorized(button)"
+        in content
+    )

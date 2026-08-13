@@ -116,47 +116,154 @@
       alertBox.className = `alert alert-${variant} shadow-sm`;
   };
 
+  const taskTierAuthorized = (button) => {
+      return String(
+          button?.dataset?.taskAuthorized
+          || "false"
+      ).toLowerCase() === "true";
+  };
+
   const startTask = async (button) => {
       if (!healthEnabled) {
-          pushAlert("Health task execution is disabled in this environment.", "warning");
+          pushAlert(
+              "Health task execution is disabled in this environment.",
+              "warning"
+          );
           return;
       }
+
       const key = button.dataset.taskKey;
+
       if (!key) {
           return;
       }
-      const originalLabel = button.textContent;
+
+      const tierAuthorized = taskTierAuthorized(
+          button
+      );
+
+      if (!tierAuthorized) {
+          const requiredTier = (
+              button.dataset.taskMinimumTier
+              || "an elevated administrator tier"
+          );
+
+          pushAlert(
+              `This task requires ${requiredTier.replaceAll("_", " ")}.`,
+              "warning"
+          );
+
+          return;
+      }
+
+      const originalLabel = (
+          button.textContent
+      );
+
       button.disabled = true;
       button.textContent = "Launching...";
+
       try {
-          // Use AuthUtils for de-duplication if available
-          const winAny = (typeof window !== 'undefined') ? /** @type {any} */ (window) : null;
-          const authUtils = winAny ? winAny.AuthUtils : null;
-          
-          const mutationKey = `health_task:${key}`;
+          // AuthUtils handles certificate-status/challenge behavior.
+          // The backend independently enforces minimum_tier.
+          const winAny = (
+              typeof window !== "undefined"
+          )
+              ? /** @type {any} */ (window)
+              : null;
+
+          const authUtils = (
+              winAny
+                  ? winAny.AuthUtils
+                  : null
+          );
+
+          const mutationKey = (
+              `health_task:${key}`
+          );
+
           const execMutation = async () => {
-            return fetch("/api/health_tasks", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ task: key })
-            });
+              return fetch(
+                  "/api/health_tasks",
+                  {
+                      method: "POST",
+                      headers: {
+                          "Content-Type": "application/json"
+                      },
+                      body: JSON.stringify({
+                          task: key
+                      })
+                  }
+              );
           };
-          
-          const resp = authUtils && typeof authUtils.executeMutationOnce === 'function'
-            ? await authUtils.executeMutationOnce(mutationKey, execMutation)
-            : await execMutation();
-          
-          const data = await resp.json();
+
+          const resp = (
+              authUtils
+              && typeof authUtils.executeMutationOnce === "function"
+          )
+              ? await authUtils.executeMutationOnce(
+                    mutationKey,
+                    execMutation
+                )
+              : await execMutation();
+
+          const data = await resp
+              .json()
+              .catch(() => null);
+
           if (!resp.ok) {
-              throw new Error(data.error || "Failed to start task.");
+              if (
+                  data?.reason
+                  === "insufficient_health_task_privilege"
+              ) {
+                  const required = (
+                      data.required_tier
+                      || button.dataset.taskMinimumTier
+                      || "elevated privilege"
+                  );
+
+                  const actual = (
+                      data.actual_tier
+                      || "STANDARD_USER"
+                  );
+
+                  throw new Error(
+                      `Requires ${String(required).replaceAll("_", " ")}; `
+                      + `current tier is ${String(actual).replaceAll("_", " ")}.`
+                  );
+              }
+
+              throw new Error(
+                  data?.error
+                  || "Failed to start task."
+              );
           }
-          pushAlert(`Started ${data.task?.label || key}`, "success");
-          await fetchTasks(false);
+
+          pushAlert(
+              `Started ${data?.task?.label || key}`,
+              "success"
+          );
+
+          await fetchTasks(
+              false
+          );
       } catch (error) {
-          pushAlert(error.message || "Failed to start task.", "danger");
+          pushAlert(
+              error?.message
+              || "Failed to start task.",
+              "danger"
+          );
       } finally {
-          button.disabled = false;
-          button.textContent = originalLabel;
+          // Preserve server-rendered tier lock. A completed or failed
+          // request must not make an unauthorized task clickable.
+          button.disabled = (
+              !healthEnabled
+              || !taskTierAuthorized(button)
+          );
+
+          button.textContent = (
+              originalLabel
+          );
       }
   };
 

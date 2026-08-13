@@ -18,10 +18,12 @@
             <div class="auth-welcome-header">
                 <h1>🔐 Certificate Authentication</h1>
                 <p>Smart Elections Parser</p>
-                {% if require_cert %}
+                {% if certificate_present %}
+                <span class="cert-status-badge valid" id="statusBadge">Certificate Verified</span>
+                {% elif require_cert %}
                 <span class="cert-status-badge warning" id="statusBadge">Certificate Required</span>
                 {% else %}
-                <span class="cert-status-badge valid" id="statusBadge">Certificate Verified</span>
+                <span class="cert-status-badge valid" id="statusBadge">Certificate Not Required</span>
                 {% endif %}
             </div>
 
@@ -67,7 +69,15 @@
             <!-- Explanation -->
             <div class="auth-welcome-explanation">
                 {% if require_cert %}
-                <strong>Certificate required.</strong> This area uses optional mTLS to protect interactive features. Please present your client certificate to continue. If you do not have a certificate yet, contact the administrator or return to the public site.
+                <strong>Certificate not yet presented.</strong>
+                ElectionPulse certificate policy is <code>{{ certificate_policy }}</code>.
+                Azure client-certificate mode is <code>{{ azure_client_cert_mode }}</code>.
+                Use <strong>Check Certificate &amp; Continue</strong> to make an explicit certificate-challenge navigation.
+                {% if challenge_attempted %}
+                <br><br>
+                The last challenge request still did not include a client certificate. Your session remains available for UI continuity, but it is not accepted as certificate proof.
+                {% endif %}
+                If you do not have an approved certificate, return to the public site or contact an administrator.
                 {% else %}
                 <strong>What is this?</strong> Your client certificate has been verified. This certificate is used to authenticate your identity and determine your access level within the Smart Elections Parser system. You can now proceed to the main application.
                 {% endif %}
@@ -94,7 +104,7 @@
 
             <!-- Footer -->
             <div class="footer-note">
-                <p>Certificate verified at: <span id="verifiedTime">—</span></p>
+                <p>Certificate status checked at: <span id="verifiedTime">—</span></p>
                 <p>Session ID: <code id="sessionId" class="session-id-text">—</code></p>
             </div>
         </div>

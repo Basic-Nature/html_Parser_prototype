@@ -49,15 +49,57 @@
                 <div class="col-lg-4 col-md-6">
                     <div class="card h-100 border-0 shadow task-card">
                         <div class="card-body d-flex flex-column">
-                            <p class="text-uppercase small text-muted mb-1">{{ runtime_hints.deploy_env|upper }} • Script</p>
+                            <p class="text-uppercase small text-muted mb-1">
+                                {{ runtime_hints.deploy_env|upper }} ? Script
+                            </p>
+
                             <h2 class="h5">{{ task.label }}</h2>
-                            <p class="text-muted flex-grow-1">{{ task.description }}</p>
+
+                            <p class="text-muted flex-grow-1">
+                                {{ task.description }}
+                            </p>
+
+                            <div class="small mb-2">
+                                <div>
+                                    <strong>Effect:</strong>
+                                    <code>{{ task.effect | replace('_', ' ') }}</code>
+                                </div>
+
+                                <div>
+                                    <strong>Requires:</strong>
+                                    <span class="badge text-bg-secondary">
+                                        {{ task.minimum_tier | replace('_', ' ') | title }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {% if health_controls_enabled and not task.tier_authorized %}
+                            <div class="small text-warning mb-2">
+                                Current tier:
+                                <strong>{{ task.current_tier | replace('_', ' ') | title }}</strong>.
+                                This task is locked by backend privilege policy.
+                            </div>
+                            {% endif %}
+
                             <button
                                 class="btn {{ 'btn-outline-danger' if task.danger else 'btn-outline-success' }} mt-3"
                                 data-task-key="{{ task.key }}"
                                 data-task-label="{{ task.label }}"
-                                {% if not health_controls_enabled %}disabled aria-disabled="true"{% endif %}>
-                                {{ 'Run (High Impact)' if task.danger else 'Run Task' }}
+                                data-task-effect="{{ task.effect }}"
+                                data-task-minimum-tier="{{ task.minimum_tier }}"
+                                data-task-authorized="{{ 'true' if task.tier_authorized else 'false' }}"
+                                {% if not health_controls_enabled or not task.tier_authorized %}
+                                disabled
+                                aria-disabled="true"
+                                {% endif %}
+                            >
+                                {% if not task.tier_authorized %}
+                                    Requires {{ task.minimum_tier | replace('_', ' ') | title }}
+                                {% elif task.danger %}
+                                    Run (High Impact)
+                                {% else %}
+                                    Run Task
+                                {% endif %}
                             </button>
                         </div>
                     </div>
@@ -150,7 +192,7 @@
         <footer class="mt-5 text-center text-muted small">
             <div class="mb-2">
                 <strong>Public Health Endpoint</strong>: <code>{{ url_for('health') }}</code> (no auth required)<br>
-                <span class="small">Protected Dashboard</span>: Requires client certificate + valid <code>HEALTH_TASK_TOKEN</code>
+                <span class="small">Protected Dashboard</span>: Health control-plane authentication uses <code>HEALTH_TASK_TOKEN</code>; mutating actions additionally enforce current-request certificate policy and per-task ElectionPulse privilege tier.
             </div>
         </footer>
     </div>
