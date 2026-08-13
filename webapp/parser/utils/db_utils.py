@@ -14,10 +14,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import get_sqlalchemy_engine
+from ..persistence.schema_bootstrap import ensure_application_schema_compat
 from ..Context_Integration.librarian import clean_for_json
 from .logger_singleton import logger
 from .models import (
-    Base,
     BatchMetadata,
     Contest,
     County,
@@ -127,9 +127,9 @@ def fetch_contests_by_filter(filters: Optional[dict] = None, limit: int = 100, s
 
 
 
-# --- Utility: Create all tables (run once at startup or migration) ---
+# --- Compatibility wrapper for application schema initialization ---
 def create_all_tables() -> None:
-    Base.metadata.create_all(engine)
+    ensure_application_schema_compat(engine)
 
 # --- BatchMetadata Operations ---
 def create_batch_metadata(source: str, status: str = 'pending') -> BatchMetadata:

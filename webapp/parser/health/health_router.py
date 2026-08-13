@@ -41,7 +41,7 @@ from ..config import (
 from ..Context_Integration.librarian import load_context_library
 from ..utils.db_utils import get_engine
 from ..utils.logger_singleton import console, logger
-from ..utils.models import Base
+from ..persistence.schema_bootstrap import ensure_application_schema_compat
 from .integrity_monitor import get_integrity_monitor
 from .navigation_feedback_ingest import ingest_navigation_feedback
 
@@ -246,7 +246,7 @@ class BotPipeline:
     def ensure_db_tables(self):
         try:
             engine = get_engine()
-            Base.metadata.create_all(engine)
+            ensure_application_schema_compat(engine)
             inspector = inspect(engine)
             table_names = inspector.get_table_names()
             from rich.table import Table

@@ -2033,9 +2033,9 @@ def ensure_db_tables(force: bool = False):
     if os.environ.get("AUTO_INIT_DB", "true").lower() not in ("1","true","yes"):
         return
     try:
+        from webapp.parser.persistence.schema_bootstrap import ensure_application_schema_compat
         from webapp.parser.utils.db_utils import engine
-        from webapp.parser.utils.models import Base  # imports metadata
-        Base.metadata.create_all(engine)
+        ensure_application_schema_compat(engine)
         _tables_initialized = True
         logger.info({
             "level": "INFO",
