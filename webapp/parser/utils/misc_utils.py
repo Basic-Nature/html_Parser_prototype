@@ -134,8 +134,8 @@ def extract_url_and_label(line: str, *, allowlist_bypass: bool = False) -> tuple
     # build label by removing the matched url and common separators
     label = s.replace(m.group(0), '').strip()
     # remove leading/trailing separators
-    label = re.sub(r"^[\-:\|\s]+", '', label)
-    label = re.sub(r"[\-:\|\s]+$", '', label)
+    label = re.sub(r"^[\-:\|,\s]+", '', label)
+    label = re.sub(r"[\-:\|,\s]+$", '', label)
     if not label:
         label = None
     return url, label
