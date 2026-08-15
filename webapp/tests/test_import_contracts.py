@@ -1,4 +1,4 @@
-"""Permanent import smoke contracts recovered from tests/test_imports.py."""
+"""Permanent import smoke contracts recovered from the legacy root scratch test."""
 
 from __future__ import annotations
 

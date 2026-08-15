@@ -63,7 +63,7 @@ Created a **unified status reconciliation system** that:
    - `docs/temp/STATUS_QUICK_START.md` - Quick reference
 
 4. **Test Infrastructure**:
-   - `tests/test_imports.py` - Import validation
+   - `webapp/tests/test_import_contracts.py` - Import validation
 
 ### 🔄 Modified Files
 
@@ -328,7 +328,7 @@ A: No. Old fields are preserved, new fields added alongside them.
 | ------ | -------- | --------- |
 | `webapp/parser/utils/status_reconciliation.py` | ✅ Created | Core reconciliation logic |
 | `tests/test_status_reconciliation.py` | ✅ Created | Unit tests (8/8 passing) |
-| `tests/test_imports.py` | ✅ Created | Import validation |
+| `webapp/tests/test_import_contracts.py` | ✅ Created | Import validation |
 | `docs/temp/STATUS_RECONCILIATION_GUIDE.md` | ✅ Created | Technical deep dive |
 | `docs/temp/STATUS_IMPLEMENTATION_SUMMARY.md` | ✅ Created | Developer guide |
 | `docs/temp/STATUS_QUICK_START.md` | ✅ Created | Quick reference |
