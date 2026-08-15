@@ -19,6 +19,33 @@ except Exception:
     pd = None
 
 
+def _normalize_source_missing(value: Any) -> Any:
+    """Convert source-library missing sentinels to a real missing value.
+
+    pandas represents blank spreadsheet cells as NaN/NA values. These sentinels
+    must not escape as domain strings such as ``"nan"`` or normalize to
+    substantive values such as ``OTHER``.
+    """
+    if value is None:
+        return None
+
+    if pd is not None:
+        try:
+            if bool(pd.isna(value)):
+                return None
+        except (TypeError, ValueError):
+            pass
+
+    return value
+
+
+def _party_is_missing(value: Any) -> bool:
+    """Return True when party data is absent or the UNKNOWN sentinel."""
+    if not value:
+        return True
+    return str(value).strip().upper() == "UNKNOWN"
+
+
 def parse(page, coordinator, context: Dict[str, Any] | None = None, session_id: Optional[str] = None, manual_file: Optional[str] = None, **kwargs) -> Optional[Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]]:
     """Parse FEC-style CSV or Excel exported candidate summary. Returns (headers, rows, contest, metadata).
 
@@ -41,7 +68,7 @@ def parse(page, coordinator, context: Dict[str, Any] | None = None, session_id: 
             for _, r in df.iterrows():
                 out: Dict[str, Any] = {}
                 for orig in raw_headers:
-                    val = r.get(orig)
+                    val = _normalize_source_missing(r.get(orig))
                     key = mapping.get(str(orig).strip(), str(orig).strip())
                     if key in ("total_receipts", "total_disbursement", "cash_on_hand", "debt"):
                         out[key] = money_normalize(val)
@@ -62,7 +89,7 @@ def parse(page, coordinator, context: Dict[str, Any] | None = None, session_id: 
                         if cand:
                             out['_fec_candidate'] = cand
                             # prefer filling missing party/name from candidate record
-                            if not out.get('party'):
+                            if _party_is_missing(out.get('party')):
                                 party_token = cand.get('Cand_Party_Affiliation') or cand.get('Party') or cand.get('cand_party_affiliation')
                                 out['party'] = party_normalize(party_token)
                             if not out.get('candidate_name'):
@@ -80,7 +107,7 @@ def parse(page, coordinator, context: Dict[str, Any] | None = None, session_id: 
                                     rec = match.get('record')
                                     if rec:
                                         out['_fec_candidate'] = rec
-                                        if not out.get('party'):
+                                        if _party_is_missing(out.get('party')):
                                             out['party'] = party_normalize(rec.get('Cand_Party_Affiliation') or rec.get('Party'))
                                         if not out.get('candidate_name'):
                                             out['candidate_name'] = str(rec.get('Cand_Name') or rec.get('candidate_name') or name_token).strip()
@@ -96,6 +123,7 @@ def parse(page, coordinator, context: Dict[str, Any] | None = None, session_id: 
                     for orig, val in r.items():
                         if orig is None:
                             continue
+                        val = _normalize_source_missing(val)
                         key = mapping.get(orig.strip(), orig.strip())
                         # normalization heuristics for important keys
                         if key in ("total_receipts", "total_disbursement", "cash_on_hand", "debt"):
@@ -116,7 +144,7 @@ def parse(page, coordinator, context: Dict[str, Any] | None = None, session_id: 
                             cand = get_candidate_by_id(str(cand_id).strip())
                             if cand:
                                 out['_fec_candidate'] = cand
-                                if not out.get('party'):
+                                if _party_is_missing(out.get('party')):
                                     party_token = cand.get('Cand_Party_Affiliation') or cand.get('Party') or cand.get('cand_party_affiliation')
                                     out['party'] = party_normalize(party_token)
                                 if not out.get('candidate_name'):
@@ -137,7 +165,7 @@ def parse(page, coordinator, context: Dict[str, Any] | None = None, session_id: 
                                             rec = match.get('record')
                                             if rec:
                                                 out['_fec_candidate'] = rec
-                                                if not out.get('party'):
+                                                if _party_is_missing(out.get('party')):
                                                     out['party'] = party_normalize(rec.get('Cand_Party_Affiliation') or rec.get('Party'))
                                                 if not out.get('candidate_name'):
                                                     out['candidate_name'] = str(rec.get('Cand_Name') or rec.get('candidate_name') or name_token).strip()
