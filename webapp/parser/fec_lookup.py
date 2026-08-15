@@ -120,7 +120,11 @@ def find_candidate_by_name(
             out.append({"cand_id": key, "record": rec, "score": int(score)})
         return out
 
-    # Try rapidfuzz when allowed
+    # Try rapidfuzz when allowed.
+    # For mapping inputs RapidFuzz returns:
+    #   (matched_choice_value, score, mapping_key)
+    # choices maps FEC candidate ID -> normalized candidate name, so the
+    # mapping key (tuple position 2) is the candidate ID.
     try_rapid = scorer in ("auto", "rapidfuzz")
     tried_rapid = False
     if try_rapid:
@@ -129,43 +133,46 @@ def find_candidate_by_name(
             tried_rapid = True
             choices = {t[0]: t[1] for t in idx}
             scorer_fn = fuzz.token_sort_ratio
-            # extract top_k matches
             if top_k == 1:
-                best = process.extractOne(target, choices, scorer=scorer_fn)
+                best = process.extractOne(
+                    target,
+                    choices,
+                    scorer=scorer_fn,
+                    score_cutoff=cutoff,
+                )
                 if best:
-                    cand_id, score, _ = best
-                    candidates = _to_rec_list([(cand_id, score)])
+                    _matched_name, score, cand_id = best
+                    candidates = [(cand_id, score)]
             else:
-                bests = process.extract(target, choices, scorer=scorer_fn, limit=top_k)
-                # bests: list of (key, score, index)
-                candidates = _to_rec_list([(b[0], b[1]) for b in bests])
+                bests = process.extract(
+                    target,
+                    choices,
+                    scorer=scorer_fn,
+                    limit=top_k,
+                    score_cutoff=cutoff,
+                )
+                candidates = [(match[2], match[1]) for match in bests]
             method_used = "rapidfuzz"
         except Exception:
             tried_rapid = True
             # fallthrough to difflib if auto
 
-    # If no candidates found via rapidfuzz (or requested difflib), try difflib
+    # If no candidates found via rapidfuzz (or requested difflib), try difflib.
+    # Score every candidate by ID so duplicate normalized names are not collapsed,
+    # and apply the same caller-supplied cutoff contract for top-1 and top-k.
     if (not candidates) and (scorer in ("auto", "difflib") or (scorer == "rapidfuzz" and not tried_rapid)):
         try:
             import difflib
-            names_map = {t[1]: t[0] for t in idx}  # norm -> cid
-            names = list(names_map.keys())
-            if top_k == 1:
-                sm = difflib.get_close_matches(target, names, n=1, cutoff=cutoff / 100.0)
-                if sm:
-                    matched = sm[0]
-                    cid = names_map.get(matched)
-                    ratio = difflib.SequenceMatcher(None, target, matched).ratio()
-                    score = int(ratio * 100)
-                    candidates = [(cid, score)]
-            else:
-                # get more matches via simple scoring
-                scored = []
-                for cid, norm, rec in idx:
-                    ratio = difflib.SequenceMatcher(None, target, norm).ratio()
-                    scored.append((cid, int(ratio * 100)))
-                scored.sort(key=lambda x: x[1], reverse=True)
-                candidates = scored[:top_k]
+
+            scored = []
+            for cid, norm, _rec in idx:
+                ratio = difflib.SequenceMatcher(None, target, norm).ratio()
+                score_value = ratio * 100.0
+                if score_value >= cutoff:
+                    scored.append((cid, int(score_value)))
+
+            scored.sort(key=lambda item: item[1], reverse=True)
+            candidates = scored[:top_k]
             method_used = "difflib"
         except Exception:
             pass
@@ -173,8 +180,8 @@ def find_candidate_by_name(
     if not candidates:
         return None
 
-    # convert to structured list
-    cand_list = _to_rec_list(candidates if isinstance(candidates[0], tuple) else [(c['cand_id'], c['score']) for c in candidates]) if candidates else []
+    # Convert the backend-neutral (candidate_id, score) tuples once.
+    cand_list = _to_rec_list(candidates)
 
     best = cand_list[0]
     result = {
