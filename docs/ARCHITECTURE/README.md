@@ -42,3 +42,15 @@ Source code is current implementation truth. CORE documents describe contracts
 the repository is expected to implement. ARCHITECTURE describes durable
 boundaries. Implementation history preserves earlier approaches without
 remaining authoritative.
+
+## Confidence authority
+
+The boundary between evidence measurement and decision authority is defined in
+[Confidence Authority](confidence_authority.md).
+
+The central target ownership is:
+
+- `risk_gates.py` - current normalized risk state;
+- `risk_gates_calculus.py` - trajectory, boundary, and convergence;
+- domain-specific components - evidence production and domain policy, not
+  independent truth promotion.

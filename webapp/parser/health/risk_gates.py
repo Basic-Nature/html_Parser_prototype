@@ -1,33 +1,65 @@
-"""
-risk_gates.py
+"""risk_gates.py
 
-Three-dimensional risk assessment with multi-gate suspicion scoring.
-Replaces single-score thresholds with proportional tri-partitioned model:
-  - Confidence Gate (extraction conviction)
-  - Verification Gate (ground truth alignment)
-  - Anomaly Gate (statistical suspension)
-
-Combined via weighted vector to produce composite_suspicion ∈ [0, 1],
-then classified into block/warn/log tiers (⅓-proportioned boundaries).
+Three-dimensional current-state risk assessment.
 
 Architecture:
-  Dimension 1: confidence_gate = extraction_confidence (0→1 scale, 1=certain)
-  Dimension 2: verification_gate = ground_truth_match_ratio (0→1 scale, 1=perfect match)
-  Dimension 3: anomaly_gate = suspicious_score (0→1 scale, 0=clean, 1=highly suspicious)
+  Dimension 1: confidence_gate = normalized extraction confidence
+  Dimension 2: verification_gate = normalized evidence/ground-truth alignment
+  Dimension 3: anomaly_gate = normalized anomaly/suspicion evidence
 
-Composite Suspicion (inverse reasoning):
-  suspicion = w₁(1 - confidence) + w₂(1 - verification) + w₃(anomaly)
-  where w₁ + w₂ + w₃ = 1.0 (default: 0.33 each)
+Composite suspicion is the current weighted projection of the normalized gate
+vector:
 
-Risk Tier Classification (⅓-based boundaries):
-  BLOCK:  suspicion >= 0.72  (upper third → refuse/escalate)
-  WARN:   0.45 ≤ suspicion < 0.72  (middle third → confirm/verify)
-  LOG:    suspicion < 0.45  (lower third → automatic/audit-only)
+  suspicion = w_conf * (1 - confidence)
+            + w_verif * (1 - verification)
+            + w_anom * anomaly
 
-The ⅓ partitioning ensures:
-  - Clear separation between tiers
-  - Proportional "weight" to each dimension's contribution
-  - Data clusters that emerge naturally from multi-gate interactions
+The default gate weights are 0.33 / 0.33 / 0.34 and sum to 1.0.
+
+Risk tiers use independently configurable policy boundaries:
+  BLOCK: suspicion >= 0.72
+  WARN:  0.45 <= suspicion < 0.72
+  LOG:   suspicion < 0.45
+
+The approximately equal gate weights and the asymmetric tier boundaries are
+separate concepts. The weights provide a neutral three-dimension baseline;
+the tier boundaries define policy regions over the resulting state and may be
+calibrated independently.
+
+AUTHORITY CONTRACT (Phase 1)
+----------------------------
+This module owns the normalized CURRENT risk state for ElectionPulse.
+
+Domain-specific components may measure, rank, filter, or normalize evidence
+before calling this evaluator. Their local scores are evidence; they are not,
+by themselves, authority to promote a value to verified/canonical election
+truth.
+
+RiskGateEvaluator owns:
+  - normalization of confidence / verification / anomaly gate state;
+  - composite suspicion for that state;
+  - primary LOG / WARN / BLOCK risk classification.
+
+RiskGateEvaluator does NOT own:
+  - source provenance discovery;
+  - candidate/FEC identity matching;
+  - parser-specific ranking mechanics;
+  - authorization or privilege;
+  - hard security constraints;
+  - durable promotion/finalization policy.
+
+Security and other non-compensatory constraints remain outside weighted risk
+arithmetic and cannot be cancelled by favorable confidence evidence.
+
+Source authority is provenance-based rather than TLD-based. A .gov domain is
+strong provenance evidence, but an election jurisdiction may officially
+delegate publication to a verified third-party service. Delegated provenance
+may contribute verification evidence when the delegation itself is
+established; it does not bypass independent security constraints.
+
+This contract documents ownership only. Phase 1 intentionally preserves
+existing runtime behavior while legacy local decision thresholds are migrated
+incrementally.
 """
 
 from dataclasses import dataclass
@@ -54,7 +86,7 @@ class RiskGateConfig:
     weight_verification: float = 0.33
     weight_anomaly: float = 0.34
     
-    # Tier boundaries (⅓-partitioned)
+    # Tier policy boundaries (independent of gate weights)
     tier_boundary_warn_log: float = 0.45  # suspicion < this → log
     tier_boundary_block_warn: float = 0.72  # suspicion >= this → block
     
@@ -266,26 +298,23 @@ class RiskGateEvaluator:
         self,
         composite_suspicion: float
     ) -> Tuple[str, float]:
-        """
-        Classify suspicion into risk tier using ⅓-proportioned boundaries.
-        
-        Tier Distribution:
-          BLOCK:  suspicion >= 0.72  (top ⅓, 72–100%)
-          WARN:   0.45 ≤ suspicion < 0.72  (middle ⅓, 45–72%)
-          LOG:    suspicion < 0.45  (bottom ⅓, 0–45%)
-        
-        The "third more/less" principle ensures:
-          - WARN tier (~27% width) is middle third
-          - Each dimension can be independently tuned to move data between tiers
-          - Clusters emerge naturally from interactions
-        
-        Args:
-            composite_suspicion: ∈ [0, 1]
-        
+        """Classify composite suspicion into the current policy tier.
+
+        The tier boundaries are policy regions over the normalized risk state. They are
+        not literal one-third partitions of the unit interval and are independent of
+        the approximately equal confidence/verification/anomaly gate weights.
+
+        Current default boundaries:
+          BLOCK: suspicion >= 0.72
+          WARN:  0.45 <= suspicion < 0.72
+          LOG:   suspicion < 0.45
+
         Returns:
-            Tuple[tier: str, tier_confidence: float]
-            tier: "block" | "warn" | "log"
-            tier_confidence: Distance from nearest boundary (0=on boundary, 1=deep in tier)
+            Tuple of (tier_name, tier_position).
+
+        The second value is the existing compatibility value historically named
+        ``tier_confidence``. Its current semantics vary by tier and will be reviewed in
+        later migration work; Phase 1 does not change that behavior.
         """
         boundary_warn_log = self.config.tier_boundary_warn_log
         boundary_block_warn = self.config.tier_boundary_block_warn

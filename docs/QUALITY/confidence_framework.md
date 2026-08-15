@@ -125,3 +125,22 @@ confidence does not replace reconciliation;
 uncertainty remains visible;
 promotion requires policy beyond a numeric threshold;
 confidence is scoped to the observation it describes.
+
+## Decision authority boundary
+
+Confidence and verification measurements are evidence inputs. They do not
+independently promote a value to verified or canonical election truth.
+
+The durable authority boundary is documented in
+[Confidence Authority](../ARCHITECTURE/confidence_authority.md).
+
+In particular:
+
+- `risk_gates.py` owns normalized current-state evaluation;
+- `risk_gates_calculus.py` owns trajectory and convergence analysis;
+- domain-specific thresholds may remain local when they perform algorithmic
+  ranking, pruning, or detection rather than truth promotion;
+- official-source evidence is provenance-based rather than `.gov`-only, so an
+  officially delegated third-party election service can contribute verified
+  provenance;
+- hard security and authorization constraints remain non-compensatory.

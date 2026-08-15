@@ -1,35 +1,49 @@
-"""
-risk_gates_calculus.py
+"""risk_gates_calculus.py
 
-HIGHER-DIMENSIONAL RISK ASSESSMENT WITH DERIVATIVE GATES
-Smart Elections Parser – Nine-Dimensional Vector Model (3 gates + 6 derivatives)
+Higher-dimensional trajectory and boundary analysis for ElectionPulse risk
+state.
 
-Mathematical Foundation:
-  Original: 3 gates (confidence, verification, anomaly) → composite suspicion → tier
-  Enhanced: 3 gates + 6 derivative variables → composite + rate-of-change → sub-tier
+The base current state is produced by risk_gates.py:
+  confidence / verification / anomaly -> composite suspicion -> primary tier
 
-The six derivative dimensions:
-  1. ∂(confidence)/∂t: Rate of change in parser confidence over time
-  2. ∂(verification)/∂t: Rate of change in DL1 alignment over time
-  3. ∂(anomaly)/∂t: Rate of change in anomaly detection over time
-  4. Slope at LOG→WARN boundary (approaching 0.45)
-  5. Slope at WARN→BLOCK boundary (approaching 0.72)
-  6. Convergence term: lim (1/3^n) as n→∞ (asymptotic stability)
+This module adds observations about state movement:
+  1. d(confidence)/dt
+  2. d(verification)/dt
+  3. d(anomaly)/dt
+  4. approach toward the LOG/WARN policy boundary
+  5. approach toward the WARN/BLOCK policy boundary
+  6. a current stability proxy derived from gate-vector change
 
-This creates sub-tiers within each main tier:
-  - PASS: Deep in tier, stable derivatives, moving away from boundaries
-  - SLOW: Near boundary, unstable derivatives, approaching threshold
-  - STOP: At boundary, requires intervention before crossing
+Computational interpretation:
+  - composite suspicion is a current weighted projection, not a time integral;
+  - derivatives describe how the normalized state changes between observations;
+  - boundary analysis asks whether state is moving toward or away from policy
+    boundaries;
+  - convergence intuition asks whether additional state change and expected
+    information gain approach zero as repeated evaluation stabilizes.
 
-Physical interpretation:
-  - PASS = green light, auto-process
-  - SLOW = yellow light, monitor closely
-  - STOP = red light, require confirmation before crossing tier boundary
+The current ``convergence_stability`` implementation is an inverse
+derivative-magnitude stability proxy. It is not yet a multi-observation proof
+of convergence. Directional velocity and convergence semantics remain later
+correctness/calibration work.
 
-Calculus analogy: Integrals & derivatives in n-dimensional space
-  - Composite suspicion = integral of gate vectors over time
-  - Sub-tier classification = derivative at boundary (slope of approach)
-  - Convergence = limit as precision → ∞ (1/3 = 0.333... → 1/∞)
+AUTHORITY CONTRACT (Phase 1)
+----------------------------
+This module owns TRAJECTORY / BOUNDARY / CONVERGENCE analysis over a risk state
+already produced by RiskGateEvaluator.
+
+CalculusRiskEvaluator may describe how normalized state changes over time, how
+it approaches configured boundaries, and whether repeated evaluation is
+stabilizing. It must not reinterpret domain-specific evidence as canonical
+truth and must not become an authorization mechanism.
+
+The base current-state vector remains owned by risk_gates.py. Domain-specific
+measurements enter through the base evaluator; calculus operates on normalized
+state and its history.
+
+This contract documents ownership only. Phase 1 intentionally preserves the
+existing derivative and sub-tier behavior; directional-velocity and convergence
+corrections are later correctness work, not part of this patch.
 """
 
 import math
@@ -52,7 +66,7 @@ class DerivativeGates:
     slope_toward_warn: float  # ∈ [0, 1], 0 = stationary, 1 = rapid approach to 0.45
     slope_toward_block: float  # ∈ [0, 1], 0 = stationary, 1 = rapid approach to 0.72
     
-    # Convergence to infinity (1/3^n as n→∞)
+    # Current stability proxy from gate-vector derivative magnitude
     convergence_stability: float  # ∈ [0, 1], 0 = diverging, 1 = converged
 
 
@@ -168,8 +182,8 @@ class CalculusRiskEvaluator:
         )
         
         # Convergence stability: how stable is the current state?
-        # Using infinite series: Σ(1/3^n) as n→∞ converges to 0.5
-        # We measure stability as inverse of derivative magnitude
+        # Current implementation uses inverse derivative magnitude.
+        # This is a stability proxy, not yet a multi-observation convergence proof.
         derivative_magnitude = math.sqrt(d_conf**2 + d_verif**2 + d_anom**2)
         convergence = 1.0 / (1.0 + derivative_magnitude)  # ∈ [0, 1]
         
