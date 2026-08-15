@@ -2964,7 +2964,7 @@ def _prepare_html_and_cache(page, target_url, context_cache):
     return html, page_hash, page_url, context_cache
 
 def _fast_path_cache_hit(html, page_hash, page_url, context_cache, coordinator):
-    """Check if all segments are already cached with high confidence. Mode-aware logging."""
+    """Return True only when a complete page-level cached context can be returned."""
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = coordinator or ContextCoordinator()
     segment_htmls = [n.html for n in HTMLParser(html).root.traverse() if hasattr(n, "html")]
@@ -2973,19 +2973,7 @@ def _fast_path_cache_hit(html, page_hash, page_url, context_cache, coordinator):
         h for h in segment_hashes
         if h in context_cache and safe_get(context_cache[h], "ml_confidence", 0) > 0.95
     ]
-    if len(fast_path_hits) == len(segment_hashes) and segment_hashes:
-        msg = "[FAST-PATH] All segments covered by cache. Skipping full scan."
-        if logger.mode == "cli":
-            console.print(msg)
-        else:
-            logger.info({"level": "INFO", "type": "scan_html", "message": msg})
-        fast_path_result = {h: context_cache[h] for h in segment_hashes}
-        if coordinator is not None:
-            coordinator.organize_and_enrich(
-                fast_path_result,
-                write_kind=ContextWriteKind.NONE,
-            )
-        return True
+
     if page_hash in context_cache:
         msg1 = f"[SCAN] Using cached context for {page_url}"
         msg2 = "[bold green][CACHE] Entire context loaded from cache. Skipping scan.[/bold green]"
@@ -3002,6 +2990,17 @@ def _fast_path_cache_hit(html, page_hash, page_url, context_cache, coordinator):
                 write_kind=ContextWriteKind.NONE,
             )
         return True
+
+    if len(fast_path_hits) == len(segment_hashes) and segment_hashes:
+        msg = (
+            "[FAST-PATH] Segment cache is complete but page context is missing. "
+            "Rebuilding page context."
+        )
+        if logger.mode == "cli":
+            console.print(msg)
+        else:
+            logger.info({"level": "INFO", "type": "scan_html", "message": msg})
+
     return False
 
 def _organize_segments_and_sections(
