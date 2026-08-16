@@ -267,7 +267,7 @@ Format: One JSON object per line (JSONL) for streaming processing.
 
 - `webapp/parser/filename_parser.py` (350 lines)
 - `webapp/tests/test_parsers_comprehensive.py` (300 lines)
-- `tests/test_url_parser_validation.py` (250 lines)
+- Legacy Google Sheets URL validation script (retired during recovery; replaced by offline parser contracts)
 - `docs/FEATURES/PARSER_VALIDATION_SUMMARY.md` (this file)
 
 ### Modified Files
@@ -322,13 +322,13 @@ Format: One JSON object per line (JSONL) for streaming processing.
 python webapp/tests/test_parsers_comprehensive.py
 
 # Test URL parser
-python tests/test_url_parser.py
+python -m pytest webapp/tests/test_url_parser_contracts.py -q
 
 # Test filename parser
 python webapp/parser/filename_parser.py
 
 # Validate against Google Sheets (requires credentials)
-python tests/test_url_parser_validation.py
+python -m pytest webapp/tests/test_url_parser_contracts.py -q
 
 # Demo URL parser with library
 python scripts/demo_url_parser.py

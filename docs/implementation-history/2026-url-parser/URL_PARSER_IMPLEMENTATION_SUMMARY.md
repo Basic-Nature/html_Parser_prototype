@@ -21,7 +21,7 @@ A comprehensive URL parsing system that breaks down election URLs into structure
    - Enables streaming processing and incremental updates
 
 4. **Testing & Demos**
-   - `tests/test_url_parser.py` - Comprehensive unit tests
+   - `webapp/tests/test_url_parser_contracts.py` - Comprehensive unit tests
    - `scripts/demo_url_parser.py` - Live demo with URL library
 
 ## Features Demonstrated
@@ -167,7 +167,7 @@ Sample test run (10 URLs):
 ### New Files
 
 - `webapp/parser/url_parser.py` (430 lines)
-- `tests/test_url_parser.py` (120 lines)
+- `webapp/tests/test_url_parser_contracts.py` (120 lines)
 - `scripts/demo_url_parser.py` (100 lines)
 - `docs/FEATURES/URL_PARSER_TRAINING.md` (comprehensive documentation)
 
@@ -214,7 +214,7 @@ Format: One JSON object per line (JSONL)
 
 ```bash
 # Run unit tests
-python tests/test_url_parser.py
+python -m pytest webapp/tests/test_url_parser_contracts.py -q
 
 # Run demo with URL library
 python scripts/demo_url_parser.py

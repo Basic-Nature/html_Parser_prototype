@@ -278,7 +278,7 @@ async function getTrainingData(filters = {}) {
 Run the test suite:
 
 ```bash
-python tests/test_url_parser.py
+python -m pytest webapp/tests/test_url_parser_contracts.py -q
 ```
 
 The test covers:
@@ -326,7 +326,7 @@ The parsed URL data is structured for ML training pipelines:
 
 - **Module**: `webapp/parser/url_parser.py`
 - **API Endpoints**: `webapp/Smart_Elections_Parser_Webapp.py` (lines ~2560-2730)
-- **Tests**: `tests/test_url_parser.py`
+- **Tests**: `webapp/tests/test_url_parser_contracts.py`
 - **Training Data**: `webapp/parser/Context_Integration/Context_Library/log/parsed_urls_training.jsonl`
 - **URL Library**: `webapp/parser/urls.txt`
 
