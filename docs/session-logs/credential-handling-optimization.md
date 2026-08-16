@@ -117,7 +117,7 @@ Updated three endpoints with helpful hints:
 
 ### 3. **Created Test Script**
 
-**File:** [tests/test_credential_loading.py](../tests/test_credential_loading.py)
+**File:** [webapp/tests/test_google_sheets_credentials_contract.py](../../webapp/tests/test_google_sheets_credentials_contract.py)
 
 **Purpose:** Validate credential loading priority chain
 
@@ -128,7 +128,7 @@ Updated three endpoints with helpful hints:
 3. ✅ Tests individual env vars (GOOGLE_SHEETS_SA_*)
 4. ✅ Includes setup guide for both approaches
 
-**Run:** `python tests/test_credential_loading.py`
+**Run:** `python webapp/tests/test_google_sheets_credentials_contract.py`
 
 **Test Results:**
 
@@ -273,7 +273,7 @@ az keyvault secret set --vault-name my-kv --name GOOGLE-SHEETS-SA-PROJECT-ID --v
 | ------ | ---------------- | ------ | -------- |
 | [google_sheets_client.py](../webapp/parser/data_standardization/google_sheets_client.py) | 47-59 (new), 149-253 (updated) | Enhancement | Medium - Improves credential flexibility |
 | [Smart_Elections_Parser_Webapp.py](../webapp/Smart_Elections_Parser_Webapp.py) | 3 endpoints updated | Enhancement | Low - Better error messages only |
-| [test_credential_loading.py](../tests/test_credential_loading.py) | New file | Test | None - Experimental tests directory |
+| [test_credential_loading.py](../../webapp/tests/test_google_sheets_credentials_contract.py) | New file | Test | None - Experimental tests directory |
 | [GOOGLE_SHEETS_CREDENTIALS.md](../docs/FEATURES/GOOGLE_SHEETS_CREDENTIALS.md) | New file | Documentation | None - Reference documentation |
 
 ---
@@ -311,7 +311,7 @@ GOOGLE_SHEETS_WORKLIST_ID=your-worklist-id
 ### For Developers - Testing Credential Loading
 
 ```bash
-python tests/test_credential_loading.py
+python webapp/tests/test_google_sheets_credentials_contract.py
 ```
 
 ### For Debugging - Check Credentials Status

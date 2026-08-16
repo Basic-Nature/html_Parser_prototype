@@ -192,7 +192,7 @@ export GOOGLE_SHEETS_WORKLIST_ID='your-worklist-id'
 
 ## Testing
 
-### Test Script: `tests/test_credential_loading.py`
+### Test Script: `webapp/tests/test_google_sheets_credentials_contract.py`
 
 Demonstrates:
 
@@ -203,7 +203,7 @@ Demonstrates:
 **Run:**
 
 ```bash
-python tests/test_credential_loading.py
+python webapp/tests/test_google_sheets_credentials_contract.py
 ```
 
 ---
@@ -368,7 +368,7 @@ Security: Excellent (audited, rotated, encrypted)
 - [google_sheets_client.py](../../webapp/parser/data_standardization/google_sheets_client.py) - Main implementation
 - [.env.template](../../.env.template) - Environment template (lines 322-350)
 - [Smart_Elections_Parser_Webapp.py](../../webapp/Smart_Elections_Parser_Webapp.py) - Flask endpoints (lines 6288-6430)
-- [test_credential_loading.py](../../tests/test_credential_loading.py) - Test script
+- [test_credential_loading.py](../../webapp/tests/test_google_sheets_credentials_contract.py) - Test script
 
 ---
 
@@ -377,5 +377,5 @@ Security: Excellent (audited, rotated, encrypted)
 For issues or questions about credential setup:
 
 1. Check logs with `LOG_LEVEL=DEBUG`
-2. Run credential test: `python tests/test_credential_loading.py`
+2. Run credential test: `python webapp/tests/test_google_sheets_credentials_contract.py`
 3. Verify env vars: `python -c "import os; [print(k) for k in os.environ if 'GOOGLE' in k]"`

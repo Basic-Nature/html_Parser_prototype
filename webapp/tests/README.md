@@ -203,3 +203,9 @@ pip install pytest pytest-cov pytest-mock
 - [pytest Documentation](https://docs.pytest.org/)
 - [pytest-cov Documentation](https://pytest-cov.readthedocs.io/)
 - [Python unittest.mock](https://docs.python.org/3/library/unittest.mock.html)
+
+## Experimental scratch tests
+
+The repository-root `tests/` directory is gitignored scratch space for temporary validation, experiments, and agent-generated probes. Files there are not part of the permanent regression suite and should be cleaned up after their intent is either migrated or retired.
+
+Permanent Python regression tests belong in `webapp/tests/`. Development diagnostics or smoke tooling may live under `tools/` or `scripts/` when their behavior is intentionally manual. Never place secrets, credentials, or other sensitive data in scratch tests.
