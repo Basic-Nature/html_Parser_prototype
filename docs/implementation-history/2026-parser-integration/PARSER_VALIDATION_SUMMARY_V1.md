@@ -266,7 +266,7 @@ Format: One JSON object per line (JSONL) for streaming processing.
 ### New Files
 
 - `webapp/parser/filename_parser.py` (350 lines)
-- `tests/test_parsers_comprehensive.py` (300 lines)
+- `webapp/tests/test_parsers_comprehensive.py` (300 lines)
 - `tests/test_url_parser_validation.py` (250 lines)
 - `docs/FEATURES/PARSER_VALIDATION_SUMMARY.md` (this file)
 
@@ -319,7 +319,7 @@ Format: One JSON object per line (JSONL) for streaming processing.
 
 ```bash
 # Run comprehensive parser tests
-python tests/test_parsers_comprehensive.py
+python webapp/tests/test_parsers_comprehensive.py
 
 # Test URL parser
 python tests/test_url_parser.py

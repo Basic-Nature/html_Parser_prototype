@@ -197,7 +197,7 @@ Removes employee names from response (default behavior).
 
 ```bash
 cd c:\Users\olivi\html_Parser_prototype
-python -m pytest tests/test_status_reconciliation.py -v
+python -m pytest webapp/tests/test_status_reconciliation_contracts.py -v
 ```
 
 **Test Cases** (all passing ✓):
@@ -358,7 +358,7 @@ params.append('hide_pii', 'false')  # Never use externally
 
 1. **Created**:
    - [webapp/parser/utils/status_reconciliation.py](../webapp/parser/utils/status_reconciliation.py) (230 lines)
-   - [tests/test_status_reconciliation.py](../tests/test_status_reconciliation.py) (120 lines)
+   - [webapp/tests/test_status_reconciliation_contracts.py](../webapp/tests/test_status_reconciliation_contracts.py) (120 lines)
    - [docs/temp/STATUS_RECONCILIATION_GUIDE.md](./STATUS_RECONCILIATION_GUIDE.md) (guide)
    - [docs/temp/STATUS_IMPLEMENTATION_SUMMARY.md](./STATUS_IMPLEMENTATION_SUMMARY.md) (this file)
 

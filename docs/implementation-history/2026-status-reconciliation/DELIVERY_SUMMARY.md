@@ -52,7 +52,7 @@ Created a **unified status reconciliation system** that:
    - Status mappings and badge definitions
    - Authority hierarchy implementation
 
-2. **`tests/test_status_reconciliation.py`** (120 lines)
+2. **`webapp/tests/test_status_reconciliation_contracts.py`** (120 lines)
    - 8 comprehensive test cases
    - All tests passing ✓
    - Covers: reconciliation logic, PII filtering, badge info, action requirements
@@ -327,7 +327,7 @@ A: No. Old fields are preserved, new fields added alongside them.
 | File | Status | Purpose |
 | ------ | -------- | --------- |
 | `webapp/parser/utils/status_reconciliation.py` | ✅ Created | Core reconciliation logic |
-| `tests/test_status_reconciliation.py` | ✅ Created | Unit tests (8/8 passing) |
+| `webapp/tests/test_status_reconciliation_contracts.py` | ✅ Created | Unit tests (8/8 passing) |
 | `webapp/tests/test_import_contracts.py` | ✅ Created | Import validation |
 | `docs/temp/STATUS_RECONCILIATION_GUIDE.md` | ✅ Created | Technical deep dive |
 | `docs/temp/STATUS_IMPLEMENTATION_SUMMARY.md` | ✅ Created | Developer guide |

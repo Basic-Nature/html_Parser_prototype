@@ -316,7 +316,7 @@ parseButton.hidden = !needsParsing;
 
 ```bash
 cd c:\Users\olivi\html_Parser_prototype
-python -m pytest tests/test_status_reconciliation.py -v
+python -m pytest webapp/tests/test_status_reconciliation_contracts.py -v
 ```
 
 **All tests should pass** ✓
@@ -327,7 +327,7 @@ python -m pytest tests/test_status_reconciliation.py -v
 
 1. **Created**:
    - `webapp/parser/utils/status_reconciliation.py` - Main system
-   - `tests/test_status_reconciliation.py` - Tests
+   - `webapp/tests/test_status_reconciliation_contracts.py` - Tests
    - `docs/temp/STATUS_RECONCILIATION_GUIDE.md` - Detailed guide
 
 2. **Updated**:
