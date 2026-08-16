@@ -11,7 +11,7 @@ from typing import Any, Callable, Tuple
 # ============================================
 # Using Python's native threading framework for reliable, maintainable async support.
 # This avoids eventlet (deprecated) and provides stable, predictable behavior.
-# 
+#
 # WebSocket support: Enabled by default to reduce cert prompts in Optional mTLS mode.
 # Socket.IO will try WebSocket first, then fall back to polling if needed.
 # This minimizes TLS handshakes and browser cert prompts (one persistent connection vs multiple polling requests).
@@ -2506,7 +2506,7 @@ def _heartbeat_loop():
                 socketio.emit('session_heartbeat', {"session_id": sid, "timestamp": now_ms}, room=sid)
             except Exception:
                 pass
-            
+
 def socketio_emit_func(line):
     """
     Normalize, deduplicate, store, and emit log lines to Socket.IO.
@@ -2816,19 +2816,19 @@ def redirect_to_https_www():
             _REDIRECT_HEADER_LOG_LAST[log_key] = now
 
     # Skip redirects for local development (handle localhost with/without port, IPv4, IPv6)
-    if (host_only in ('localhost', '127.0.0.1', '::1') or 
-        raw_host.startswith('localhost:') or 
+    if (host_only in ('localhost', '127.0.0.1', '::1') or
+        raw_host.startswith('localhost:') or
         raw_host.startswith('127.0.0.1:') or
         raw_host.startswith('[::1]:')):
         return None
-    
+
     # Get the current scheme (check X-Forwarded-Proto for proxy setups like Azure)
     scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
-    
+
     # Production domain configuration
     PRODUCTION_APEX = 'electionpulse.org'
     PRODUCTION_WWW = 'www.electionpulse.org'
-    
+
     # Check if we need to redirect to www or HTTPS
     if host_only == PRODUCTION_APEX:
         # Redirect apex domain to www with HTTPS
@@ -2838,7 +2838,7 @@ def redirect_to_https_www():
         # Force HTTPS for www subdomain
         target_url = f"https://{PRODUCTION_WWW}{request.full_path.rstrip('?')}"
         return redirect(target_url, code=301)
-    
+
     return None
 
 @app.before_request
@@ -3439,7 +3439,7 @@ def api_urls_parse():
         single_url = safe_strip(safe_get(data, "url", ""))
         urls_list = data.get("urls", [])
         store_results = data.get("store", False)
-        
+
         # Determine if single or batch
         if single_url:
             urls_to_parse = [single_url]
@@ -3449,10 +3449,10 @@ def api_urls_parse():
             is_batch = True
         else:
             return jsonify({"success": False, "error": "Provide 'url' or 'urls' parameter"}), 400
-        
+
         if not urls_to_parse:
             return jsonify({"success": False, "error": "No valid URLs provided"}), 400
-        
+
         # Parse URLs
         parsed_results = []
         for url in urls_to_parse:
@@ -3465,7 +3465,7 @@ def api_urls_parse():
                     "url": url,
                     "error": str(parse_exc)
                 })
-        
+
         # Store to training file if requested
         if store_results:
             try:
@@ -3476,7 +3476,7 @@ def api_urls_parse():
                             f.write(orjson.dumps(result).decode("utf-8") + "\n")
             except Exception as store_exc:
                 logger.error(f"Failed to store parsed URLs: {store_exc}")
-        
+
         # Return results
         if is_batch:
             return jsonify({
@@ -3489,7 +3489,7 @@ def api_urls_parse():
                 "success": True,
                 "parsed": parsed_results[0] if parsed_results else {}
             }), 200
-            
+
     except Exception as exc:
         logger.error({"level": "ERROR", "type": "api", "message": f"api_urls_parse failed: {exc}", "session_id": None})
         return jsonify({"success": False, "error": "internal"}), 500
@@ -3517,14 +3517,14 @@ def api_urls_training_data():
     """
     try:
         training_file = LOG_DIR / "parsed_urls_training.jsonl"
-        
+
         # Parse query parameters
         limit = min(int(request.args.get("limit", 100)), 1000)
         offset = int(request.args.get("offset", 0))
         state_filter = safe_strip(request.args.get("state", "")).upper()
         vendor_filter = safe_strip(request.args.get("vendor", "")).lower()
         has_county_filter = request.args.get("has_county", "").lower() in {"true", "1", "yes"}
-        
+
         if not training_file.exists():
             return jsonify({
                 "success": True,
@@ -3533,7 +3533,7 @@ def api_urls_training_data():
                 "total": 0,
                 "message": "No training data available yet"
             }), 200
-        
+
         # Read and filter data
         all_records = []
         with open(training_file, "r", encoding="utf-8") as f:
@@ -3543,7 +3543,7 @@ def api_urls_training_data():
                     continue
                 try:
                     record = orjson.loads(line)
-                    
+
                     # Apply filters
                     if state_filter and record.get("state", "").upper() != state_filter:
                         continue
@@ -3551,16 +3551,16 @@ def api_urls_training_data():
                         continue
                     if has_county_filter and not record.get("county"):
                         continue
-                    
+
                     all_records.append(record)
                 except Exception:
                     continue
-        
+
         total = len(all_records)
-        
+
         # Apply pagination
         paginated_records = all_records[offset:offset + limit]
-        
+
         return jsonify({
             "success": True,
             "data": paginated_records,
@@ -3569,7 +3569,7 @@ def api_urls_training_data():
             "offset": offset,
             "limit": limit
         }), 200
-        
+
     except Exception as exc:
         logger.error({"level": "ERROR", "type": "api", "message": f"api_urls_training_data failed: {exc}", "session_id": None})
         return jsonify({"success": False, "error": "internal"}), 500
@@ -3597,7 +3597,7 @@ def api_urls_parse_all():
                 "success": False,
                 "error": "URL library file not found"
             }), 404
-        
+
         # Read all URLs
         urls_to_parse = []
         with open(urls_file, "r", encoding="utf-8") as f:
@@ -3608,18 +3608,18 @@ def api_urls_parse_all():
                 u, _ = extract_url_and_label(s)
                 if u:
                     urls_to_parse.append(u)
-        
+
         if not urls_to_parse:
             return jsonify({
                 "success": False,
                 "error": "No URLs found in library"
             }), 404
-        
+
         # Parse all URLs
         parsed_count = 0
         failed_count = 0
         training_file = LOG_DIR / "parsed_urls_training.jsonl"
-        
+
         with open(training_file, "a", encoding="utf-8") as f:
             for url in urls_to_parse:
                 try:
@@ -3629,7 +3629,7 @@ def api_urls_parse_all():
                 except Exception as parse_exc:
                     logger.warning(f"Failed to parse URL {url}: {parse_exc}")
                     failed_count += 1
-        
+
         return jsonify({
             "success": True,
             "parsed_count": parsed_count,
@@ -3637,7 +3637,7 @@ def api_urls_parse_all():
             "training_file": str(training_file),
             "total_urls": len(urls_to_parse)
         }), 200
-        
+
     except Exception as exc:
         logger.error({"level": "ERROR", "type": "api", "message": f"api_urls_parse_all failed: {exc}", "session_id": None})
         return jsonify({"success": False, "error": str(exc)}), 500
@@ -3664,7 +3664,7 @@ def api_filename_parse():
         single_filename = safe_strip(safe_get(data, "filename", ""))
         filenames_list = data.get("filenames", [])
         store_results = data.get("store", False)
-        
+
         # Determine if single or batch
         if single_filename:
             filenames_to_parse = [single_filename]
@@ -3674,10 +3674,10 @@ def api_filename_parse():
             is_batch = True
         else:
             return jsonify({"success": False, "error": "Provide 'filename' or 'filenames' parameter"}), 400
-        
+
         if not filenames_to_parse:
             return jsonify({"success": False, "error": "No valid filenames provided"}), 400
-        
+
         # Parse filenames
         parsed_results = []
         for filename in filenames_to_parse:
@@ -3690,7 +3690,7 @@ def api_filename_parse():
                     "filename": filename,
                     "error": str(parse_exc)
                 })
-        
+
         # Store to training file if requested
         if store_results:
             try:
@@ -3701,7 +3701,7 @@ def api_filename_parse():
                             f.write(orjson.dumps(result).decode("utf-8") + "\n")
             except Exception as store_exc:
                 logger.error(f"Failed to store parsed filenames: {store_exc}")
-        
+
         # Return results
         if is_batch:
             return jsonify({
@@ -3714,7 +3714,7 @@ def api_filename_parse():
                 "success": True,
                 "parsed": parsed_results[0] if parsed_results else {}
             }), 200
-            
+
     except Exception as exc:
         logger.error({"level": "ERROR", "type": "api", "message": f"api_filename_parse failed: {exc}", "session_id": None})
         return jsonify({"success": False, "error": "internal"}), 500
@@ -4070,7 +4070,7 @@ def api_warehouse_coverage():
     ensure_db_tables()
     engine = get_engine()
     columns = _get_warehouse_columns(engine)
-    
+
     # Ensure state and county columns exist
     if "state" not in columns or "county" not in columns:
         return jsonify({
@@ -4095,14 +4095,14 @@ def api_warehouse_coverage():
                 {"state": row["state"], "county": row["county"], "row_count": row["row_count"]}
                 for row in covered_rows
             ]
-            
+
             state_query = """
                 SELECT DISTINCT state FROM warehouse_election_results 
                 WHERE state IS NOT NULL
                 ORDER BY state
             """
             all_states = [row[0] for row in conn.execute(text(state_query))]
-            
+
             count_query = "SELECT COUNT(*) as cnt FROM warehouse_election_results"
             total_rows = conn.execute(text(count_query)).mappings().first()["cnt"]
 
@@ -4230,13 +4230,13 @@ def _collect_data_framework_curated(limit: int = 80) -> dict:
     scaffold = _collect_data_framework_scaffold(limit=limit * 2)  # Fetch extra for dedup
     items = []
     seen_keys = set()
-    
+
     for record in scaffold.get("records", []):
         state = record.get("state") or ""
         county = record.get("county") or ""
         contest = record.get("contest") or ""
         updated_at = record.get("timestamp") or ""
-        
+
         # Quality gates: skip low-quality entries
         if not state or state.lower() in ("unknown", "test"):
             continue
@@ -4246,18 +4246,18 @@ def _collect_data_framework_curated(limit: int = 80) -> dict:
         row_count = record.get("row_count")
         if row_count is not None and row_count < 5:
             continue
-        
+
         # Deduplicate by (state, county, contest) - keep most recent
         dedup_key = (state.lower(), (county or "").lower(), contest.lower())
         if dedup_key in seen_keys:
             continue
         seen_keys.add(dedup_key)
-        
+
         year = _extract_year_from_text(updated_at) or _extract_year_from_text(contest)
         title_parts = [part for part in [contest, state, county] if part]
         title = " • ".join(title_parts) if title_parts else "Curated dataset"
         item_id = "::".join([state or "NA", county or "NA", contest or "NA", updated_at or "NA"])
-        
+
         items.append({
             "id": item_id,
             "title": title,
@@ -4271,10 +4271,10 @@ def _collect_data_framework_curated(limit: int = 80) -> dict:
             "updated_at": updated_at,
             "source_url": record.get("source_url"),
         })
-        
+
         if len(items) >= limit:
             break
-    
+
     return {
         "items": items,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -5372,7 +5372,7 @@ def api_quick_copy_clear():
 
 def download_fs():
     """Enhanced filesystem download with integrity verification."""
-    
+
     root = (request.args.get("root") or "").lower().strip()
     subpath = (request.args.get("path") or "").strip().replace("\\", "/")
     name = request.args.get("name") or ""
@@ -5387,7 +5387,7 @@ def download_fs():
     fpath = os.path.normpath(os.path.join(want_dir, name))
     if not fpath.startswith(abs_base) or not os.path.isfile(fpath):
         raise NotFound()
-        
+
     # Get principal and session for tracking
     principal, _, _ = get_request_principal()
     if not principal:
@@ -5409,7 +5409,7 @@ def download_fs():
         })
         if not allowed:
             return jsonify({"error": "Unauthorized output download"}), 403
-        
+
     # Only verify integrity for output files (cache deduplication)
     if root == "output":
         monitor = get_integrity_monitor()
@@ -5425,7 +5425,7 @@ def download_fs():
                         file_path=Path(fpath)
                     )
                 )
-                
+
                 if session_id != "no_session":
                     try:
                         socketio.emit('download_ready', {
@@ -5441,7 +5441,7 @@ def download_fs():
                 loop.close()
         except Exception as e:
             logger.error({"level": "ERROR", "type": "download", "message": f"Integrity check failed: {e}", "session_id": session_id})
-            
+
     return send_file(fpath, as_attachment=True)
 
 
@@ -5871,19 +5871,19 @@ def api_warehouse_election_results():
     data_source = (request.args.get("data_source") or "both").lower()
     metric = (request.args.get("metric") or "rows").lower()
     party = request.args.get("party")
-    
+
     # Validate data_source parameter
     if data_source not in ("fixture", "live", "both"):
         return jsonify({"error": "data_source must be 'fixture', 'live', or 'both'"}), 400
     if metric not in ("rows", "dropoff", "elector_totals"):
         return jsonify({"error": "metric must be 'rows', 'dropoff', or 'elector_totals'"}), 400
-    
+
     limit = request.args.get("limit", type=int)
     limit = max(1, min(1000, limit or 500))
-    
+
     # Determine if DB is available
     db_enabled = os.environ.get("AUTO_INIT_DB", "true").lower() in ("1", "true", "yes")
-    
+
     # Collect all results
     all_results = []
 
@@ -6006,7 +6006,7 @@ def api_warehouse_election_results():
                 "session_id": None,
             })
             return jsonify({"error": "Database query failed"}), 500
-    
+
     # Query fixtures if requested
     if data_source in ("fixture", "both"):
         try:
@@ -6019,13 +6019,13 @@ def api_warehouse_election_results():
                         year_val = int(year_str)
                     except ValueError:
                         pass
-                
+
                 fixture_results = election_fixtures.get_results_by_state(
                     state_clean,
                     year=year_val,
                     include_data_source=True
                 )
-                
+
                 # Filter by contest if provided
                 if contest:
                     contest_lower = contest.lower()
@@ -6033,7 +6033,7 @@ def api_warehouse_election_results():
                         r for r in fixture_results
                         if contest_lower in r.get('contest', '').lower()
                     ]
-                
+
                 all_results.extend(fixture_results[:limit])
         except Exception as e:
             logger.warning({
@@ -6042,7 +6042,7 @@ def api_warehouse_election_results():
                 "message": f"Failed to query fixtures: {e}",
                 "session_id": None
             })
-    
+
     # Query database if requested and enabled
     if data_source in ("live", "both") and db_enabled:
         try:
@@ -6071,7 +6071,7 @@ def api_warehouse_election_results():
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
         limit_sql = "LIMIT %s"
         params.append(limit)
-        
+
         ensure_db_tables()  # attempt upfront (idempotent)
         try:
             conn = psycopg2.connect(
@@ -6100,13 +6100,13 @@ def api_warehouse_election_results():
                 )
                 cols = [d[0] for d in cur.description]
                 db_rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-                
+
                 # Add data_source field
                 for row in db_rows:
                     row['data_source'] = 'live'
-                
+
                 all_results.extend(db_rows[:limit])
-            
+
             log_db_monitor_event({
                 "type": "warehouse_query",
                 "status": "ok",
@@ -6212,7 +6212,7 @@ def api_warehouse_election_results():
                     "contest": contest,
                     "limit": limit,
                 })
-    
+
     # Return merged results
     return jsonify({"items": all_results, "count": len(all_results), "data_source": data_source})
 
@@ -6257,18 +6257,18 @@ def download_input_file(filename) -> str:
 
 def download_output_file(filename) -> str:
     """Enhanced download with integrity verification and cache deduplication."""
-    
+
     # Get principal for deduplication
     principal, principal_source, _ = get_request_principal()
     if not principal:
         principal = "anonymous"
-        
+
     # Get session ID if available
     try:
         session_id = resolve_session_id({}, create_if_missing=False) or "no_session"
     except Exception:
         session_id = "no_session"
-        
+
     file_path = Path(OUTPUT_DIR) / filename
     if not file_path.exists():
         raise NotFound()
@@ -6284,7 +6284,7 @@ def download_output_file(filename) -> str:
     })
     if not allowed:
         return Response("Unauthorized output download", status=403, mimetype="text/plain")
-        
+
     # Async integrity verification with cache
     monitor = get_integrity_monitor()
     try:
@@ -6299,7 +6299,7 @@ def download_output_file(filename) -> str:
                     file_path=file_path
                 )
             )
-            
+
             # Emit download_ready event with integrity info
             if session_id != "no_session":
                 try:
@@ -6313,7 +6313,7 @@ def download_output_file(filename) -> str:
                     }, room=session_id)
                 except Exception:
                     pass
-                    
+
             logger.info({
                 "level": "INFO",
                 "type": "download",
@@ -6333,7 +6333,7 @@ def download_output_file(filename) -> str:
             "session_id": session_id,
             "filename": filename
         })
-        
+
     return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
 
 def download_upload_file(filename) -> str:
@@ -6433,42 +6433,42 @@ def api_validate_urls():
     """
     try:
         from webapp.parser.utils.database_comparison import check_existing_finalized_data
-        
+
         data = request.get_json()
         if not data or not isinstance(data.get("urls"), list):
             return jsonify({"error": "Invalid request: 'urls' array required"}), 400
-        
+
         urls = data["urls"]
         if len(urls) > 100:
             return jsonify({"error": "Too many URLs: maximum 100 per request"}), 400
-        
+
         results = []
         for url in urls:
             if not isinstance(url, str):
                 continue
-            
+
             url = url.strip()
             if not url:
                 continue
-            
+
             # Check if data exists
             data_exists, data_source, metadata = check_existing_finalized_data(
                 url,
                 session_id=None
             )
-            
+
             results.append({
                 "url": url,
                 "exists": data_exists,
                 "source": data_source,
                 "metadata": metadata or {}
             })
-        
+
         return jsonify({
             "success": True,
             "results": results
         }), 200
-        
+
     except Exception as e:
         logger.error({
             "level": "ERROR",
@@ -7024,7 +7024,7 @@ def api_integrity_signal():
     review_spike_threshold = thresholds.get("reviewSpikeThreshold", 5.0)
     baseline_window = int(thresholds.get("baselineWindow", 30) or 30)
     recent_window = int(thresholds.get("recentWindow", 5) or 5)
-    
+
     try:
         trends, source, from_cache = _load_integrity_trends()
         if len(trends) < 2:
@@ -7117,47 +7117,47 @@ app.config["_UI_NAVIGATION_ROUTE_HANDLERS"] = {
 
 def api_quality_metrics():
     """API endpoint for quality metrics data."""
-    
+
     # Query parameters for filtering
     handler_filter = request.args.get("handler")
     state_filter = request.args.get("state")
     min_confidence = request.args.get("min_confidence", type=float)
     limit = request.args.get("limit", default=100, type=int)
-    
+
     results = []
-    
+
     # Scan output directory for metadata files
     output_dir = Path(OUTPUT_DIR)
     if not output_dir.exists():
         return jsonify({"metrics": [], "count": 0})
-    
+
     for folder in output_dir.iterdir():
         if not folder.is_dir():
             continue
-        
+
         metadata_file = folder / "metadata.json"
         if not metadata_file.exists():
             continue
-        
+
         try:
             with open(metadata_file, 'r', encoding='utf-8') as f:
                 metadata = json.load(f)
-            
+
             # Must have quality metrics
             if "quality_metrics" not in metadata:
                 continue
-            
+
             # Apply filters
             if handler_filter and metadata.get("handler") != handler_filter:
                 continue
             if state_filter and metadata.get("state") != state_filter:
                 continue
-            
+
             quality = metadata.get("quality_metrics", {})
             conf = quality.get("extraction_confidence")
             if min_confidence is not None and (conf is None or conf < min_confidence):
                 continue
-            
+
             # Extract relevant fields
             result = {
                 "folder": folder.name,
@@ -7171,15 +7171,15 @@ def api_quality_metrics():
                 "timestamp": metadata.get("timestamp") or folder.name.split("__")[-1],
             }
             results.append(result)
-            
+
             if len(results) >= limit:
                 break
         except Exception:
             continue
-    
+
     # Sort by timestamp (newest first)
     results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-    
+
     return jsonify({"metrics": results, "count": len(results)})
 
 
@@ -7748,7 +7748,7 @@ def api_route_wrapper_monitor_snapshot():
             "remote_addr": request.remote_addr or "unknown"
         }
     }
-    
+
     # Add privilege tier information if available
     if cert_metadata and cert_metadata.get("cn"):
         try:
@@ -7758,7 +7758,7 @@ def api_route_wrapper_monitor_snapshot():
                 response["privilege_tier"] = tier.value
         except Exception:
             response["privilege_tier"] = "STANDARD_USER"
-    
+
     return jsonify(response)
 
 
@@ -8222,7 +8222,7 @@ def upload_to_uploads() -> str:
         session['FORCE_PARSE_INPUT_FILE'] = saved_name
         session['FORCE_PARSE_FORMAT'] = saved_name.rsplit('.', 1)[-1].lower() if '.' in saved_name else ''
         session['manual_source_pref'] = 'uploads'  # default UI to uploads after upload
-        
+
         # Parse filename for metadata hints
         try:
             parsed_filename = parse_filename_simple(saved_name)
@@ -8235,7 +8235,7 @@ def upload_to_uploads() -> str:
                 session['PARSED_YEAR_HINT'] = parsed_filename['year']
             if parsed_filename.get('contest_type'):
                 session['PARSED_CONTEST_HINT'] = parsed_filename['contest_type']
-            
+
             # Log parsed metadata for debugging
             logger.info({
                 "level": "INFO",
@@ -8251,7 +8251,7 @@ def upload_to_uploads() -> str:
             })
         except Exception as e:
             logger.warning(f"Failed to parse filename metadata: {e}")
-        
+
         if wants_json:
             return jsonify({"success": True, "filename": saved_name, "destination": "uploads"})
         flash(f"File '{saved_name}' uploaded to uploads folder.", "success")
@@ -8504,22 +8504,22 @@ def api_election_data_worklist():
             })
 
         return rows[:limit], None
-    
+
     try:
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
 
         from webapp.parser.models.election_data import DownloadRecord
-        
+
         # Store DB URL in env or fallback to default
         db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
         engine = create_engine(db_url)
         Session = sessionmaker(bind=engine)
         session = Session()
-        
+
         try:
             query = session.query(DownloadRecord)
-            
+
             # Apply filters
             for param, field in [('state', 'state'), ('year', 'year')]:
                 if request.args.get(param):
@@ -8527,14 +8527,14 @@ def api_election_data_worklist():
                     if param == 'year':
                         val = int(val) if val.isdigit() else val
                     query = query.filter(getattr(DownloadRecord, field) == val)
-            
+
             if request.args.get('status'):
                 query = query.filter(DownloadRecord.workflow_status == request.args.get('status'))
-            
+
             limit = min(int(request.args.get('limit', 100)), 500)
             total = query.count()
             records = query.limit(limit).all()
-            
+
             # Convert to dict
             worklist = [{
                 'id': r.id,
@@ -8557,12 +8557,12 @@ def api_election_data_worklist():
                 'workflow_status': r.workflow_status,
                 'updated_at': r.updated_at.isoformat() if r.updated_at else None,
             } for r in records]
-            
+
             return jsonify({'success': True, 'total': total, 'records': worklist}), 200
-        
+
         finally:
             session.close()
-    
+
     except Exception as e:
         err_msg = str(e)
         if 'no such table: download_records' in err_msg.lower():
@@ -8624,7 +8624,7 @@ def api_election_data_worklist_overview():
             "\nFor Azure, configure individual GOOGLE_SHEETS_SA_* environment variables."
         )
         return jsonify({
-            'success': False, 
+            'success': False,
             'error': 'Google Sheets access not configured',
             'detail': error_msg + hint
         }), 503
@@ -8900,11 +8900,11 @@ def api_election_data_states_counties():
         state_counties = defaultdict(set)
         years_set = set()
         contests_set = set()
-        
+
         for record in result.records:
             state = record.get('State', '').strip()
             county = record.get('County/District', '').strip()
-            
+
             if state and county:
                 # Normalize: title case, deduplicate
                 state_normalized = state.title()
@@ -8925,7 +8925,7 @@ def api_election_data_states_counties():
             state: sorted(list(counties))
             for state, counties in state_counties.items()
         }
-        
+
         total_counties = sum(len(counties) for counties in counties_dict.values())
 
         payload = {
@@ -8963,31 +8963,31 @@ def api_assign_dl_owner(race_id):
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
         return jsonify({"error": "Unauthorized"}), 403
-    
+
     try:
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
 
         from webapp.parser.models.election_data import DownloadRecord
-        
+
         data = request.get_json() or {}
         dl = data.get('dl', '').upper()  # DL1 or DL2
         assigned_to = data.get('assigned_to', principal)
-        
+
         if dl not in ('DL1', 'DL2'):
             return jsonify({'success': False, 'error': 'dl must be DL1 or DL2'}), 400
-        
+
         db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
         engine = create_engine(db_url)
         Session = sessionmaker(bind=engine)
         session = Session()
-        
+
         try:
             record = session.query(DownloadRecord).filter(DownloadRecord.race_id == race_id).first()
-            
+
             if not record:
                 return jsonify({'success': False, 'error': f'Race {race_id} not found'}), 404
-            
+
             # Enforce role separation: DL1 ≠ DL2
             if dl == 'DL1':
                 if record.dl2_assigned_to and record.dl2_assigned_to == assigned_to:
@@ -9005,18 +9005,18 @@ def api_assign_dl_owner(race_id):
                     }), 400
                 record.dl2_assigned_to = assigned_to
                 record.dl2_status = 'pending'
-            
+
             record.updated_at = datetime.utcnow()
             session.commit()
-            
+
             return jsonify({
                 'success': True,
                 'message': f'{assigned_to} assigned to {dl} for race {race_id}'
             }), 200
-        
+
         finally:
             session.close()
-    
+
     except Exception as e:
         logger.error(f"Error assigning DL owner: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -9031,7 +9031,7 @@ def api_preqc_check(race_id):
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
         return jsonify({"error": "Unauthorized"}), 403
-    
+
     try:
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
@@ -9045,12 +9045,12 @@ def api_preqc_check(race_id):
             ValidationRecord_DL1,
             ValidationRecord_DL2,
         )
-        
+
         db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
         engine = create_engine(db_url)
         Session = sessionmaker(bind=engine)
         session = Session()
-        
+
         try:
             # Get DL1 and DL2 records
             dl1 = session.query(ValidationRecord_DL1).filter(
@@ -9059,13 +9059,13 @@ def api_preqc_check(race_id):
             dl2 = session.query(ValidationRecord_DL2).filter(
                 ValidationRecord_DL2.race_id == race_id
             ).first()
-            
+
             if not dl1 or not dl2:
                 return jsonify({
                     'success': False,
                     'error': 'Both DL1 and DL2 records required for Pre-QC comparison'
                 }), 400
-            
+
             # Convert to dict for comparison
             dl1_dict = {
                 'race_id': dl1.race_id,
@@ -9085,10 +9085,10 @@ def api_preqc_check(race_id):
                 'total_votes': dl2.total_votes,
                 'is_write_in': dl2.is_write_in,
             }
-            
+
             # Run Pre-QC comparison
             preqc_result = PreQCComparisonEngine.compare_records(dl1_dict, dl2_dict)
-            
+
             # Store result
             preqc = PreQCComparison(
                 race_id=race_id,
@@ -9106,7 +9106,7 @@ def api_preqc_check(race_id):
                 checked_by=principal,
             )
             session.add(preqc)
-            
+
             # Update DownloadRecord
             download = session.query(DownloadRecord).filter(
                 DownloadRecord.race_id == race_id
@@ -9118,9 +9118,9 @@ def api_preqc_check(race_id):
                 download.preqc_fuzzy_score = preqc_result.fuzzy_confidence
                 download.preqc_discrepancy_count = preqc_result.discrepancy_count
                 download.preqc_checked_at = datetime.utcnow()
-            
+
             session.commit()
-            
+
             return jsonify({
                 'success': True,
                 'preqc_result': {
@@ -9133,10 +9133,10 @@ def api_preqc_check(race_id):
                     'discrepancies': preqc_result.discrepancies,
                 }
             }), 200
-        
+
         finally:
             session.close()
-    
+
     except Exception as e:
         logger.error(f"Error running Pre-QC check for {race_id}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -9156,7 +9156,7 @@ def api_qc1_submit(race_id):
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
         return jsonify({"error": "Unauthorized"}), 403
-    
+
     try:
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
@@ -9166,38 +9166,38 @@ def api_qc1_submit(race_id):
             PreQCComparison,
             QC1Checkpoint,
         )
-        
+
         data = request.get_json() or {}
         selected_dl = data.get('selected_dl', '').upper()
-        
+
         if selected_dl not in ('DL1', 'DL2'):
             return jsonify({'success': False, 'error': 'selected_dl must be DL1 or DL2'}), 400
-        
+
         db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
         engine = create_engine(db_url)
         Session = sessionmaker(bind=engine)
         session = Session()
-        
+
         try:
             download = session.query(DownloadRecord).filter(
                 DownloadRecord.race_id == race_id
             ).first()
-            
+
             if not download:
                 return jsonify({'success': False, 'error': f'Race {race_id} not found'}), 404
-            
+
             # Enforce role separation: QC1 cannot be DL1 or DL2 owner
             if principal in (download.dl1_assigned_to, download.dl2_assigned_to):
                 return jsonify({
                     'success': False,
                     'error': 'QC1 designee cannot also be DL1 or DL2 owner'
                 }), 400
-            
+
             # Get Pre-QC results
             preqc = session.query(PreQCComparison).filter(
                 PreQCComparison.race_id == race_id
             ).order_by(PreQCComparison.checked_at.desc()).first()
-            
+
             # Create QC1 checkpoint
             qc1 = QC1Checkpoint(
                 download_record_id=download.id,
@@ -9211,7 +9211,7 @@ def api_qc1_submit(race_id):
                 approval_status='approved' if data.get('inspection_result') == 'pass' else 'rejected',
             )
             session.add(qc1)
-            
+
             # Update DownloadRecord
             download.qc1_assigned_to = principal
             download.qc1_status = 'completed'
@@ -9219,19 +9219,19 @@ def api_qc1_submit(race_id):
             download.qc1_completed_at = datetime.utcnow()
             download.qc1_data_inspection_result = data.get('inspection_result')
             download.workflow_status = 'step_3' if data.get('inspection_result') == 'pass' else 'step_2_review'
-            
+
             session.commit()
-            
+
             return jsonify({
                 'success': True,
                 'message': f'QC1 review completed for {race_id}',
                 'qc1_id': qc1.id,
                 'workflow_status': download.workflow_status,
             }), 200
-        
+
         finally:
             session.close()
-    
+
     except Exception as e:
         logger.error(f"Error submitting QC1 for {race_id}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -9274,7 +9274,7 @@ def api_election_data_stats():
             'qc2_pending': 0,
             'production_records': 0,
         }
-    
+
     try:
         from sqlalchemy import create_engine, func
         from sqlalchemy.orm import sessionmaker
@@ -9283,12 +9283,12 @@ def api_election_data_stats():
             DownloadRecord,
             ElectionResult,
         )
-        
+
         db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
         engine = create_engine(db_url)
         Session = sessionmaker(bind=engine)
         session = Session()
-        
+
         try:
             stats = {
                 'total_races': session.query(func.count(DownloadRecord.id)).scalar() or 0,
@@ -9309,12 +9309,12 @@ def api_election_data_stats():
                 ).scalar() or 0,
                 'production_records': session.query(func.count(ElectionResult.id)).scalar() or 0,
             }
-            
+
             return jsonify({'success': True, 'stats': stats}), 200
-        
+
         finally:
             session.close()
-    
+
     except Exception as e:
         err_msg = str(e)
         if 'no such table: download_records' in err_msg.lower():
@@ -9557,7 +9557,7 @@ def handle_connect(auth=None):
                 "session_id": None
             }, room=getattr(request, 'sid', None))
             return False
-        
+
         # --- Certificate validation (Step 4: Check for expiry/changes) ---
         cert_fingerprint = None
         cert_expired = False
@@ -9584,7 +9584,7 @@ def handle_connect(auth=None):
                         })
             except Exception:
                 pass
-        
+
         if principal_source == "dev_bypass":
             logger.warning({
                 "level": "WARNING",
@@ -9655,7 +9655,7 @@ def handle_connect(auth=None):
         if resolved:
             session_manager.touch_session(resolved)
             _recover_stale_session(resolved, reason="connect")
-            
+
             # Cache certificate and check for changes (Step 4)
             if cert_fingerprint and cert_metadata:
                 # Check if cert has changed since last seen
@@ -9697,10 +9697,10 @@ def handle_connect(auth=None):
                         }, room=resolved)
                     except Exception:
                         pass
-                
+
                 # Cache the cert for future comparisons
                 session_manager.cache_cert(resolved, cert_fingerprint, cert_metadata, principal)
-                
+
                 # Check if cert is expired
                 if session_manager.cert_expired(resolved):
                     logger.warning({
@@ -9751,16 +9751,16 @@ def handle_disconnect(arg=None) -> None:
         req_sid = getattr(request, 'sid', None)
         if not isinstance(req_sid, str):
             req_sid = None
-    
+
     # Get session ID before unbinding
     logical = None
     if req_sid:
         logical = session_manager.resolve_socket(req_sid)
-    
+
     # Unbind socket
     unbound_session = session_manager.unbind_socket(req_sid) if req_sid else None
     logical = logical or unbound_session
-    
+
     logger.info({
         "level": "INFO",
         "type": "status",
@@ -9854,7 +9854,7 @@ def handle_parser_prompt(data) -> None:
             "session_id": session_id,
         })
         return
-    
+
     # Fallback: if session_id not resolved, try socket mapping
     if not session_id:
         try:
@@ -9863,7 +9863,7 @@ def handle_parser_prompt(data) -> None:
             socket_sid = getattr(request, 'sid', None)
         if isinstance(socket_sid, str):
             session_id = session_manager.resolve_socket(socket_sid)
-    
+
     if not session_id or not session_manager.has_session(session_id):
         logger.error({
             "level": "ERROR",
@@ -10369,21 +10369,21 @@ def api_data_assurance_classify():
         data = request.get_json()
         metadata = data.get("metadata", {})
         parsed_data = data.get("parsed_data", {})
-        
+
         # Generate unique dataset ID
         import hashlib
         from datetime import datetime
         dataset_id = hashlib.sha256(
             f"{metadata.get('state', '')}{metadata.get('county', '')}{metadata.get('contest', '')}{datetime.utcnow().isoformat()}".encode()
         ).hexdigest()[:16]
-        
+
         # Run auto QA checks
         headers = parsed_data.get("headers", [])
         rows = parsed_data.get("rows", [])
-        
+
         detected_issues = []
         confidence_score = 100.0
-        
+
         # Check: Missing headers
         if not headers:
             detected_issues.append({
@@ -10392,7 +10392,7 @@ def api_data_assurance_classify():
                 "description": "No column headers detected",
             })
             confidence_score -= 30
-        
+
         # Check: Empty data
         if not rows or len(rows) == 0:
             detected_issues.append({
@@ -10401,7 +10401,7 @@ def api_data_assurance_classify():
                 "description": "No data rows found",
             })
             confidence_score -= 40
-        
+
         # Check: Mismatched column counts
         if headers and rows:
             expected_cols = len(headers)
@@ -10414,7 +10414,7 @@ def api_data_assurance_classify():
                     "affected_rows": mismatched_rows,
                 })
                 confidence_score -= min(20, mismatched_rows * 0.5)
-        
+
         # Determine DL status
         dl_status = "DL1"  # Always start at DL1; manual review promotes to DL2
         if confidence_score < 50:
@@ -10432,7 +10432,7 @@ def api_data_assurance_classify():
                 "headers": len(headers or []),
             },
         )
-        
+
         # Store in PostgreSQL (data_assurance_classifications table)
         from webapp.parser.utils.db_utils import SessionLocal
         with SessionLocal() as db_session:
@@ -10453,7 +10453,7 @@ def api_data_assurance_classify():
                 }
             )
             db_session.commit()
-        
+
         # Optionally write to NER training data if REVIEW_WITH_MANUAL_BOT is enabled
         from webapp.parser.config import REVIEW_WITH_MANUAL_BOT
         if REVIEW_WITH_MANUAL_BOT and dl_status == "DL1" and rows:
@@ -10464,7 +10464,7 @@ def api_data_assurance_classify():
                     text = " ".join(str(cell) for cell in row if cell)
                     if text:
                         text_samples.append(text)
-                
+
                 # Entity extraction for NER training payloads
                 for text in text_samples:
                     entities = extract_training_entities(text, max_entities=40)
@@ -10499,7 +10499,7 @@ def api_data_assurance_classify():
                     "ner_training_samples_failed",
                     metadata={"dataset_id": dataset_id, "error": str(e)},
                 )
-        
+
         return jsonify({
             "dataset_id": dataset_id,
             "dl_status": dl_status,
@@ -10507,7 +10507,7 @@ def api_data_assurance_classify():
             "detected_issues": detected_issues,
             "created_at": datetime.utcnow().isoformat(),
         })
-    
+
     except Exception as e:
         logger.error(f"[QA] Classification failed: {e}")
         return jsonify({"error": str(e)}), 500
@@ -10523,7 +10523,7 @@ def api_data_assurance_promote():
         return cert_resp
     try:
         from datetime import datetime
-        
+
         from webapp.parser.utils.db_utils import SessionLocal
         from webapp.parser.utils.privilege_tiers import PrivilegeTier, get_principal_tier
 
@@ -10548,13 +10548,13 @@ def api_data_assurance_promote():
                 "required_tier": PrivilegeTier.ADMIN_REVIEWER.name,
                 "actual_tier": principal_tier.name,
             }), 403
-        
+
         data = request.get_json()
         dataset_id = data.get("dataset_id")
-        
+
         if not dataset_id:
             return jsonify({"error": "dataset_id required"}), 400
-        
+
         # Update classification status
         with SessionLocal() as db_session:
             result = db_session.execute(
@@ -10573,9 +10573,9 @@ def api_data_assurance_promote():
             row = result.fetchone()
             if not row:
                 return jsonify({"error": "Dataset not found"}), 404
-            
+
             db_session.commit()
-            
+
             # Mark associated NER training data as verified
             db_session.execute(
                 text("""
@@ -10586,7 +10586,7 @@ def api_data_assurance_promote():
                 {"source": f"qa_panel_{dataset_id}"}
             )
             db_session.commit()
-        
+
         return jsonify({
             "dataset_id": dataset_id,
             "dl_status": "DL2",
@@ -10596,7 +10596,7 @@ def api_data_assurance_promote():
             "promoted_at": row[4].isoformat() if row[4] else None,
             "reviewer_principal": principal,
         })
-    
+
     except Exception as e:
         logger.error(f"[QA] Promotion failed: {e}")
         return jsonify({"error": str(e)}), 500
@@ -10608,7 +10608,7 @@ def api_data_assurance_pending_reviews():
     """
     try:
         limit = int(request.args.get("limit", 50))
-        
+
         from webapp.parser.utils.db_utils import SessionLocal
         with SessionLocal() as db_session:
             result = db_session.execute(
@@ -10621,7 +10621,7 @@ def api_data_assurance_pending_reviews():
                 """),
                 {"limit": limit}
             )
-            
+
             pending_reviews = []
             for row in result:
                 pending_reviews.append({
@@ -10632,9 +10632,9 @@ def api_data_assurance_pending_reviews():
                     "metadata": orjson.loads(row[4]) if row[4] else {},
                     "created_at": row[5].isoformat() if row[5] else None,
                 })
-            
+
             return jsonify({"pending_reviews": pending_reviews})
-    
+
     except Exception as e:
         logger.error(f"[QA] Failed to fetch pending reviews: {e}")
         return jsonify({"error": str(e)}), 500
@@ -10669,7 +10669,7 @@ try:
 except Exception:
     # LOG_DIR or session_manager may not be initialized in some import contexts
     pass
-        
+
 # 7. Main Entrypoint
 if __name__ == "__main__":
     try:
