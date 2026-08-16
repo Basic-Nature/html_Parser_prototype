@@ -20,14 +20,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import orjson
-from datasets import Dataset
-from transformers import (
-    AutoModelForTokenClassification,
-    AutoTokenizer,
-    DataCollatorForTokenClassification,
-    Trainer,
-    TrainingArguments,
-)
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -192,6 +184,18 @@ def tokenize_and_align_labels(examples, tokenizer):
 
 def fine_tune_bert_ner():
     """Fine-tune BERT/RoBERTa model for election NER."""
+
+    # Training-only dependencies are imported lazily so lightweight helpers
+    # can be imported without initializing the full Hugging Face training stack.
+    from datasets import Dataset
+    from transformers import (
+        AutoModelForTokenClassification,
+        AutoTokenizer,
+        DataCollatorForTokenClassification,
+        Trainer,
+        TrainingArguments,
+    )
+
     # Load training data (prefer DB, fallback to JSONL)
     train_data = load_ner_data_from_db()
     if not train_data:

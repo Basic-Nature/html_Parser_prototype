@@ -1,3 +1,4 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:83791914d3b18bd826cfeb304e8226c29ea5b9766012e07c108f0df944403137
-size 1023
+{"patch_id": "a24e01016111b866d7fcd6d16128454bc552082f84ab152f766c93b3e3d750d8", "applied": true, "changed_files": ["tools/test_demo_file.txt"], "noop_files": [], "errors": [], "timestamp": 1769931791.1565695, "tool": "agent_patch_utils.apply_patch_safe"}
+{"patch_id": "a24e01016111b866d7fcd6d16128454bc552082f84ab152f766c93b3e3d750d8", "applied": true, "changed_files": [], "noop_files": ["tools/test_demo_file.txt"], "errors": [], "timestamp": 1769931791.1589837, "tool": "agent_patch_utils.apply_patch_safe"}
+{"patch_id": "ed951dd4ed4a1734335c0e4884414e1af1d528be13f1de5cf55d4d85fc8908df", "applied": true, "changed_files": ["tools/test_demo_file.txt"], "noop_files": [], "errors": [], "timestamp": 1769931791.162641, "tool": "agent_patch_utils.apply_patch_safe"}
+{"patch_id": "ea9ff84774eb6bcf952fd8e63d9d17043e3dffc4849a9dfd8ab05042c969c491", "applied": true, "changed_files": ["tools/test_demo_file.txt"], "noop_files": [], "errors": [], "timestamp": 1769931791.1642199, "tool": "agent_patch_utils.apply_patch_safe"}

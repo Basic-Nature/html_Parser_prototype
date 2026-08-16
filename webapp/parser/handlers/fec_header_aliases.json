@@ -1,3 +1,20 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:7645ba3233672da2ffd040b629cd39816fad5b954c35fe23a9c3f303d8e17036
-size 1130
+{
+  "candidate_id": ["Cand_Id", "CAND_ID", "Cand_Id", "Cand_Id"],
+  "candidate_name": ["Cand_Name", "CAND_NAME", "Name", "Cand_Name"],
+  "candidate_url": ["Link_Image", "link_image", "candidate_url"],
+  "office_type": ["Cand_Office", "CAND_OFFICE", "Cand_Office"],
+  "state": ["Cand_Office_St", "Cand_State", "State"],
+  "district": ["Cand_Office_Dist", "Cand_Office_Dist", "District"],
+  "party": ["Cand_Party_Affiliation", "Party", "cand_party_affiliation"],
+  "incumbent_status": ["Cand_Incumbent_Challenger_Open_Seat", "Incumbent", "Status"],
+  "total_receipts": ["Total_Receipt", "Total_Receipts", "TTL_RECEIPTS"],
+  "total_disbursement": ["Total_Disbursement", "Total_Disbursements", "TTL_DISB"],
+  "cash_on_hand": ["Cash_On_Hand_COP", "Cash_On_Hand_BOP", "COH_COP", "COH_BOP"],
+  "debt": ["Debt_Owed_By_Committee", "Debt_Owe_To_Committee"],
+  "coverage_end_date": ["Coverage_End_Date", "CVG_END_DT"],
+  "coverage_start_date": ["Coverage_Start_Date"],
+  "address_street": ["Cand_Street_1", "Cand_Street_2", "Street"],
+  "city": ["Cand_City", "City"],
+  "zip": ["Cand_Zip", "Zip"],
+  "cycle": ["cycle"]
+}

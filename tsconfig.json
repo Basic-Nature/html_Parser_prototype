@@ -1,3 +1,27 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:e3ab92127eb16bf77780c860f3a10479e9b17b8329cd071b2a670de047eb97b2
-size 630
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "target": "ES2021",
+    "module": "commonjs",
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "lib": ["DOM", "DOM.Iterable", "ES2021"],
+    "types": ["node", "jest"]
+  },
+  "include": [
+    "scripts/**/*.js",
+    "types/**/*.d.ts",
+    "webapp/static/js/**/*.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "webapp/static/js/vendor/**",
+    "webapp/static/js/vendor",
+    "webapp/static/js/legacy/**"
+  ]
+}

@@ -1,3 +1,43 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:9140efc3b27136b040f8c3bf0e43a0308999d6705595b451a35babcfd811d53c
-size 1759
+{
+  "name": "html_parser_prototype",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tooling for linting and lightweight tests for webapp static assets",
+  "scripts": {
+    "check-js": "node ./scripts/check_js_syntax.js",
+    "lint": "eslint webapp/static/js --ext .js",
+    "lint:fix": "eslint webapp/static/js --ext .js --fix",
+    "lint:strict": "eslint webapp/static/js --ext .js --max-warnings=0",
+    "tscheck": "tsc --noEmit",
+    "lint:python": "python -m ruff check",
+    "typecheck:py": "python -m mypy",
+    "lint:md": "markdownlint \"**/*.md\" --config .markdownlint.json",
+    "lint:web": "npm run lint:strict && npm run tscheck",
+    "verify:python": "npm run lint:python && npm run typecheck:py",
+    "verify:all": "npm run check-js && npm run lint:web && npm run lint:md && npm run verify:python",
+    "test": "npm run verify:all",
+    "test:schema-helper": "node tests/schema_helper.test.js",
+    "test:unit": "jest --config=jest.config.js --runInBand",
+    "test:e2e": "node tests/e2e/modal_prompt.e2e.js",
+    "smoke:prompt": "node tools/ui_prompt_smoke_puppeteer.js",
+    "smoke:api": "python tools/smoke_webapp_api.py",
+    "smoke:api:compare": "python tools/run_api_compare.py",
+    "stress:api": "python tools/stress_webapp_api.py"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/jest": "^29.5.3",
+    "eslint": "^8.50.0",
+    "eslint-plugin-unused-imports": "^4.3.0",
+    "markdownlint-cli": "^0.46.0",
+    "typescript": "^5.9.3",
+    "jest": "^29.6.4",
+    "jest-environment-jsdom": "^29.6.4",
+    "@testing-library/dom": "^9.0.0",
+    "@testing-library/jest-dom": "^6.0.0",
+    "jsdom": "^21.1.0"
+  },
+  "dependencies": {
+    "puppeteer": "^24.35.0"
+  }
+}

@@ -2,24 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-import types
-
-
-if "datasets" not in sys.modules:
-    datasets_stub = types.ModuleType("datasets")
-    datasets_stub.Dataset = object
-    sys.modules["datasets"] = datasets_stub
-
-if "transformers" not in sys.modules:
-    transformers_stub = types.ModuleType("transformers")
-    transformers_stub.AutoModelForTokenClassification = object
-    transformers_stub.AutoTokenizer = object
-    transformers_stub.DataCollatorForTokenClassification = object
-    transformers_stub.Trainer = object
-    transformers_stub.TrainingArguments = object
-    sys.modules["transformers"] = transformers_stub
-
 
 from webapp.parser.health.fine_tune_bert_ner import align_entity_spans_to_tokens
 

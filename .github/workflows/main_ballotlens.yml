@@ -376,14 +376,12 @@ jobs:
       - name: Show memory usage after cleanup
         run: free -h
 
-      - name: Run tests (if present)
+      - name: Run tracked pytest suites
         run: |
-          if [ -d "tests" ]; then
-            echo "Running tests..."
-            python -m unittest discover -s tests
-          else
-            echo "No tests directory found, skipping tests."
-          fi
+          python -m pytest \
+            webapp/tests \
+            tests/test_html_scanner_fast_path_contract.py \
+            -q
 
       - name: Run automation deployment smoke
         run: |

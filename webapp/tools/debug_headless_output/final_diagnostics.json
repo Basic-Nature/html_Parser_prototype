@@ -1,3 +1,19 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:2ffc08a1c9e07aa2a2cf749b11789c92c4283adf300b9ebb20ace3b7a7bf7f0f
-size 360
+{
+  "viewport": {
+    "width": 375,
+    "height": 667
+  },
+  "bodyClasses": [],
+  "bodyOverflow": "auto",
+  "htmlOverflow": "visible",
+  "sidebarState": {
+    "classes": [
+      "sidebar-left",
+      "has-scroll",
+      "sidebar-open"
+    ],
+    "display": "flex",
+    "position": "relative",
+    "transform": "matrix(1, 0, 0, 1, 0, 0)"
+  }
+}

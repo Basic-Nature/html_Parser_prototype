@@ -1,3 +1,5 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:ed81abe434ea2571d05190aabede2da72c031fd1de5170a1639d7b598e4bdc72
-size 175
+{
+	"name": "Smart Elections Parser DevTools Helper",
+	"description": "Placeholder file to satisfy devtools requests; not required for production.",
+	"version": "0.0.1"
+}

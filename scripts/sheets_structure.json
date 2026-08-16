@@ -1,3 +1,1045 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:4d7850706ad7ae2022aed69a8cedb5fae89d251c8d8e99dd5b0b1a20a8e2f7d4
-size 27826
+{
+  "discovery_date": "2026-02-05T20:01:41.132994",
+  "workbook_id": "1AnKXIi7fkP3FNzFSbPABSj_QYPY8WGu4ZGzwyW4A_Ac",
+  "workbook_title": "SE Data Standardization - Full Worklist",
+  "worksheet_count": 12,
+  "worksheets": {
+    "Next Steps": {
+      "title": "Next Steps",
+      "row_count": 400,
+      "col_count": 11,
+      "headers": [
+        "Priority",
+        "Status",
+        "Work in Progress - DL1",
+        "Work in Progress - DL2",
+        "Year",
+        "Race",
+        "State",
+        "Download 1",
+        "Download 2",
+        "Source Link",
+        ""
+      ],
+      "columns": {
+        "Priority": {
+          "index": 0,
+          "type": "date",
+          "non_empty_count": 400,
+          "sample_values": [
+            "1 - High",
+            "1 - High",
+            "1 - High"
+          ]
+        },
+        "Status": {
+          "index": 1,
+          "type": "boolean",
+          "non_empty_count": 100,
+          "sample_values": [
+            "1",
+            "1",
+            "1"
+          ]
+        },
+        "Work in Progress - DL1": {
+          "index": 2,
+          "type": "text",
+          "non_empty_count": 400,
+          "sample_values": [
+            "PROD Loaded",
+            "PROD Loaded",
+            "PROD Loaded"
+          ]
+        },
+        "Work in Progress - DL2": {
+          "index": 3,
+          "type": "text",
+          "non_empty_count": 360,
+          "sample_values": [
+            "Cabot",
+            "Cabot",
+            "Cabot"
+          ]
+        },
+        "Year": {
+          "index": 4,
+          "type": "text",
+          "non_empty_count": 351,
+          "sample_values": [
+            "Sarah B",
+            "Peter",
+            "Dawn"
+          ]
+        },
+        "Race": {
+          "index": 5,
+          "type": "numeric",
+          "non_empty_count": 400,
+          "sample_values": [
+            "2024",
+            "2024",
+            "2024"
+          ]
+        },
+        "State": {
+          "index": 6,
+          "type": "text",
+          "non_empty_count": 400,
+          "sample_values": [
+            "Senate",
+            "President",
+            "Senate"
+          ]
+        },
+        "Download 1": {
+          "index": 7,
+          "type": "text",
+          "non_empty_count": 400,
+          "sample_values": [
+            "Michigan",
+            "Virginia",
+            "Virginia"
+          ]
+        },
+        "Download 2": {
+          "index": 8,
+          "type": "text",
+          "non_empty_count": 260,
+          "sample_values": [
+            "-",
+            "-",
+            "-"
+          ]
+        },
+        "Source Link": {
+          "index": 9,
+          "type": "text",
+          "non_empty_count": 399,
+          "sample_values": [
+            "-",
+            "-",
+            "-"
+          ]
+        }
+      },
+      "category": "tracking"
+    },
+    "Status of Race Data": {
+      "title": "Status of Race Data",
+      "row_count": 5,
+      "col_count": 9,
+      "headers": [
+        "#REF!",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "columns": {
+        "#REF!": {
+          "index": 0,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        }
+      },
+      "category": "other"
+    },
+    "Source Links": {
+      "title": "Source Links",
+      "row_count": 415,
+      "col_count": 8,
+      "headers": [
+        "Timestamp",
+        "Email Address",
+        "DO NOT EDIT",
+        "Source Link",
+        "Source Data Format",
+        "Other Notes About URL",
+        "Supplemental Links",
+        "Review Notes"
+      ],
+      "columns": {
+        "Timestamp": {
+          "index": 0,
+          "type": "date",
+          "non_empty_count": 415,
+          "sample_values": [
+            "8/15/2025 11:51:23",
+            "8/16/2025 7:35:01",
+            "8/13/2025 18:27:51"
+          ]
+        },
+        "Email Address": {
+          "index": 1,
+          "type": "text",
+          "non_empty_count": 415,
+          "sample_values": [
+            "peter.r.shaw@gmail.com",
+            "edwin.ketola@gmail.com",
+            "cabotthunem@gmail.com"
+          ]
+        },
+        "DO NOT EDIT": {
+          "index": 2,
+          "type": "text",
+          "non_empty_count": 415,
+          "sample_values": [
+            "2024 | President | Pennsylvania | Source Link",
+            "2020 | President | Wisconsin | Source Link",
+            "2024 | Attorney General | North Carolina | Source "
+          ]
+        },
+        "Source Link": {
+          "index": 3,
+          "type": "url",
+          "non_empty_count": 415,
+          "sample_values": [
+            "https://www.electionreturns.pa.gov/ReportCenter/Re",
+            "https://elections.wi.gov/elections/election-result",
+            "https://er.ncsbe.gov/?election_dt=11/05/2024&count"
+          ]
+        },
+        "Source Data Format": {
+          "index": 4,
+          "type": "text",
+          "non_empty_count": 415,
+          "sample_values": [
+            "CSV",
+            "HTML",
+            "Data table, it will be necessary to have select ea"
+          ]
+        },
+        "Other Notes About URL": {
+          "index": 5,
+          "type": "reference",
+          "non_empty_count": 75,
+          "sample_values": [
+            "Make selections:\n-Election: 2024 Presidential\n-Off",
+            "County by County report for President after recoun",
+            "The URL provided covers all state wide races.  The"
+          ]
+        },
+        "Supplemental Links": {
+          "index": 6,
+          "type": "url",
+          "non_empty_count": 36,
+          "sample_values": []
+        },
+        "Review Notes": {
+          "index": 7,
+          "type": "url",
+          "non_empty_count": 16,
+          "sample_values": []
+        }
+      },
+      "category": "other"
+    },
+    "Progress": {
+      "title": "Progress",
+      "row_count": 55,
+      "col_count": 31,
+      "headers": [
+        "Priority",
+        "Hold",
+        "Incomplete",
+        "In Progress",
+        "Ready for QC1",
+        "Pre-QC Fail/Fix",
+        "QC2 Fail/Fix",
+        "Ready to Load",
+        "QC Loaded",
+        "PROD Loaded",
+        "Total count",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "columns": {
+        "Priority": {
+          "index": 0,
+          "type": "text",
+          "non_empty_count": 4,
+          "sample_values": [
+            "High",
+            "Medium",
+            "Low"
+          ]
+        },
+        "Hold": {
+          "index": 1,
+          "type": "numeric",
+          "non_empty_count": 2,
+          "sample_values": [
+            "31"
+          ]
+        },
+        "Incomplete": {
+          "index": 2,
+          "type": "numeric",
+          "non_empty_count": 4,
+          "sample_values": [
+            "0",
+            "0",
+            "29"
+          ]
+        },
+        "In Progress": {
+          "index": 3,
+          "type": "numeric",
+          "non_empty_count": 4,
+          "sample_values": [
+            "0",
+            "0",
+            "2"
+          ]
+        },
+        "Ready for QC1": {
+          "index": 4,
+          "type": "numeric",
+          "non_empty_count": 4,
+          "sample_values": [
+            "0",
+            "3",
+            "4"
+          ]
+        },
+        "Pre-QC Fail/Fix": {
+          "index": 5,
+          "type": "numeric",
+          "non_empty_count": 4,
+          "sample_values": [
+            "0",
+            "3",
+            "3"
+          ]
+        },
+        "QC2 Fail/Fix": {
+          "index": 6,
+          "type": "boolean",
+          "non_empty_count": 4,
+          "sample_values": [
+            "0",
+            "1",
+            "0"
+          ]
+        },
+        "Ready to Load": {
+          "index": 7,
+          "type": "boolean",
+          "non_empty_count": 4,
+          "sample_values": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "QC Loaded": {
+          "index": 8,
+          "type": "numeric",
+          "non_empty_count": 4,
+          "sample_values": [
+            "0",
+            "7",
+            "39"
+          ]
+        },
+        "PROD Loaded": {
+          "index": 9,
+          "type": "numeric",
+          "non_empty_count": 4,
+          "sample_values": [
+            "172",
+            "101",
+            "6"
+          ]
+        },
+        "Total count": {
+          "index": 10,
+          "type": "numeric",
+          "non_empty_count": 4,
+          "sample_values": [
+            "172",
+            "115",
+            "114"
+          ]
+        }
+      },
+      "category": "tracking"
+    },
+    "Overview": {
+      "title": "Overview",
+      "row_count": 409,
+      "col_count": 31,
+      "headers": [
+        "SMART Elections Data Standards",
+        "",
+        "",
+        "",
+        "Standardization Process",
+        "",
+        "",
+        "",
+        "0.00%",
+        "0.00%",
+        "Step 1",
+        "Step 2",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "Pre-QC Auto-check",
+        "",
+        "Step 3",
+        "Step 3",
+        "Step 4",
+        "",
+        ""
+      ],
+      "columns": {
+        "SMART Elections Data Standards": {
+          "index": 0,
+          "type": "date",
+          "non_empty_count": 402,
+          "sample_values": [
+            "Priority",
+            "1 - High",
+            "1 - High"
+          ]
+        },
+        "Standardization Process": {
+          "index": 4,
+          "type": "text",
+          "non_empty_count": 353,
+          "sample_values": [
+            "Work in Progress - DL2",
+            "Stephen",
+            "Peter"
+          ]
+        },
+        "0.00%": {
+          "index": 9,
+          "type": "text",
+          "non_empty_count": 400,
+          "sample_values": [
+            "Download 2",
+            "-",
+            "-"
+          ]
+        },
+        "Step 1": {
+          "index": 10,
+          "type": "url",
+          "non_empty_count": 402,
+          "sample_values": [
+            "Source Link",
+            "https://www.sos.alabama.gov/sites/default/files/el",
+            "https://www.sos.alabama.gov/sites/default/files/el"
+          ]
+        },
+        "Step 2": {
+          "index": 11,
+          "type": "reference",
+          "non_empty_count": 402,
+          "sample_values": [
+            "Download 1",
+            "DL1 Data Sheet",
+            "DL1 Data Sheet"
+          ]
+        },
+        "Pre-QC Auto-check": {
+          "index": 24,
+          "type": "boolean",
+          "non_empty_count": 409,
+          "sample_values": [
+            "Run Pre-Check",
+            "FALSE",
+            "FALSE"
+          ]
+        },
+        "Step 3": {
+          "index": 27,
+          "type": "reference",
+          "non_empty_count": 400,
+          "sample_values": [
+            "Database Upload",
+            "Dataset Admin Upload",
+            "Dataset Admin Upload"
+          ]
+        },
+        "Step 4": {
+          "index": 28,
+          "type": "date",
+          "non_empty_count": 402,
+          "sample_values": [
+            "QC 2 Form",
+            "det |1/19/2026 9:29:52",
+            "SDB | 10/29/2025 12:07:23"
+          ]
+        }
+      },
+      "category": "tracking"
+    },
+    "Sheet10": {
+      "title": "Sheet10",
+      "row_count": 0,
+      "col_count": 0,
+      "headers": [],
+      "columns": {},
+      "category": "other"
+    },
+    "QC 1 Form Responses": {
+      "title": "QC 1 Form Responses",
+      "row_count": 625,
+      "col_count": 16,
+      "headers": [
+        "Timestamp",
+        "Email Address",
+        "RACE ID - FOR VERIFICATION - DO NOT EDIT",
+        "If a down ballot race, is there least one Republican and one Democrat is a candidate in each down ballot race?  Please review the QC Checklist for further guidance.",
+        "Compare both DL1 and DL2 Standardized Tabs.  Did this pass the automated QC check?",
+        " Are the following two statements true for both DL1 and DL2?",
+        "Are the following two statements true for both DL1 and DL2?",
+        "Responder Initials",
+        "Select which DL to upload into the DBLite",
+        "Responder Initials | Timestamp",
+        "Copied to DL Sheets to Upload Folder?",
+        "",
+        "Year",
+        "Office",
+        "State",
+        ""
+      ],
+      "columns": {
+        "Timestamp": {
+          "index": 0,
+          "type": "date",
+          "non_empty_count": 341,
+          "sample_values": [
+            "9/28/2025 13:35:21",
+            "9/28/2025 13:50:41",
+            "9/28/2025 14:53:01"
+          ]
+        },
+        "Email Address": {
+          "index": 1,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "RACE ID - FOR VERIFICATION - DO NOT EDIT": {
+          "index": 2,
+          "type": "reference",
+          "non_empty_count": 341,
+          "sample_values": [
+            "2024 | President | California | QC1",
+            "2024 | Senate | California | QC1",
+            "2024 | Senate | Arizona | QC1"
+          ]
+        },
+        "If a down ballot race, is there least one Republican and one Democrat is a candidate in each down ballot race?  Please review the QC Checklist for further guidance.": {
+          "index": 3,
+          "type": "text",
+          "non_empty_count": 341,
+          "sample_values": [
+            "Not a down ballot race",
+            "Not a down ballot race",
+            "Not a down ballot race"
+          ]
+        },
+        "Compare both DL1 and DL2 Standardized Tabs.  Did this pass the automated QC check?": {
+          "index": 4,
+          "type": "boolean",
+          "non_empty_count": 341,
+          "sample_values": [
+            "Pass",
+            "Pass",
+            "Pass"
+          ]
+        },
+        " Are the following two statements true for both DL1 and DL2?": {
+          "index": 5,
+          "type": "text",
+          "non_empty_count": 340,
+          "sample_values": [
+            "Yes, both statements are true",
+            "Yes, both statements are true",
+            "Yes, both statements are true"
+          ]
+        },
+        "Are the following two statements true for both DL1 and DL2?": {
+          "index": 6,
+          "type": "text",
+          "non_empty_count": 340,
+          "sample_values": [
+            "Yes, both statements are true",
+            "Yes, both statements are true",
+            "Yes, both statements are true"
+          ]
+        },
+        "Responder Initials": {
+          "index": 7,
+          "type": "text",
+          "non_empty_count": 341,
+          "sample_values": [
+            "JFS",
+            "jfs",
+            "JFS"
+          ]
+        },
+        "Select which DL to upload into the DBLite": {
+          "index": 8,
+          "type": "reference",
+          "non_empty_count": 340,
+          "sample_values": [
+            "DL1",
+            "DL1",
+            "DL2"
+          ]
+        },
+        "Responder Initials | Timestamp": {
+          "index": 9,
+          "type": "date",
+          "non_empty_count": 341,
+          "sample_values": [
+            "JFS | 9/28/2025 13:35:21",
+            "jfs | 9/28/2025 13:50:41",
+            "JFS | 9/28/2025 14:53:01"
+          ]
+        },
+        "Copied to DL Sheets to Upload Folder?": {
+          "index": 10,
+          "type": "boolean",
+          "non_empty_count": 341,
+          "sample_values": [
+            "Yes",
+            "Yes",
+            "Yes"
+          ]
+        },
+        "Year": {
+          "index": 12,
+          "type": "numeric",
+          "non_empty_count": 611,
+          "sample_values": [
+            "2024",
+            "2024",
+            "2024"
+          ]
+        },
+        "Office": {
+          "index": 13,
+          "type": "text",
+          "non_empty_count": 327,
+          "sample_values": [
+            " President ",
+            " Senate ",
+            " Senate "
+          ]
+        },
+        "State": {
+          "index": 14,
+          "type": "text",
+          "non_empty_count": 327,
+          "sample_values": [
+            " California ",
+            " California ",
+            " Arizona "
+          ]
+        }
+      },
+      "category": "tracking"
+    },
+    "QC 2  Form Reponses": {
+      "title": "QC 2  Form Reponses",
+      "row_count": 283,
+      "col_count": 10,
+      "headers": [
+        "Timestamp",
+        "DO NOT EDIT",
+        "Responder Initials",
+        "Is the following statement true for this race?",
+        "Is the following statement true for this race?",
+        "Are the following statements true for both DL1 and DL2?",
+        "Are the following statements true for both DL1 and DL2?",
+        "Are the following two statements true for both DL1 and DL2?",
+        "Are the following two statements true for both DL1 and DL2?",
+        "Responder Initials | Timestamp"
+      ],
+      "columns": {
+        "Timestamp": {
+          "index": 0,
+          "type": "date",
+          "non_empty_count": 282,
+          "sample_values": [
+            "10/25/2025 13:16:53",
+            "10/25/2025 14:52:13"
+          ]
+        },
+        "DO NOT EDIT": {
+          "index": 1,
+          "type": "text",
+          "non_empty_count": 282,
+          "sample_values": [
+            "2024 | Senate | Nevada | QC2",
+            "2020 | President | Oregon | QC2"
+          ]
+        },
+        "Responder Initials": {
+          "index": 2,
+          "type": "text",
+          "non_empty_count": 282,
+          "sample_values": [
+            "SKW",
+            "SKW"
+          ]
+        },
+        "Is the following statement true for this race?": {
+          "index": 4,
+          "type": "boolean",
+          "non_empty_count": 282,
+          "sample_values": [
+            "Yes",
+            "Yes"
+          ]
+        },
+        "Are the following statements true for both DL1 and DL2?": {
+          "index": 6,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "Are the following two statements true for both DL1 and DL2?": {
+          "index": 8,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "Responder Initials | Timestamp": {
+          "index": 9,
+          "type": "date",
+          "non_empty_count": 282,
+          "sample_values": [
+            "SKW | 10/25/2025 13:16:53",
+            "SKW | 10/25/2025 14:52:13"
+          ]
+        }
+      },
+      "category": "other"
+    },
+    "QC 1 Log": {
+      "title": "QC 1 Log",
+      "row_count": 9,
+      "col_count": 13,
+      "headers": [
+        "Timestamp",
+        "Email Address",
+        "DO NOT EDIT",
+        "Compare both DL1 and DL2 Standardized Tabs.  Did this pass the automated QC check?",
+        "Please describe any inaccuracies (write \"None\" if the data is completely accurate)",
+        "Name Mapping Tab",
+        "Write-In Identification",
+        "If a down ballot race, is there least one Republican and one Democrat is a candidate in each down ballot race?  Please review the QC Checklist for further guidance.",
+        "If this race is one of the following, review the QC Checklist for further guidance.",
+        "Housekeeping",
+        "Fail if Unsuitable downballot races - 2024",
+        "Email Address | Timestamp",
+        "Action Needed"
+      ],
+      "columns": {
+        "Timestamp": {
+          "index": 0,
+          "type": "date",
+          "non_empty_count": 2,
+          "sample_values": []
+        },
+        "Email Address": {
+          "index": 1,
+          "type": "text",
+          "non_empty_count": 2,
+          "sample_values": []
+        },
+        "DO NOT EDIT": {
+          "index": 2,
+          "type": "text",
+          "non_empty_count": 2,
+          "sample_values": []
+        },
+        "Compare both DL1 and DL2 Standardized Tabs.  Did this pass the automated QC check?": {
+          "index": 3,
+          "type": "boolean",
+          "non_empty_count": 2,
+          "sample_values": []
+        },
+        "Please describe any inaccuracies (write \"None\" if the data is completely accurate)": {
+          "index": 4,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "Name Mapping Tab": {
+          "index": 5,
+          "type": "date",
+          "non_empty_count": 2,
+          "sample_values": []
+        },
+        "Write-In Identification": {
+          "index": 6,
+          "type": "date",
+          "non_empty_count": 2,
+          "sample_values": []
+        },
+        "If a down ballot race, is there least one Republican and one Democrat is a candidate in each down ballot race?  Please review the QC Checklist for further guidance.": {
+          "index": 7,
+          "type": "boolean",
+          "non_empty_count": 2,
+          "sample_values": []
+        },
+        "If this race is one of the following, review the QC Checklist for further guidance.": {
+          "index": 8,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "Housekeeping": {
+          "index": 9,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "Fail if Unsuitable downballot races - 2024": {
+          "index": 10,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "Email Address | Timestamp": {
+          "index": 11,
+          "type": "date",
+          "non_empty_count": 2,
+          "sample_values": []
+        },
+        "Action Needed": {
+          "index": 12,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        }
+      },
+      "category": "tracking"
+    },
+    "States": {
+      "title": "States",
+      "row_count": 50,
+      "col_count": 1,
+      "headers": [
+        "States"
+      ],
+      "columns": {
+        "States": {
+          "index": 0,
+          "type": "text",
+          "non_empty_count": 50,
+          "sample_values": [
+            "Alabama",
+            "Alaska",
+            "Arizona"
+          ]
+        }
+      },
+      "category": "lookup"
+    },
+    "QC 2 Log": {
+      "title": "QC 2 Log",
+      "row_count": 5,
+      "col_count": 7,
+      "headers": [
+        "Timestamp",
+        "Email Address",
+        "DO NOT EDIT",
+        "Is this data accurate?",
+        "Please describe any inaccuracies (write \"None\" if the data is completely accurate)",
+        "Email Address | Timestamp",
+        "Action Needed"
+      ],
+      "columns": {
+        "Timestamp": {
+          "index": 0,
+          "type": "date",
+          "non_empty_count": 5,
+          "sample_values": [
+            "9/12/2025 14:51:05",
+            "10/30/2025 18:31:46",
+            "10/30/2025 18:32:49"
+          ]
+        },
+        "Email Address": {
+          "index": 1,
+          "type": "text",
+          "non_empty_count": 5,
+          "sample_values": [
+            "detaylor0453@gmail.com",
+            "bihmsfam@gmail.com",
+            "bihmsfam@gmail.com"
+          ]
+        },
+        "DO NOT EDIT": {
+          "index": 2,
+          "type": "reference",
+          "non_empty_count": 5,
+          "sample_values": [
+            "2024 | President | Alabama | QC2",
+            "2024 | President | West Virginia | QC2",
+            "2024 | President | West Virginia | QC2"
+          ]
+        },
+        "Is this data accurate?": {
+          "index": 3,
+          "type": "text",
+          "non_empty_count": 5,
+          "sample_values": [
+            "Completely Accurate",
+            "Completely Accurate",
+            "Completely Accurate"
+          ]
+        },
+        "Please describe any inaccuracies (write \"None\" if the data is completely accurate)": {
+          "index": 4,
+          "type": "text",
+          "non_empty_count": 5,
+          "sample_values": [
+            "None",
+            "none",
+            "None"
+          ]
+        },
+        "Email Address | Timestamp": {
+          "index": 5,
+          "type": "date",
+          "non_empty_count": 5,
+          "sample_values": [
+            "detaylor0453@gmail.com | 9/12/2025 14:51:05",
+            "bihmsfam@gmail.com | 10/30/2025 18:31:46",
+            "bihmsfam@gmail.com | 10/30/2025 18:32:49"
+          ]
+        },
+        "Action Needed": {
+          "index": 6,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        }
+      },
+      "category": "other"
+    },
+    "Dataset Admin Upload": {
+      "title": "Dataset Admin Upload",
+      "row_count": 0,
+      "col_count": 7,
+      "headers": [
+        "Timestamp",
+        "Email Address",
+        "DO NOT EDIT",
+        "Was this data compared to FEC.gov and confirmed to be accurate?",
+        "Please describe any inaccuracies (write \"None\" if the data is completely accurate)",
+        "Email Address | Timestamp",
+        "Action Needed"
+      ],
+      "columns": {
+        "Timestamp": {
+          "index": 0,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "Email Address": {
+          "index": 1,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "DO NOT EDIT": {
+          "index": 2,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "Was this data compared to FEC.gov and confirmed to be accurate?": {
+          "index": 3,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "Please describe any inaccuracies (write \"None\" if the data is completely accurate)": {
+          "index": 4,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "Email Address | Timestamp": {
+          "index": 5,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        },
+        "Action Needed": {
+          "index": 6,
+          "type": "empty",
+          "non_empty_count": 0,
+          "sample_values": []
+        }
+      },
+      "category": "other"
+    }
+  },
+  "categories": {
+    "tracking": [
+      "Next Steps",
+      "Progress",
+      "Overview",
+      "QC 1 Form Responses",
+      "QC 1 Log"
+    ],
+    "other": [
+      "Status of Race Data",
+      "Source Links",
+      "Sheet10",
+      "QC 2  Form Reponses",
+      "QC 2 Log",
+      "Dataset Admin Upload"
+    ],
+    "lookup": [
+      "States"
+    ]
+  }
+}

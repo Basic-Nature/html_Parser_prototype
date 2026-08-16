@@ -1,3 +1,33 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:48dc76f56e2d2d4e16af579ee889504966e37f5cbdbcabc23a423f3e97d10857
-size 904
+{
+  "domains": [
+    "elections.maryland.gov",
+    "sos.ca.gov",
+    "elections.virginia.gov",
+    "sos.state.tx.us",
+    "elections.wi.gov",
+    "sos.state.co.us",
+    "elections.georgia.gov",
+    "sos.state.nc.us",
+    "elections.michigan.gov",
+    "sos.state.pa.us",
+    "elections.delaware.gov",
+    "elections.ny.gov",
+    "sos.state.fl.us",
+    "elections.nj.gov",
+    "elections.mass.gov",
+    "elections.wa.gov",
+    "sos.oregon.gov",
+    "elections.arizona.gov",
+    "elections.nevada.gov",
+    "elections.utah.gov"
+  ],
+  "patterns": [
+    ".*\\.elections\\..*\\.gov$",
+    ".*\\.sos\\..*\\.gov$",
+    ".*\\.state\\..*\\.us$",
+    ".*\\.co\\..*\\.us$"
+  ],
+  "last_synced": "2026-02-02T12:00:00Z",
+  "sync_source": "manual_bootstrap",
+  "notes": "Initial bootstrap file. Will be synced from Google Drive (folder 1uwO5BKmgf8gK4Bpu1cHaL4Fw3Bn3ETle) in Step 3."
+}

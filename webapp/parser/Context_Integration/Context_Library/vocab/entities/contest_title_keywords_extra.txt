@@ -1,3 +1,9 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:0589c6a6f0821732520eadbe72b4afde5fc0c6570736271bda7b0ed6ffcb4c95
-size 75
+contest
+race
+office
+seat
+position
+at-large
+district
+ward
+precinct
