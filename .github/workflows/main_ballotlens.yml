@@ -360,7 +360,7 @@ jobs:
       - name: Remove unnecessary files from site-packages
         run: |
           site_packages=$(python -c "import site; print(site.getsitepackages()[0])")
-          find "$site_packages" -type d -name "tests" -exec rm -rf {} + || true
+          # Keep package-internal test modules: NumPy/SciPy may import them at runtime.
           find "$site_packages" -type d -name "__pycache__" -exec rm -rf {} + || true
           find "$site_packages" -type d -name "docs" -exec rm -rf {} + || true
 

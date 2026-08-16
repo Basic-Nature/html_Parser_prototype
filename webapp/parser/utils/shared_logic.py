@@ -271,12 +271,15 @@ def safe_filename(
     if not name:
         name = default
 
-    # Truncate to max_length, preserving extension if possible
+    # Truncate to max_length, preserving the extension only when it fits.
     if len(name) > max_length:
         p = Path(name)
         ext = p.suffix
-        base = p.stem[: max_length - len(ext)]
-        name = base + ext
+        if ext and len(ext) <= max_length:
+            base = p.stem[: max_length - len(ext)]
+            name = base + ext
+        else:
+            name = name[:max_length]
 
     return name
 
