@@ -47,7 +47,14 @@ describe('AuthUtils certificate contract', () => {
   });
 
   test('ensureCertAvailable returns true for successful cert probe', async () => {
-    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: jest.fn().mockResolvedValue({
+        certificate_present: true,
+        certificate_action_required: false,
+      }),
+    });
     window.fetch = global.fetch;
 
     const ok = await authUtils.ensureCertAvailable('/api/protected');
@@ -71,7 +78,14 @@ describe('AuthUtils certificate contract', () => {
   test('fetchWithCertHandling notifies on 401 mutation response', async () => {
     global.fetch = jest
       .fn()
-      .mockResolvedValueOnce({ ok: true, status: 200 })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          certificate_present: true,
+          certificate_action_required: false,
+        }),
+      })
       .mockResolvedValueOnce({ ok: false, status: 401 });
     window.fetch = global.fetch;
 

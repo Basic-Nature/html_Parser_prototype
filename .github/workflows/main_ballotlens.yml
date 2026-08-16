@@ -351,6 +351,8 @@ jobs:
           set -e
           python -m pip install --upgrade pip
           pip install --no-cache-dir --prefer-binary -r requirements.txt
+          pip install --no-cache-dir --prefer-binary -r requirements-dev.txt
+          python -m pytest --version
 
       - name: Install Playwright browsers (runner)
         run: python -m playwright install --with-deps chromium
