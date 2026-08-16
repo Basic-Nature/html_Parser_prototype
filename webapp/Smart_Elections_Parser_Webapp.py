@@ -2014,19 +2014,38 @@ def client_fingerprint():
     return f"{ip}|{ua[:64]}"
 
 
+from webapp.parser.auth import context as _authority_context
+
+
+def _configure_authority_context_runtime():
+    _authority_context.configure_runtime(
+        ALLOW_AUTO_SESSION_REUSE=ALLOW_AUTO_SESSION_REUSE,
+        ALLOW_DEV_NO_PRINCIPAL=ALLOW_DEV_NO_PRINCIPAL,
+        CERT_SESSION_BINDING=CERT_SESSION_BINDING,
+        CERT_SESSION_CAP=CERT_SESSION_CAP,
+        ENABLE_FINGERPRINT_SESSION_RECOVERY=ENABLE_FINGERPRINT_SESSION_RECOVERY,
+        _apply_auth_context=_apply_auth_context,
+        _derive_auth_context=_derive_auth_context,
+        _ensure_quick_copy_dir=_ensure_quick_copy_dir,
+        _is_local_host=_is_local_host,
+        _resolve_cert_session_id=_resolve_cert_session_id,
+        _session_has_principal=_session_has_principal,
+        client_fingerprint=client_fingerprint,
+        extract_client_principal=extract_client_principal,
+        get_request_principal=get_request_principal,
+        request=request,
+        safe_get=safe_get,
+        safe_sid=safe_sid,
+        secrets=secrets,
+        session=session,
+        session_manager=session_manager,
+    )
+
 def get_request_principal():
     """Return (principal, source, cert_metadata) preferring client cert, then SSO OID."""
-    principal, source, cert_meta = extract_client_principal(request.headers)
-    if principal:
-        return principal, source, cert_meta
+    _configure_authority_context_runtime()
+    return _authority_context.get_request_principal()
 
-    # Dev-only bypass for localhost when explicitly enabled
-    host = (request.host or "").lower()
-    is_local = _is_local_host(host)
-    if ALLOW_DEV_NO_PRINCIPAL and is_local:
-        remote = request.remote_addr or "local"
-        return f"dev:{remote}", "dev_bypass", None
-    return None, None, None
 
 
 def _is_local_host(host: str) -> bool:
@@ -2072,189 +2091,32 @@ def _is_dev_isolation_bypass_request() -> bool:
 
 
 def _resolve_cert_session_id(principal: str | None) -> str | None:
-    if not principal or not principal.startswith("cert:"):
-        return None
-    fingerprint = principal.split(":", 1)[1].strip()
-    if not fingerprint:
-        return None
-    return f"cert_{fingerprint[:32]}"
+    _configure_authority_context_runtime()
+    return _authority_context._resolve_cert_session_id(principal)
+
 
 
 def _derive_auth_context(principal: str | None, principal_source: str | None) -> dict:
-    if principal and principal.startswith("cert:"):
-        return {"auth_tier": "cert", "auth_trusted": True, "principal_source": principal_source}
-    if principal and principal.startswith("sso:"):
-        return {"auth_tier": "sso", "auth_trusted": True, "principal_source": principal_source}
-    if principal and principal.startswith("dev:"):
-        return {"auth_tier": "dev", "auth_trusted": True, "principal_source": principal_source}
-    return {"auth_tier": "anon", "auth_trusted": False, "principal_source": principal_source}
+    _configure_authority_context_runtime()
+    return _authority_context._derive_auth_context(principal, principal_source)
+
 
 
 def _apply_auth_context(session_id: str, principal: str | None, principal_source: str | None) -> None:
-    if not session_id:
-        return
-    updates = _derive_auth_context(principal, principal_source)
-    # Also cache principal to metadata so it's available for socket events (where HTTP headers aren't preserved)
-    if principal:
-        updates["principal"] = principal
-    session_manager.update_metadata(session_id, **updates)
+    _configure_authority_context_runtime()
+    return _authority_context._apply_auth_context(session_id, principal, principal_source)
+
 
 
 def _session_has_principal(session_id: str) -> bool:
-    meta = session_manager.get_metadata(session_id)
-    return bool(meta and meta.get("principal"))
+    _configure_authority_context_runtime()
+    return _authority_context._session_has_principal(session_id)
+
 
 def resolve_session_id(data=None, create_if_missing=True):
-    def _log_resolution(decision: str, sid_val: str | None, reason: str | None = None):
-        try:
-            logger.info({
-                "level": "INFO",
-                "type": "auth",
-                "message": f"Session resolution: {decision}",
-                "session_id": sid_val,
-                "reason": reason,
-            })
-        except Exception:
-            pass
+    _configure_authority_context_runtime()
+    return _authority_context.resolve_session_id(data, create_if_missing)
 
-    def _truthy(val):
-        if val is None:
-            return False
-        if isinstance(val, bool):
-            return val
-        try:
-            s = str(val).strip().lower()
-        except Exception:
-            return False
-        return s in {"1", "true", "yes", "y", "on", "reuse", "reuse_session"}
-
-    try:
-        socket_sid = safe_sid()
-    except Exception:
-        socket_sid = getattr(request, 'sid', None)
-    if not isinstance(socket_sid, str) or not socket_sid:
-        return None
-    principal, principal_source, _ = get_request_principal()
-
-    # Determine whether automatic session reuse is permitted
-    reuse_hint = False
-    if isinstance(data, dict):
-        reuse_hint = _truthy(data.get("reuse_session") or data.get("reuse"))
-    try:
-        arg_reuse = request.args.get("reuse_session")
-        hdr_reuse = request.headers.get("X-Reuse-Session")
-        reuse_hint = reuse_hint or _truthy(arg_reuse) or _truthy(hdr_reuse)
-    except Exception:
-        pass
-
-    allow_reuse = ALLOW_AUTO_SESSION_REUSE or reuse_hint
-    # For dev_bypass principals, default to no automatic reuse unless explicitly hinted
-    if principal_source == "dev_bypass" and not reuse_hint:
-        allow_reuse = False
-
-    sid = None
-    if isinstance(data, dict):
-        sid = safe_get(data, 'session_id')
-    if isinstance(sid, str) and sid:
-        session_manager.bind_socket(socket_sid, sid)
-        if principal:
-            session_manager.set_principal(sid, principal, principal_source)
-        _apply_auth_context(sid, principal, principal_source)
-        _log_resolution("explicit_session_id", sid, "payload session_id")
-        return sid
-
-    # Prefer principal binding to ensure identity fidelity across reconnects
-    if allow_reuse and principal:
-        mapped_principal = session_manager.resolve_principal(principal)
-        if isinstance(mapped_principal, str) and mapped_principal:
-            session_manager.bind_socket(socket_sid, mapped_principal)
-            session['logical_session_id'] = mapped_principal
-            _apply_auth_context(mapped_principal, principal, principal_source)
-            _log_resolution("reuse_principal", mapped_principal, principal_source)
-            return mapped_principal
-
-    if allow_reuse:
-        mapped = session_manager.resolve_socket(socket_sid)
-        if isinstance(mapped, str) and mapped:
-            if not principal and _session_has_principal(mapped):
-                _log_resolution("reuse_socket_blocked", mapped, "principal_required")
-            else:
-                if principal:
-                    session_manager.set_principal(mapped, principal, principal_source)
-                _apply_auth_context(mapped, principal, principal_source)
-                _log_resolution("reuse_socket", mapped, "socket bind")
-                return mapped
-
-    if allow_reuse:
-        cookie_sid = session.get('logical_session_id')
-        if isinstance(cookie_sid, str) and cookie_sid:
-            if not principal and _session_has_principal(cookie_sid):
-                _log_resolution("reuse_cookie_blocked", cookie_sid, "principal_required")
-            else:
-                session_manager.bind_socket(socket_sid, cookie_sid)
-                if principal:
-                    session_manager.set_principal(cookie_sid, principal, principal_source)
-                _apply_auth_context(cookie_sid, principal, principal_source)
-                _log_resolution("reuse_cookie", cookie_sid, "logical_session_id cookie")
-                return cookie_sid
-
-    fingerprint = client_fingerprint() if ENABLE_FINGERPRINT_SESSION_RECOVERY else None
-    if allow_reuse and ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
-        fp_sid = session_manager.resolve_fingerprint(fingerprint)
-        if isinstance(fp_sid, str) and fp_sid:
-            if not principal and _session_has_principal(fp_sid):
-                _log_resolution("reuse_fingerprint_blocked", fp_sid, "principal_required")
-            else:
-                session_manager.bind_socket(socket_sid, fp_sid)
-                session['logical_session_id'] = fp_sid
-                if principal:
-                    session_manager.set_principal(fp_sid, principal, principal_source)
-                _apply_auth_context(fp_sid, principal, principal_source)
-                _log_resolution("reuse_fingerprint", fp_sid, "fingerprint")
-                return fp_sid
-
-    if principal and CERT_SESSION_CAP > 0:
-        active_sessions = session_manager.list_principal_sessions(principal, active_only=True)
-        if len(active_sessions) >= CERT_SESSION_CAP:
-            reuse_sid = session_manager.select_principal_session(principal, active_only=True) or active_sessions[0]
-            session_manager.bind_socket(socket_sid, reuse_sid)
-            session['logical_session_id'] = reuse_sid
-            session_manager.set_principal(reuse_sid, principal, principal_source)
-            _apply_auth_context(reuse_sid, principal, principal_source)
-            _log_resolution("reuse_principal_cap", reuse_sid, f"cap={CERT_SESSION_CAP}")
-            return reuse_sid
-
-    if not create_if_missing:
-        return None
-
-    cert_session_id = _resolve_cert_session_id(principal) if CERT_SESSION_BINDING else None
-    if cert_session_id:
-        mapped_principal = session_manager.resolve_principal(principal) if principal else None
-        if mapped_principal and mapped_principal != cert_session_id:
-            cert_session_id = mapped_principal
-        if ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
-            session_manager.bind_fingerprint(fingerprint, cert_session_id)
-        session_manager.bind_socket(socket_sid, cert_session_id)
-        session['logical_session_id'] = cert_session_id
-        session_manager.ensure_session(cert_session_id)
-        _ensure_quick_copy_dir(cert_session_id)
-        session_manager.set_principal(cert_session_id, principal, principal_source)
-        _apply_auth_context(cert_session_id, principal, principal_source)
-        _log_resolution("new_cert_session", cert_session_id, "cert_binding")
-        return cert_session_id
-
-    new_sid = 'sess_' + secrets.token_urlsafe(16)
-    if ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
-        session_manager.bind_fingerprint(fingerprint, new_sid)
-    session_manager.bind_socket(socket_sid, new_sid)
-    session['logical_session_id'] = new_sid
-    session_manager.ensure_session(new_sid)
-    _ensure_quick_copy_dir(new_sid)
-    if principal:
-        session_manager.set_principal(new_sid, principal, principal_source)
-    _apply_auth_context(new_sid, principal, principal_source)
-    _log_resolution("new_session", new_sid, "created")
-    return new_sid
 
 def emit_contest_options(session_id: str, contests: list[dict], context: dict | None = None):
     """
