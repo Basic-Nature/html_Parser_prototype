@@ -173,7 +173,7 @@ Prioritized tasks for next session:
 
 - `webapp/parser/verification/local_dl_sync.py` - 373 lines, production-ready
 - `webapp/parser/verification_endpoints.py` - All 5 sync endpoints functional
-- `tests/test_local_dl_sync.py` - 12/12 tests passing
+- `webapp/tests/test_local_dl_sync.py` - 12/12 tests passing
 
 ---
 

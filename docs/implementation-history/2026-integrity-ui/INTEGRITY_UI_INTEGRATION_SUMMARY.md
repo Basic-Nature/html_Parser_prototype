@@ -231,7 +231,7 @@ User sees live metrics + alerts
 
 ### Test
 
-- `tests/test_integrity_signal.py`
+- `webapp/tests/test_integrity_signal.py`
   - Validates end-to-end flow (digest write → trend update → signal emission)
 
 ---
