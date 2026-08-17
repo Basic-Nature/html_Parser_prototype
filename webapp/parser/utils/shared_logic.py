@@ -325,7 +325,9 @@ def safe_resolve_path(
 ) -> Path:
     """Resolve a path while enforcing base confinement and optional existence checks."""
     base_path = Path(base).expanduser().resolve() if base is not None else None
-    raw_path = Path(path)
+    # Treat both slash styles as path separators on every platform so
+    # Windows-style traversal cannot become a literal POSIX filename.
+    raw_path = Path(str(path).replace("\\", "/"))
     target = raw_path if raw_path.is_absolute() else (base_path or Path.cwd()).joinpath(raw_path)
     try:
         resolved = target.resolve(strict=must_exist)
@@ -356,12 +358,13 @@ def safe_join_path(base: Union[str, Path], *paths: str) -> Path:
         if raw is None:
             continue
         text = str(raw)
-        for piece in re.split(r"[\\/]+", text):
-            if not piece:
-                continue
-            cleaned = safe_filename(piece, strict_mode=True)
-            if cleaned:
-                sanitized_parts.append(cleaned)
+        if not any(re.split(r"[\\/]+", text)):
+            continue
+        # Each argument is one path component. Embedded separators are
+        # sanitized away instead of becoming additional directories.
+        cleaned = safe_filename(text, strict_mode=True)
+        if cleaned:
+            sanitized_parts.append(cleaned)
 
     candidate = base_path.joinpath(*sanitized_parts)
     try:
