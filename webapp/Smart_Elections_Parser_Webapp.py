@@ -533,20 +533,28 @@ def sanitize_internal_next(raw_next: str | None, fallback: str = "/") -> str:
     return f"{normalized_path}{normalized_query}{normalized_frag}"
 
 
+def _configure_authority_status_runtime():
+    _authority_status.configure_runtime(
+        AZURE_CLIENT_CERT_MODE=AZURE_CLIENT_CERT_MODE,
+        CERT_ENFORCEMENT_MODE=CERT_ENFORCEMENT_MODE,
+        DEPLOY_ENV=DEPLOY_ENV,
+        REQUIRE_CERT_FOR_MUTATIONS=REQUIRE_CERT_FOR_MUTATIONS,
+        _auth_mode_requires_certificate=_auth_mode_requires_certificate,
+        _is_local_request=_is_local_request,
+        _sanitize_cert_metadata_for_status=_sanitize_cert_metadata_for_status,
+        api_auth_status=api_auth_status,
+        get_request_principal=get_request_principal,
+        jsonify=jsonify,
+        request=request,
+        resolve_session_id=resolve_session_id,
+        sanitize_internal_next=sanitize_internal_next,
+        url_for=url_for,
+    )
+
+
 def _sanitize_cert_metadata_for_status(cert_metadata: dict | None) -> dict:
-    if not isinstance(cert_metadata, dict):
-        return {}
-    allowed = {
-        "cn",
-        "issuer",
-        "serial_number",
-        "issued_date",
-        "expiry_date",
-        "expiry_days",
-        "key_algorithm",
-        "is_expired",
-    }
-    return {k: cert_metadata[k] for k in allowed if k in cert_metadata}
+    _configure_authority_status_runtime()
+    return _authority_status._sanitize_cert_metadata_for_status(cert_metadata)
 
 
 def _configure_authority_policy_runtime():
@@ -1935,6 +1943,7 @@ def client_fingerprint():
 
 from webapp.parser.auth import context as _authority_context
 from webapp.parser.auth import policy as _authority_policy
+from webapp.parser.auth import status as _authority_status
 
 
 def _configure_authority_context_runtime():
@@ -7293,230 +7302,12 @@ app.config["_OBSERVABILITY_ROUTE_HANDLERS"] = {
 }
 
 def api_auth_status():
-    # Authoritative request-scoped authentication/certificate state.
-    #
-    # Session state is included only for UX continuity. Certificate presence
-    # is derived solely from the current request principal.
-
-    principal, principal_source, cert_metadata = (
-        get_request_principal()
-    )
-
-    certificate_present = bool(
-        principal
-        and principal.startswith(
-            "cert:"
-        )
-    )
-
-    authenticated = bool(
-        principal
-    )
-
-    next_target = sanitize_internal_next(
-        request.args.get("next"),
-        fallback=url_for(
-            "ballot_lens"
-        ),
-    )
-
-    try:
-        session_id = resolve_session_id(
-            {},
-            create_if_missing=False,
-        )
-    except Exception:
-        session_id = None
-
-    try:
-        from webapp.parser.utils.privilege_tiers import (
-            get_principal_tier,
-        )
-
-        tier = get_principal_tier(
-            principal,
-            principal_source,
-        )
-    except Exception:
-        tier = None
-
-    if tier is not None:
-        raw_tier_name = (
-            getattr(
-                tier,
-                "name",
-                None,
-            )
-            or getattr(
-                tier,
-                "value",
-                None,
-            )
-            or "STANDARD_USER"
-        )
-
-        if isinstance(
-            raw_tier_name,
-            str,
-        ):
-            privilege_tier = (
-                raw_tier_name
-            )
-        else:
-            privilege_tier = {
-                0: "STANDARD_USER",
-                1: "ADMIN_REVIEWER",
-                2: "ADMIN_FULL_TRUST",
-                3: "ROOT_ADMIN",
-            }.get(
-                int(raw_tier_name),
-                "STANDARD_USER",
-            )
-
-        try:
-            privilege_level = (
-                int(tier)
-            )
-        except Exception:
-            privilege_level = {
-                "STANDARD_USER": 0,
-                "ADMIN_REVIEWER": 1,
-                "ADMIN_FULL_TRUST": 2,
-                "ROOT_ADMIN": 3,
-            }.get(
-                privilege_tier,
-                0,
-            )
-
-        privilege_display = (
-            getattr(
-                tier,
-                "name_display",
-                None,
-            )
-            or privilege_tier
-            .replace("_", " ")
-            .title()
-        )
-
-    else:
-        privilege_tier = (
-            "STANDARD_USER"
-        )
-
-        privilege_level = 0
-
-        privilege_display = (
-            "Standard User"
-        )
-
-    local_certificate_bypass = bool(
-        DEPLOY_ENV == "local"
-        and _is_local_request()
-    )
-
-    certificate_required_for_mutations = bool(
-        _auth_mode_requires_certificate()
-        and REQUIRE_CERT_FOR_MUTATIONS
-        and not local_certificate_bypass
-    )
-
-    response = {
-        "authenticated": authenticated,
-
-        "certificate_present": (
-            certificate_present
-        ),
-
-        "certificate_required_for_mutations": (
-            certificate_required_for_mutations
-        ),
-
-        "certificate_action_required": bool(
-            certificate_required_for_mutations
-            and not certificate_present
-        ),
-
-        "principal": principal,
-
-        "principal_source": (
-            principal_source
-        ),
-
-        "cert_metadata": (
-            _sanitize_cert_metadata_for_status(
-                cert_metadata
-            )
-        ),
-
-        "privilege_tier": (
-            privilege_tier
-        ),
-
-        "privilege_level": (
-            privilege_level
-        ),
-
-        "privilege_display": (
-            privilege_display
-        ),
-
-        "certificate_policy": (
-            CERT_ENFORCEMENT_MODE
-        ),
-
-        "azure_client_cert_mode": (
-            AZURE_CLIENT_CERT_MODE
-        ),
-
-        "challenge_url": url_for(
-            "auth_challenge",
-            next=next_target,
-        ),
-
-        "auth_url": url_for(
-            "auth_welcome",
-            next=next_target,
-        ),
-
-        "status_source": (
-            "current_request_principal"
-        ),
-
-        "session_context": {
-            "session_id": session_id,
-
-            "host": (
-                request.host
-                or "unknown"
-            ),
-
-            "remote_addr": (
-                request.remote_addr
-                or "unknown"
-            ),
-
-            # Explicit contract: session/cache state is never certificate proof.
-            "certificate_proof_cached": False,
-        },
-
-        "timestamp": (
-            datetime.now(
-                timezone.utc
-            ).isoformat()
-        ),
-    }
-
-    return jsonify(
-        response
-    )
+    _configure_authority_status_runtime()
+    return _authority_status.api_auth_status()
 
 def api_auth_certificate_info():
-    """
-    Legacy compatibility alias for auth status.
-    This endpoint now behaves as a safe inspection endpoint.
-    """
-    return api_auth_status()
+    _configure_authority_status_runtime()
+    return _authority_status.api_auth_certificate_info()
 
 
 def api_route_wrapper_monitor_snapshot():
