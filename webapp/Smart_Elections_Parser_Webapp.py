@@ -100,12 +100,9 @@ AZURE_CLIENT_CERT_MODE = (
 
 
 def _auth_mode_requires_certificate() -> bool:
-    # Compatibility name retained while callers migrate to the clearer
-    # CERT_ENFORCEMENT_MODE terminology.
-    return (
-        CERT_ENFORCEMENT_MODE
-        == "mutations"
-    )
+    # Compatibility wrapper retained during Tranche 1.
+    _configure_authority_policy_runtime()
+    return _authority_policy._auth_mode_requires_certificate()
 
 SOCKETIO_MESSAGE_QUEUE = os.environ.get("SOCKETIO_MESSAGE_QUEUE")
 SOCKETIO_MESSAGE_CHANNEL = os.environ.get("SOCKETIO_MESSAGE_CHANNEL", "socketio")
@@ -552,123 +549,45 @@ def _sanitize_cert_metadata_for_status(cert_metadata: dict | None) -> dict:
     return {k: cert_metadata[k] for k in allowed if k in cert_metadata}
 
 
+def _configure_authority_policy_runtime():
+    _authority_policy.configure_runtime(
+        AZURE_CLIENT_CERT_MODE=AZURE_CLIENT_CERT_MODE,
+        CERT_ENFORCEMENT_MODE=CERT_ENFORCEMENT_MODE,
+        DEPLOY_ENV=DEPLOY_ENV,
+        REQUIRE_CERT_FOR_MUTATIONS=REQUIRE_CERT_FOR_MUTATIONS,
+        _auth_mode_requires_certificate=_auth_mode_requires_certificate,
+        _cert_required_response=_cert_required_response,
+        _is_local_request=_is_local_request,
+        _request_wants_json=_request_wants_json,
+        emit=emit,
+        get_request_principal=get_request_principal,
+        hmac=hmac,
+        jsonify=jsonify,
+        normalize_log_obj=normalize_log_obj,
+        os=os,
+        redirect=redirect,
+        request=request,
+        sanitize_internal_next=sanitize_internal_next,
+        session_manager=session_manager,
+        url_for=url_for,
+    )
+
+
 def _cert_required_response(reason: str):
-    wants_json = _request_wants_json()
-
-    fallback_path = (
-        request.path
-        or "/"
-    )
-
-    if request.query_string:
-        query_string = (
-            request.query_string
-            .decode(
-                "utf-8",
-                "ignore",
-            )
-        )
-
-        if query_string:
-            fallback_path += (
-                f"?{query_string}"
-            )
-
-    auth_next = sanitize_internal_next(
-        request.args.get("next"),
-        fallback=fallback_path,
-    )
-
-    auth_url = url_for(
-        "auth_welcome",
-        next=auth_next,
-    )
-
-    challenge_url = url_for(
-        "auth_challenge",
-        next=auth_next,
-    )
-
-    if wants_json:
-        return jsonify({
-            "error": "certificate_required",
-            "reason": reason,
-            "auth_url": auth_url,
-            "challenge_url": challenge_url,
-            "certificate_policy": CERT_ENFORCEMENT_MODE,
-            "azure_client_cert_mode": AZURE_CLIENT_CERT_MODE,
-        }), 401
-
-    return redirect(
-        auth_url
-    )
+    _configure_authority_policy_runtime()
+    return _authority_policy._cert_required_response(reason)
 
 def _require_client_cert(reason: str):
-    if not _auth_mode_requires_certificate() or not REQUIRE_CERT_FOR_MUTATIONS:
-        return None
-    if DEPLOY_ENV == "local" and _is_local_request():
-        return None
-    admin_token = os.environ.get("ADMIN_JWT_TOKEN")
-    auth_hdr = (request.headers.get("Authorization") or "").strip()
-    if admin_token and auth_hdr.lower().startswith("bearer "):
-        try:
-            if hmac.compare_digest(auth_hdr.split(None, 1)[1].strip(), admin_token):
-                return None
-        except Exception:
-            pass
-    principal, _, _ = get_request_principal()
-    if principal and principal.startswith("cert:"):
-        return None
-    return _cert_required_response(reason)
+    _configure_authority_policy_runtime()
+    return _authority_policy._require_client_cert(reason)
 
 
 def _require_cert_for_socket_action(action: str, session_id: str | None = None) -> bool:
-    if not _auth_mode_requires_certificate() or not REQUIRE_CERT_FOR_MUTATIONS:
-        return True
-    if DEPLOY_ENV == "local" and _is_local_request():
-        return True
-    admin_token = os.environ.get("ADMIN_JWT_TOKEN")
-    auth_hdr = (request.headers.get("Authorization") or "").strip()
-    if admin_token and auth_hdr.lower().startswith("bearer "):
-        try:
-            if hmac.compare_digest(auth_hdr.split(None, 1)[1].strip(), admin_token):
-                return True
-        except Exception:
-            pass
-    # First check if session has a cached principal (for socket events where HTTP headers aren't preserved)
-    if session_id:
-        try:
-            meta = session_manager.get_metadata(session_id)
-            if meta and meta.get("principal"):
-                cached_principal = meta.get("principal")
-                if isinstance(cached_principal, str) and (
-                    cached_principal.startswith("cert:") or
-                    cached_principal.startswith("sso:") or
-                    cached_principal.startswith("dev:")
-                ):
-                    return True
-        except Exception:
-            pass
-    # Fall back to current request principal (for HTTP requests)
-    principal, _, _ = get_request_principal()
-    if principal and principal.startswith("cert:"):
-        return True
-    if session_id:
-        try:
-            session_manager.update_metadata(session_id, auth_blocked=True)
-        except Exception:
-            pass
-    emit(
-        'parser_output',
-        normalize_log_obj({
-            "level": "WARNING",
-            "type": "auth",
-            "message": f"Certificate required for {action}.",
-            "session_id": session_id,
-        }),
-        room=session_id,
+    _configure_authority_policy_runtime()
+    return _authority_policy._require_cert_for_socket_action(
+        action,
+        session_id=session_id,
     )
-    return False
 
 
 def _ingestion_audit_context(session_id: str | None = None) -> dict:
@@ -2015,6 +1934,7 @@ def client_fingerprint():
 
 
 from webapp.parser.auth import context as _authority_context
+from webapp.parser.auth import policy as _authority_policy
 
 
 def _configure_authority_context_runtime():
