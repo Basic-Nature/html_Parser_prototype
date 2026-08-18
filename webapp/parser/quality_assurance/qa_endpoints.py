@@ -24,6 +24,7 @@ from ..config import ENABLE_VERIFICATION_FRAMEWORK, QA_REQUIRE_CERT_AUTH
 from ..utils.cert_utils import extract_client_principal
 from ..utils.privilege_tiers import PrivilegeTier, get_principal_tier
 from ..auth.tiers import normalize_required_tier
+from ..auth.authorization import tier_satisfies
 from ..utils.shared_logic import safe_get, safe_strip
 from .data_classifier import (
     DatasetMetadata,
@@ -385,7 +386,7 @@ def _require_reviewer_tier(required_tier: str):
                     return jsonify({"error": "Unauthorized"}), 401
 
             actual = get_principal_tier(principal, principal_source)
-            if int(actual) < int(required):
+            if not tier_satisfies(actual, required):
                 return jsonify(
                     {
                         "error": "Forbidden",

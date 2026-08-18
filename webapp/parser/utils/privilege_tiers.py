@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 from enum import IntEnum
+from webapp.parser.auth.authorization import tier_satisfies
 from typing import Dict, Optional
 
 from ..utils.logger_singleton import logger
@@ -256,7 +257,7 @@ def require_minimum_tier(minimum_tier: int):
     def decorator(func):
         def wrapper(*args, **kwargs):
             tier = kwargs.get("privilege_tier")
-            if tier is not None and int(tier) < minimum_tier:
+            if tier is not None and not tier_satisfies(tier, minimum_tier):
                 tier_name = PrivilegeTier(int(tier)).name_display
                 required_name = PrivilegeTier(minimum_tier).name_display
                 raise PermissionError(

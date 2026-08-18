@@ -24,6 +24,7 @@ from webapp.parser.config import (
 from webapp.parser.utils.logger_singleton import logger
 from webapp.parser.utils.privilege_tiers import PrivilegeTier, get_principal_tier
 from webapp.parser.auth.tiers import normalize_required_tier
+from webapp.parser.auth.authorization import tier_satisfies
 from webapp.parser.utils.shared_logic import safe_get, safe_strip
 from webapp.parser.utils.verification_framework import (
     VerificationConfidence,
@@ -99,7 +100,7 @@ def _require_verifier_tier(tier: str):
 
             required_tier = _normalize_required_tier(tier)
             actual_tier = get_principal_tier(principal, principal_source)
-            if int(actual_tier) < int(required_tier):
+            if not tier_satisfies(actual_tier, required_tier):
                 logger.warning({
                     "level": "WARNING",
                     "type": "verification",

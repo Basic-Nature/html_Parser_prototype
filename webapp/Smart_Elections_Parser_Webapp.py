@@ -895,8 +895,7 @@ def _health_task_access_context(task_key: str) -> dict:
     return {
         "allowed": bool(
             principal
-            and int(actual_tier)
-            >= int(required_tier)
+            and tier_satisfies(actual_tier, required_tier)
         ),
 
         "principal_source": (
@@ -1008,8 +1007,7 @@ def _public_health_task_definitions() -> list[dict]:
 
         tier_authorized = bool(
             principal
-            and int(actual_tier)
-            >= int(minimum_tier)
+            and tier_satisfies(actual_tier, minimum_tier)
         )
 
         entries.append({
@@ -1944,6 +1942,7 @@ def client_fingerprint():
 from webapp.parser.auth import context as _authority_context
 from webapp.parser.auth import policy as _authority_policy
 from webapp.parser.auth import status as _authority_status
+from webapp.parser.auth.authorization import tier_satisfies
 
 
 def _configure_authority_context_runtime():
@@ -10105,7 +10104,7 @@ def api_data_assurance_promote():
             return jsonify({"error": "Unauthorized"}), 401
 
         principal_tier = get_principal_tier(principal, principal_source)
-        if int(principal_tier) < int(PrivilegeTier.ADMIN_REVIEWER):
+        if not tier_satisfies(principal_tier, PrivilegeTier.ADMIN_REVIEWER):
             logger.warning({
                 "level": "WARNING",
                 "type": "auth",
