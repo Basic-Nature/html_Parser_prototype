@@ -23,6 +23,7 @@ from webapp.parser.config import (
 )
 from webapp.parser.utils.logger_singleton import logger
 from webapp.parser.utils.privilege_tiers import PrivilegeTier, get_principal_tier
+from webapp.parser.auth.tiers import normalize_required_tier
 from webapp.parser.utils.shared_logic import safe_get, safe_strip
 from webapp.parser.utils.verification_framework import (
     VerificationConfidence,
@@ -79,16 +80,8 @@ def _get_verifier_identity() -> tuple[Optional[str], str]:
 
 
 def _normalize_required_tier(tier: str) -> PrivilegeTier:
-    """Normalize endpoint tier labels to privilege tier enum."""
-    normalized = str(tier or "").strip().lower().replace("-", "_")
-    tier_map = {
-        "reviewer": PrivilegeTier.STANDARD_USER,
-        "standard_user": PrivilegeTier.STANDARD_USER,
-        "admin_reviewer": PrivilegeTier.ADMIN_REVIEWER,
-        "admin_full_trust": PrivilegeTier.ADMIN_FULL_TRUST,
-        "root_admin": PrivilegeTier.ROOT_ADMIN,
-    }
-    return tier_map.get(normalized, PrivilegeTier.ROOT_ADMIN)
+    # Compatibility wrapper for the canonical tier vocabulary.
+    return normalize_required_tier(tier)
 
 
 def _require_verifier_tier(tier: str):

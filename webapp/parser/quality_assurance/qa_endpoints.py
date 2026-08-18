@@ -23,6 +23,7 @@ from flask import Blueprint, jsonify, request, send_file
 from ..config import ENABLE_VERIFICATION_FRAMEWORK, QA_REQUIRE_CERT_AUTH
 from ..utils.cert_utils import extract_client_principal
 from ..utils.privilege_tiers import PrivilegeTier, get_principal_tier
+from ..auth.tiers import normalize_required_tier
 from ..utils.shared_logic import safe_get, safe_strip
 from .data_classifier import (
     DatasetMetadata,
@@ -329,15 +330,8 @@ def _get_reviewer_identity() -> tuple[str | None, str]:
 
 
 def _normalize_required_tier(tier: str) -> PrivilegeTier:
-    normalized = str(tier or "").strip().lower().replace("-", "_")
-    tier_map = {
-        "reviewer": PrivilegeTier.STANDARD_USER,
-        "standard_user": PrivilegeTier.STANDARD_USER,
-        "admin_reviewer": PrivilegeTier.ADMIN_REVIEWER,
-        "admin_full_trust": PrivilegeTier.ADMIN_FULL_TRUST,
-        "root_admin": PrivilegeTier.ROOT_ADMIN,
-    }
-    return tier_map.get(normalized, PrivilegeTier.ROOT_ADMIN)
+    # Compatibility wrapper for the canonical tier vocabulary.
+    return normalize_required_tier(tier)
 
 
 def _require_reviewer(f):
