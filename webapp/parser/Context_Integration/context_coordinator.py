@@ -897,6 +897,21 @@ class ContextCoordinator(object):
         self._semantic_model = None
         self.learning_mode = False  # Default to False for clarity
         self.alert_monitor_thread = None
+        self.alert_monitor_stop_event = threading.Event()
+        self.alert_monitor_state = {
+            "running": False,
+            "db_available": None,
+            "last_poll_at": None,
+            "last_success_at": None,
+            "last_alert_id": 0,
+            "alerts_seen": 0,
+            "poll_count": 0,
+            "consecutive_failures": 0,
+            "last_failure_stage": None,
+            "last_error_type": None,
+            "last_error_message": None,
+            "next_poll_seconds": 0.0,
+        }
 
         if enable_ml:
             self._semantic_model = ModelRegistry.get_sentence_transformer("all-MiniLM-L6-v2")
@@ -905,24 +920,17 @@ class ContextCoordinator(object):
             self.start_alert_monitoring()
             
     def __del__(self) -> None:
-        """
-        Ensure alert monitoring thread is cleaned up on destruction.
-        """
+        """Best-effort cleanup for the alert-monitor poller."""
         try:
-            if hasattr(self, "alert_monitor_thread") and self.alert_monitor_thread and self.alert_monitor_thread.is_alive():
-                logger.info("[ALERT MONITOR] Stopping alert monitoring thread.")
-                self.alert_monitor_thread.join(timeout=1)
-                if self.alert_monitor_thread.is_alive():
-                    logger.warning("[ALERT MONITOR] Thread did not stop cleanly.")
-                else:
-                    logger.info("[ALERT MONITOR] Thread stopped successfully.")
-            else:
-                logger.info("[ALERT MONITOR] No active thread to stop.")
-        except Exception as e:
-            logger.error(f"[ALERT MONITOR] Exception during cleanup: {e}", exc_info=True)
-        finally:
-            if hasattr(self, "alert_monitor_thread"):
-                self.alert_monitor_thread = None
+            self.stop_alert_monitoring(timeout=1.0)
+        except Exception as exc:
+            try:
+                logger.error(
+                    f"[ALERT MONITOR] Exception during cleanup: {exc}",
+                    exc_info=True,
+                )
+            except Exception:
+                pass
 
     @property
     def library(self):
@@ -1714,30 +1722,144 @@ class ContextCoordinator(object):
             return contests, [{"error": str(e)}]
         
     # --- Monitoring, Reporting, and CLI ---            
-    def start_alert_monitoring(self, background=True) -> Optional[threading.Thread]:
+    def stop_alert_monitoring(
+        self,
+        timeout: float = 2.0,
+    ) -> bool:
+        """Signal the alert poller to stop and wait briefly for termination."""
+        stop_event = getattr(
+            self,
+            "alert_monitor_stop_event",
+            None,
+        )
+        thread = getattr(
+            self,
+            "alert_monitor_thread",
+            None,
+        )
+
+        if stop_event is not None:
+            stop_event.set()
+
+        if (
+            thread is not None
+            and thread.is_alive()
+            and thread is not threading.current_thread()
+        ):
+            thread.join(timeout=max(float(timeout), 0.0))
+
+        stopped = not (
+            thread is not None
+            and thread.is_alive()
+        )
+
+        if stopped:
+            self.alert_monitor_thread = None
+            logger.info("[ALERT MONITOR] Stopped.")
+        else:
+            logger.warning(
+                "[ALERT MONITOR] Poller did not stop within timeout."
+            )
+
+        return stopped
+
+
+    def get_alert_monitor_health(self) -> dict:
+        """Return an in-memory snapshot of the alert monitor lifecycle."""
+        snapshot = dict(
+            getattr(
+                self,
+                "alert_monitor_state",
+                {},
+            )
+        )
+
+        thread = getattr(
+            self,
+            "alert_monitor_thread",
+            None,
+        )
+
+        snapshot.update(
+            {
+                "configured": bool(
+                    getattr(
+                        self,
+                        "alert_monitor",
+                        False,
+                    )
+                ),
+                "thread_alive": bool(
+                    thread
+                    and thread.is_alive()
+                ),
+                "stop_requested": bool(
+                    getattr(
+                        self,
+                        "alert_monitor_stop_event",
+                        None,
+                    )
+                    and self.alert_monitor_stop_event.is_set()
+                ),
+            }
+        )
+
+        return snapshot
+
+    def start_alert_monitoring(
+        self,
+        background=True,
+    ) -> Optional[threading.Thread]:
         """
-        Start real-time alert monitoring, optionally in a background thread.
-        Returns the thread object if background=True, otherwise None.
+        Start the real alert poller.
+
+        In background mode, ``alert_monitor_thread`` is the actual long-lived
+        polling thread rather than a wrapper that spawns another daemon.
         """
+        if (
+            self.alert_monitor_thread
+            and self.alert_monitor_thread.is_alive()
+        ):
+            logger.info("[ALERT MONITOR] Already running.")
+            return self.alert_monitor_thread
+
+        self.alert_monitor_stop_event = threading.Event()
+
         def run_monitor() -> None:
             try:
-                monitor_db_for_alerts()
-            except Exception as e:
-                logger.error(f"[ALERT MONITOR] Exception: {e}", exc_info=True)
+                monitor_db_for_alerts(
+                    stop_event=self.alert_monitor_stop_event,
+                    state=self.alert_monitor_state,
+                )
+            except Exception as exc:
+                self.alert_monitor_state.update(
+                    {
+                        "running": False,
+                        "db_available": False,
+                        "last_failure_stage": "poller_uncaught_exception",
+                        "last_error_type": type(exc).__name__,
+                        "last_error_message": str(exc),
+                    }
+                )
+                logger.error(
+                    f"[ALERT MONITOR] Exception: {exc}",
+                    exc_info=True,
+                )
 
         if background:
-            if self.alert_monitor_thread and self.alert_monitor_thread.is_alive():
-                logger.info("[ALERT MONITOR] Already running.")
-                return self.alert_monitor_thread
-            t = threading.Thread(target=run_monitor, daemon=True)
-            t.start()
-            self.alert_monitor_thread = t
-            logger.info("[ALERT MONITOR] Started in background thread.")
-            return t
-        else:
-            logger.info("[ALERT MONITOR] Running in foreground (blocking).")
-            run_monitor()
-            return None
+            thread = threading.Thread(
+                target=run_monitor,
+                daemon=True,
+                name="electionpulse-alert-monitor",
+            )
+            self.alert_monitor_thread = thread
+            thread.start()
+            logger.info("[ALERT MONITOR] Started background poller.")
+            return thread
+
+        logger.info("[ALERT MONITOR] Running in foreground (blocking).")
+        run_monitor()
+        return None
 
     def report_summary(self) -> None:
         contests = self.get_contests()

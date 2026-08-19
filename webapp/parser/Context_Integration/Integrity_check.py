@@ -418,49 +418,208 @@ def print_analyze_contests(results) -> None:
 
 # --- Real-Time Monitoring (unchanged) ---
 
-def monitor_db_for_alerts(poll_interval: int = 10) -> None:
+def monitor_db_for_alerts(
+    poll_interval: int = 10,
+    *,
+    stop_event: threading.Event | None = None,
+    state: dict | None = None,
+    max_polls: int | None = None,
+) -> None:
     """
-    Monitor the alerts table in PostgreSQL for new alerts in real time using SQLAlchemy.
-    Adds type checking for .id, .scalars().all(), and .execute.
+    Poll PostgreSQL alerts in the current thread.
+
+    Thread ownership belongs to the caller. ``stop_event`` makes the poller
+    interruptible, ``state`` exposes a lightweight health snapshot, and
+    ``max_polls`` provides a deterministic bounded mode for tests/diagnostics.
     """
-    last_alert_id = 0
-    def monitor():
-        nonlocal last_alert_id
-        while True:
+    if stop_event is None:
+        stop_event = threading.Event()
+
+    if state is None:
+        state = {}
+
+    try:
+        interval = max(float(poll_interval), 0.01)
+    except (TypeError, ValueError):
+        interval = 10.0
+
+    state.update(
+        {
+            "running": True,
+            "last_poll_at": state.get("last_poll_at"),
+            "last_success_at": state.get("last_success_at"),
+            "last_alert_id": int(state.get("last_alert_id") or 0),
+            "alerts_seen": int(state.get("alerts_seen") or 0),
+            "poll_count": int(state.get("poll_count") or 0),
+            "consecutive_failures": 0,
+            "last_failure_stage": None,
+            "last_error_type": None,
+            "last_error_message": None,
+            "db_available": None,
+            "next_poll_seconds": interval,
+        }
+    )
+
+    last_alert_id = int(state["last_alert_id"])
+
+    log_integrity_monitor(
+        {
+            "event": "alert_monitor_started",
+            "poll_interval_seconds": interval,
+        }
+    )
+
+    try:
+        while not stop_event.is_set():
+            if max_polls is not None and state["poll_count"] >= max_polls:
+                break
+
+            state["poll_count"] += 1
+            state["last_poll_at"] = time.time()
+            failure_stage = "session_acquisition"
+            prior_failures = int(state.get("consecutive_failures") or 0)
+
             try:
                 with get_session() as session:
-                    stmt = select(Alert).where(Alert.id > last_alert_id).order_by(Alert.id.asc())
-                    result = safe_execute(session, stmt)
-                    if result is None:
-                        console.print("[MONITOR] Session object missing or failed 'execute' method.")
-                        time.sleep(poll_interval)
-                        continue
+                    failure_stage = "alert_select"
+                    stmt = (
+                        select(Alert)
+                        .where(Alert.id > last_alert_id)
+                        .order_by(Alert.id.asc())
+                    )
+
+                    failure_stage = "session_execute"
+                    execute = getattr(session, "execute", None)
+                    if not callable(execute):
+                        raise TypeError(
+                            "SQLAlchemy session does not provide callable execute()."
+                        )
+                    result = execute(stmt)
+
+                    failure_stage = "result_scalars"
                     scalars = getattr(result, "scalars", None)
                     if not callable(scalars):
-                        console.print("[MONITOR] Result object missing 'scalars' method.")
-                        time.sleep(poll_interval)
-                        continue
+                        raise TypeError(
+                            "Alert query result does not provide callable scalars()."
+                        )
                     rows = scalars()
-                    alerts = safe_all(rows)
-                    if alerts is None:
-                        console.print("[MONITOR] Scalars object missing or failed 'all' method.")
-                        time.sleep(poll_interval)
-                        continue
+
+                    failure_stage = "result_all"
+                    all_rows = getattr(rows, "all", None)
+                    if not callable(all_rows):
+                        raise TypeError(
+                            "Alert scalar result does not provide callable all()."
+                        )
+                    alerts = all_rows()
+
+                    failure_stage = "row_processing"
                     for row in alerts:
                         row_id = getattr(row, "id", None)
                         if not isinstance(row_id, int):
-                            console.print(f"[MONITOR] Alert row missing valid 'id': {row}")
+                            log_integrity_monitor(
+                                {
+                                    "event": "alert_monitor_invalid_row",
+                                    "reason": "invalid_alert_id",
+                                    "row_repr": repr(row),
+                                }
+                            )
                             continue
+
                         last_alert_id = row_id
+                        state["last_alert_id"] = row_id
+                        state["alerts_seen"] += 1
+
                         msg = getattr(row, "msg", "")
                         context = getattr(row, "context", "")
                         level = getattr(row, "level", "")
-                        console.print(f"[REAL-TIME ALERT][{level}] {msg} | Context: {context} | ALERT_TYPE: {level}")
-            except Exception as e:
-                console.print(f"[MONITOR] Error in real-time alert monitor: {e}")
-            time.sleep(poll_interval)
-    thread = threading.Thread(target=monitor, daemon=True)
-    thread.start()
+
+                        console.print(
+                            f"[REAL-TIME ALERT][{level}] "
+                            f"{msg} | Context: {context} | ALERT_TYPE: {level}"
+                        )
+                        log_integrity_monitor(
+                            {
+                                "event": "alert_monitor_alert",
+                                "alert_id": row_id,
+                                "level": level,
+                                "message": msg,
+                                "context": context,
+                            }
+                        )
+
+                state["last_success_at"] = time.time()
+                state["db_available"] = True
+                state["consecutive_failures"] = 0
+                state["last_failure_stage"] = None
+                state["last_error_type"] = None
+                state["last_error_message"] = None
+                state["next_poll_seconds"] = interval
+
+                if prior_failures:
+                    log_integrity_monitor(
+                        {
+                            "event": "alert_monitor_recovered",
+                            "previous_consecutive_failures": prior_failures,
+                            "last_alert_id": last_alert_id,
+                        }
+                    )
+
+            except Exception as exc:
+                failures = int(state.get("consecutive_failures") or 0) + 1
+                state["consecutive_failures"] = failures
+                state["db_available"] = False
+                state["last_failure_stage"] = failure_stage
+                state["last_error_type"] = type(exc).__name__
+                state["last_error_message"] = str(exc)
+
+                backoff = min(
+                    interval * (2 ** min(failures - 1, 4)),
+                    60.0,
+                )
+                state["next_poll_seconds"] = backoff
+
+                log_integrity_monitor(
+                    {
+                        "event": "alert_monitor_failure",
+                        "failure_stage": failure_stage,
+                        "error_type": type(exc).__name__,
+                        "error_message": str(exc),
+                        "consecutive_failures": failures,
+                        "next_poll_seconds": backoff,
+                    }
+                )
+
+                if failures == 1 or failures % 10 == 0:
+                    console.print(
+                        "[MONITOR] "
+                        f"stage={failure_stage} "
+                        f"error={type(exc).__name__}: {exc} "
+                        f"(consecutive_failures={failures}, "
+                        f"next_poll_seconds={backoff:g})"
+                    )
+
+            if max_polls is not None and state["poll_count"] >= max_polls:
+                break
+
+            wait_seconds = float(state.get("next_poll_seconds") or interval)
+            if stop_event.wait(wait_seconds):
+                break
+
+    finally:
+        state["running"] = False
+        state["next_poll_seconds"] = 0.0
+        log_integrity_monitor(
+            {
+                "event": "alert_monitor_stopped",
+                "poll_count": state.get("poll_count", 0),
+                "alerts_seen": state.get("alerts_seen", 0),
+                "last_alert_id": state.get("last_alert_id", 0),
+                "consecutive_failures": state.get(
+                    "consecutive_failures",
+                    0,
+                ),
+            }
+        )
 
 # --- Utility: Audit Logging (unchanged) ---
 
