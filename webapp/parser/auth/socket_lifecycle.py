@@ -264,3 +264,11 @@ def acknowledge_certificate_reauth(
     })
 
     return session_id
+
+def socket_connection_admitted(
+    principal: str | None,
+    *,
+    allow_anonymous: bool,
+) -> bool:
+    """Return whether the Socket.IO connection passes principal admission."""
+    return bool(principal) or bool(allow_anonymous)

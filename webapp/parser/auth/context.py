@@ -81,6 +81,74 @@ def _session_has_principal(session_id: str) -> bool:
     return bool(meta and meta.get('principal'))
 
 
+def _truthy_reuse_value(value) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    try:
+        normalized = str(value).strip().lower()
+    except Exception:
+        return False
+    return normalized in {
+        "1",
+        "true",
+        "yes",
+        "y",
+        "on",
+        "reuse",
+        "reuse_session",
+    }
+
+
+def resolve_session_reuse_policy(
+    data,
+    principal_source: str | None,
+    *,
+    allow_auto_session_reuse: bool,
+    request_args=None,
+    request_headers=None,
+) -> tuple[bool, bool]:
+    """Return (reuse_hint, allow_reuse) for request/session resolution."""
+    reuse_hint = False
+
+    if isinstance(data, dict):
+        reuse_hint = _truthy_reuse_value(
+            data.get("reuse_session") or data.get("reuse")
+        )
+
+    try:
+        arg_reuse = (
+            request_args.get("reuse_session")
+            if request_args is not None
+            else None
+        )
+        header_reuse = (
+            request_headers.get("X-Reuse-Session")
+            if request_headers is not None
+            else None
+        )
+        reuse_hint = bool(
+            reuse_hint
+            or _truthy_reuse_value(arg_reuse)
+            or _truthy_reuse_value(header_reuse)
+        )
+    except Exception:
+        pass
+
+    allow_reuse = bool(
+        allow_auto_session_reuse
+        or reuse_hint
+    )
+
+    if (
+        principal_source == "dev_bypass"
+        and not reuse_hint
+    ):
+        allow_reuse = False
+
+    return reuse_hint, allow_reuse
+
 def resolve_session_id(data=None, create_if_missing=True):
     ALLOW_AUTO_SESSION_REUSE = _runtime_binding('ALLOW_AUTO_SESSION_REUSE')
     CERT_SESSION_BINDING = _runtime_binding('CERT_SESSION_BINDING')
@@ -105,16 +173,6 @@ def resolve_session_id(data=None, create_if_missing=True):
         except Exception:
             pass
 
-    def _truthy(val):
-        if val is None:
-            return False
-        if isinstance(val, bool):
-            return val
-        try:
-            s = str(val).strip().lower()
-        except Exception:
-            return False
-        return s in {'1', 'true', 'yes', 'y', 'on', 'reuse', 'reuse_session'}
     try:
         socket_sid = safe_sid()
     except Exception:
@@ -122,18 +180,13 @@ def resolve_session_id(data=None, create_if_missing=True):
     if not isinstance(socket_sid, str) or not socket_sid:
         return None
     principal, principal_source, _ = get_request_principal()
-    reuse_hint = False
-    if isinstance(data, dict):
-        reuse_hint = _truthy(data.get('reuse_session') or data.get('reuse'))
-    try:
-        arg_reuse = request.args.get('reuse_session')
-        hdr_reuse = request.headers.get('X-Reuse-Session')
-        reuse_hint = reuse_hint or _truthy(arg_reuse) or _truthy(hdr_reuse)
-    except Exception:
-        pass
-    allow_reuse = ALLOW_AUTO_SESSION_REUSE or reuse_hint
-    if principal_source == 'dev_bypass' and (not reuse_hint):
-        allow_reuse = False
+    reuse_hint, allow_reuse = resolve_session_reuse_policy(
+        data,
+        principal_source,
+        allow_auto_session_reuse=ALLOW_AUTO_SESSION_REUSE,
+        request_args=getattr(request, "args", None),
+        request_headers=getattr(request, "headers", None),
+    )
     sid = None
     if isinstance(data, dict):
         sid = safe_get(data, 'session_id')

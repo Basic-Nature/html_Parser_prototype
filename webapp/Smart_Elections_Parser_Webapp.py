@@ -9122,7 +9122,10 @@ def handle_connect(auth=None):
                 "principal": principal,
                 "error": cert_metadata.get("error"),
             })
-        if not principal and not ALLOW_ANON_NO_PRINCIPAL:
+        if not _socket_lifecycle.socket_connection_admitted(
+            principal,
+            allow_anonymous=ALLOW_ANON_NO_PRINCIPAL,
+        ):
             emit('parser_output', {
                 "level": "ERROR",
                 "type": "auth",
@@ -9149,30 +9152,15 @@ def handle_connect(auth=None):
                 "remote_addr": request.remote_addr,
                 "host": request.host,
             })
-        def _truthy(val):
-            if val is None:
-                return False
-            if isinstance(val, bool):
-                return val
-            try:
-                s = str(val).strip().lower()
-            except Exception:
-                return False
-            return s in {"1", "true", "yes", "y", "on", "reuse", "reuse_session"}
-
-        reuse_hint = False
-        if isinstance(auth, dict):
-            reuse_hint = _truthy(auth.get('reuse_session') or auth.get('reuse'))
-        try:
-            arg_reuse = request.args.get('reuse_session')
-            hdr_reuse = request.headers.get('X-Reuse-Session')
-            reuse_hint = reuse_hint or _truthy(arg_reuse) or _truthy(hdr_reuse)
-        except Exception:
-            pass
-
-        allow_reuse = ALLOW_AUTO_SESSION_REUSE or reuse_hint
-        if principal_source == "dev_bypass" and not reuse_hint:
-            allow_reuse = False
+        reuse_hint, allow_reuse = (
+            _authority_context.resolve_session_reuse_policy(
+                auth,
+                principal_source,
+                allow_auto_session_reuse=ALLOW_AUTO_SESSION_REUSE,
+                request_args=getattr(request, "args", None),
+                request_headers=getattr(request, "headers", None),
+            )
+        )
         requested = None
         if isinstance(auth, dict):
             requested = safe_get(auth, 'requested_session_id')
