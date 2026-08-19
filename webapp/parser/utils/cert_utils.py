@@ -187,15 +187,43 @@ def extract_sso_principal(headers: Mapping[str, str]) -> Tuple[Optional[str], Op
 
 
 def extract_client_principal(headers: Mapping[str, str]) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]]]:
-    """Preferred principal: client cert fingerprint; fallback: SSO object ID.
+    """Return the authoritative client principal for request headers.
 
-    Returns (principal, source, cert_metadata), where principal is prefixed to denote source.
-    cert_metadata is populated only for cert-based auth; None for SSO.
+    Client certificates are fingerprinted by this module, then pass through
+    the canonical production trust decision before a ``cert:`` principal is
+    created. SSO remains the fallback only when no certificate was presented.
     """
     cert_fp, cert_src, cert_meta = extract_client_cert_fingerprint(headers)
+
     if cert_fp:
+        from webapp.parser.auth.cert_trust import (
+            evaluate_client_certificate_trust,
+        )
+
+        decision = evaluate_client_certificate_trust(
+            cert_fp,
+            cert_src,
+            cert_meta,
+        )
+
+        if isinstance(cert_meta, dict):
+            cert_meta = dict(cert_meta)
+        else:
+            cert_meta = {}
+
+        cert_meta["trust_required"] = bool(decision["required"])
+        cert_meta["trust_valid"] = bool(decision["trusted"])
+        cert_meta["trust_reason"] = str(decision["reason"])
+
+        # A presented-but-untrusted production certificate is fail-closed.
+        # Do not silently downgrade/fallback to SSO.
+        if decision["required"] and not decision["trusted"]:
+            return None, cert_src, cert_meta
+
         return f"cert:{cert_fp}", cert_src, cert_meta
+
     oid, sso_src = extract_sso_principal(headers)
     if oid:
         return f"sso:{oid}", sso_src, None
+
     return None, None, None

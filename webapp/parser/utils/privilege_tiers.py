@@ -124,44 +124,125 @@ def get_principal_tier(principal: Optional[str], principal_source: str = "") -> 
             return PrivilegeTier.ADMIN_REVIEWER
     
     # ===== CLIENT CERTIFICATE PRINCIPALS =====
+    # ===== CLIENT CERTIFICATE PRINCIPALS =====
     if principal.startswith("cert:"):
-        cn = principal[5:].strip().lower()
-        
-        # Root admin certs
-        root_certs = _parse_env_list("ROOT_ADMIN_CERTS")
-        if any(rc.lower() in cn for rc in root_certs):
-            logger.info({
-                "level": "INFO",
-                "type": "auth",
-                "message": f"Principal {principal} mapped to ROOT_ADMIN tier via cert",
-                "principal": principal,
-                "session_id": None
-            })
-            return PrivilegeTier.ROOT_ADMIN
-        
-        # Full trust certs
-        full_certs = _parse_env_list("ADMIN_FULL_TRUST_CERTS")
-        if any(fc.lower() in cn for fc in full_certs):
-            logger.info({
-                "level": "INFO",
-                "type": "auth",
-                "message": f"Principal {principal} mapped to ADMIN_FULL_TRUST tier via cert",
-                "principal": principal,
-                "session_id": None
-            })
-            return PrivilegeTier.ADMIN_FULL_TRUST
-        
-        # Reviewer certs
-        reviewer_certs = _parse_env_list("ADMIN_REVIEWER_CERTS")
-        if any(rc.lower() in cn for rc in reviewer_certs):
-            logger.info({
-                "level": "INFO",
-                "type": "auth",
-                "message": f"Principal {principal} mapped to ADMIN_REVIEWER tier via cert",
-                "principal": principal,
-                "session_id": None
-            })
-            return PrivilegeTier.ADMIN_REVIEWER
+        cert_identity = principal[5:].strip()
+
+        from webapp.parser.auth.cert_trust import (
+            normalize_sha256_fingerprint,
+        )
+
+        fingerprint = normalize_sha256_fingerprint(cert_identity)
+
+        if fingerprint:
+            def _matches_fingerprint(
+                current_fingerprint: str,
+                *env_names: str,
+            ) -> bool:
+                for env_name in env_names:
+                    for value in _parse_env_list(env_name):
+                        candidate = normalize_sha256_fingerprint(value)
+                        if candidate == current_fingerprint:
+                            return True
+                return False
+
+            if _matches_fingerprint(
+                fingerprint,
+                "ROOT_ADMIN_CERT_FINGERPRINTS",
+                "ROOT_ADMIN_CERTS",
+            ):
+                logger.info({
+                    "level": "INFO",
+                    "type": "auth",
+                    "message": (
+                        f"Principal {principal} mapped to ROOT_ADMIN tier "
+                        "via certificate fingerprint"
+                    ),
+                    "principal": principal,
+                    "session_id": None,
+                })
+                return PrivilegeTier.ROOT_ADMIN
+
+            if _matches_fingerprint(
+                fingerprint,
+                "ADMIN_FULL_TRUST_CERT_FINGERPRINTS",
+                "ADMIN_FULL_TRUST_CERTS",
+            ):
+                logger.info({
+                    "level": "INFO",
+                    "type": "auth",
+                    "message": (
+                        f"Principal {principal} mapped to ADMIN_FULL_TRUST tier "
+                        "via certificate fingerprint"
+                    ),
+                    "principal": principal,
+                    "session_id": None,
+                })
+                return PrivilegeTier.ADMIN_FULL_TRUST
+
+            if _matches_fingerprint(
+                fingerprint,
+                "ADMIN_REVIEWER_CERT_FINGERPRINTS",
+                "ADMIN_REVIEWER_CERTS",
+            ):
+                logger.info({
+                    "level": "INFO",
+                    "type": "auth",
+                    "message": (
+                        f"Principal {principal} mapped to ADMIN_REVIEWER tier "
+                        "via certificate fingerprint"
+                    ),
+                    "principal": principal,
+                    "session_id": None,
+                })
+                return PrivilegeTier.ADMIN_REVIEWER
+
+        else:
+            # Compatibility only for manually constructed legacy cert:CN
+            # principals. Real cert_utils principals are SHA-256 fingerprints.
+            legacy_cn = cert_identity.lower()
+
+            root_certs = _parse_env_list("ROOT_ADMIN_CERTS")
+            if any(rc.lower() in legacy_cn for rc in root_certs):
+                logger.info({
+                    "level": "INFO",
+                    "type": "auth",
+                    "message": (
+                        f"Legacy principal {principal} mapped to ROOT_ADMIN tier "
+                        "via certificate CN compatibility"
+                    ),
+                    "principal": principal,
+                    "session_id": None,
+                })
+                return PrivilegeTier.ROOT_ADMIN
+
+            full_certs = _parse_env_list("ADMIN_FULL_TRUST_CERTS")
+            if any(fc.lower() in legacy_cn for fc in full_certs):
+                logger.info({
+                    "level": "INFO",
+                    "type": "auth",
+                    "message": (
+                        f"Legacy principal {principal} mapped to "
+                        "ADMIN_FULL_TRUST tier via certificate CN compatibility"
+                    ),
+                    "principal": principal,
+                    "session_id": None,
+                })
+                return PrivilegeTier.ADMIN_FULL_TRUST
+
+            reviewer_certs = _parse_env_list("ADMIN_REVIEWER_CERTS")
+            if any(rc.lower() in legacy_cn for rc in reviewer_certs):
+                logger.info({
+                    "level": "INFO",
+                    "type": "auth",
+                    "message": (
+                        f"Legacy principal {principal} mapped to "
+                        "ADMIN_REVIEWER tier via certificate CN compatibility"
+                    ),
+                    "principal": principal,
+                    "session_id": None,
+                })
+                return PrivilegeTier.ADMIN_REVIEWER
     
     # ===== DEV BYPASS =====
     if principal_source == "dev_bypass":
