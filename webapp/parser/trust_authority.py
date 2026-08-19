@@ -111,3 +111,31 @@ def should_reject_for_tier(
             return trust_score < 20
 
     return trust_score < low_threshold
+
+
+def uses_strict_verified_anomaly_policy(
+    privilege_tier: PrivilegeTier | int | None,
+    *,
+    verified_domain: bool,
+) -> bool:
+    """Return whether integrity ML should use the strict verified-domain policy."""
+    if privilege_tier is None or not verified_domain:
+        return False
+
+    return int(privilege_tier) >= int(PrivilegeTier.ADMIN_FULL_TRUST)
+
+
+def adjust_integrity_contamination(
+    contamination: float,
+    privilege_tier: PrivilegeTier | int | None,
+    *,
+    verified_domain: bool,
+) -> float:
+    """Apply the live tier-aware integrity contamination ceiling."""
+    if uses_strict_verified_anomaly_policy(
+        privilege_tier,
+        verified_domain=verified_domain,
+    ):
+        return min(contamination, 0.01)
+
+    return contamination

@@ -24,6 +24,10 @@ from ..utils.db_utils import get_session
 from ..utils.logger_singleton import console
 from ..utils.models import Alert
 from ..utils.privilege_tiers import PrivilegeTier
+from ..trust_authority import (
+    adjust_integrity_contamination,
+    uses_strict_verified_anomaly_policy,
+)
 from ..utils.shared_logic import (
     safe_all,
     safe_encode,
@@ -185,9 +189,15 @@ def detect_anomalies_with_ml(
     X = np.array(features)
     
     # Admin bypass: For FULL_TRUST + verified domain, use stricter anomaly detection
-    if privilege_tier and privilege_tier >= PrivilegeTier.ADMIN_FULL_TRUST and trust_factors and trust_factors.get("verified_domain"):
-        # Only flag SEVERE anomalies (raise contamination threshold)
-        contamination = min(contamination, 0.01)  # Much stricter
+    # Apply the centralized tier-aware integrity anomaly policy.
+    contamination = adjust_integrity_contamination(
+        contamination,
+        privilege_tier,
+        verified_domain=bool(
+            trust_factors
+            and trust_factors.get("verified_domain")
+        ),
+    )
     
     clf = IsolationForest(
         contamination=contamination,
@@ -266,7 +276,7 @@ def analyze_contests(contests, expected_year=None, context_library_path=None, tr
     
     # Tier-specific anomaly thresholds (logging)
     if privilege_tier:
-        if privilege_tier >= PrivilegeTier.ADMIN_FULL_TRUST and trust_factors and trust_factors.get("verified_domain"):
+        if uses_strict_verified_anomaly_policy(privilege_tier, verified_domain=bool(trust_factors and trust_factors.get('verified_domain'))):
             tier_summary["anomaly_strategy"] = "strict_verified (only severe anomalies flagged)"
         elif privilege_tier == PrivilegeTier.ROOT_ADMIN:
             tier_summary["anomaly_strategy"] = "all_anomalies_reviewed (root admin bypass)"
