@@ -90,7 +90,7 @@ def test_vote_components_allow_signed_source_adjustments():
     assert vote_checks == []
 
 
-def test_extension_owned_objects_are_excluded_from_autogenerate():
+def test_unmanaged_reflected_tables_are_excluded_from_autogenerate():
     tiger_table = SimpleNamespace(schema="tiger", name="county")
     assert include_object(
         tiger_table,
@@ -100,25 +100,68 @@ def test_extension_owned_objects_are_excluded_from_autogenerate():
         compare_to=None,
     ) is False
 
-    spatial = SimpleNamespace(schema=None, name="spatial_ref_sys")
+    public_support = SimpleNamespace(
+        schema=None,
+        name="spatial_ref_sys",
+    )
     assert include_object(
-        spatial,
+        public_support,
         "spatial_ref_sys",
         "table",
         reflected=True,
         compare_to=None,
     ) is False
 
-    app_table = SimpleNamespace(
+    workflow_table = SimpleNamespace(
+        schema="workflow",
+        name="contests",
+    )
+    assert include_object(
+        workflow_table,
+        "contests",
+        "table",
+        reflected=True,
+        compare_to=None,
+    ) is False
+
+    model_backed_table = SimpleNamespace(
         schema=None,
         name="canonical_election_races",
     )
     assert include_object(
-        app_table,
+        model_backed_table,
         "canonical_election_races",
         "table",
         reflected=True,
         compare_to=object(),
+    ) is True
+
+    metadata_only_table = SimpleNamespace(
+        schema=None,
+        name="canonical_source_artifacts",
+    )
+    assert include_object(
+        metadata_only_table,
+        "canonical_source_artifacts",
+        "table",
+        reflected=False,
+        compare_to=None,
+    ) is True
+
+    modeled_table = SimpleNamespace(
+        schema=None,
+        name="warehouse_election_results",
+    )
+    reflected_index = SimpleNamespace(
+        table=modeled_table,
+        name="ix_extra_modeled_index",
+    )
+    assert include_object(
+        reflected_index,
+        "ix_extra_modeled_index",
+        "index",
+        reflected=True,
+        compare_to=None,
     ) is True
 
 
