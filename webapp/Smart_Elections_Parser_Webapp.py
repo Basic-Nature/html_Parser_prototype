@@ -1943,6 +1943,7 @@ from webapp.parser.auth import context as _authority_context
 from webapp.parser.auth import policy as _authority_policy
 from webapp.parser.auth import status as _authority_status
 from webapp.parser.auth.authorization import tier_satisfies
+from webapp.parser.auth import socket_lifecycle as _socket_lifecycle
 
 
 def _configure_authority_context_runtime():
@@ -9131,31 +9132,12 @@ def handle_connect(auth=None):
             return False
 
         # --- Certificate validation (Step 4: Check for expiry/changes) ---
-        cert_fingerprint = None
-        cert_expired = False
-        if cert_metadata and isinstance(cert_metadata, dict):
-            # Extract fingerprint from cert principal or headers (SHA256)
-            try:
-                if isinstance(principal, str) and principal.startswith("cert:"):
-                    cert_fingerprint = principal.split(":", 1)[1]
-                else:
-                    cert_header = request.headers.get('X-ARR-ClientCert', '')
-                    if cert_header:
-                        import hashlib
-                        cert_fingerprint = hashlib.sha256(cert_header.encode('utf-8')).hexdigest()[:16]
-                    cert_expired = cert_metadata.get('is_expired', False)
-                    if cert_expired:
-                        logger.warning({
-                            "level": "WARNING",
-                            "type": "auth",
-                            "message": "Client certificate is expired.",
-                            "session_id": None,
-                            "principal": principal,
-                            "cert_cn": cert_metadata.get('cn'),
-                            "expiry_date": cert_metadata.get('expiry_date'),
-                        })
-            except Exception:
-                pass
+        cert_fingerprint = _socket_lifecycle.derive_certificate_fingerprint(
+            principal,
+            cert_metadata,
+            request.headers.get("X-ARR-ClientCert", ""),
+            logger=logger,
+        )
 
         if principal_source == "dev_bypass":
             logger.warning({
@@ -9228,70 +9210,20 @@ def handle_connect(auth=None):
             session_manager.touch_session(resolved)
             _recover_stale_session(resolved, reason="connect")
 
-            # Cache certificate and check for changes (Step 4)
+            # Cache certificate and apply socket authority transitions.
             if cert_fingerprint and cert_metadata:
-                # Check if cert has changed since last seen
-                if session_manager.cert_changed(resolved, cert_fingerprint, cert_metadata):
-                    logger.info({
-                        "level": "INFO",
-                        "type": "auth",
-                        "message": "Certificate changed or new for session.",
-                        "session_id": resolved,
-                        "principal": principal,
-                        "cert_cn": cert_metadata.get('cn'),
-                        "fingerprint": cert_fingerprint,
-                    })
-                    transition_session(
-                        resolved,
-                        SessionState.IDLE,
-                        locked=True,
-                        phase=PipelinePhase.PREPARE,
-                        broadcast=False,
-                        extras={
-                            "auth_blocked": True,
-                            "auth_block_reason": "cert_changed",
-                        },
-                    )
-                    # Emit cert_changed event for frontend to trigger UI update
-                    try:
-                        socketio.emit('cert_changed', {
-                            "session_id": resolved,
-                            "fingerprint": cert_fingerprint,
-                            "cert_metadata": cert_metadata,
-                            "principal": principal
-                        }, room=resolved)
-                    except Exception:
-                        pass
-                    try:
-                        socketio.emit('auth_blocked', {
-                            "session_id": resolved,
-                            "reason": "cert_changed",
-                        }, room=resolved)
-                    except Exception:
-                        pass
-
-                # Cache the cert for future comparisons
-                session_manager.cache_cert(resolved, cert_fingerprint, cert_metadata, principal)
-
-                # Check if cert is expired
-                if session_manager.cert_expired(resolved):
-                    logger.warning({
-                        "level": "WARNING",
-                        "type": "auth",
-                        "message": "Cached certificate is expired.",
-                        "session_id": resolved,
-                        "principal": principal,
-                        "expiry_date": cert_metadata.get('expiry_date'),
-                    })
-                    # Emit cert_expired event for frontend
-                    try:
-                        socketio.emit('cert_expired', {
-                            "session_id": resolved,
-                            "principal": principal,
-                            "expiry_date": cert_metadata.get('expiry_date')
-                        }, room=resolved)
-                    except Exception:
-                        pass
+                _socket_lifecycle.process_certificate_session_authority(
+                    resolved,
+                    principal,
+                    cert_metadata,
+                    cert_fingerprint,
+                    session_manager=session_manager,
+                    transition_session=transition_session,
+                    idle_state=SessionState.IDLE,
+                    prepare_phase=PipelinePhase.PREPARE,
+                    emit_event=socketio.emit,
+                    logger=logger,
+                )
 
         if revived:
             session_manager.mark_active(revived)
@@ -9317,70 +9249,25 @@ def handle_connect(auth=None):
 
 @socketio.on('disconnect')
 def handle_disconnect(arg=None) -> None:
-    try:
-        req_sid = safe_sid()
-    except Exception:
-        req_sid = getattr(request, 'sid', None)
-        if not isinstance(req_sid, str):
-            req_sid = None
-
-    # Get session ID before unbinding
-    logical = None
-    if req_sid:
-        logical = session_manager.resolve_socket(req_sid)
-
-    # Unbind socket
-    unbound_session = session_manager.unbind_socket(req_sid) if req_sid else None
-    logical = logical or unbound_session
-
-    logger.info({
-        "level": "INFO",
-        "type": "status",
-        "message": f"Client disconnected (socket_sid={req_sid}, session_id={logical})",
-        "session_id": logical
-    })
-    # Do NOT clear prompt session or cancel immediately; let prompt timeout handle it
-    # prompt.clear_prompt_session(logical or req_sid)
-    # cancellation_manager.remove(logical or req_sid)
-    if logical:
-        session_manager.pop_emitter(logical)
+    return _socket_lifecycle.disconnect_socket_authority(
+        safe_sid=safe_sid,
+        request_sid=getattr(request, "sid", None),
+        session_manager=session_manager,
+        logger=logger,
+    )
 
 
 @socketio.on('ack_cert_reauth')
 def handle_ack_cert_reauth(data=None) -> None:
-    payload = data or {}
-    session_id = resolve_session_id(payload, create_if_missing=False)
-    if not session_id:
-        logger.warning({
-            "level": "WARNING",
-            "type": "auth",
-            "message": "No session_id provided for cert reauth ack.",
-            "session_id": None,
-        })
-        return
-    transition_session(
-        session_id,
-        SessionState.IDLE,
-        locked=False,
-        phase=PipelinePhase.PREPARE,
-        broadcast=False,
-        extras={
-            "auth_blocked": False,
-            "auth_block_reason": None,
-        },
+    _socket_lifecycle.acknowledge_certificate_reauth(
+        data,
+        resolve_session_id=resolve_session_id,
+        transition_session=transition_session,
+        idle_state=SessionState.IDLE,
+        prepare_phase=PipelinePhase.PREPARE,
+        emit_event=socketio.emit,
+        logger=logger,
     )
-    try:
-        socketio.emit('auth_unblocked', {
-            "session_id": session_id,
-        }, room=session_id)
-    except Exception:
-        pass
-    logger.info({
-        "level": "INFO",
-        "type": "auth",
-        "message": "Certificate reauth acknowledged; session unblocked.",
-        "session_id": session_id,
-    })
 
 @socketio.on('set_output_mode')
 def handle_set_output_mode(data) -> None:
