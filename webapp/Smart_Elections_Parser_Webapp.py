@@ -2110,22 +2110,22 @@ def _promote_inner(obj: dict) -> dict:
 def ensure_db_tables(force: bool = False):
     """
     Ensure SQLAlchemy models are created. Safe to call multiple times.
-    Controlled by AUTO_INIT_DB (default true).
+    Controlled by AUTO_INIT_DB (default false; read-only verification only).
     """
     global _tables_initialized
     if _tables_initialized and not force:
         return
-    if os.environ.get("AUTO_INIT_DB", "true").lower() not in ("1","true","yes"):
+    if os.environ.get("AUTO_INIT_DB", "false").lower() not in ("1","true","yes"):
         return
     try:
-        from webapp.parser.persistence.schema_bootstrap import ensure_application_schema_compat
+        from webapp.parser.persistence.schema_bootstrap import verify_application_schema_compat
         from webapp.parser.utils.db_utils import engine
-        ensure_application_schema_compat(engine)
+        verify_application_schema_compat(engine)
         _tables_initialized = True
         logger.info({
             "level": "INFO",
             "type": "db",
-            "message": "Database tables ensured (create_all executed)",
+            "message": "Database schema verified read-only (Alembic owns DDL)",
             "session_id": None
         })
     except Exception as e:
@@ -5673,7 +5673,7 @@ def api_warehouse_election_results():
     limit = max(1, min(1000, limit or 500))
 
     # Determine if DB is available
-    db_enabled = os.environ.get("AUTO_INIT_DB", "true").lower() in ("1", "true", "yes")
+    db_enabled = os.environ.get("AUTO_INIT_DB", "false").lower() in ("1", "true", "yes")
 
     # Collect all results
     all_results = []

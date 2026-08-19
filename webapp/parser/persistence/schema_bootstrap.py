@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-Compatibility bootstrap for the Election Pulse application ORM schema.
+Explicit compatibility bootstrap for the Election Pulse application ORM schema.
 
 Alembic remains the authority for versioned schema evolution.
 
@@ -14,9 +14,41 @@ or execute DDL. Schema creation occurs only when
 ``ensure_application_schema_compat`` is explicitly called.
 """
 
+from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 
 from ..utils.models import Base
+
+
+def verify_application_schema_compat(engine: Engine) -> None:
+    """Verify the ORM schema without executing DDL.
+
+    Runtime startup and health checks use this read-only contract. Missing
+    application tables fail closed so Alembic remains the sole production DDL
+    authority. Explicit bootstrap/admin tooling may still call
+    ``ensure_application_schema_compat`` deliberately.
+    """
+    inspector = inspect(engine)
+    missing: list[str] = []
+
+    for table in Base.metadata.tables.values():
+        schema = table.schema
+
+        if inspector.has_table(table.name, schema=schema):
+            continue
+
+        qualified = (
+            f"{schema}.{table.name}"
+            if schema
+            else table.name
+        )
+        missing.append(qualified)
+
+    if missing:
+        raise RuntimeError(
+            "Application schema is not Alembic-ready; missing ORM tables: "
+            + ", ".join(sorted(missing))
+        )
 
 
 def ensure_application_schema_compat(engine: Engine) -> None:
