@@ -39,22 +39,17 @@ def _decode_base64(value: str) -> Optional[bytes]:
 
 
 def _extract_cert_metadata(der_bytes: bytes) -> Dict[str, Any]:
-    """Parse X.509 certificate DER bytes and extract human-readable metadata.
-    
-    Returns dict with keys:
-    - cn: Common Name from Subject
-    - issuer: Issuer DN string
-    - expiry_date: ISO 8601 datetime string
-    - expiry_days: Days until expiration (negative if expired)
-    - serial_number: Certificate serial number (hex)
-    - key_algorithm: Public key algorithm name
-    - subject_dn: Full Subject Distinguished Name
-    - is_expired: Boolean indicating if cert has expired
+    """Parse X.509 certificate DER bytes and extract safe metadata.
+
+    Certificate validity values in cryptography are properties, not methods.
+    Prefer the timezone-aware *_utc properties when available and fall back to
+    legacy na?ve-UTC properties for older cryptography versions.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
         return {
             "cn": None,
             "issuer": None,
+            "issued_date": None,
             "expiry_date": None,
             "expiry_days": None,
             "serial_number": None,
@@ -63,54 +58,85 @@ def _extract_cert_metadata(der_bytes: bytes) -> Dict[str, Any]:
             "is_expired": None,
             "error": "cryptography library not available",
         }
-    
+
     try:
-        cert = x509.load_der_x509_certificate(der_bytes, default_backend())
-        
-        # Extract Common Name
+        cert = x509.load_der_x509_certificate(
+            der_bytes,
+            default_backend(),
+        )
+
         cn = None
         try:
-            cn_attr = cert.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)
+            cn_attr = cert.subject.get_attributes_for_oid(
+                x509.oid.NameOID.COMMON_NAME
+            )
             if cn_attr:
                 cn = cn_attr[0].value
         except Exception:
             pass
-        
-        # Extract Subject DN
+
         subject_dn = None
         try:
             subject_dn = cert.subject.rfc4514_string()
         except Exception:
             pass
-        
-        # Extract Issuer DN
+
         issuer_dn = None
         try:
             issuer_dn = cert.issuer.rfc4514_string()
         except Exception:
             pass
-        
-        # Extract Expiry Date
-        expiry_date = cert.not_valid_after()
-        expiry_iso = expiry_date.isoformat()
-        
-        # Calculate days until expiry
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        delta = expiry_date - now
-        expiry_days = delta.days
-        
-        # Extract Serial Number
+
+        not_before = getattr(
+            cert,
+            "not_valid_before_utc",
+            None,
+        )
+
+        if not_before is None:
+            not_before = cert.not_valid_before
+
+            if not_before.tzinfo is None:
+                not_before = not_before.replace(
+                    tzinfo=timezone.utc
+                )
+            else:
+                not_before = not_before.astimezone(
+                    timezone.utc
+                )
+
+        not_after = getattr(
+            cert,
+            "not_valid_after_utc",
+            None,
+        )
+
+        if not_after is None:
+            not_after = cert.not_valid_after
+
+            if not_after.tzinfo is None:
+                not_after = not_after.replace(
+                    tzinfo=timezone.utc
+                )
+            else:
+                not_after = not_after.astimezone(
+                    timezone.utc
+                )
+
+        issued_iso = not_before.isoformat()
+        expiry_iso = not_after.isoformat()
+
+        now = datetime.now(timezone.utc)
+        expiry_days = (not_after - now).days
+
         serial_number = f"{cert.serial_number:X}"
-        
-        # Extract Key Algorithm
         key_algorithm = cert.public_key().__class__.__name__
-        
-        # Is expired?
-        is_expired = expiry_days < 0
-        
+        is_expired = now > not_after
+
         return {
             "cn": cn,
             "issuer": issuer_dn,
+            "issued_date": issued_iso,
             "expiry_date": expiry_iso,
             "expiry_days": expiry_days,
             "serial_number": serial_number,
@@ -118,18 +144,99 @@ def _extract_cert_metadata(der_bytes: bytes) -> Dict[str, Any]:
             "subject_dn": subject_dn,
             "is_expired": is_expired,
         }
-    except Exception as e:
+
+    except Exception as exc:
         return {
             "cn": None,
             "issuer": None,
+            "issued_date": None,
             "expiry_date": None,
             "expiry_days": None,
             "serial_number": None,
             "key_algorithm": None,
             "subject_dn": None,
             "is_expired": None,
-            "error": str(e),
+            "error": str(exc),
         }
+
+
+def observe_client_certificate_transport(
+    headers: Mapping[str, str],
+) -> Dict[str, Any]:
+    """Return safe request-transport evidence for Azure client certificates.
+
+    This is observability only. It does not grant authority and does not expose
+    the certificate header value. Production authority remains owned by
+    extract_client_principal() + auth.cert_trust.
+    """
+    raw = None
+
+    try:
+        raw = headers.get("X-ARR-ClientCert")
+    except Exception:
+        raw = None
+
+    if raw is None:
+        try:
+            raw = headers.get("x-arr-clientcert")
+        except Exception:
+            raw = None
+
+    if raw is None:
+        try:
+            for key, candidate in headers.items():
+                if str(key).lower() == "x-arr-clientcert":
+                    raw = candidate
+                    break
+        except Exception:
+            raw = None
+
+    observation: Dict[str, Any] = {
+        "header_present": False,
+        "header_length": 0,
+        "decode_ok": False,
+        "x509_parse_ok": False,
+        "der_sha256": None,
+        "parse_error": None,
+    }
+
+    if raw is None:
+        return observation
+
+    try:
+        value = str(raw).strip()
+    except Exception:
+        observation["header_present"] = True
+        observation["parse_error"] = "header_value_unreadable"
+        return observation
+
+    observation["header_present"] = True
+    observation["header_length"] = len(value)
+
+    if not value:
+        observation["parse_error"] = "empty_header"
+        return observation
+
+    decoded = _decode_base64(value)
+
+    if not decoded:
+        observation["parse_error"] = "base64_decode_failed"
+        return observation
+
+    observation["decode_ok"] = True
+    observation["der_sha256"] = _sha256_hex(decoded)
+
+    metadata = _extract_cert_metadata(decoded)
+
+    if (
+        not isinstance(metadata, dict)
+        or bool(metadata.get("error"))
+    ):
+        observation["parse_error"] = "x509_parse_failed"
+        return observation
+
+    observation["x509_parse_ok"] = True
+    return observation
 
 
 def extract_client_cert_fingerprint(headers: Mapping[str, str]) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]]]:

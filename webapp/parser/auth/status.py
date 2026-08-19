@@ -34,32 +34,28 @@ def _runtime_binding(name: str):
 
 
 def _sanitize_cert_metadata_for_status(cert_metadata: dict | None) -> dict:
-
     if not isinstance(cert_metadata, dict):
-
         return {}
 
     allowed = {
-
         "cn",
-
         "issuer",
-
         "serial_number",
-
         "issued_date",
-
         "expiry_date",
-
         "expiry_days",
-
         "key_algorithm",
-
         "is_expired",
-
+        "trust_required",
+        "trust_valid",
+        "trust_reason",
     }
 
-    return {k: cert_metadata[k] for k in allowed if k in cert_metadata}
+    return {
+        key: cert_metadata[key]
+        for key in allowed
+        if key in cert_metadata
+    }
 
 
 def api_auth_status():
@@ -81,6 +77,14 @@ def api_auth_status():
     #
     # Session state is included only for UX continuity. Certificate presence
     # is derived solely from the current request principal.
+
+    from webapp.parser.utils.cert_utils import (
+        observe_client_certificate_transport,
+    )
+
+    certificate_transport = observe_client_certificate_transport(
+        request.headers,
+    )
 
     principal, principal_source, cert_metadata = (
         get_request_principal()
@@ -211,6 +215,11 @@ def api_auth_status():
         "certificate_present": (
             certificate_present
         ),
+
+        "certificate_transport": (
+            certificate_transport
+        ),
+
 
         "certificate_required_for_mutations": (
             certificate_required_for_mutations
