@@ -12,7 +12,9 @@ from typing import Any, Protocol
 from sqlalchemy import (
     JSON,  # portable JSON for all dialects
     Boolean,
+    CheckConstraint,
     Column,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -423,6 +425,255 @@ class WarehouseElectionResult(Base):
 
     def __repr__(self):
         return f"<WarehouseElectionResult(id={self.id}, contest={self.contest}, candidate={self.candidate})>"
+
+
+# --- CANONICAL VERIFIED ELECTION DATA ---
+#
+# The warehouse table above is an import/evidence layer. The canonical
+# tables below are the publication boundary consumed by Data Framework.
+#
+# DL1 and DL2 are independent comparison lanes. They are NOT additive
+# result stores. For each production race, QA selected exactly one lane,
+# recorded as selected_dl_source, and Database-Lite contains the finalized
+# production payload for that race.
+
+
+class CanonicalSourceArtifact(Base):
+    """Immutable source-artifact identity used by canonical seed provenance."""
+
+    __tablename__ = "canonical_source_artifacts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    artifact_role = Column(String(64), nullable=False)
+    filename = Column(String(512), nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    row_count = Column(Integer, nullable=True)
+    race_count = Column(Integer, nullable=True)
+    imported_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    provenance = Column(JSON, default=dict, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "sha256",
+            name="uq_canonical_source_artifact_sha256",
+        ),
+        Index(
+            "ix_canonical_source_artifacts_role",
+            "artifact_role",
+        ),
+    )
+
+
+class CanonicalElectionRace(Base):
+    """One QA-approved production race."""
+
+    __tablename__ = "canonical_election_races"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_race_id = Column(String(64), nullable=False)
+    election_year = Column(Integer, nullable=False)
+    election_date = Column(Date, nullable=True)
+    date_precision = Column(String(16), default="year", nullable=False)
+    state = Column(String(64), nullable=False)
+    contest = Column(String(128), nullable=False)
+    office_basic = Column(String(64), nullable=True)
+    production_status = Column(
+        String(32),
+        default="prod_loaded",
+        nullable=False,
+    )
+    selected_dl_source = Column(String(3), nullable=False)
+    source_url = Column(String(2048), nullable=True)
+    verification_status = Column(
+        String(32),
+        default="pending",
+        nullable=False,
+    )
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    payload_artifact_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_source_artifacts.id"),
+        nullable=False,
+    )
+    approval_artifact_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_source_artifacts.id"),
+        nullable=False,
+    )
+    qa_metadata = Column(JSON, default=dict, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "source_race_id",
+            name="uq_canonical_race_source_race_id",
+        ),
+        CheckConstraint(
+            "selected_dl_source IN ('DL1', 'DL2')",
+            name="ck_canonical_race_selected_dl",
+        ),
+        CheckConstraint(
+            "date_precision IN ('year', 'date')",
+            name="ck_canonical_race_date_precision",
+        ),
+        Index(
+            "ix_canonical_races_year_state",
+            "election_year",
+            "state",
+        ),
+        Index(
+            "ix_canonical_races_selected_dl",
+            "selected_dl_source",
+        ),
+        Index(
+            "ix_canonical_races_verification",
+            "verification_status",
+        ),
+    )
+
+
+class CanonicalElectionResult(Base):
+    """One canonical candidate/choice result within a production race."""
+
+    __tablename__ = "canonical_election_results"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    race_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "canonical_election_races.id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    source_row_index = Column(Integer, nullable=False)
+    source_row_hash = Column(String(64), nullable=False)
+    source_jurisdiction_label = Column(String(256), nullable=False)
+    jurisdiction_key = Column(String(384), nullable=False)
+    jurisdiction_name = Column(String(256), nullable=False)
+    jurisdiction_type = Column(String(32), nullable=True)
+    aggregation_scope = Column(
+        String(32),
+        default="jurisdiction",
+        nullable=False,
+    )
+    precinct = Column(String(256), nullable=True)
+    ballot_candidate_name = Column(String(512), nullable=True)
+    candidate = Column(String(512), nullable=False)
+    ballot_party = Column(String(128), nullable=True)
+    party = Column(String(64), nullable=True)
+    fec_id = Column(String(64), nullable=True)
+    is_write_in = Column(Boolean, default=False, nullable=False)
+    total_votes = Column(Integer, nullable=False)
+    source_url = Column(String(2048), nullable=True)
+    provenance = Column(JSON, default=dict, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "race_id",
+            "source_row_index",
+            name="uq_canonical_result_race_source_row_index",
+        ),
+        UniqueConstraint(
+            "race_id",
+            "source_row_hash",
+            name="uq_canonical_result_race_source_row_hash",
+        ),
+        CheckConstraint(
+            "aggregation_scope IN ('jurisdiction', 'precinct')",
+            name="ck_canonical_result_aggregation_scope",
+        ),
+        Index(
+            "ix_canonical_results_race_jurisdiction",
+            "race_id",
+            "jurisdiction_key",
+        ),
+        Index(
+            "ix_canonical_results_candidate",
+            "candidate",
+        ),
+        Index(
+            "ix_canonical_results_fec_id",
+            "fec_id",
+        ),
+    )
+
+
+class CanonicalVoteComponent(Base):
+    """Normalized vote-method component for one canonical result.
+
+    Signed values are allowed because historical source evidence contains
+    at least one internally consistent negative adjustment.
+    """
+
+    __tablename__ = "canonical_vote_components"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    result_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "canonical_election_results.id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    vote_method = Column(String(32), nullable=False)
+    votes = Column(Integer, nullable=False)
+    source_column = Column(String(128), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "result_id",
+            "vote_method",
+            name="uq_canonical_vote_component_method",
+        ),
+        Index(
+            "ix_canonical_vote_components_result",
+            "result_id",
+        ),
+    )
+
+
+class CanonicalVerificationEvent(Base):
+    """Race-level QA / production provenance event."""
+
+    __tablename__ = "canonical_verification_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    race_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "canonical_election_races.id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    stage = Column(String(64), nullable=False)
+    status = Column(String(64), nullable=False)
+    selected_dl_source = Column(String(3), nullable=True)
+    actor = Column(String(256), nullable=True)
+    occurred_at = Column(DateTime(timezone=True), nullable=True)
+    notes = Column(Text, nullable=True)
+    event_metadata = Column(JSON, default=dict, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            (
+                "selected_dl_source IS NULL OR "
+                "selected_dl_source IN ('DL1', 'DL2')"
+            ),
+            name="ck_canonical_verification_selected_dl",
+        ),
+        Index(
+            "ix_canonical_verification_race_stage",
+            "race_id",
+            "stage",
+        ),
+    )
+
 
 class DataFrameworkPreviewCache(Base):
     """
