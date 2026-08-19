@@ -190,40 +190,17 @@ def should_apply_admin_boost(
     tier: PrivilegeTier | int,
     domain: str
 ) -> bool:
-    """
-    Determine if admin boost should apply to this URL.
-    
-    Security boundary: Admin boost ONLY applies to trusted domains.
-    Prevents malicious actors with admin credentials from artificially
-    boosting suspicious URLs.
-    
-    Args:
-        trust_factors: Trust factor dict (from url_trust_scorer)
-        tier: PrivilegeTier (0-3)
-        domain: Domain name to validate
-    
-    Returns:
-        True if boost should apply, False otherwise
-    """
-    tier = int(tier)
-    
-    # Only admin tiers get boost
-    if tier not in (1, 2, 3):  # REVIEWER, FULL_TRUST, ROOT_ADMIN
-        return False
-    
-    # Suspicious TLDs: always reject boost regardless of admin tier
-    suspicious_tlds = {".xyz", ".top", ".faith", ".zip", ".icu", ".click", ".download", ".gq", ".ml"}
-    if any(domain.endswith(tld) for tld in suspicious_tlds):
-        return False
-    
-    # Check domain trust: at least one must be true
-    domain_is_trusted = (
-        trust_factors.get("verified_domain", False) or
-        trust_factors.get("gov_domain", False) or
-        is_domain_in_allowlist(domain)
+    """Compatibility wrapper for the live admin trust-boost policy."""
+    from webapp.parser.trust_authority import (
+        should_apply_admin_boost_policy,
     )
-    
-    return domain_is_trusted
+
+    return should_apply_admin_boost_policy(
+        trust_factors,
+        tier,
+        domain,
+        domain_allowlisted=is_domain_in_allowlist(domain),
+    )
 
 
 def is_domain_in_allowlist(domain: str) -> bool:

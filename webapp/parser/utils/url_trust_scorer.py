@@ -42,6 +42,11 @@ from .privilege_tiers import (
     get_principal_tier,
     should_apply_admin_boost,
 )
+from webapp.parser.trust_authority import (
+    admin_boost_amount,
+    should_quarantine_for_tier,
+    should_reject_for_tier,
+)
 from .telemetry import emit_telemetry_event
 
 # Trust score thresholds
@@ -514,7 +519,7 @@ def compute_trust_score(url: str, context: Dict[str, Any] | None = None, session
             # Check if admin boost should apply (security boundary enforced in should_apply_admin_boost)
             if should_apply_admin_boost(factors, privilege_tier, domain):
                 # Boost amount depends on tier (REVIEWER: +5, FULL_TRUST/ROOT_ADMIN: +10)
-                boost_amount = 10 if privilege_tier in (PrivilegeTier.ADMIN_FULL_TRUST, PrivilegeTier.ROOT_ADMIN) else 5
+                boost_amount = admin_boost_amount(privilege_tier)
                 score += boost_amount
                 admin_boost_applied = True
                 logger.info({
@@ -597,63 +602,17 @@ def should_use_snapshot_mode(trust_score: int, url: str) -> bool:
 
 
 def should_quarantine(trust_score: int, url: str, privilege_tier: PrivilegeTier | None = None) -> bool:
-    """Determine if URL should be quarantined for manual review.
-    
-    Tier-aware: ROOT_ADMIN/ADMIN_FULL_TRUST bypass quarantine for low-trust URLs.
-    
-    Args:
-        trust_score: Computed trust score (0-100)
-        url: URL being assessed
-        privilege_tier: Optional privilege tier (if provided, tier-specific logic applies)
-    
-    Returns:
-        True if URL should be quarantined (low-trust range)
-    
-    Tier Logic:
-        - ROOT_ADMIN: Never quarantine (bypass to direct processing)
-        - ADMIN_FULL_TRUST: Stricter thresholds, but still allowed to process
-        - REVIEWER/USER: Standard thresholds
-    """
-    # ROOT_ADMIN bypasses quarantine (but isolation tracking still applies)
-    if privilege_tier == PrivilegeTier.ROOT_ADMIN:
-        return False
-    
-    # ADMIN_FULL_TRUST: stricter quarantine threshold (40 instead of 30)
-    if privilege_tier == PrivilegeTier.ADMIN_FULL_TRUST:
-        admin_quarantine_low = 40
-        return admin_quarantine_low <= trust_score < TRUST_THRESHOLD_MEDIUM
-    
-    # Standard quarantine range for REVIEWER and USER
-    return TRUST_THRESHOLD_LOW <= trust_score < TRUST_THRESHOLD_MEDIUM
+    """Determine if URL should be quarantined for manual review."""
+    return should_quarantine_for_tier(
+        trust_score,
+        privilege_tier,
+        low_threshold=TRUST_THRESHOLD_LOW,
+        medium_threshold=TRUST_THRESHOLD_MEDIUM,
+    )
 
 
 def should_reject(trust_score: int, url: str, privilege_tier: PrivilegeTier | None = None) -> bool:
-    """Determine if URL should be rejected outright.
-    
-    Tier-aware: ROOT_ADMIN/ADMIN_FULL_TRUST bypass rejection for very-low-trust URLs.
-    
-    Args:
-        trust_score: Computed trust score (0-100)
-        url: URL being assessed
-        privilege_tier: Optional privilege tier (if provided, tier-specific logic applies)
-    
-    Returns:
-        True if URL should be rejected (below low threshold)
-    
-    Tier Logic:
-        - ROOT_ADMIN: Never reject (but logged + isolated)
-        - ADMIN_FULL_TRUST: Stricter rejection (< 20 instead of < 30)
-        - REVIEWER/USER: Standard rejection threshold
-    
-    Security Note:
-        Rejection bypasses do NOT apply to:
-        - Phishing indicators
-        - Domain mimicry + suspicious indicators
-        - Known malware/ransomware domains
-        
-        Those must be handled by security team.
-    """
-    # ROOT_ADMIN bypasses rejection (but isolation & audit logging apply)
+    """Determine if URL should be rejected outright."""
     if privilege_tier == PrivilegeTier.ROOT_ADMIN:
         logger.warning({
             "level": "WARNING",
@@ -663,12 +622,9 @@ def should_reject(trust_score: int, url: str, privilege_tier: PrivilegeTier | No
             "trust_score": trust_score,
             "privilege_tier": "ROOT_ADMIN"
         })
-        return False
-    
-    # ADMIN_FULL_TRUST: stricter rejection threshold (20 instead of 30)
-    if privilege_tier == PrivilegeTier.ADMIN_FULL_TRUST:
-        admin_reject_low = 20
-        return trust_score < admin_reject_low
-    
-    # Standard rejection for REVIEWER and USER
-    return trust_score < TRUST_THRESHOLD_LOW
+
+    return should_reject_for_tier(
+        trust_score,
+        privilege_tier,
+        low_threshold=TRUST_THRESHOLD_LOW,
+    )
