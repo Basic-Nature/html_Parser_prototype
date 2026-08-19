@@ -58,7 +58,10 @@ def _count_vocab_entries(vocab_root: Path, subdir: str) -> dict[str, Any]:
 
 def get_ml_pipeline_profile() -> dict[str, Any]:
     """Return a compact profile of ML logic ingestion and tuning inputs."""
-    from webapp.parser.utils.ml_telemetry import get_ml_telemetry_snapshot
+    from webapp.parser.utils.ml_telemetry import (
+        get_ml_telemetry_log_path,
+        get_ml_telemetry_snapshot,
+    )
 
     vocab_root = PROJECT_ROOT / "webapp" / "parser" / "Context_Integration" / "vocab"
     profile = {
@@ -67,7 +70,7 @@ def get_ml_pipeline_profile() -> dict[str, Any]:
             "structure_feedback_log_rows": _count_jsonl_rows(LOG_DIR / "structure_feedback_log.jsonl"),
             "spacy_ner_train_rows": _count_jsonl_rows(LOG_DIR / "spacy_ner_train_data.jsonl"),
             "spacy_ner_misaligned_rows": _count_jsonl_rows(LOG_DIR / "spacy_ner_misaligned.jsonl"),
-            "ml_usage_telemetry_rows": _count_jsonl_rows(LOG_DIR / "ml_usage_telemetry.jsonl"),
+            "ml_usage_telemetry_rows": _count_jsonl_rows(get_ml_telemetry_log_path()),
         },
         "mapping_catalog": {
             "vocab_root": str(vocab_root),

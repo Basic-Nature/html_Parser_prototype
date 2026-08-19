@@ -19,18 +19,64 @@ _COMPONENT_COUNTS: dict[str, int] = {}
 _ACTION_COUNTS: dict[str, int] = {}
 _RECENT_EVENTS: deque[dict[str, Any]] = deque(maxlen=max(50, int(os.environ.get("ML_TELEMETRY_RECENT_LIMIT", "300"))))
 
-_PERSIST_ENABLED = os.environ.get("ML_TELEMETRY_PERSIST", "true").strip().lower() in {"1", "true", "yes", "on"}
-_DEFAULT_LOG_PATH = Path(__file__).resolve().parents[1] / "log" / "ml_usage_telemetry.jsonl"
-_LOG_PATH = Path(os.environ.get("ML_TELEMETRY_LOG_PATH", str(_DEFAULT_LOG_PATH)))
+_PERSIST_ENABLED = os.environ.get(
+    "ML_TELEMETRY_PERSIST",
+    "true",
+).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _default_log_path() -> Path:
+    """Return a durable runtime path outside the source checkout."""
+
+    local_appdata = os.environ.get("LOCALAPPDATA", "").strip()
+
+    if local_appdata:
+        state_root = Path(local_appdata)
+    else:
+        xdg_state_home = os.environ.get(
+            "XDG_STATE_HOME",
+            "",
+        ).strip()
+
+        if xdg_state_home:
+            state_root = Path(xdg_state_home)
+        else:
+            state_root = Path.home() / ".local" / "state"
+
+    return (
+        state_root
+        / "ElectionPulse"
+        / "logs"
+        / "ml_usage_telemetry.jsonl"
+    )
+
+
+_DEFAULT_LOG_PATH = _default_log_path()
+_LOG_PATH = Path(
+    os.environ.get(
+        "ML_TELEMETRY_LOG_PATH",
+        str(_DEFAULT_LOG_PATH),
+    )
+).expanduser()
+
 if _PERSIST_ENABLED:
     try:
-        _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _LOG_PATH.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
     except Exception:
         _PERSIST_ENABLED = False
 
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def get_ml_telemetry_log_path() -> Path:
+    """Return the resolved persistence path used by this process."""
+
+    return _LOG_PATH
 
 
 def record_ml_event(
