@@ -26,12 +26,23 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.orm import backref, declarative_base, relationship
 
 
 Base = declarative_base()
+
+
+# Flexible parser / ML-NLP evidence may evolve without being canonical truth.
+#
+# PostgreSQL uses JSONB so evidence is queryable and has native equality
+# semantics. SQLite and other portability/test dialects continue to use JSON.
+#
+# IMPORTANT: this type is intentionally limited to the recovered legacy
+# observation/context fields. Canonical publication JSON fields have their own
+# storage contract and must not be silently swept into this one.
+EVIDENCE_JSON = JSON().with_variant(JSONB(), "postgresql")
 
 class MetaDataProtocol(Protocol):
     tables: Any
@@ -136,7 +147,7 @@ class Candidate(Base):
     office_id = Column(Integer, ForeignKey("offices.id"))
     office = relationship("Office", back_populates="candidates")
     results = relationship("Result", back_populates="candidate")
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
 
@@ -160,7 +171,7 @@ class Contest(Base):
     office = relationship("Office", back_populates="contests")
     results = relationship("Result", back_populates="contest")
     buttons = relationship("Button", back_populates="contest", cascade="all, delete-orphan")
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
     __table_args__ = (
@@ -183,7 +194,7 @@ class Result(Base):
     is_winner = Column(Boolean)
     is_incumbent = Column(Boolean)
     vote_method = Column(String)
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
 class Panel(Base):
@@ -199,7 +210,7 @@ class Panel(Base):
     contest = relationship("Contest", backref=backref("panels", cascade="all, delete-orphan"))
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
 class Button(Base):
     __tablename__ = "buttons"
@@ -210,7 +221,7 @@ class Button(Base):
     is_visible = Column(Boolean, default=True)
     is_clickable = Column(Boolean, default=True)
     source = Column(String, nullable=True)
-    metastats = Column(JSON, nullable=True)
+    metastats = Column(EVIDENCE_JSON, nullable=True)
 
     contest = relationship("Contest", back_populates="buttons")
 
@@ -229,7 +240,7 @@ class CandidatePanel(Base):
     contest = relationship("Contest", backref=backref("candidate_panels", cascade="all, delete-orphan"))
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
 class LocationPanel(Base):
     """
@@ -246,7 +257,7 @@ class LocationPanel(Base):
     contest = relationship("Contest", backref=backref("location_panels", cascade="all, delete-orphan"))
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
 class Heading(Base):
     """
@@ -262,7 +273,7 @@ class Heading(Base):
     contest = relationship("Contest", backref=backref("headings", cascade="all, delete-orphan"))
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
 class BallotType(Base):
     """
@@ -279,7 +290,7 @@ class BallotType(Base):
     contest = relationship("Contest", backref=backref("ballot_types", cascade="all, delete-orphan"))
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
 class ResultsTimestamp(Base):
     """
@@ -294,7 +305,7 @@ class ResultsTimestamp(Base):
     contest = relationship("Contest", backref=backref("results_timestamps", cascade="all, delete-orphan"))
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
 class PartyLabel(Base):
     """
@@ -309,7 +320,7 @@ class PartyLabel(Base):
     contest = relationship("Contest", backref=backref("party_labels", cascade="all, delete-orphan"))
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
 class VoteMethod(Base):
     """
@@ -324,7 +335,7 @@ class VoteMethod(Base):
     contest = relationship("Contest", backref=backref("vote_methods", cascade="all, delete-orphan"))
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
 # --- OPTIONAL/GENERIC MODELS ---
 
@@ -336,7 +347,7 @@ class Entity(Base):
     id = Column(Integer, primary_key=True)
     entity_type = Column(String, nullable=False)
     value = Column(String, nullable=False)
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
 class MiscEntity(Base):
     """
@@ -346,7 +357,7 @@ class MiscEntity(Base):
     id = Column(Integer, primary_key=True)
     value = Column(String, nullable=False)
     type_ = Column(String, nullable=False)
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
 # --- ML, LOGGING, AND SUPPORT MODELS ---
 
@@ -376,7 +387,7 @@ class BatchMetadata(Base):
     started_at = Column(DateTime, default=datetime.now(timezone.utc))
     completed_at = Column(DateTime)
     status = Column(Enum(StatusEnum), default=StatusEnum.PENDING)
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
     def __repr__(self):
         return f"<BatchMetadata(batch_id={self.batch_id}, source={self.source}, status={self.status})>"
@@ -394,7 +405,7 @@ class StagingElectionResult(Base):
     raw_html = Column(Text)
     parsed_at = Column(DateTime, default=datetime.now(timezone.utc))
     status = Column(Enum(StatusEnum), default=StatusEnum.PENDING)
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
     def __repr__(self):
         return f"<StagingElectionResult(id={self.id}, batch_id={self.batch_id}, state={self.state})>"
@@ -421,7 +432,7 @@ class WarehouseElectionResult(Base):
     verification_notes = Column(Text, nullable=True)
     verified_at = Column(DateTime, nullable=True)
     verified_by = Column(String(256), nullable=True)
-    metastats = Column(JSON, default=dict)
+    metastats = Column(EVIDENCE_JSON, default=dict)
 
     def __repr__(self):
         return f"<WarehouseElectionResult(id={self.id}, contest={self.contest}, candidate={self.candidate})>"
@@ -716,7 +727,7 @@ class Alert(Base):
     id = Column(Integer, primary_key=True)
     level = Column(String, nullable=False)
     message = Column(Text, nullable=False)
-    context = Column(JSON)
+    context = Column(EVIDENCE_JSON)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
     def __repr__(self):
