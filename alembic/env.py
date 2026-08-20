@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
@@ -31,6 +32,58 @@ target_metadata = Base.metadata
 # ... etc.
 
 
+_PRODUCTION_LIKE_DEPLOY_ENVS = frozenset(
+    {
+        "production",
+        "prod",
+        "staging",
+        "stage",
+    }
+)
+
+
+def _is_production_like_execution() -> bool:
+    """Return True when Alembic is running in a production-like host context."""
+    deploy_env = os.getenv("DEPLOY_ENV", "").strip().lower()
+
+    if deploy_env in _PRODUCTION_LIKE_DEPLOY_ENVS:
+        return True
+
+    # Azure App Service injects these host markers into the runtime.
+    return bool(
+        os.getenv("WEBSITE_SITE_NAME")
+        or os.getenv("WEBSITE_INSTANCE_ID")
+    )
+
+
+def _resolve_database_url() -> str:
+    """Resolve Alembic's database target with fail-closed production authority."""
+    explicit_url = os.getenv("DATABASE_URL", "").strip()
+    production_like = _is_production_like_execution()
+
+    if production_like and not explicit_url:
+        raise RuntimeError(
+            "Alembic target authority violation: production-like execution "
+            "requires an explicit DATABASE_URL."
+        )
+
+    url = explicit_url or config.get_main_option("sqlalchemy.url")
+
+    if not url or not url.strip():
+        raise RuntimeError(
+            "Alembic target authority violation: no database URL is configured."
+        )
+
+    normalized_url = url.strip()
+
+    if production_like and normalized_url.lower().startswith("sqlite"):
+        raise RuntimeError(
+            "Alembic target authority violation: SQLite is not allowed for "
+            "production-like execution."
+        )
+
+    return normalized_url
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
 
@@ -44,7 +97,7 @@ def run_migrations_offline() -> None:
 
     """
     import os
-    url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    url = _resolve_database_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -67,7 +120,7 @@ def run_migrations_online() -> None:
     import os
     
     # Get database URL from environment or config
-    database_url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    database_url = _resolve_database_url()
     
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = database_url

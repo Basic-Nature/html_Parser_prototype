@@ -61,3 +61,5 @@ spacy-lookups-data>=1.0.5
 # flask-wtf for form handling, is not used in the current version
 # optional future implementation
 # flask-wtf>=1.0.0
+# Runtime schema migrations for controlled production maintenance/WebJobs.
+alembic>=1.18.4
