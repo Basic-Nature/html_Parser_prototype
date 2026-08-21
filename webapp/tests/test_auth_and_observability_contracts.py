@@ -920,7 +920,7 @@ def test_full_trust_admin_can_retrain_models(
     ]
 
 
-def test_full_trust_admin_cannot_promote_canonical_dataset(
+def test_full_trust_admin_cannot_run_warehouse_staging_promotion(
     client,
     monkeypatch,
 ):
@@ -948,7 +948,7 @@ def test_full_trust_admin_cannot_promote_canonical_dataset(
 
     assert payload[
         "effect"
-    ] == "canonical_promotion"
+    ] == "warehouse_staging_promotion"
 
     assert payload[
         "required_tier"
@@ -957,7 +957,7 @@ def test_full_trust_admin_cannot_promote_canonical_dataset(
     assert launched == []
 
 
-def test_root_admin_can_promote_canonical_dataset(
+def test_root_admin_can_run_warehouse_staging_promotion(
     client,
     monkeypatch,
 ):

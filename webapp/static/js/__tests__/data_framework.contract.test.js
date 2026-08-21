@@ -90,7 +90,7 @@ describe('data_framework bootstrap contract', () => {
     expect(urls.some((u) => u.includes('/api/custom_warehouse'))).toBe(true);
   });
 
-  test('falls back to default warehouse api url when hydrated config is missing', async () => {
+  test('falls back to canonical publication api when hydrated config is missing', async () => {
     document.body.innerHTML = document.body.innerHTML.replace(
       ' data-api-url="/api/custom_warehouse"',
       ''
@@ -101,7 +101,7 @@ describe('data_framework bootstrap contract', () => {
     await flushAsync();
 
     const urls = mockFetchInstance.mock.calls.map((args) => String(args[0] || ''));
-    expect(urls.some((u) => u.includes('/api/warehouse_election_results'))).toBe(true);
+    expect(urls.some((u) => u.includes('/api/ballotlens-database'))).toBe(true);
   });
 
   test('enters read-only mode when auth-protected feed returns 401', async () => {

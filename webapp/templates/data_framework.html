@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- Config (replaces inline script) -->
         <meta id="dataFrameworkConfig"
-          data-api-url="{{ url_for('api_warehouse_election_results') }}"
+          data-api-url="{{ data_api_url }}"
           data-upload-url="{{ url_for('upload_to_input') }}"
           data-scaffold-json-url="{{ url_for('api_data_framework_scaffold') }}"
           data-scaffold-csv-url="{{ url_for('api_data_framework_scaffold_csv') }}"
@@ -43,7 +43,7 @@
         </h1>
         <div class="subtitle">Upload, View, and Manage Election Data in PostgreSQL</div>
         <div class="framework-topline" aria-label="Data framework highlights">
-          <span class="status-pill">Warehouse-first routing</span>
+          <span class="status-pill">Canonical-first publication</span>
           <span class="status-pill">Curated and live views</span>
           <span class="status-pill">Filter and export workflow</span>
         </div>
@@ -113,7 +113,7 @@
                     <select id="vizDatasetSelect" aria-label="Visualization dataset">
                       <option value="finalized" selected>Finalized (DB-Lite)</option>
                       <option value="down_ballot">Down-ballot (DB-Lite)</option>
-                      <option value="warehouse_core">Warehouse (SQL Core)</option>
+                      <option value="warehouse_core">Canonical Production</option>
                     </select>
                   </div>
                   <div class="framework-panel-badges">
@@ -171,7 +171,7 @@
                         <p class="framework-panel-subtitle">Explore county-level drop-off patterns by party and percent.</p>
                       </div>
                       <div class="framework-panel-badges">
-                        <span class="badge badge-ghost">Warehouse</span>
+                        <span class="badge badge-ghost">Canonical</span>
                         <span class="badge badge-ghost">Default</span>
                       </div>
                     </header>
@@ -231,10 +231,10 @@
               </div>
             </article>
 
-            <article class="framework-panel warehouse-panel" aria-label="Warehouse data">
+            <article class="framework-panel warehouse-panel" aria-label="Canonical production data">
               <header class="framework-panel-header">
                 <div>
-                  <h2>Warehouse View</h2>
+                  <h2>Canonical Production View</h2>
                   <p class="framework-panel-subtitle">Live snapshot of PostgreSQL data with filters and exports.</p>
                 </div>
                 <div class="framework-panel-badges">

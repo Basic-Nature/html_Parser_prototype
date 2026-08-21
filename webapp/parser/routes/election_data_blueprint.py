@@ -66,6 +66,10 @@ def create_election_data_blueprint() -> Blueprint:
     def api_election_data_stats_route():
         return _call_handler("api_election_data_stats")
 
+    @bp.route("/api/ballotlens-database", methods=["GET"], endpoint="api_ballotlens_database")
+    def api_ballotlens_database_route():
+        return _call_handler("api_ballotlens_database")
+
     @bp.route("/api/warehouse_election_results", methods=["GET"], endpoint="api_warehouse_election_results")
     def api_warehouse_election_results_route():
         return _call_handler("api_warehouse_election_results")

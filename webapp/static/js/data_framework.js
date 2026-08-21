@@ -20,9 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const cfgEl = document.getElementById('dataFrameworkConfig');
   const hydratedUrl = cfgEl?.dataset?.apiUrl;
   const apiUrl =
-    hydratedUrl ||  // server now injects absolute path via url_for
+    hydratedUrl ||  // server injects the configured publication endpoint
     ((/** @type {any} */ (window)).__DATA_FRAMEWORK__ && (/** @type {any} */ (window)).__DATA_FRAMEWORK__.apiUrl) ||
-    '/api/warehouse_election_results';
+    '/api/ballotlens-database';
   // Additional injectable endpoints
   const uploadUrl = cfgEl?.dataset?.uploadUrl || '/upload/input';
   const scaffoldJsonUrl = cfgEl?.dataset?.scaffoldJsonUrl || '/api/data_framework/scaffold';
@@ -220,7 +220,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const VIZ_DATASET_FINALIZED = 'finalized';
   const VIZ_DATASET_DOWN_BALLOT = 'down_ballot';
   const VIZ_DATASET_WAREHOUSE = 'warehouse_core';
-  const DEFAULT_VISIBLE_COLUMNS = ['state', 'county', 'contest', 'candidate', 'party', 'votes'];
+  const DEFAULT_VISIBLE_COLUMNS = ['state', 'jurisdiction_name', 'county', 'contest', 'candidate', 'party', 'votes'];
+  const COLUMN_LABELS = {
+    jurisdiction_name: 'Jurisdiction',
+    jurisdiction_type: 'Jurisdiction Type',
+    total_votes: 'Total Votes',
+    election_year: 'Election Year',
+    date_precision: 'Date Precision',
+    aggregation_scope: 'Aggregation Scope',
+  };
 
   function isAuthForbiddenStatus(status) {
     return status === 401 || status === 403;
@@ -326,6 +334,23 @@ document.addEventListener('DOMContentLoaded', () => {
   // ---------- Utilities ----------
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
   const safeGet = v => (v == null ? '' : String(v));
+  const displayValue = v => (v == null ? '—' : String(v));
+  const exportValue = v => (v == null ? 'NULL' : String(v));
+
+  function firstPresent(...values) {
+    for (const value of values) {
+      if (value !== null && value !== undefined && value !== '') return value;
+    }
+    return null;
+  }
+
+  function firstNumeric(...values) {
+    for (const value of values) {
+      const parsed = parseNumeric(value);
+      if (parsed !== null) return parsed;
+    }
+    return null;
+  }
   function setStatus(target, type, text) {
     if (!target) return;
     target.className = 'status ' + (type === 'ok' ? 'status-ok' : type === 'error' ? 'status-error' : 'status-info');
@@ -339,18 +364,29 @@ document.addEventListener('DOMContentLoaded', () => {
     return s.trim();
   }
   function parseNumeric(value) {
-    if (value == null || value === '') return 0;
-    if (typeof value === 'number') return value;
+    if (value == null || value === '') return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
     const cleaned = String(value).replace(/,/g, '').replace(/[^\d.-]/g, '').trim();
+    if (!cleaned || cleaned === '-' || cleaned === '.' || cleaned === '-.') return null;
     const num = Number(cleaned);
-    return Number.isFinite(num) ? num : 0;
+    return Number.isFinite(num) ? num : null;
   }
   function parsePercent(value) {
-    if (value == null || value === '') return 0;
-    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    if (value == null || value === '') return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
     const cleaned = String(value).replace('%', '').trim();
+    if (!cleaned) return null;
     const num = Number(cleaned);
-    return Number.isFinite(num) ? num : 0;
+    return Number.isFinite(num) ? num : null;
+  }
+
+  function compareNullableNumbersDesc(left, right) {
+    const a = parseNumeric(left);
+    const b = parseNumeric(right);
+    if (a === null && b === null) return 0;
+    if (a === null) return 1;
+    if (b === null) return -1;
+    return b - a;
   }
   function extractYearFromValue(value) {
     if (!value) return '';
@@ -917,23 +953,36 @@ document.addEventListener('DOMContentLoaded', () => {
       { key: 'other', label: 'Other' }
     ];
     const totals = Object.fromEntries(buckets.map(entry => [entry.key, 0]));
+    let knownVoteValues = 0;
     rows.forEach(row => {
       const bucket = normalizePartyBucket(row.party || row.ballot_party || '');
-      totals[bucket] = (totals[bucket] || 0) + (Number(row.votes) || 0);
+      const votes = parseNumeric(row.votes);
+      if (votes === null) return;
+      knownVoteValues += 1;
+      totals[bucket] += votes;
     });
-    const totalVotes = Object.values(totals).reduce((sum, val) => sum + val, 0) || 1;
+
+    if (!knownVoteValues) {
+      el.vizChart.innerHTML = '<div class="viz-placeholder">Vote totals are not reported for the selected rows.</div>';
+      return;
+    }
+
+    const totalVotes = Object.values(totals).reduce((sum, val) => sum + val, 0);
     const stack = document.createElement('div');
     stack.className = 'viz-stack';
     const segments = buckets
       .map(entry => ({ label: entry.label, value: totals[entry.key], tone: entry.key }))
       .filter(segment => segment.value > 0);
-    (segments.length ? segments : [{ label: 'Other', value: totalVotes, tone: 'other' }]).forEach(segment => {
-      const seg = document.createElement('div');
-      seg.className = `viz-stack-seg viz-stack-${segment.tone}`;
-      seg.style.setProperty('--seg-size', `${Math.round((segment.value / totalVotes) * 100)}%`);
-      seg.title = `${segment.label}: ${segment.value.toLocaleString()}`;
-      stack.appendChild(seg);
-    });
+
+    if (totalVotes > 0) {
+      segments.forEach(segment => {
+        const seg = document.createElement('div');
+        seg.className = `viz-stack-seg viz-stack-${segment.tone}`;
+        seg.style.setProperty('--seg-size', `${Math.round((segment.value / totalVotes) * 100)}%`);
+        seg.title = `${segment.label}: ${segment.value.toLocaleString()}`;
+        stack.appendChild(seg);
+      });
+    }
 
     const legend = document.createElement('div');
     legend.className = 'viz-legend';
@@ -962,10 +1011,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const countySeries = buildCountyDropoffSeries(scopeRows);
     if (!countySeries.length) return;
     const points = countySeries
+      .filter(item => parseNumeric(item.delta_pct) !== null)
       .slice()
-      .sort((a, b) => Math.abs(b.delta_pct || 0) - Math.abs(a.delta_pct || 0))
+      .sort((a, b) => Math.abs(b.delta_pct) - Math.abs(a.delta_pct))
       .slice(0, 36);
-    const maxAbs = Math.max(1, ...points.map(item => Math.abs(item.delta_pct || 0)));
+    if (!points.length) return;
+    const maxAbs = Math.max(1, ...points.map(item => Math.abs(item.delta_pct)));
     const svg = createSvgElement('svg');
     svg.classList.add('viz-dropoff-overlay');
     svg.setAttribute('viewBox', '0 0 1000 120');
@@ -982,7 +1033,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const path = createSvgElement('path');
     const coords = points.map((row, idx) => {
       const x = points.length === 1 ? 500 : Math.round((idx / (points.length - 1)) * 1000);
-      const y = 60 - Math.round(((Number(row.delta_pct) || 0) / maxAbs) * 55);
+      const y = 60 - Math.round((row.delta_pct / maxAbs) * 55);
       return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
     }).join(' ');
     path.setAttribute('d', coords);
@@ -1005,11 +1056,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     const datasetType = rows[0]?.dataset_type || VIZ_DATASET_FINALIZED;
-    const sorted = [...rows].sort((a, b) => {
-      const aVotes = Number(a.votes ?? 0) || 0;
-      const bVotes = Number(b.votes ?? 0) || 0;
-      return bVotes - aVotes;
-    });
+    const sorted = [...rows].sort((a, b) => compareNullableNumbersDesc(a.votes, b.votes));
     const table = document.createElement('table');
     table.className = 'viz-table';
     const thead = document.createElement('thead');
@@ -1059,7 +1106,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         sorted
           .slice()
-          .sort((a, b) => (Number(b.votes || 0) || 0) - (Number(a.votes || 0) || 0))
+          .sort((a, b) => compareNullableNumbersDesc(a.votes, b.votes))
           .slice(0, 18)
           .forEach(row => {
             const tr = document.createElement('tr');
@@ -1069,7 +1116,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const cells = [
               candidateLabel,
               partyLabel,
-              Number(row.votes || 0) || 0,
+              parseNumeric(row.votes),
               row.county || '—',
             ];
             cells.forEach(value => {
@@ -1096,16 +1143,29 @@ document.addEventListener('DOMContentLoaded', () => {
           writein: 0,
           uncategorized: 0,
           total: 0,
+          dem_missing: false,
+          rep_missing: false,
+          other_missing: false,
+          writein_missing: false,
+          uncategorized_missing: false,
+          total_missing: false,
         };
         const bucket = normalizePartyBucket(row.party || row.ballot_party || '');
-        const votes = Number(row.votes || 0) || 0;
-        const uncategorized = Number(row.uncategorized_votes || 0) || 0;
-        if (bucket === 'dem') entry.dem += votes;
-        else if (bucket === 'rep') entry.rep += votes;
-        else if (bucket === 'writein') entry.writein += votes;
-        else entry.other += votes;
-        entry.uncategorized += uncategorized;
-        entry.total += votes;
+        const bucketKey = ['dem', 'rep', 'writein'].includes(bucket) ? bucket : 'other';
+        const votes = parseNumeric(row.votes);
+        const uncategorized = parseNumeric(row.uncategorized_votes);
+        if (votes === null) {
+          entry[`${bucketKey}_missing`] = true;
+          entry.total_missing = true;
+        } else {
+          entry[bucketKey] += votes;
+          entry.total += votes;
+        }
+        if (uncategorized === null) {
+          entry.uncategorized_missing = true;
+        } else {
+          entry.uncategorized += uncategorized;
+        }
         grouped.set(countyKey, entry);
       });
       const countyRows = Array.from(grouped.values())
@@ -1115,12 +1175,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const tr = document.createElement('tr');
         const cells = [
           row.county,
-          row.dem,
-          row.rep,
-          row.other,
-          row.writein,
-          row.uncategorized,
-          row.total
+          row.dem_missing ? null : row.dem,
+          row.rep_missing ? null : row.rep,
+          row.other_missing ? null : row.other,
+          row.writein_missing ? null : row.writein,
+          row.uncategorized_missing ? null : row.uncategorized,
+          row.total_missing ? null : row.total
         ];
         cells.forEach(value => {
           const td = document.createElement('td');
@@ -1368,7 +1428,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const contestTotals = {};
     fallbackScopeRows.forEach(row => {
       if (!row.contest) return;
-      contestTotals[row.contest] = (contestTotals[row.contest] || 0) + (Number(row.votes) || 0);
+      const votes = parseNumeric(row.votes);
+      if (votes === null) return;
+      contestTotals[row.contest] = (contestTotals[row.contest] || 0) + votes;
     });
 
     const contestsByVotes = Object.entries(contestTotals)
@@ -1390,7 +1452,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const topTotals = {};
     stateScopeRows.forEach(row => {
       if (!row.contest) return;
-      topTotals[row.contest] = (topTotals[row.contest] || 0) + (Number(row.votes) || 0);
+      const votes = parseNumeric(row.votes);
+      if (votes === null) return;
+      topTotals[row.contest] = (topTotals[row.contest] || 0) + votes;
     });
 
     vizTopRaces = Object.entries(topTotals)
@@ -1581,7 +1645,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if ((getRowYear(row) || '') !== (vizYear || '')) return;
       if (String(row.state || '').trim() !== state) return;
       if (!row.contest) return;
-      totals[row.contest] = (totals[row.contest] || 0) + (Number(row.votes) || 0);
+      const votes = parseNumeric(row.votes);
+      if (votes === null) return;
+      totals[row.contest] = (totals[row.contest] || 0) + votes;
     });
     const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]);
     return sorted[0]?.[0] || '';
@@ -1778,59 +1844,72 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function mapDbLiteFinalizedRecord(record) {
     if (!record || typeof record !== 'object') return null;
-    const rawParty = record['Ballot Party'] || record['Party'] || record.party || '';
-    const isWriteIn = String(record['Is Write In'] || '').toLowerCase() === 'true'
-      || String(record['Is Write In'] || '').toLowerCase() === 'yes'
-      || String(record['Is Write In'] || '') === '1';
+    const rawParty = firstPresent(record['Ballot Party'], record['Party'], record.party, '');
+    const writeInRaw = firstPresent(record['Is Write In'], '');
+    const isWriteIn = String(writeInRaw).toLowerCase() === 'true'
+      || String(writeInRaw).toLowerCase() === 'yes'
+      || String(writeInRaw) === '1';
     const partyLabel = isWriteIn ? 'Write-In' : rawParty;
     return {
       dataset_type: VIZ_DATASET_FINALIZED,
-      state: record['State'] || record.state || '',
-      county: record['County/District'] || record['County'] || record.county || '',
-      contest: record['Office'] || record['Contest'] || record.contest || '',
-      candidate: record['Ballot Candidate Name'] || record['Candidate'] || record.candidate || '',
-      party: partyLabel || record['Party'] || record.party || '',
-      votes: parseNumeric(record['Total Votes'] || record['Uncategorized Votes'] || record.votes || 0),
-      uncategorized_votes: parseNumeric(record['Uncategorized Votes'] || 0),
-      early_votes: parseNumeric(record['Early Votes'] || 0),
-      election_day_votes: parseNumeric(record['Election Day Votes'] || 0),
-      mail_in_votes: parseNumeric(record['Mail in Votes'] || 0),
-      provisional_votes: parseNumeric(record['Provisional Votes'] || 0),
+      state: firstPresent(record['State'], record.state, '') || '',
+      county: firstPresent(record['County/District'], record['County'], record.county, record.jurisdiction_name, '') || '',
+      contest: firstPresent(record['Office'], record['Contest'], record.contest, '') || '',
+      candidate: firstPresent(record['Ballot Candidate Name'], record['Candidate'], record.candidate, '') || '',
+      party: firstPresent(partyLabel, record['Party'], record.party, '') || '',
+      votes: firstNumeric(record['Total Votes'], record['Uncategorized Votes'], record.votes, record.total_votes),
+      uncategorized_votes: firstNumeric(record['Uncategorized Votes'], record.uncategorized_votes),
+      early_votes: firstNumeric(record['Early Votes'], record.early_votes),
+      election_day_votes: firstNumeric(record['Election Day Votes'], record.election_day_votes),
+      mail_in_votes: firstNumeric(record['Mail in Votes'], record.mail_in_votes),
+      provisional_votes: firstNumeric(record['Provisional Votes'], record.provisional_votes),
       write_in_votes: isWriteIn ? 1 : 0,
-      year: extractYearFromValue(record['Year'] || record['Election Date'] || record['Contest'] || '')
+      year: extractYearFromValue(firstPresent(record['Year'], record.year, record.election_year, record['Election Date'], record['Contest'], '') || '')
     };
   }
 
   function mapDbLiteDownBallotRecord(record) {
     if (!record || typeof record !== 'object') return null;
-    const downVotes = parseNumeric(record['Down-Ballot Votes'] || record.down_ballot_votes || 0);
-    const presidentialVotes = parseNumeric(record['Presidential Votes'] || record.presidential_votes || 0);
-    const deltaVotes = downVotes - presidentialVotes;
-    const explicitPct = parsePercent(record['Drop-off %'] || record.dropoff_pct || 0);
-    const computedPct = presidentialVotes ? (deltaVotes / presidentialVotes) * 100 : 0;
-    const eligibleVoters = parseNumeric(
-      record['Eligible Voters']
-      || record['Total Eligible Voters']
-      || record['Registered Voters']
-      || record['Voting Age Population']
-      || record.eligible_voters
-      || record.registered_voters
-      || 0
+    const downVotes = firstNumeric(record['Down-Ballot Votes'], record.down_ballot_votes);
+    const presidentialVotes = firstNumeric(record['Presidential Votes'], record.presidential_votes);
+    const deltaVotes = (downVotes !== null && presidentialVotes !== null)
+      ? downVotes - presidentialVotes
+      : null;
+    const explicitPct = parsePercent(firstPresent(record['Drop-off %'], record.dropoff_pct));
+    const computedPct = (
+      explicitPct === null
+      && deltaVotes !== null
+      && presidentialVotes !== null
+      && presidentialVotes !== 0
+    )
+      ? (deltaVotes / presidentialVotes) * 100
+      : null;
+    const eligibleVoters = firstNumeric(
+      record['Eligible Voters'],
+      record['Total Eligible Voters'],
+      record['Registered Voters'],
+      record['Voting Age Population'],
+      record.eligible_voters,
+      record.registered_voters
     );
     return {
       dataset_type: VIZ_DATASET_DOWN_BALLOT,
-      year: extractYearFromValue(record['Year'] || record.year || ''),
-      state: record['State'] || record.state || '',
-      county: record['County'] || record.county || '',
-      contest: record['Office'] || record.office || 'Down-Ballot',
-      party: record['Party'] || record.party || '',
-      votes: downVotes || presidentialVotes || parseNumeric(record.votes || 0),
+      year: extractYearFromValue(firstPresent(record['Year'], record.year, '') || ''),
+      state: firstPresent(record['State'], record.state, '') || '',
+      county: firstPresent(record['County'], record.county, record.jurisdiction_name, '') || '',
+      contest: firstPresent(record['Office'], record.office, 'Down-Ballot') || 'Down-Ballot',
+      party: firstPresent(record['Party'], record.party, '') || '',
+      votes: firstNumeric(downVotes, presidentialVotes, record.votes),
       down_ballot_votes: downVotes,
       presidential_votes: presidentialVotes,
       delta_votes: deltaVotes,
-      dropoff_pct: explicitPct || computedPct,
+      dropoff_pct: explicitPct !== null ? explicitPct : computedPct,
       eligible_voters: eligibleVoters,
-      turnout_pct: eligibleVoters ? (presidentialVotes / eligibleVoters) * 100 : 0
+      turnout_pct: (
+        presidentialVotes !== null
+        && eligibleVoters !== null
+        && eligibleVoters !== 0
+      ) ? (presidentialVotes / eligibleVoters) * 100 : null
     };
   }
 
@@ -1838,14 +1917,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!record || typeof record !== 'object') return null;
     return {
       dataset_type: VIZ_DATASET_WAREHOUSE,
-      state: record.state || record.State || '',
-      county: record.county || record['County/District'] || record.County || '',
-      contest: record.contest || record.office || record.Office || record.race || '',
-      candidate: record.candidate || record.Candidate || record['Ballot Candidate Name'] || '',
-      party: record.party || record.Party || record['Ballot Party'] || '',
-      votes: parseNumeric(record.votes || record['Total Votes'] || record.total_votes || 0),
-      uncategorized_votes: parseNumeric(record.uncategorized_votes || record['Uncategorized Votes'] || 0),
-      year: extractYearFromValue(record.year || record.election_date || record.timestamp || record.date || '')
+      state: firstPresent(record.state, record.State, '') || '',
+      county: firstPresent(record.jurisdiction_name, record.county, record['County/District'], record.County, '') || '',
+      contest: firstPresent(record.contest, record.office, record.Office, record.race, '') || '',
+      candidate: firstPresent(record.candidate, record.Candidate, record['Ballot Candidate Name'], '') || '',
+      party: firstPresent(record.party, record.Party, record['Ballot Party'], '') || '',
+      votes: firstNumeric(record.votes, record['Total Votes'], record.total_votes),
+      uncategorized_votes: firstNumeric(record.uncategorized_votes, record['Uncategorized Votes']),
+      year: extractYearFromValue(firstPresent(record.year, record.election_year, record.election_date, record.timestamp, record.date, '') || '')
     };
   }
 
@@ -2125,31 +2204,77 @@ document.addEventListener('DOMContentLoaded', () => {
         down_ballot_votes: 0,
         presidential_votes: 0,
         eligible_voters: 0,
+        down_ballot_missing: false,
+        presidential_missing: false,
+        eligible_voters_missing: false,
       };
-      entry.down_ballot_votes += Number(row.down_ballot_votes || 0) || 0;
-      entry.presidential_votes += Number(row.presidential_votes || 0) || 0;
-      entry.eligible_voters += Number(row.eligible_voters || 0) || 0;
+
+      const downVotes = parseNumeric(row.down_ballot_votes);
+      const presidentialVotes = parseNumeric(row.presidential_votes);
+      const eligibleVoters = parseNumeric(row.eligible_voters);
+
+      if (downVotes === null) entry.down_ballot_missing = true;
+      else entry.down_ballot_votes += downVotes;
+
+      if (presidentialVotes === null) entry.presidential_missing = true;
+      else entry.presidential_votes += presidentialVotes;
+
+      if (eligibleVoters === null) entry.eligible_voters_missing = true;
+      else entry.eligible_voters += eligibleVoters;
+
       grouped.set(county, entry);
     });
+
     const values = Array.from(grouped.values()).map(entry => {
-      const deltaVotes = (entry.down_ballot_votes || 0) - (entry.presidential_votes || 0);
-      const percentDelta = entry.presidential_votes
-        ? (deltaVotes / entry.presidential_votes) * 100
-        : 0;
-      const turnoutPct = entry.eligible_voters
-        ? ((entry.presidential_votes || 0) / entry.eligible_voters) * 100
-        : 0;
+      const downVotes = entry.down_ballot_missing ? null : entry.down_ballot_votes;
+      const presidentialVotes = entry.presidential_missing ? null : entry.presidential_votes;
+      const eligibleVoters = entry.eligible_voters_missing ? null : entry.eligible_voters;
+      const deltaVotes = (downVotes !== null && presidentialVotes !== null)
+        ? downVotes - presidentialVotes
+        : null;
+      const percentDelta = (
+        deltaVotes !== null
+        && presidentialVotes !== null
+        && presidentialVotes !== 0
+      ) ? (deltaVotes / presidentialVotes) * 100 : null;
+      const turnoutPct = (
+        presidentialVotes !== null
+        && eligibleVoters !== null
+        && eligibleVoters !== 0
+      ) ? (presidentialVotes / eligibleVoters) * 100 : null;
+      const adjustedVotes = (
+        deltaVotes !== null
+        && presidentialVotes !== null
+        && presidentialVotes !== 0
+      ) ? (deltaVotes / presidentialVotes) * 10000 : null;
+
       return {
         ...entry,
+        down_ballot_votes: downVotes,
+        presidential_votes: presidentialVotes,
+        eligible_voters: eligibleVoters,
         delta_votes: deltaVotes,
         delta_pct: percentDelta,
         turnout_pct: turnoutPct,
-        adjusted_votes: entry.presidential_votes ? (deltaVotes / entry.presidential_votes) * 10000 : deltaVotes,
+        adjusted_votes: adjustedVotes,
       };
     });
-    const maxPresidential = Math.max(1, ...values.map(item => item.presidential_votes || 0));
+
+    const knownPresidential = values
+      .map(item => item.presidential_votes)
+      .filter(value => value !== null && value > 0);
+    const maxPresidential = knownPresidential.length ? Math.max(...knownPresidential) : null;
+
     values.forEach(item => {
-      const weight = Math.sqrt((item.presidential_votes || 0) / maxPresidential);
+      if (
+        item.delta_pct === null
+        || item.presidential_votes === null
+        || !maxPresidential
+      ) {
+        item.adjusted_pct = null;
+        return;
+      }
+      const weight = Math.sqrt(item.presidential_votes / maxPresidential);
       item.adjusted_pct = item.delta_pct * (Number.isFinite(weight) ? weight : 1);
     });
     return values;
@@ -2200,7 +2325,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function formatDropoffValue(value, decimals = 2) {
-    const num = Number(value) || 0;
+    const num = parseNumeric(value);
+    if (num === null) return '—';
     return num.toLocaleString(undefined, { maximumFractionDigits: decimals, minimumFractionDigits: decimals });
   }
 
@@ -2216,21 +2342,27 @@ document.addEventListener('DOMContentLoaded', () => {
     title.textContent = config.title;
     targetEl.appendChild(title);
 
-    if (!rows.length) {
+    const plottableRows = rows
+      .map(row => ({ row, value: parseNumeric(config.value(row)) }))
+      .filter(item => item.value !== null);
+
+    if (!plottableRows.length) {
       const empty = document.createElement('div');
       empty.className = 'dropoff-summary-note';
-      empty.textContent = 'No county data available for the current state/year/contest filter.';
+      empty.textContent = rows.length
+        ? 'Drop-off values are not reported for the current selection.'
+        : 'No county data available for the current state/year/contest filter.';
       targetEl.appendChild(empty);
       return;
     }
 
     const selectedCounty = getSelectedDropoffCounty();
-    const maxAbs = Math.max(1, ...rows.map(item => Math.abs(Number(config.value(item)) || 0)));
-    const barWidth = rows.length > 120 ? 6 : rows.length > 80 ? 8 : rows.length > 40 ? 10 : 14;
-    const gap = rows.length > 80 ? 2 : 3;
+    const maxAbs = Math.max(1, ...plottableRows.map(item => Math.abs(item.value)));
+    const barWidth = plottableRows.length > 120 ? 6 : plottableRows.length > 80 ? 8 : plottableRows.length > 40 ? 10 : 14;
+    const gap = plottableRows.length > 80 ? 2 : 3;
     const margin = { top: 14, right: 14, bottom: 76, left: 56 };
     const plotHeight = 190;
-    const width = Math.max(720, margin.left + margin.right + rows.length * (barWidth + gap));
+    const width = Math.max(720, margin.left + margin.right + plottableRows.length * (barWidth + gap));
     const height = margin.top + plotHeight + margin.bottom;
     const zeroY = margin.top + Math.round(plotHeight / 2);
     const maxBarHeight = Math.round(plotHeight / 2) - 4;
@@ -2264,9 +2396,8 @@ document.addEventListener('DOMContentLoaded', () => {
       svg.appendChild(label);
     }
 
-    const labelStep = Math.max(1, Math.ceil(rows.length / 16));
-    rows.forEach((row, index) => {
-      const rawValue = Number(config.value(row)) || 0;
+    const labelStep = Math.max(1, Math.ceil(plottableRows.length / 16));
+    plottableRows.forEach(({ row, value: rawValue }, index) => {
       const x = margin.left + index * (barWidth + gap);
       const barHeight = Math.max(1, Math.round((Math.abs(rawValue) / maxAbs) * maxBarHeight));
       const y = rawValue >= 0 ? zeroY - barHeight : zeroY;
@@ -2307,11 +2438,18 @@ document.addEventListener('DOMContentLoaded', () => {
       if (dropoffOrderStrategy === 'alphabetical') {
         return String(a.county || '').localeCompare(String(b.county || ''));
       }
-      const aBase = dropoffMetric === 'percent' ? Math.abs(a.delta_pct || 0) : Math.abs(a.delta_votes || 0);
-      const bBase = dropoffMetric === 'percent' ? Math.abs(b.delta_pct || 0) : Math.abs(b.delta_votes || 0);
+      const aMetric = parseNumeric(dropoffMetric === 'percent' ? a.delta_pct : a.delta_votes);
+      const bMetric = parseNumeric(dropoffMetric === 'percent' ? b.delta_pct : b.delta_votes);
+      if (aMetric === null && bMetric === null) return 0;
+      if (aMetric === null) return 1;
+      if (bMetric === null) return -1;
+      const aBase = Math.abs(aMetric);
+      const bBase = Math.abs(bMetric);
       if (dropoffOrderStrategy === 'turnout_weighted') {
-        const aWeight = Math.sqrt(Math.max(1, Number(a.presidential_votes || 0)));
-        const bWeight = Math.sqrt(Math.max(1, Number(b.presidential_votes || 0)));
+        const aPres = parseNumeric(a.presidential_votes);
+        const bPres = parseNumeric(b.presidential_votes);
+        const aWeight = Math.sqrt(Math.max(1, aPres === null ? 1 : aPres));
+        const bWeight = Math.sqrt(Math.max(1, bPres === null ? 1 : bPres));
         return (bBase * bWeight) - (aBase * aWeight);
       }
       return bBase - aBase;
@@ -2362,8 +2500,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const countyLabel = row.county || 'County';
     const deltaVotes = formatDropoffValue(row.delta_votes, 0);
     const deltaPct = formatDropoffValue(row.delta_pct, 2);
-    const turnoutPct = row.turnout_pct ? `${formatDropoffValue(row.turnout_pct, 2)}%` : 'n/a';
-    const eligible = row.eligible_voters ? formatDropoffValue(row.eligible_voters, 0) : 'n/a';
+    const turnoutPct = row.turnout_pct !== null && row.turnout_pct !== undefined
+      ? `${formatDropoffValue(row.turnout_pct, 2)}%`
+      : 'n/a';
+    const eligible = row.eligible_voters !== null && row.eligible_voters !== undefined
+      ? formatDropoffValue(row.eligible_voters, 0)
+      : 'n/a';
     const scaleNote = dropoffScaleMode === 'adjusted'
       ? 'Adjusted scale dampens small-county outliers for side-by-side comparison.'
       : 'Absolute scale shows raw deltas.';
@@ -2588,7 +2730,10 @@ document.addEventListener('DOMContentLoaded', () => {
       th.dataset.field = key;
       th.tabIndex = 0;
       th.setAttribute('aria-sort', sortBy === key ? sortDir : 'none');
-      th.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+      th.textContent = COLUMN_LABELS[key] || key
+        .split('_')
+        .map(part => part ? part.charAt(0).toUpperCase() + part.slice(1) : '')
+        .join(' ');
 
       const ind = document.createElement('span');
       ind.className = 'sort-indicator';
@@ -2712,7 +2857,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tr = document.createElement('tr');
         for (const col of visibleColumns) {
           const td = document.createElement('td');
-          td.textContent = safeGet(row[col]);
+          td.textContent = displayValue(row[col]);
           tr.appendChild(td);
         }
         el.tbody.appendChild(tr);
@@ -2737,7 +2882,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const header = cols.join(',');
     const rows = data.map(r =>
       cols.map(c => {
-        let v = safeGet(r[c]).replace(/\r?\n/g, ' ').replace(/\r/g, ' ');
+        let v = exportValue(r[c]).replace(/\r?\n/g, ' ').replace(/\r/g, ' ');
         v = v.replace(/"/g, '""');
         return /[",\n]/.test(v) ? `"${v}"` : v;
       }).join(',')
@@ -3213,7 +3358,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         if (vizDataset === VIZ_DATASET_WAREHOUSE && !curatedSelection) {
           applyVizDatasetRows(warehouseVizRows);
-          setPreviewStatus(`Warehouse SQL Core • ${warehouseVizRows.length} rows`);
+          setPreviewStatus(`Canonical Production • ${warehouseVizRows.length} rows`);
         }
       }
 

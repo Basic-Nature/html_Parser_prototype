@@ -816,7 +816,7 @@ HEALTH_TASK_DEFINITIONS: dict[str, dict] = {
         "command": ["-m", "webapp.parser.health.dataset_promotion"],
         "danger": True,
         "minimum_tier": 3,
-        "effect": "canonical_promotion",
+        "effect": "warehouse_staging_promotion",
     },
 }
 
@@ -5637,6 +5637,115 @@ def _compute_dropoff_items(rows: list[tuple], down_contest: str) -> list[dict]:
     items.sort(key=lambda item: (item.get("year") or 0, item.get("county") or ""), reverse=True)
     return items
 
+
+def api_ballotlens_database():
+    """
+    Read accepted production election results from the canonical publication layer.
+
+    This endpoint is intentionally read-only and does not fall back to
+    warehouse_election_results. JSON null values are preserved as null; zero is
+    returned only when the canonical value is numerically zero.
+    """
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    try:
+        state = _validate_filter_value("state", request.args.get("state"), max_len=64)
+        jurisdiction = _validate_filter_value(
+            "jurisdiction",
+            request.args.get("jurisdiction") or request.args.get("county"),
+            max_len=256,
+        )
+        contest = _validate_filter_value("contest", request.args.get("contest"), max_len=140)
+        candidate = _validate_filter_value("candidate", request.args.get("candidate"), max_len=512)
+        party = _validate_filter_value("party", request.args.get("party"), max_len=128)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    year_value = None
+    year_raw = safe_strip(request.args.get("year", ""))
+    if year_raw:
+        try:
+            year_value = int(year_raw)
+        except ValueError:
+            return jsonify({"error": "year must be an integer"}), 400
+
+    aggregation_scope = safe_strip(request.args.get("aggregation_scope", "")).lower() or None
+    if aggregation_scope not in (None, "jurisdiction", "precinct"):
+        return jsonify({"error": "aggregation_scope must be 'jurisdiction' or 'precinct'"}), 400
+
+    metric = safe_strip(request.args.get("metric", "rows")).lower() or "rows"
+    if metric != "rows":
+        return jsonify({
+            "error": "Only metric=rows is available on the canonical endpoint in C2E 1.3.",
+            "metric": metric,
+        }), 400
+
+    data_source = safe_strip(request.args.get("data_source", "canonical")).lower() or "canonical"
+    if data_source != "canonical":
+        return jsonify({
+            "error": "The canonical endpoint does not fall back to fixture or warehouse data.",
+            "data_source": data_source,
+        }), 400
+
+    try:
+        limit = int(request.args.get("limit") or 500)
+    except (TypeError, ValueError):
+        limit = 500
+    limit = max(1, min(1000, limit))
+
+    include_components = safe_strip(request.args.get("include_components", "")).lower() in {
+        "1", "true", "yes", "on"
+    }
+
+    from webapp.parser.services.canonical_election_reader import (
+        CanonicalResultFilters,
+        query_canonical_results,
+    )
+
+    filters = CanonicalResultFilters(
+        state=state,
+        year=year_value,
+        jurisdiction=jurisdiction,
+        contest=contest,
+        candidate=candidate,
+        party=party,
+        aggregation_scope=aggregation_scope,
+        limit=limit,
+    )
+
+    try:
+        items = query_canonical_results(
+            get_engine(),
+            filters,
+            include_components=include_components,
+        )
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": "database",
+            "message": f"Canonical read failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify({"error": "Canonical production data query failed"}), 500
+
+    return jsonify({
+        "items": items,
+        "count": len(items),
+        "contract": "canonical_results_v1",
+        "data_source": "canonical",
+        "authority": "canonical_production",
+        "component_detail_included": include_components,
+        "semantic_contract": {
+            "null": "preserved_null",
+            "null_reason": "not_inferred",
+            "zero": "numeric_zero",
+            "no_warehouse_fallback": True,
+        },
+    })
+
+
 def api_warehouse_election_results():
     """
     Query election results from warehouse and/or fixtures.
@@ -6165,6 +6274,7 @@ def ballot_lens():
             output_files=file_lists["output_files"],
             uploaded_files=file_lists["uploaded_files"],
             manual_source=session.get('manual_source_pref', 'input'),
+            data_api_url=DATA_API_URL,
             allow_style_attr=os.environ.get("ALLOW_STYLE_ATTR", "0").lower() in ("1","true","yes"),
             static_version=os.environ.get("STATIC_VERSION", "v1"),
             socketio_client_config=SOCKETIO_CLIENT_CONFIG,
@@ -8916,6 +9026,7 @@ app.config["_ELECTION_DATA_ROUTE_HANDLERS"] = {
     "api_preqc_check": api_preqc_check,
     "api_qc1_submit": api_qc1_submit,
     "api_election_data_stats": api_election_data_stats,
+    "api_ballotlens_database": api_ballotlens_database,
     "api_warehouse_election_results": api_warehouse_election_results,
 }
 

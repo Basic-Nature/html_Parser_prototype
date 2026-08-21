@@ -154,6 +154,11 @@
   } catch (/** @type {any} */ e) { /* ignore helper install errors */ }
 })();
 
+function getBallotLensDataApiUrl() {
+  const configEl = document.getElementById('ballotLensConfig');
+  return configEl?.dataset?.apiUrl || '/api/ballotlens-database';
+}
+
 // Expose placeholder helpers in outer scope for rest of file (delegates to window map when available)
 function _getPlaceholder(el) {
   try {
@@ -4126,7 +4131,7 @@ function displayFileInfo(result) {
   $('#infoColumns').textContent = String(result.columns ?? 'N/A');
   $('#infoConfidence').textContent = (result.confidence || 0).toFixed(1) + '%';
   $('#infoHandler').textContent = result.handler || 'unknown';
-  $('#infoTimestamp').textContent = formatDate(result.timestamp || Date.now());
+  $('#infoTimestamp').textContent = result.timestamp ? formatDate(result.timestamp) : '—';
 }
 
 // ============================================
@@ -7651,14 +7656,14 @@ function setLoadingState(isLoading, subtitleText = '') {
 }
 
 /**
- * Fetch results from warehouse API and transform to UI format.
+ * Fetch accepted results from the configured canonical publication API and transform to UI format.
  * If API returns no rows, show empty state; never inject demo fixtures.
  */
 async function loadRealData() {
   setLoadingState(true, 'Calibrating election pulse...');
   try {
-    console.log('[API] Fetching results from warehouse...');
-    const response = await fetch('/api/warehouse_election_results?limit=50', {
+    console.log('[API] Fetching accepted canonical results...');
+    const response = await fetch(`${getBallotLensDataApiUrl()}?limit=50`, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
       credentials: 'same-origin',
@@ -7672,14 +7677,14 @@ async function loadRealData() {
     const items = Array.isArray(data.items) ? data.items : [];
 
     if (items.length === 0) {
-      console.warn('[API] No results found in warehouse');
+      console.warn('[API] No canonical results found');
       state.results = [];
       renderResults();
       showToast('No results available yet.', 'info');
       return;
     }
 
-    // Transform warehouse schema to UI results format
+    // Transform canonical publication rows to UI result cards.
     /**
      * @typedef {Object} WarehouseItem
      * @property {string|number} [id]
@@ -7832,13 +7837,13 @@ async function loadRealData() {
      * @returns {number}
      */
     const resolveTimestamp = (item) => {
-      const candidates = [item?.created_at, item?.processed_at, item?.extracted_at, item?.election_date];
+      const candidates = [item?.verified_at, item?.created_at, item?.processed_at, item?.extracted_at, item?.election_date];
       for (const raw of candidates) {
         if (!raw) continue;
         const t = new Date(raw).getTime();
         if (!Number.isNaN(t)) return t;
       }
-      return Date.now();
+      return 0;
     };
 
     const riskRank = (tier) => {
@@ -7883,7 +7888,7 @@ async function loadRealData() {
         item?.batch_id || '',
         item?.source_url || '',
         item?.state || '',
-        item?.county || '',
+        item?.jurisdiction_key || item?.jurisdiction_name || item?.county || '',
         item?.contest || '',
         item?.election_date || '',
       ].join('|') || `row-${idx}`;
@@ -7896,7 +7901,7 @@ async function loadRealData() {
       if (!existing) {
         grouped.set(key, {
           id: String(item?.id || idx + 1),
-          name: item?.contest || item?.county || `Result #${idx + 1}`,
+          name: item?.contest || item?.jurisdiction_name || item?.county || `Result #${idx + 1}`,
           type: resolveType(item),
           rows: rowCount,
           columns: toNumberOrNull(item?.column_count) || 0,
@@ -7904,8 +7909,8 @@ async function loadRealData() {
           confidenceSamples: 1,
           confidence: confidence,
           state: item?.state || 'N/A',
-          county: item?.county || '',
-          handler: item?.handler_name || 'warehouse',
+          county: item?.jurisdiction_name || item?.county || '',
+          handler: item?.handler_name || (item?.data_source === 'canonical' ? 'canonical' : 'warehouse'),
           timestamp: ts,
           source_url: item?.source_url || '',
           riskTier: risk.tier,
@@ -7961,7 +7966,7 @@ async function loadRealData() {
 
     state.results = mappedResults;
 
-    console.log(`[API] Loaded ${state.results.length} results from warehouse`);
+    console.log(`[API] Loaded ${state.results.length} canonical result groups`);
     renderResults();
   } catch (/** @type {any} */ error) {
     console.error('[API] Failed to load real data:', error);

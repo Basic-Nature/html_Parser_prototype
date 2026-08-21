@@ -1,6 +1,8 @@
 /* eslint-env jest */
 
 describe('ballot_lens_modern sidebar hooks', () => {
+  let fetchMock;
+
   function loadScript() {
     const fs = require('fs');
     const path = require('path');
@@ -19,6 +21,7 @@ describe('ballot_lens_modern sidebar hooks', () => {
     });
 
     document.body.innerHTML = [
+      '<meta id="ballotLensConfig" data-api-url="/api/custom_ballot_lens" />',
       '<div id="sidebar" class="sidebar-left"></div>',
       '<div class="sidebar-right"></div>',
       '<button id="sidebarToggleBtn" type="button"></button>',
@@ -51,14 +54,15 @@ describe('ballot_lens_modern sidebar hooks', () => {
     global.io = jest.fn(() => socketMock);
     window.io = global.io;
 
-    global.fetch = jest.fn().mockResolvedValue({
+    fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
       headers: { get: () => 'application/json' },
       json: async () => ({}),
       text: async () => '{}',
     });
-    window.fetch = global.fetch;
+    global.fetch = fetchMock;
+    window.fetch = fetchMock;
 
     loadScript();
     document.dispatchEvent(new Event('DOMContentLoaded'));
@@ -104,5 +108,17 @@ describe('ballot_lens_modern sidebar hooks', () => {
     expect(overlay.classList.contains('visible')).toBe(false);
     expect(overlay.getAttribute('aria-hidden')).toBe('true');
     expect(document.body.classList.contains('no-scroll')).toBe(false);
+  });
+
+  test('initialization fetches the configured canonical publication endpoint', async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/custom_ballot_lens?limit=50'),
+      expect.objectContaining({
+        method: 'GET',
+        credentials: 'same-origin',
+      }),
+    );
   });
 });
