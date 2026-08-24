@@ -282,3 +282,50 @@ def test_pipeline_audit_returns_catalog_and_summary(monkeypatch):
     assert any(item["path"] == "/api/data-assurance/parse-and-classify" for item in body["endpoint_catalog"])
     assert "routing_summary" in body
     assert "queue_summary" in body
+
+
+def test_parse_and_classify_returns_503_when_qa_database_unavailable(monkeypatch):
+    app = _build_app()
+    _disable_auth(monkeypatch)
+
+    def _raise_unavailable(_metadata):
+        raise RuntimeError("No database connection")
+
+    monkeypatch.setattr(qae, "classify_as_dl1", _raise_unavailable)
+    monkeypatch.setattr(
+        qae,
+        "_database_readiness",
+        lambda: {
+            "ok": False,
+            "checked_tables": {},
+            "error": "db_connection_unavailable",
+        },
+    )
+
+    payload = {
+        "source_url": "https://example.gov/results",
+        "handler_name": "csv_handler",
+        "state_abbr": "CA",
+        "county_name": "Los Angeles",
+        "election_year": 2024,
+        "contest_name": "Mayor",
+        "contestant_count": 2,
+        "data_row_count": 2,
+        "extraction_confidence": 0.95,
+        "trust_score": 95.0,
+        "headers": ["Candidate", "Votes"],
+        "data_rows": [{"candidate_name": "A", "vote_count": 10}],
+    }
+
+    with app.test_client() as client:
+        response = client.post(
+            "/api/data-assurance/parse-and-classify",
+            json=payload,
+        )
+
+    assert response.status_code == 503
+    body = response.get_json()
+    assert body["code"] == "qa_database_unavailable"
+    assert body["available"] is False
+    assert body["retryable"] is True
+

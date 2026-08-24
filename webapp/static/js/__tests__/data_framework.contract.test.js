@@ -147,6 +147,272 @@ describe('data_framework bootstrap contract', () => {
     await flushAsync();
 
     expect(document.getElementById('warehousePriorityStatus').textContent).toContain('(cached)');
-    expect(document.getElementById('warehousePriorityMeta').textContent).toContain('Source: cached snapshot');
+    expect(document.getElementById('warehousePriorityMeta').textContent).toContain('Priority metadata: cached snapshot');
   });
+
+  test('evidence context is contextual and never falls back to unrelated analysis rows', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(filePath, 'utf8');
+
+    expect(src).toContain('Context match only');
+    expect(src).toContain('Canonical lineage is not established');
+    expect(src).toContain("return { status: 'no-match', count: 0, axes };");
+    expect(src).toContain('Metadata year');
+    expect(src).not.toContain('const matchYear = item.year ? getRowYear(row) === String(item.year) : true;');
+    expect(src).not.toContain('applyVizDatasetRows(filtered.length ? filtered : sourceRows);');
+  });
+  test('preview playback is distinct from operator Explore scope', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(filePath, 'utf8');
+
+    expect(src).toContain("const VIZ_INTERACTION_PREVIEW = 'preview';");
+    expect(src).toContain("const VIZ_INTERACTION_EXPLORE = 'explore';");
+    expect(src).toContain('function buildVizPreviewFrames(rows = getVizPreviewPoolRows())');
+    expect(src).toContain('function setVizPreviewFrame(frame)');
+    expect(src).toContain("enterVizExploreMode('year selected');");
+    expect(src).toContain("enterVizExploreMode('state selected');");
+    expect(src).toContain("enterVizExploreMode('jurisdiction selected');");
+    expect(src).toContain("enterVizExploreMode('contest selected');");
+    expect(src).toContain('applying asynchronous rows must never clear an operator Explore lock');
+    expect(src).not.toContain('const useMetadataOptions = !previewActive;');
+    expect(src).not.toContain('vizAutoLocked = false;\n    setVizFilters(vizRows);');
+    expect(src).not.toContain('function setVizStateContext(state)');
+    expect(src).not.toContain('function stepVizState(step)');
+  });
+
+  test('preview startup and no-result Explore state remain stable', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(filePath, 'utf8');
+
+    expect(src).toContain('a fresh page load always begins in Preview auto');
+    expect(src).toContain('function getVizPreviewPoolRows()');
+    expect(src).toContain('return sourceRows.length ? sourceRows : vizRows;');
+    expect(src).toContain('Stable unfiltered canonical pool survives scoped Explore requests.');
+    expect(src).toContain('a no-result Explore response is a valid result');
+    expect(src).toContain('await fetchCanonicalFacets({ universe: true });');
+    expect(src).toContain('canonicalPreviewRows = [...warehouseVizRows];');
+    expect(src).toContain('if (!hasCanonicalScope() && warehouseVizRows.length) {');
+    expect(src).toContain('Preview paused while focused - move pointer away to resume.');
+    expect(src).not.toContain('refreshFinalizedSliceForSelection();\n      updateVizAutoToggleLabel();');
+    expect(src).not.toContain('hydrateVizFiltersFromSnapshot(vizDataset);\n      syncVizOverlayAvailability();\n      clearVisualization();');
+  });
+
+  test('canonical-only Analysis uses canonical facets and no legacy runtime feeds', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const canonicalScriptPath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(canonicalScriptPath, 'utf8');
+    const htmlPath = path.join(__dirname, '..', '..', '..', 'templates', 'data_framework.html');
+    const html = fs.readFileSync(htmlPath, 'utf8');
+
+    expect(src).toContain("cfgEl?.dataset?.canonicalFacetsUrl || '/api/data_framework/canonical_facets'");
+    expect(src).toContain("payload.contract === 'canonical_facets_v1'");
+    expect(src).toContain("payload.authority === 'canonical_production'");
+    expect(src).toContain("payload.semantic_contract?.facet_mode === 'self_excluding'");
+    expect(src).toContain("payload.semantic_contract?.null === 'preserved_null'");
+    expect(src).toContain("url.searchParams.set('jurisdiction', filters.jurisdiction)");
+    expect(src).toContain('canonicalFacetRequestSeq');
+    expect(src).toContain('canonicalDataRequestSeq');
+    expect(src).toContain('new AbortController()');
+    expect(src).toContain("'All years'");
+    expect(src).toContain("'All states'");
+    expect(src).toContain("'All jurisdictions'");
+    expect(src).toContain("'All contests'");
+    expect(src).toContain("let vizDataset = 'warehouse_core';");
+
+    expect(html).toContain('data-canonical-facets-url=');
+    expect(html).toContain('>Analysis View</label>');
+    expect(html).toContain('<option value="warehouse_core" selected>Composition</option>');
+    expect(html).not.toContain('Finalized (DB-Lite)');
+    expect(html).not.toContain('Down-ballot (DB-Lite)');
+    expect(html).not.toContain('data-preview-url=');
+    expect(html).not.toContain('data-dblite-finalized-url=');
+    expect(html).not.toContain('data-dblite-downballot-url=');
+
+    const bs = src.indexOf('async function bootstrapProtectedFeeds()');
+    const be = src.indexOf('bootstrapProtectedFeeds();', bs);
+    const bootstrap = src.slice(bs, be);
+    expect(bootstrap).toContain('fetchCanonicalFacets({ universe: true })');
+    expect(bootstrap).not.toContain('fetchWorklistOverview');
+    expect(bootstrap).not.toContain('fetchFinalizedMetadata');
+    expect(bootstrap).not.toContain('fetchDbLiteFinalized');
+    expect(bootstrap).not.toContain('fetchDbLiteDownBallot');
+    expect(bootstrap).not.toContain('loadDropoffData');
+
+    const es = src.indexOf("el.vizDataset?.addEventListener('change'");
+    const ee = src.indexOf("el.vizPrevStateBtn?.addEventListener('click'", es);
+    const events = src.slice(es, ee);
+    expect(events).toContain('refreshCanonicalExploreScope()');
+    expect(events).not.toContain('refreshFinalizedSliceForSelection');
+  });
+
+  test('G3.1C1.6 keeps Analysis, Source Evidence, and Canonical Record scope ownership independent', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(filePath, 'utf8');
+
+    expect(src).toContain('let canonicalRecordRequestSeq = 0;');
+    expect(src).toContain('function buildCanonicalRecordDataUrl()');
+    expect(src).toContain("if (priorityYear) url.searchParams.set('year', priorityYear);");
+    expect(src).toContain("if (priorityState) url.searchParams.set('state', priorityState);");
+    expect(src).toContain('function fetchCanonicalRecordData(showLoading = false)');
+    expect(src).toContain('fetchCanonicalRecordData(true);');
+
+    const evidenceStart = src.indexOf('function updateVisualizationFromCurated(item)');
+    const evidenceEnd = src.indexOf('function renderCuratedList', evidenceStart);
+    const evidenceBlock = src.slice(evidenceStart, evidenceEnd);
+    expect(evidenceBlock).not.toContain('enterVizExploreMode');
+    expect(evidenceBlock).not.toContain('applyVizDatasetRows');
+    expect(evidenceBlock).toContain("return { status: 'context-match', count: filtered.length, axes };");
+
+    const analysisStart = src.indexOf('function fetchData(showLoading = false)');
+    const analysisEnd = src.indexOf('function fetchCanonicalRecordData', analysisStart);
+    const analysisBlock = src.slice(analysisStart, analysisEnd);
+    expect(analysisBlock).toContain('applyVizDatasetRows(warehouseVizRows);');
+    expect(analysisBlock).toContain('updateEvidenceRelationshipContext(curatedSelection, analysisResult);');
+    expect(analysisBlock.indexOf('applyVizDatasetRows(warehouseVizRows);'))
+      .toBeLessThan(analysisBlock.indexOf('updateEvidenceRelationshipContext(curatedSelection, analysisResult);'));
+
+    expect(src).toContain('API cap reached; totals may be partial');
+    expect(src).toContain('API cap reached, result may be partial.');
+  });
+  test('G3.1C2 retires dead Data Framework legacy consumers while preserving canonical-only authority', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const scriptPath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(scriptPath, 'utf8');
+    const htmlPath = path.join(__dirname, '..', '..', '..', 'templates', 'data_framework.html');
+    const html = fs.readFileSync(htmlPath, 'utf8');
+
+    [
+      'previewUrl',
+      'dbLiteFinalizedUrl',
+      'dbLiteDownBallotUrl',
+      'worklistOverviewUrl',
+      'statesCountiesUrl',
+      'worklistOverviewRecords',
+      '_worklistOverviewMeta',
+      'dbLiteFinalizedRows',
+      'dbLiteDownBallotRows',
+      'finalizedMetadata',
+      'VIZ_DATASET_FINALIZED',
+      'VIZ_DATASET_DOWN_BALLOT',
+      'mapDbLiteFinalizedRecord',
+      'mapDbLiteDownBallotRecord',
+      'fetchDbLiteDataset',
+      'fetchDbLiteFinalized',
+      'fetchDbLiteDownBallot',
+      'fetchFinalizedMetadata',
+      'refreshFinalizedSliceForSelection',
+      '/api/election_data/db_lite/finalized',
+      '/api/election_data/db_lite/down_ballot',
+      'DB-Lite Finalized',
+      'DB-Lite Down-Ballot',
+    ].forEach(retired => expect(src).not.toContain(retired));
+
+    expect(src).toContain("let vizDataset = 'warehouse_core';");
+    expect(src).toContain('function fetchCanonicalFacets');
+    expect(src).toContain('function fetchCanonicalRecordData');
+    expect(src).toContain('Transitional DB-Lite / worklist / legacy preview endpoint identifiers are retired.');
+    expect(src).toContain("const csrfToken = cfgEl?.dataset?.csrfToken || null;");
+    expect(src).not.toContain('// Transitional DB-Lite / worklist / legacy preview endpoint identifiers are retired.  const csrfToken');
+    expect(src).toContain('Governed canonical drop-off derivation is not published yet.');
+
+    expect(html).toContain('Governed canonical drop-off derivation is pending');
+    expect(html).toContain('<option value="warehouse_core" selected>Composition</option>');
+  });
+
+  test('G3.1C2.12B separates canonical option validity from current availability', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const scriptPath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(scriptPath, 'utf8');
+
+    expect(src).toContain('let canonicalFacetUniversePayload = null;');
+    expect(src).toContain(
+      'const universePayload = isCanonicalFacetPayload(canonicalFacetUniversePayload)'
+    );
+    expect(src).toContain(
+      "option.dataset.availability = isAvailable ? 'available' : 'unavailable';"
+    );
+    expect(src).toContain(
+      'option.disabled = !isAvailable && value !== desired;'
+    );
+    expect(src).toContain(
+      'Valid canonical option; no rows match the other active filters.'
+    );
+    expect(src).toContain(
+      'Only values outside the canonical universe are invalid and cleared.'
+    );
+
+    expect(src).toContain('let canonicalRecordFacetRequestSeq = 0;');
+    expect(src).toContain('let canonicalRecordFacetAbortController = null;');
+    expect(src).toContain('function getCanonicalRecordFacetFilters()');
+    expect(src).toContain('function applyCanonicalRecordFacetPayload(payload)');
+    expect(src).toContain(
+      'async function fetchCanonicalRecordFacets({ useUniverse = false } = {})'
+    );
+    expect(src).toContain(
+      "authReason: 'Authentication required for Canonical Record facets.'"
+    );
+    expect(src).toContain(
+      'await fetchCanonicalRecordFacets({ useUniverse: true });'
+    );
+
+    const priorityStart = src.indexOf('function applyPriorityPayload(payload');
+    const priorityEnd = src.indexOf(
+      'async function fetchPriorityStatus()',
+      priorityStart
+    );
+    const priorityBlock = src.slice(priorityStart, priorityEnd);
+
+    expect(priorityBlock).not.toContain('hydratePriorityStates');
+    expect(priorityBlock).not.toContain('hydratePriorityYears');
+    expect(src).not.toContain('function hydratePriorityStates(payload)');
+    expect(src).not.toContain('function hydratePriorityYears(payload)');
+
+    const bootstrapStart = src.indexOf(
+      'async function bootstrapProtectedFeeds()'
+    );
+    const bootstrapEnd = src.indexOf(
+      'bootstrapProtectedFeeds();',
+      bootstrapStart
+    );
+    const bootstrap = src.slice(bootstrapStart, bootstrapEnd);
+
+    expect(
+      bootstrap.indexOf(
+        'await fetchCanonicalFacets({ universe: true });'
+      )
+    ).toBeLessThan(
+      bootstrap.indexOf('fetchCanonicalRecordData(true);')
+    );
+    expect(bootstrap).toContain(
+      'const canonicalUniverseReady = await fetchCanonicalFacets({ universe: true });'
+    );
+    expect(bootstrap).toContain(
+      'await fetchCanonicalRecordFacets({ useUniverse: true });'
+    );
+
+    const eventStart = src.indexOf(
+      "el.priorityStateSelect?.addEventListener('change'"
+    );
+    const eventEnd = src.indexOf(
+      "el.curatedSearch?.addEventListener('input'",
+      eventStart
+    );
+    const events = src.slice(eventStart, eventEnd);
+
+    expect(
+      events.match(/fetchCanonicalRecordFacets\(\);/g)
+    ).toHaveLength(2);
+  });
+
 });

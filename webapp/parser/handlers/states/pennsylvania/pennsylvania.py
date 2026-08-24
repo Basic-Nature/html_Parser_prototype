@@ -10,6 +10,7 @@ from ....utils.browser_utils import (
     safe_wait_for_timeout,
 )
 from ....utils.logger_singleton import logger
+from ....utils.prompt_singleton import prompt
 from ....utils.output_utils import finalize_election_output
 from ....utils.shared_logic import (
     safe_get,
@@ -53,7 +54,7 @@ def parse(page=None, html_context=None, coordinator=None, context=None, session_
 
     header_text = safe_get(html_context, "selected_race", "Unknown")
     logger.warning(f"[bold yellow]Detected election:[/bold yellow] {header_text}")
-    resp = safe_lower(safe_strip(input("Do you want to continue parsing this election's contests? (y/n): ")))
+    resp = safe_lower(safe_strip(prompt.prompt_input("Do you want to continue parsing this election's contests? (y/n):", session_id=session_id, allow_cancel=False)))
     if resp != "y":
         logger.info("[cyan]Election skipped. Exploring other available elections...[/cyan]")
         try:
@@ -67,7 +68,7 @@ def parse(page=None, html_context=None, coordinator=None, context=None, session_
                 for i, link in enumerate(race_links):
                     label = safe_strip(safe_inner_text(link, logger))
                     logger.info(f"[{i}] {label}")
-                choice = safe_strip(input("Select an election to load by index: "))
+                choice = safe_strip(prompt.prompt_input('Select an election to load by index:', session_id=session_id, allow_cancel=False))
                 if safe_isdigit(choice):
                     idx = int(choice)
                     safe_click(race_links[idx], logger)
@@ -114,7 +115,7 @@ def parse(page=None, html_context=None, coordinator=None, context=None, session_
         for i, fname in enumerate(csv_files):
             logger.info(f"  [bold cyan][{i}][/bold cyan] {fname}")
         try:
-            idx_input = safe_strip(input("Select CSV file index: "))
+            idx_input = safe_strip(prompt.prompt_input('Select CSV file index:', session_id=session_id, allow_cancel=False))
             if not safe_isdigit(idx_input):
                 logger.error("[ERROR] Invalid selection (not a digit).")
                 return [], [], "Pennsylvania (CSV selection error)", {}

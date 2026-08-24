@@ -84,14 +84,10 @@ class SmartElectionsWorklist {
     }
 
     /**
-     * Load external Google Sheets sources (worklist + DB-lite)
+     * Load operational Worklist source metadata.
      */
     async loadExternalSources() {
-        await Promise.all([
-            this.loadWorklistOverview(),
-            this.loadDbLiteFinalized(),
-            this.loadDbLiteDownBallot()
-        ]);
+        await this.loadWorklistOverview();
     }
 
     setSourceStatus(statusId, message, isError = false) {
@@ -120,48 +116,6 @@ class SmartElectionsWorklist {
         } catch (error) {
             console.error('[SmartElections] Worklist overview fetch failed:', error);
             this.setSourceStatus('worklist-fetch-status', 'Error loading', true);
-        }
-    }
-
-    async loadDbLiteFinalized() {
-        try {
-            const response = await fetch('/api/election_data/db_lite/finalized?limit=200', {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' }
-            });
-
-            const data = await response.json();
-            if (!response.ok || !data.success) {
-                throw new Error(data.error || `HTTP ${response.status}`);
-            }
-
-            this.setTextById('dblite-finalized-sheet-name', data.sheet_name || '-');
-            this.setTextById('dblite-finalized-row-count', data.row_count || 0);
-            this.setSourceStatus('dblite-finalized-fetch-status', 'Loaded', false);
-        } catch (error) {
-            console.error('[SmartElections] DB-lite finalized fetch failed:', error);
-            this.setSourceStatus('dblite-finalized-fetch-status', 'Error loading', true);
-        }
-    }
-
-    async loadDbLiteDownBallot() {
-        try {
-            const response = await fetch('/api/election_data/db_lite/down_ballot?limit=200', {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' }
-            });
-
-            const data = await response.json();
-            if (!response.ok || !data.success) {
-                throw new Error(data.error || `HTTP ${response.status}`);
-            }
-
-            this.setTextById('dblite-down-sheet-name', data.sheet_name || '-');
-            this.setTextById('dblite-down-row-count', data.row_count || 0);
-            this.setSourceStatus('dblite-down-fetch-status', 'Loaded', false);
-        } catch (error) {
-            console.error('[SmartElections] DB-lite down-ballot fetch failed:', error);
-            this.setSourceStatus('dblite-down-fetch-status', 'Error loading', true);
         }
     }
 
@@ -345,6 +299,24 @@ class SmartElectionsWorklist {
     /**
      * Render single race row
      */
+    /**
+     * Stable presentation-only operator ID for the public Worklist surface.
+     * Raw workflow identity remains in the operational record and audit trail.
+     */
+    publicOperatorId(value, prefix = 'DT') {
+        const raw = String(value || '').trim();
+        if (!raw) return '-';
+
+        let hash = 2166136261;
+        for (let i = 0; i < raw.length; i += 1) {
+            hash ^= raw.charCodeAt(i);
+            hash = Math.imul(hash, 16777619) >>> 0;
+        }
+
+        const slot = (hash % 9999) + 1;
+        return `${prefix}-${String(slot).padStart(4, '0')}`;
+    }
+
     renderRaceRow(race) {
         const workflowStepNumber = this.getWorkflowStepNumber(race.workflow_status);
 
@@ -360,9 +332,9 @@ class SmartElectionsWorklist {
                         <div class="progress-bar-fill progress-step-${workflowStepNumber}"></div>
                     </div>
                 </td>
-                <td class="col-dl1">${this.escapeHtml(race.dl1_assigned_to || '—')}</td>
+                <td class="col-dl1">${this.escapeHtml(this.publicOperatorId(race.dl1_assigned_to, 'DT'))}</td>
                 <td class="col-dl1-status">${this.renderStatusBadge(race.dl1_status)}</td>
-                <td class="col-dl2">${this.escapeHtml(race.dl2_assigned_to || '—')}</td>
+                <td class="col-dl2">${this.escapeHtml(this.publicOperatorId(race.dl2_assigned_to, 'DT'))}</td>
                 <td class="col-dl2-status">${this.renderStatusBadge(race.dl2_status)}</td>
                 <td class="col-preqc">${this.renderStatusBadge(race.preqc_result)}</td>
                 <td class="col-qc1">${this.renderStatusBadge(race.qc1_status)}</td>

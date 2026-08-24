@@ -30,6 +30,7 @@ from ...utils.shared_logic import (
     safe_slug,
 )
 from ...utils.table_builder import build_table_noninteractive
+from ...utils.table_builder import build_table_noninteractive_result
 from ...utils.table_core import robust_table_extraction
 
 _HANDLER_NAME = "xlsx_handler"
@@ -260,15 +261,10 @@ def parse_xlsx_election_results(
         context["candidate_party_detection"] = party_diag
     headers, data = expand_single_rawjson_row(headers, data, context=context)
 
-    headers_final, data_final, _entity_info = build_table_noninteractive(
-        domain=domain,
-        headers=headers,
-        data=data,
-        coordinator=coordinator,
-        context=context,
-        pivot_to_wide=True,
-        debug=False,
-    )
+    _c2g_table_result = build_table_noninteractive_result(domain=domain, headers=headers, data=data, coordinator=coordinator, context=context, pivot_to_wide=True, debug=False, source_type='xlsx')
+    headers_final = list(_c2g_table_result.headers)
+    data_final = [dict(row) for row in _c2g_table_result.rows]
+    _entity_info = _c2g_table_result.semantic_annotations["entity_info"]
 
     finalize_context = {
         "handler": _HANDLER_NAME,

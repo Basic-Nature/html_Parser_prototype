@@ -8,6 +8,12 @@ import re
 from typing import Any, Dict, List, Tuple
 
 from .detect import parse_numeric
+from ..contracts.table_pipeline import (
+    TableStage,
+    TransformationRecord,
+    current_transformation_sequence,
+    record_transformation,
+)
 
 try:
     from .logger_singleton import logger  # type: ignore
@@ -93,6 +99,43 @@ def normalize_ballot_column_name(h: str) -> str:
     cand = canonical_ballot_group(raw)
     return cand or raw
 
+def _record_reviewed_ballot_header_mapping(raw_header: str, canonical_header: str) -> bool:
+    """Record a deterministic reviewed-vocabulary vote-method mapping.
+
+    Only direct BALLOT_NAME_CANON_MAP matches are recorded in C2G 1.6. Fallback
+    title-casing, composite heuristics, totals, and candidate-specific guards are
+    intentionally not described as reviewed vote-method mappings.
+    """
+
+    raw = str(raw_header).strip()
+    low = " ".join(raw.lower().split())
+    mapped = BALLOT_NAME_CANON_MAP.get(low)
+    if not mapped or mapped != canonical_header or canonical_header == raw_header:
+        return False
+
+    return record_transformation(
+        TransformationRecord(
+            sequence=current_transformation_sequence(),
+            from_stage=TableStage.INTERPRETED,
+            to_stage=TableStage.INTERPRETED,
+            operation="vote_method_header_canonicalization",
+            rule_source=(
+                "Context_Integration.Context_Library.constants."
+                "BALLOT_NAME_CANON_MAP"
+            ),
+            confidence=None,
+            details={
+                "before_header": raw_header,
+                "after_header": canonical_header,
+                "normalized_lookup_key": low,
+                "rule_kind": "reviewed_ballot_name_canon_map_direct_match",
+                "header_semantic_label_changed": True,
+                "vote_value_mutation": False,
+            },
+        )
+    )
+
+
 def collapse_ballot_synonym_columns(headers: List[str], rows: List[Dict[str, Any]]) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     - Rename ballot/method headers to canonical names using constants.py
@@ -108,6 +151,7 @@ def collapse_ballot_synonym_columns(headers: List[str], rows: List[Dict[str, Any
         canon = normalize_ballot_column_name(h)
         if canon != h:
             rename[h] = canon
+            _record_reviewed_ballot_header_mapping(h, canon)
 
     # 2) Build header order with dedupe
     seen = set()

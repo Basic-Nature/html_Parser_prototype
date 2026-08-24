@@ -110,10 +110,11 @@ const QAPanel = (() => {
       });
 
       if (!response.ok) {
-        // Enhanced error handling for debugging
         let errorDetail = `${response.status} ${response.statusText}`;
+        let errorData = {};
+
         try {
-          const errorData = await response.json();
+          errorData = await response.json();
           if (errorData.error) {
             errorDetail += ` - ${errorData.error}`;
           }
@@ -121,9 +122,18 @@ const QAPanel = (() => {
             console.warn('[QA] API Help:', errorData.help);
           }
         } catch (e) {
-          // JSON parse failed, use status text
+          errorData = {};
         }
-        throw new Error(`API error: ${errorDetail}`);
+
+        const apiError = new Error(`API error: ${errorDetail}`);
+        apiError.status = response.status;
+        apiError.code = errorData.code || null;
+        apiError.qaUnavailable = Boolean(
+          response.status === 503
+          || errorData.available === false
+          || errorData.code === 'qa_database_unavailable'
+        );
+        throw apiError;
       }
 
       const rawStatus = await response.json();
@@ -143,8 +153,12 @@ const QAPanel = (() => {
       
       return status;
     } catch (error) {
+      if (error && error.qaUnavailable) {
+        console.warn('[QA] Classification backend unavailable:', error.message);
+        throw error;
+      }
+
       console.error('[QA] Classification failed:', error);
-      // Show user-friendly error message
       notifyToast(`QA Classification unavailable: ${error.message}`, 'warning');
       throw error;
     }

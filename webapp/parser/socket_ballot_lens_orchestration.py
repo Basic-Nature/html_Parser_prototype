@@ -116,6 +116,8 @@ def _initialize_session_and_auth(payload: dict[str, Any], h: dict[str, Any]) -> 
 
 
 def _prepare_run_inputs(payload: dict[str, Any], session_id: str, dev_isolation_bypass: bool, h: dict[str, Any]) -> dict[str, Any]:
+    from webapp.parser.config import URL_LIST_FILE
+    from webapp.parser.utils.url_registry import is_parser_eligible_url
     requested_source = h["safe_lower"](
         h["safe_get"](payload, "file_source", h["get_manual_source"](session_id))
     )
@@ -218,6 +220,21 @@ def _prepare_run_inputs(payload: dict[str, Any], session_id: str, dev_isolation_
                     "url": url_text,
                 })
                 continue
+            if not dev_isolation_bypass:
+                registry_allowed, registry_reason = is_parser_eligible_url(
+                    URL_LIST_FILE,
+                    url_text,
+                )
+                if not registry_allowed:
+                    h["logger"].warning({
+                        "level": "WARNING",
+                        "type": "security",
+                        "message": f"Blocked direct URL by registry gate: {registry_reason}",
+                        "session_id": session_id,
+                        "url": url_text,
+                    })
+                    continue
+
             direct_urls.append(url_text)
 
     if len(direct_urls) > h["direct_url_limit"]:
@@ -525,6 +542,56 @@ def _finalize_worker_session(
     )
 
 
+def _make_pipeline_inspection_emitter(
+    session_id: str,
+    principal: Any,
+    h: dict[str, Any],
+):
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise ValueError("pipeline inspection emitter requires session_id")
+
+    principal_binding = str(principal or "").strip()
+    if not principal_binding:
+        raise ValueError(
+            "pipeline inspection emitter requires authenticated principal"
+        )
+
+    def _emit_pipeline_inspection(payload: dict[str, Any]) -> None:
+        if not principal_binding:
+            raise RuntimeError("pipeline inspection principal binding lost")
+        if not isinstance(payload, dict):
+            raise TypeError("pipeline inspection payload must be a dict")
+        if payload.get("contract") != "pipeline_inspection_v1":
+            raise ValueError("unexpected pipeline inspection contract")
+
+        authority = payload.get("authority")
+        if (
+            not isinstance(authority, dict)
+            or authority.get("canonical") is not False
+        ):
+            raise ValueError(
+                "pipeline inspection payload must be noncanonical"
+            )
+
+        envelope = {
+            "contract": "pipeline_inspection_socket_v1",
+            "authority": {
+                "canonical": False,
+                "transport": "same_run_socket",
+            },
+            "session_id": session_id,
+            "inspection": payload,
+        }
+
+        h["socketio"].emit(
+            "pipeline_inspection",
+            envelope,
+            room=session_id,
+        )
+
+    return _emit_pipeline_inspection
+
+
 def _start_pipeline_worker(
     session_id: str,
     principal: Any,
@@ -625,7 +692,12 @@ def _start_pipeline_worker(
                 principal=principal,
                 principal_source=principal_source,
                 dev_isolation_bypass=dev_isolation_bypass,
-            )
+                            inspection_emit_func=_make_pipeline_inspection_emitter(
+                    session_id,
+                    principal,
+                    h,
+                ),
+)
             h["logger"].info(
                 {
                     "level": "INFO",

@@ -92,6 +92,9 @@ var __QAIntegration;
    */
   const classifiedResults = new Set();
 
+  let qaClassificationAvailable = true;
+  let qaClassificationUnavailableReason = '';
+
   /**
    * Debounced queue lane refresh to prevent burst API calls during large classifications.
    * Waits 300ms after last refresh request before actually refreshing.
@@ -170,10 +173,18 @@ var __QAIntegration;
    * @returns {Promise<void>}
    */
   async function classifyVisibleResults() {
+    if (!qaClassificationAvailable) {
+      console.info(
+        '[QA Integration] Classification skipped; backend remains unavailable:',
+        qaClassificationUnavailableReason || 'qa_database_unavailable'
+      );
+      return { classified: 0, errors: 0, unavailable: true };
+    }
+
     const resultsGrid = document.getElementById('resultsGrid');
     if (!resultsGrid) {
       console.log('[QA Integration] No results grid found');
-      return;
+      return { classified: 0, errors: 0, unavailable: false };
     }
 
     const resultCards = resultsGrid.querySelectorAll('.result-card');
@@ -181,12 +192,12 @@ var __QAIntegration;
 
     if (resultCards.length === 0) {
       console.log('[QA Integration] No result cards to classify');
-      return;
+      return { classified: 0, errors: 0, unavailable: false };
     }
 
-    // Classify each card with staggered timing to avoid API overload
     let classifiedCount = 0;
     let errorCount = 0;
+    let unavailable = false;
 
     for (let i = 0; i < resultCards.length; i++) {
       const card = resultCards[i];
@@ -198,44 +209,90 @@ var __QAIntegration;
         continue;
       }
 
-      // Skip if already classified
       if (classifiedResults.has(resultId)) {
         console.log(`[QA Integration] Result ${resultId} already classified, skipping`);
         continue;
       }
 
-      // Extract metadata and classify
       const metadata = extractMetadataFromCard(card, i);
-      
-      // Stagger requests to avoid overwhelming the backend
-      setTimeout(async () => {
-        try {
-          console.log(`[QA Integration] Classifying result ${resultId}...`);
-          const qaResult = await qaPanel.classifyAndInject(card, metadata);
-          if (!qaResult || !qaResult.dataset_id) {
-            throw new Error('QA classification returned no dataset_id');
-          }
-          classifiedResults.add(resultId);
-          classifiedCount++;
-          console.log(`[QA Integration] Successfully classified ${resultId} (${classifiedCount}/${resultCards.length})`);
-        } catch (error) {
-          errorCount++;
-          console.warn(`[QA Integration] Classification failed for ${resultId}:`, error.message);
-          
-          // Show user-friendly message if too many errors
-          if (errorCount <= 2 && typeof window.showToast === 'function') {
-            window.showToast(`QA classification unavailable: ${error.message}`, 'info');
-          }
+
+      try {
+        console.log(`[QA Integration] Classifying result ${resultId}...`);
+        const qaResult = await qaPanel.classifyAndInject(card, metadata);
+
+        if (!qaResult || !qaResult.dataset_id) {
+          throw new Error('QA classification returned no dataset_id');
         }
-      }, i * 150); // 150ms delay between requests
+
+        classifiedResults.add(resultId);
+        classifiedCount++;
+        console.log(
+          `[QA Integration] Successfully classified ${resultId} `
+          + `(${classifiedCount}/${resultCards.length})`
+        );
+      } catch (error) {
+        errorCount++;
+
+        const backendUnavailable = Boolean(
+          error
+          && (
+            error.qaUnavailable === true
+            || error.status === 503
+            || error.code === 'qa_database_unavailable'
+          )
+        );
+
+        if (backendUnavailable) {
+          unavailable = true;
+          qaClassificationAvailable = false;
+          qaClassificationUnavailableReason = (
+            error.code || error.message || 'qa_database_unavailable'
+          );
+
+          console.warn(
+            '[QA Integration] QA classification backend unavailable; '
+            + 'stopping the remaining batch:',
+            qaClassificationUnavailableReason
+          );
+
+          if (typeof window.showToast === 'function') {
+            window.showToast(
+              'QA classification is temporarily unavailable; parser results remain available.',
+              'info'
+            );
+          }
+
+          break;
+        }
+
+        console.warn(
+          `[QA Integration] Classification failed for ${resultId}:`,
+          error.message
+        );
+
+        if (errorCount <= 2 && typeof window.showToast === 'function') {
+          window.showToast(
+            `QA classification unavailable: ${error.message}`,
+            'info'
+          );
+        }
+      }
     }
 
-    // Log summary after all requests are queued
-    setTimeout(() => {
-      console.log(`[QA Integration] Classification complete: ${classifiedCount} succeeded, ${errorCount} failed`);
-      // Use debounced refresh to avoid burst calls during large batch classifications
+    console.log(
+      `[QA Integration] Classification complete: `
+      + `${classifiedCount} succeeded, ${errorCount} failed`
+    );
+
+    if (!unavailable) {
       debouncedRefreshQueueLanes();
-    }, resultCards.length * 150 + 1000);
+    }
+
+    return {
+      classified: classifiedCount,
+      errors: errorCount,
+      unavailable,
+    };
   }
 
   /**
@@ -438,8 +495,10 @@ var __QAIntegration;
       
       try {
         clearClassificationCache();
-        await classifyVisibleResults();
-        classifyBtn.textContent = '✓ Classified';
+        const summary = await classifyVisibleResults();
+        classifyBtn.textContent = summary.unavailable
+          ? 'QA Unavailable'
+          : '\u2713 Classified';
         setTimeout(() => {
           classifyBtn.textContent = '🔍 Classify QA';
           classifyBtn.disabled = false;

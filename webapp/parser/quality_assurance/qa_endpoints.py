@@ -523,6 +523,16 @@ def parse_and_classify():
         })
 
     except Exception as e:
+        readiness = _database_readiness()
+        if not bool(readiness.get("ok", False)):
+            return jsonify({
+                "error": "QA classification database unavailable",
+                "code": "qa_database_unavailable",
+                "available": False,
+                "retryable": True,
+                "reason": readiness.get("error") or "required_qa_tables_unavailable",
+            }), 503
+
         return jsonify({"error": f"Classification failed: {e}"}), 500
 
 

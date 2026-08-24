@@ -40,6 +40,16 @@ class CanonicalResultFilters:
     limit: int = 500
 
 
+@dataclass(frozen=True)
+class CanonicalFacetFilters:
+    """Scope filters for self-excluding canonical workbench facets."""
+
+    state: str | None = None
+    year: int | None = None
+    jurisdiction: str | None = None
+    contest: str | None = None
+
+
 def _iso_or_none(value: date | datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
 
@@ -215,6 +225,150 @@ def _attach_components(
     for item in items:
         # Empty list means no component rows exist. It does not synthesize zeros.
         item["vote_components"] = grouped.get(item["id"], [])
+
+
+def _apply_facet_scope_filters(
+    stmt: Select,
+    filters: CanonicalFacetFilters,
+    *,
+    exclude: str,
+) -> Select:
+    """Apply all active facet filters except the dimension being enumerated."""
+
+    result = CanonicalElectionResult
+    race = CanonicalElectionRace
+
+    if exclude != "state" and filters.state:
+        stmt = stmt.where(func.lower(race.state) == filters.state.strip().lower())
+    if exclude != "year" and filters.year is not None:
+        stmt = stmt.where(race.election_year == int(filters.year))
+    if exclude != "jurisdiction" and filters.jurisdiction:
+        stmt = stmt.where(
+            func.lower(result.jurisdiction_name)
+            == filters.jurisdiction.strip().lower()
+        )
+    if exclude != "contest" and filters.contest:
+        stmt = stmt.where(race.contest.ilike(f"%{filters.contest.strip()}%"))
+
+    return stmt
+
+
+def _build_facet_statement(
+    filters: CanonicalFacetFilters,
+    dimension: str,
+) -> Select:
+    """Build one self-excluding distinct-value query for the workbench."""
+
+    result = CanonicalElectionResult
+    race = CanonicalElectionRace
+
+    if dimension == "year":
+        stmt = (
+            select(race.election_year.label("year"))
+            .select_from(result)
+            .join(race, result.race_id == race.id)
+            .where(race.election_year.is_not(None))
+        )
+        stmt = _apply_facet_scope_filters(stmt, filters, exclude="year")
+        return stmt.distinct().order_by(race.election_year.desc())
+
+    if dimension == "state":
+        stmt = (
+            select(race.state.label("state"))
+            .select_from(result)
+            .join(race, result.race_id == race.id)
+            .where(race.state.is_not(None))
+        )
+        stmt = _apply_facet_scope_filters(stmt, filters, exclude="state")
+        return stmt.distinct().order_by(race.state.asc())
+
+    if dimension == "jurisdiction":
+        stmt = (
+            select(
+                result.jurisdiction_name.label("jurisdiction_name"),
+                result.jurisdiction_type.label("jurisdiction_type"),
+            )
+            .select_from(result)
+            .join(race, result.race_id == race.id)
+            .where(result.jurisdiction_name.is_not(None))
+        )
+        stmt = _apply_facet_scope_filters(stmt, filters, exclude="jurisdiction")
+        return stmt.distinct().order_by(
+            result.jurisdiction_name.asc(),
+            result.jurisdiction_type.asc(),
+        )
+
+    if dimension == "contest":
+        stmt = (
+            select(race.contest.label("contest"))
+            .select_from(result)
+            .join(race, result.race_id == race.id)
+            .where(race.contest.is_not(None))
+        )
+        stmt = _apply_facet_scope_filters(stmt, filters, exclude="contest")
+        return stmt.distinct().order_by(race.contest.asc())
+
+    raise ValueError(f"Unsupported canonical facet dimension: {dimension}")
+
+
+def query_canonical_facets(
+    engine: Engine,
+    filters: CanonicalFacetFilters,
+) -> dict[str, Any]:
+    """Return complete self-excluding canonical facets in a read-only transaction."""
+
+    statements = {
+        "years": _build_facet_statement(filters, "year"),
+        "states": _build_facet_statement(filters, "state"),
+        "jurisdictions": _build_facet_statement(filters, "jurisdiction"),
+        "contests": _build_facet_statement(filters, "contest"),
+    }
+
+    with engine.connect() as conn:
+        transaction = conn.begin()
+        try:
+            if conn.dialect.name == "postgresql":
+                conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+
+            years = [
+                int(row.year)
+                for row in conn.execute(statements["years"])
+                if row.year is not None
+            ]
+            states = [
+                str(row.state)
+                for row in conn.execute(statements["states"])
+                if row.state
+            ]
+            jurisdictions = [
+                {
+                    "name": str(row.jurisdiction_name),
+                    "type": row.jurisdiction_type,
+                }
+                for row in conn.execute(statements["jurisdictions"])
+                if row.jurisdiction_name
+            ]
+            contests = [
+                str(row.contest)
+                for row in conn.execute(statements["contests"])
+                if row.contest
+            ]
+
+            return {
+                "years": years,
+                "states": states,
+                "jurisdictions": jurisdictions,
+                "contests": contests,
+                "active_filters": {
+                    "state": filters.state,
+                    "year": filters.year,
+                    "jurisdiction": filters.jurisdiction,
+                    "contest": filters.contest,
+                },
+            }
+        finally:
+            # Facet discovery is read-only and never commits.
+            transaction.rollback()
 
 
 def query_canonical_results(

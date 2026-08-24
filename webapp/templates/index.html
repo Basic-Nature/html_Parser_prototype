@@ -2,77 +2,219 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Smart Elections Parser</title>
+    <title>ElectionPulse &mdash; Election Data Observatory</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Bootstrap first so main.css can override -->
+    <meta name="theme-color" content="#06111f">
+    <meta name="description" content="ElectionPulse is an open-source election data observatory for traceable evidence, analysis, and governed review workflows.">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}?v={{ static_version|default('g132') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}?v={{ static_version|default('g132') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/observatory.css') }}?v={{ static_version|default('g132') }}">
 </head>
-<body>
-    <nav class="navbar">
-        <a href="https://smartelections.us/">Home Base</a>
-        <a href="https://github.com/Basic-Nature/html_Parser_prototype/issues" target="_blank" rel="noreferrer">Feedback</a>
-        <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank" rel="noreferrer">GitHub</a>
+<body class="observatory-page">
+    <nav class="observatory-topbar" aria-label="ElectionPulse external navigation">
+        <a href="https://smartelections.us/" rel="noreferrer">
+            <span aria-hidden="true">&#8962;</span>
+            Home Base
+        </a>
+        <a href="https://github.com/Basic-Nature/html_Parser_prototype/issues" target="_blank" rel="noreferrer">
+            <span aria-hidden="true">&#9676;</span>
+            Feedback
+        </a>
+        <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank" rel="noreferrer">
+            <span aria-hidden="true">&#9679;</span>
+            GitHub
+        </a>
     </nav>
-    <div class="container">
+
+    <main class="container observatory-shell" id="observatoryShell">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
-            {% for category, message in messages %}
-              <div class="flash">{{ message }}</div>
-            {% endfor %}
+            <section class="observatory-flashes" aria-label="Application messages">
+              {% for category, message in messages %}
+                <div class="flash">{{ message }}</div>
+              {% endfor %}
+            </section>
           {% endif %}
         {% endwith %}
 
-        <h1 class="text-center">Smart Elections Parser</h1>
-        <div class="subtitle rainbow-text">Open, Transparent, and Modular Election Data Extraction</div>
-        <div class="mission mission-panel" id="missionPanel">
-          <canvas class="rim-tracer" id="rimTracer" aria-hidden="true"></canvas>
-          <strong>Mission:</strong> To empower election transparency and civic engagement by providing open-source, modular tools for extracting, normalizing, and analyzing election results from any state or county in the U.S.<br><br>
-          <strong>Goals:</strong>
-          <ul class="mission-list">
-            <li>Make election data accessible and comparable across formats and jurisdictions.</li>
-            <li>Enable researchers, journalists, and advocates to analyze results quickly and accurately.</li>
-            <li>Foster a community-driven ecosystem for election data tools and best practices.</li>
-          </ul>
-        </div>
-        <div class="feature-list">
-            <a class="feature" href="{{ url_for('data_framework') }}" data-bs-toggle="tooltip" title="Upload, view, and manage election data in PostgreSQL.">
+        <header class="observatory-hero">
+            <div class="observatory-hero-rings" aria-hidden="true"></div>
+            <h1>ElectionPulse</h1>
+            <p class="observatory-hero-eyebrow">Election Data Observatory</p>
+            <p class="observatory-north-star">Every community leaves a signal. Every result should be traceable.</p>
+            <p class="observatory-phrase" id="observatoryPhrase">Preserve the source. Understand the result.</p>
+        </header>
+
+        <section class="observatory-panel" id="observatoryStage" aria-labelledby="observatoryHeading">
+            <header class="observatory-panel-header">
+                <div>
+                    <p class="observatory-kicker">United States + Territories</p>
+                    <h2 id="observatoryHeading">National Data Observatory</h2>
+                </div>
+                <p class="observatory-panel-note">Geography is authoritative. Election evidence remains governed separately.</p>
+            </header>
+
+            <div class="observatory-map-shell" id="observatoryMapStage">
+                <svg
+                    class="observatory-map"
+                    id="observatoryNationalMap"
+                    viewBox="0 0 1000 620"
+                    role="img"
+                    aria-labelledby="observatoryMapTitle observatoryMapDescription"
+                    data-map-source="{{ url_for('static', filename='assets/observatory/national_geography_2025.json') }}?v={{ static_version|default('g132') }}"
+                >
+                    <title id="observatoryMapTitle">United States and territories</title>
+                    <desc id="observatoryMapDescription">Interactive geographic focus map derived from U.S. Census Bureau 2025 TIGER/Line state and equivalent entity boundaries. Selection does not imply ElectionPulse data availability.</desc>
+                    <g class="observatory-map-grid" aria-hidden="true">
+                        <path d="M0 155H1000M0 310H1000M0 465H1000M250 0V620M500 0V620M750 0V620"></path>
+                        <ellipse cx="500" cy="310" rx="390" ry="215"></ellipse>
+                        <ellipse cx="500" cy="310" rx="250" ry="138"></ellipse>
+                    </g>
+                    <g class="observatory-map-insets" aria-hidden="true">
+                        <rect x="42" y="466" width="218" height="130" rx="12"></rect>
+                        <text x="55" y="486">AK</text>
+                        <rect x="272" y="500" width="143" height="92" rx="12"></rect>
+                        <text x="285" y="520">HI</text>
+                        <rect x="445" y="505" width="157" height="67" rx="12"></rect>
+                        <text x="458" y="525">PR</text>
+                        <rect x="615" y="505" width="75" height="65" rx="12"></rect>
+                        <text x="625" y="525">VI</text>
+                        <rect x="708" y="505" width="82" height="80" rx="12"></rect>
+                        <text x="718" y="525">AS</text>
+                        <rect x="814" y="505" width="62" height="80" rx="12"></rect>
+                        <text x="824" y="525">GU</text>
+                        <rect x="900" y="505" width="66" height="80" rx="12"></rect>
+                        <text x="910" y="525">MP</text>
+                    </g>
+                    <g id="observatoryMapPaths" class="observatory-map-jurisdictions"></g>
+                    <g id="observatoryMapSignal" class="observatory-map-signal" aria-hidden="true">
+                        <circle class="observatory-map-signal-ring observatory-map-signal-ring-outer" cx="0" cy="0" r="28"></circle>
+                        <circle class="observatory-map-signal-ring observatory-map-signal-ring-inner" cx="0" cy="0" r="13"></circle>
+                        <circle class="observatory-map-signal-core" cx="0" cy="0" r="3"></circle>
+                    </g>
+                </svg>
+
+                <div class="observatory-map-loading" id="observatoryMapLoading" role="status">
+                    <span class="observatory-map-pulse" aria-hidden="true"></span>
+                    <strong>Resolving governed national geography</strong>
+                    <span>Census TIGER/Line 2025 &middot; 56 jurisdictions &middot; no election values</span>
+                </div>
+
+                <div class="observatory-map-source">
+                    <span>Geography</span>
+                    U.S. Census Bureau &middot; TIGER/Line 2025
+                </div>
+            </div>
+
+            <aside class="observatory-context" aria-live="polite">
+                <div>
+                    <p class="observatory-kicker">Context</p>
+                    <h3 id="observatoryContextTitle">Select a jurisdiction</h3>
+                    <p id="observatoryContextCopy">Hover, focus, or select a jurisdiction. Geographic selection does not imply ElectionPulse result availability.</p>
+                </div>
+                <div class="observatory-context-meta">
+                    <span id="observatoryContextCode">56 geographic jurisdictions</span>
+                    <span id="observatoryContextStatus">Election values intentionally absent at this layer</span>
+                </div>
+            </aside>
+        </section>
+
+        <section class="observatory-mission" id="missionPanel" aria-labelledby="missionHeading">
+            <canvas class="rim-tracer" id="rimTracer" aria-hidden="true"></canvas>
+            <p id="missionHeading">
+                <strong>Mission:</strong>
+                To empower election transparency and civic engagement by providing open-source, modular tools for extracting, normalizing, and analyzing election results from any state or county in the U.S.
+            </p>
+            <div class="observatory-goals-title"><span>Goals</span></div>
+            <div class="observatory-goals">
+                <article>
+                    <span class="goal-symbol goal-symbol-red" aria-hidden="true">&#9678;</span>
+                    <p>Make election data accessible and comparable across formats and jurisdictions.</p>
+                </article>
+                <article>
+                    <span class="goal-symbol goal-symbol-blue" aria-hidden="true">&#9827;</span>
+                    <p>Enable researchers, journalists, and advocates to analyze results quickly and accurately.</p>
+                </article>
+                <article>
+                    <span class="goal-symbol goal-symbol-teal" aria-hidden="true">&#9671;</span>
+                    <p>Foster a community-driven ecosystem for election data tools and best practices.</p>
+                </article>
+            </div>
+        </section>
+
+        <section class="observatory-primary-tools" aria-label="Primary ElectionPulse pathways">
+            <a class="observatory-tool observatory-tool-red" href="{{ url_for('data_framework') }}" data-observatory-pathway="data-framework">
+                <span class="observatory-tool-glow" aria-hidden="true"></span>
+                <span class="observatory-tool-icon observatory-tool-icon-framework" aria-hidden="true"></span>
                 <h3>Data Framework</h3>
-                <p>Upload, view, and manage election data in PostgreSQL.</p>
+                <p>Govern source evidence, structured data, and provenance.</p>
+                <span class="observatory-tool-open">Open <b aria-hidden="true">&rarr;</b></span>
             </a>
-            <a class="feature" href="{{ url_for('ballot_lens') }}" data-bs-toggle="tooltip" title="Modern parser with live results grid, file preview, filtering, and command palette.">
-                <h3>Run Parser</h3>
-                <p>Modern dashboard with real-time results grid, file preview, advanced filtering, and command palette. Manage custom URL-to-handler mappings, import/export hints, and validate handler modules.</p>
+
+            <a class="observatory-tool observatory-tool-blue" href="{{ url_for('ballot_lens') }}" data-observatory-pathway="ballot-lens">
+                <span class="observatory-tool-glow" aria-hidden="true"></span>
+                <span class="observatory-tool-icon observatory-tool-icon-lens" aria-hidden="true"></span>
+                <h3>Ballot Lens</h3>
+                <p>Inspect parsed results, patterns, and evidence-aware analysis.</p>
+                <span class="observatory-tool-open">Open <b aria-hidden="true">&rarr;</b></span>
             </a>
-            <a class="feature" href="{{ url_for('quality_dashboard') }}" data-bs-toggle="tooltip" title="View extraction quality metrics and performance analytics.">
-                <h3>Quality Metrics</h3>
-                <p>Monitor extraction confidence, data quality trends, and handler performance with interactive charts and detailed analytics, then open Health Preview (read-only) for operator task visibility.</p>
+
+            <a class="observatory-tool observatory-tool-teal" href="{{ url_for('worklist') }}" data-observatory-pathway="workflow">
+                <span class="observatory-tool-glow" aria-hidden="true"></span>
+                <span class="observatory-tool-icon observatory-tool-icon-workflow" aria-hidden="true"></span>
+                <h3>Workflow</h3>
+                <p>Track review queues, decisions, and governed lifecycle state.</p>
+                <span class="observatory-tool-open">Open <b aria-hidden="true">&rarr;</b></span>
             </a>
-            <a class="feature" href="{{ url_for('ocr_diagnostics') }}" data-bs-toggle="tooltip" title="Inspect OCR binary and module availability for PDF parsing.">
-                <h3>OCR Diagnostics</h3>
-                <p>View the current runtime environment for OCR, including Tesseract/Poppler availability, Python module versions, and active environment variables.</p>
+
+            <a class="observatory-tool observatory-tool-violet" href="{{ url_for('auth_welcome') }}" data-observatory-pathway="access">
+                <span class="observatory-tool-glow" aria-hidden="true"></span>
+                <span class="observatory-tool-icon observatory-tool-icon-access" aria-hidden="true"></span>
+                <h3>Access</h3>
+                <p>Enter the authenticated operator workspace.</p>
+                <span class="observatory-tool-open">Open <b aria-hidden="true">&rarr;</b></span>
             </a>
-            <a class="feature" href="{{ url_for('history') }}" data-bs-toggle="tooltip" title="Audit prior changes and restore snapshots.">
-                <h3>Change History</h3>
-                <p>View the full history of URL hint changes and parser configuration updates for transparency and auditability.</p>
-            </a>
-            <a class="feature" href="{{ url_for('health_dashboard') }}" data-bs-toggle="tooltip" title="Health preview is read-only unless authenticated.">
-                <h3>Health Dashboard</h3>
-                <p>Preview health status and recent runs in read-only mode; authenticated operators can execute maintenance and retraining tasks.</p>
-            </a>
-            <a class="feature" href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer" data-bs-toggle="tooltip" title="Project overview and contribution guide.">
-                <h3>About & Docs</h3>
-                <p>Learn more about the Smart Elections Parser project, its architecture, and how to contribute.</p>
-            </a>
-        </div>
-        <div class="canvas-section">
-            <canvas id="container" width="300" height="300" aria-label="Solar system animation" role="img"></canvas>
-        </div>
-        <div class="footer-contact">
-            <span class="contact-label">Contact:</span>
-            <a href="mailto:smartelectionsact@gmail.com" class="contact-email">smartelectionsact@gmail.com</a>
-        </div>
-    </div>
+        </section>
+
+        <aside class="observatory-development" aria-label="Development status">
+            <span class="observatory-development-icon" aria-hidden="true">&lt;/&gt;</span>
+            <p><strong>In active development</strong> &mdash; contributors are welcome to help test, debug, document, and improve ElectionPulse.</p>
+            <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank" rel="noreferrer">Contribute on GitHub &rarr;</a>
+        </aside>
+
+        <section class="observatory-support" aria-labelledby="supportHeading">
+            <header>
+                <p class="observatory-kicker" id="supportHeading">Supporting Tools</p>
+                <p>Diagnostics, quality, history, health, and documentation &mdash; close at hand without competing with the primary pathways.</p>
+            </header>
+            <nav class="observatory-support-grid" aria-label="Supporting ElectionPulse tools">
+                <a class="support-tool support-red" href="{{ url_for('quality_dashboard') }}"><span class="support-tool-icon support-tool-icon-quality" aria-hidden="true"></span>Quality Metrics</a>
+                <a class="support-tool support-blue" href="{{ url_for('ocr_diagnostics') }}"><span class="support-tool-icon support-tool-icon-ocr" aria-hidden="true"></span>OCR Diagnostics</a>
+                <a class="support-tool support-amber" href="{{ url_for('history') }}"><span class="support-tool-icon support-tool-icon-history" aria-hidden="true"></span>Change History</a>
+                <a class="support-tool support-teal" href="{{ url_for('health_dashboard') }}"><span class="support-tool-icon support-tool-icon-health" aria-hidden="true"></span>Health Dashboard</a>
+                <a class="support-tool support-violet" href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer"><span class="support-tool-icon support-tool-icon-docs" aria-hidden="true"></span>About &amp; Docs</a>
+            </nav>
+        </section>
+
+        <section class="observatory-lens-stage" id="observatoryLensStage">
+            <aside class="observatory-current-lens">
+                <p class="observatory-kicker">Current Lens</p>
+                <h2 id="observatoryLensTitle">United States + Territories</h2>
+                <p id="observatoryLensCopy">Earth is the visual origin. Select a jurisdiction above to narrow geographic focus without inventing election evidence.</p>
+            </aside>
+
+            <div class="observatory-celestial-field">
+                <div class="observatory-celestial-rings" aria-hidden="true"></div>
+                <canvas id="container" width="300" height="300" aria-label="Solar system animation" role="img"></canvas>
+            </div>
+        </section>
+
+        <footer class="observatory-footer">
+            <a href="mailto:smartelectionsact@gmail.com">Contact: smartelectionsact@gmail.com</a>
+        </footer>
+    </main>
 
     <div id="assetPaths"
          data-sun-svg="{{ url_for('static', filename='img/sun.svg') }}"
@@ -81,11 +223,10 @@
          data-moon-png="{{ url_for('static', filename='img/moon.png') }}"
          data-earth="{{ url_for('static', filename='img/earth.png') }}">
     </div>
-
     <div id="popup" class="popup-hidden"></div>
 
-    <!-- Bootstrap bundle for tooltips/popovers -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/main.js') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/observatory.js') }}?v={{ static_version|default('g132') }}" defer></script>
 </body>
 </html>

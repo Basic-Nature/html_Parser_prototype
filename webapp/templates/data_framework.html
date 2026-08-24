@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Data Framework | Smart Elections Parser</title>
+    <title>Data Framework | ElectionPulse</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- Config (replaces inline script) -->
         <meta id="dataFrameworkConfig"
@@ -11,42 +11,100 @@
           data-scaffold-json-url="{{ url_for('api_data_framework_scaffold') }}"
           data-scaffold-csv-url="{{ url_for('api_data_framework_scaffold_csv') }}"
           data-curated-url="{{ url_for('api_data_framework_curated') }}"
+          data-canonical-facets-url="{{ url_for('api_data_framework_canonical_facets') }}"
           data-priority-url="{{ url_for('api_data_framework_warehouse_status') }}"
-          data-preview-url="{{ url_for('api_data_framework_preview') }}"
-          data-dblite-finalized-url="{{ url_for('api_election_data_db_lite_finalized', limit=2000) }}"
-          data-dblite-downballot-url="{{ url_for('api_election_data_db_lite_down_ballot', limit=2000) }}"
           {% if csrf_token %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
     <!-- Bootstrap -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css', v='g241') }}">
 </head>
-<body>
-    <nav class="navbar">
-        <a href="{{ url_for('index') }}" class="nav-link" title="Main">Dashboard</a>
-        <a href="{{ url_for('data_framework') }}" class="active" title="Current Page">Data Framework</a>
-        <a href="{{ url_for('ballot_lens') }}" class="nav-link" title="Run Parser">Run Parser</a>
-        <a href="{{ url_for('health_dashboard') }}" class="nav-link" title="Health preview is read-only unless authenticated">Health</a>
-        <a href="{{ url_for('quality_dashboard') }}" class="nav-link" title="Quality Dashboard">Quality</a>
+<body data-page="data-framework" data-workbench-contract="db-first-g241">
+    <nav class="navbar framework-nav" aria-label="ElectionPulse primary navigation">
+        <a href="{{ url_for('index') }}" class="nav-link" title="ElectionPulse Observatory">Observatory</a>
+        <a href="{{ url_for('data_framework') }}" class="active" title="Current page">Data Framework</a>
+        <a href="{{ url_for('ballot_lens') }}" class="nav-link" title="Investigate governed election data">Ballot Lens</a>
+        <a href="{{ url_for('worklist') }}" class="nav-link" title="Review operational work">Workflow</a>
+        <a href="{{ url_for('quality_dashboard') }}" class="nav-link" title="Quality dashboard">Quality</a>
+        <a href="{{ url_for('auth_welcome', next=request.url) }}" class="nav-link" title="Governed operator access">Access</a>
     </nav>
-    <div class="container-main">
-        <h1>
-          Data Framework
-          <button type="button"
-                  class="btn btn-outline-primary btn-sm ms-2"
-                  data-bs-toggle="popover"
-                  data-bs-trigger="focus"
-                  data-bs-placement="right"
-                  title="How this page works"
-                  data-bs-content="Upload CSVs, filter/sort columns, and export your current view. Use Columns to toggle visibility.">
-            Help
-          </button>
-        </h1>
-        <div class="subtitle">Upload, View, and Manage Election Data in PostgreSQL</div>
-        <div class="framework-topline" aria-label="Data framework highlights">
-          <span class="status-pill">Canonical-first publication</span>
-          <span class="status-pill">Curated and live views</span>
-          <span class="status-pill">Filter and export workflow</span>
-        </div>
+    <div class="container-main data-workbench-shell">
+        <header class="workbench-hero">
+          <div class="workbench-eyebrow">ElectionPulse &middot; Data Operations</div>
+          <div class="workbench-title-row">
+            <div>
+              <h1>Data Framework</h1>
+              <div class="subtitle">Evidence &rarr; structure &rarr; review &rarr; authority &rarr; canonical record</div>
+            </div>
+            <button type="button"
+                    class="btn workbench-help"
+                    data-bs-toggle="popover"
+                    data-bs-trigger="focus"
+                    data-bs-placement="left"
+                    title="How this workbench works"
+                    data-bs-content="Trace source evidence into normalized structure, review quality and scope, then inspect or publish governed PostgreSQL records. NULL remains distinct from zero.">
+              Workbench Guide
+            </button>
+          </div>
+          <div class="framework-topline" aria-label="Data Framework authority highlights">
+            <span class="status-pill status-pill-canonical">PostgreSQL primary</span>
+            <span class="status-pill">Canonical-first publication</span>
+            <span class="status-pill">NULL preserved</span>
+            <span class="status-pill">Jurisdiction scope preserved</span>
+          </div>
+        </header>
+
+        <section class="framework-authority-rail" aria-label="Data Framework evidence-to-authority flow">
+          <div class="authority-step" data-flow-step="source" data-flow-state="idle">
+            <span class="authority-step-index">01</span>
+            <div><strong>Source Evidence</strong><span>What arrived and where it came from</span></div>
+          </div>
+          <span class="authority-arrow" aria-hidden="true">&rarr;</span>
+          <div class="authority-step" data-flow-step="analysis" data-flow-state="idle">
+            <span class="authority-step-index">02</span>
+            <div><strong>Ingested Structure</strong><span>What ElectionPulse normalized</span></div>
+          </div>
+          <span class="authority-arrow" aria-hidden="true">&rarr;</span>
+          <div class="authority-step" data-flow-step="review" data-flow-state="idle">
+            <span class="authority-step-index">03</span>
+            <div><strong>Review + Quality</strong><span>What still needs human attention</span></div>
+          </div>
+          <span class="authority-arrow" aria-hidden="true">&rarr;</span>
+          <div class="authority-step" data-flow-step="authority" data-flow-state="idle">
+            <span class="authority-step-index">04</span>
+            <div><strong>Authority State</strong><span>Staging is not canonical</span></div>
+          </div>
+          <span class="authority-arrow" aria-hidden="true">&rarr;</span>
+          <div class="authority-step" data-flow-step="canonical" data-flow-state="idle">
+            <span class="authority-step-index">05</span>
+            <div><strong>Canonical Record</strong><span>Traceable PostgreSQL publication</span></div>
+          </div>
+        </section>
+
+        <section class="evidence-context-bar"
+                 id="evidenceContextBar"
+                 data-context-state="idle"
+                 aria-label="Selected evidence relationship context"
+                 aria-live="polite">
+          <div class="evidence-context-summary">
+            <span class="evidence-context-kicker">Evidence context</span>
+            <strong id="evidenceContextTitle">No source evidence selected</strong>
+            <span id="evidenceContextScope">Select a Source Evidence item to align supported workbench context. No lineage is inferred.</span>
+          </div>
+          <div class="evidence-context-relations" aria-label="Evidence relationship status">
+            <div class="evidence-relation" data-relation="analysis" data-state="idle">
+              <span>Analysis</span>
+              <strong id="evidenceContextAnalysis">Waiting for selection</strong>
+            </div>
+            <div class="evidence-relation" data-relation="review" data-state="unlinked">
+              <span>Review</span>
+              <strong id="evidenceContextReview">Not linked</strong>
+            </div>
+            <div class="evidence-relation" data-relation="canonical" data-state="unlinked">
+              <span>Canonical</span>
+              <strong id="evidenceContextCanonical">Lineage not established</strong>
+            </div>
+          </div>
+        </section>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
@@ -58,11 +116,11 @@
 
         <div class="framework-layout" aria-label="Data Framework layout">
           <aside class="framework-column framework-column-left" aria-label="Curated datasets">
-            <article class="framework-panel curated-panel">
+            <article class="framework-panel curated-panel" data-workbench-role="source-evidence">
               <header class="framework-panel-header">
                 <div>
-                  <h2>Curated Dataset Gallery</h2>
-                  <p class="framework-panel-subtitle">Explore view-only datasets vetted for the Data Framework.</p>
+                  <h2>Source Evidence</h2>
+                  <p class="framework-panel-subtitle">Browse curated, source-backed datasets and retain the evidence trail before analysis.</p>
                 </div>
                 <div class="framework-panel-badges">
                   <span class="badge badge-ghost">View only</span>
@@ -101,30 +159,33 @@
           </aside>
 
           <section class="framework-column framework-column-middle" aria-label="Visualization and warehouse">
-            <article class="framework-panel visualization-panel" id="vizPanel" aria-label="Visualization studio">
+            <article class="framework-panel visualization-panel" id="vizPanel" data-workbench-role="ingested-structure" aria-label="Visualization studio">
               <header class="framework-panel-header">
                 <div>
-                  <h2>Visualization Studio</h2>
-                  <p class="framework-panel-subtitle">Graphs and highlight tables for the selected dataset.</p>
+                  <h2>Ingested Structure + Analysis</h2>
+                  <p class="framework-panel-subtitle">Inspect normalized scope, contests, jurisdictions, and analytical views without changing authority.</p>
                 </div>
                 <div class="framework-panel-actions">
-                  <div class="viz-dataset-switch" aria-label="Visualization dataset switcher">
-                    <label for="vizDatasetSelect" class="viz-label">Dataset</label>
-                    <select id="vizDatasetSelect" aria-label="Visualization dataset">
-                      <option value="finalized" selected>Finalized (DB-Lite)</option>
-                      <option value="down_ballot">Down-ballot (DB-Lite)</option>
-                      <option value="warehouse_core">Canonical Production</option>
+                  <div class="viz-dataset-switch" aria-label="Analysis view switcher">
+                    <label for="vizDatasetSelect" class="viz-label">Analysis View</label>
+                    <select id="vizDatasetSelect" aria-label="Analysis view">
+                      <option value="warehouse_core" selected>Composition</option>
                     </select>
                   </div>
                   <div class="framework-panel-badges">
                     <span class="badge badge-ghost" id="vizPlaybackBadge">Playback: Auto</span>
-                    <span class="badge badge-ghost" id="vizScopeBadge">Scope: All counties</span>
+                    <span class="badge badge-ghost" id="vizScopeBadge">Scope: All jurisdictions</span>
                   </div>
-                  <span class="viz-mode-help" id="vizModeHelp" aria-live="polite" title="Changing filters or using Prev/Next sets Manual mode; selecting Start resumes Auto mode.">Auto switches to Manual when filters or Prev/Next are used. Select Start to resume Auto.</span>
-                  <button id="dropoffDrawerToggle" type="button" class="btn action drawer-toggle" aria-expanded="false" aria-controls="dropoffDrawer">Drop-off</button>
+                  <span class="viz-mode-help" id="vizModeHelp" aria-live="polite" title="Preview cycles real race contexts. Hover the controls, chart, or table to focus and pause. Choosing a filter enters Explore; Start resumes Preview.">Preview cycles real race contexts. Hover controls, chart, or table to pause; choose a filter to Explore. Start resumes Preview.</span>
+                  <button id="dropoffDrawerToggle" type="button" class="btn action drawer-toggle" aria-expanded="false" aria-controls="dropoffDrawer" disabled title="Governed canonical drop-off derivation is pending">Drop-off — Pending</button>
                 </div>
               </header>
               <div class="framework-panel-body">
+                <div class="panel-context-status" id="analysisContextStatus" data-context-tone="idle" aria-live="polite">
+                  <span class="panel-context-label">Evidence context</span>
+                  <span>No source selected; the current analysis view is independent.</span>
+                </div>
+                <div class="viz-scope-semantic-note">Jurisdiction follows the selected dataset&#39;s reported scope. DB-Lite may retain legacy County/District labels; canonical rows preserve jurisdiction name and type separately.</div>
                 <div class="viz-filters" aria-label="Visualization filters">
                   <div class="viz-filter-group">
                     <label for="vizYearSelect" class="viz-label">Year</label>
@@ -135,8 +196,8 @@
                     <select id="vizStateSelect" aria-label="Visualization state"></select>
                   </div>
                   <div class="viz-filter-group">
-                    <label for="vizCountySelect" class="viz-label viz-label-with-badge">County <span class="viz-scope-badge" id="vizCountyScopeBadge" aria-live="polite">All counties</span></label>
-                    <select id="vizCountySelect" aria-label="Visualization county"></select>
+                    <label for="vizCountySelect" class="viz-label viz-label-with-badge">Jurisdiction <span class="viz-scope-badge" id="vizCountyScopeBadge" aria-live="polite">All jurisdictions</span></label>
+                    <select id="vizCountySelect" aria-label="Visualization jurisdiction"></select>
                   </div>
                   <div class="viz-filter-group">
                     <label for="vizContestSelect" class="viz-label">Contest</label>
@@ -148,11 +209,11 @@
                   <button type="button" class="btn action" id="vizAutoToggleBtn" aria-label="Pause or start auto cycling">Pause</button>
                   <button type="button" class="btn action" id="vizNextStateBtn" aria-label="Next state">Next ▶</button>
                   <label class="viz-overlay-toggle" for="vizDropoffOverlayToggle">
-                    <input id="vizDropoffOverlayToggle" type="checkbox" aria-label="Overlay drop-off data">
+                    <input id="vizDropoffOverlayToggle" type="checkbox" aria-label="Overlay drop-off data" disabled>
                     <span>Overlay drop-off</span>
                   </label>
                 </div>
-                <div class="viz-auto-hint" id="vizAutoHint" aria-live="polite">Auto-rotate paused</div>
+                <div class="viz-auto-hint" id="vizAutoHint" aria-live="polite">Preview paused while focused - move pointer away to resume.</div>
                 <div class="viz-preview-status" id="vizPreviewStatus" aria-live="polite"></div>
                 <div class="viz-grid">
                   <div class="viz-panel" id="warehouseVizChart" aria-live="polite">
@@ -231,18 +292,22 @@
               </div>
             </article>
 
-            <article class="framework-panel warehouse-panel" aria-label="Canonical production data">
+            <article class="framework-panel warehouse-panel" data-workbench-role="canonical-record" aria-label="Canonical production data">
               <header class="framework-panel-header">
                 <div>
-                  <h2>Canonical Production View</h2>
-                  <p class="framework-panel-subtitle">Live snapshot of PostgreSQL data with filters and exports.</p>
+                  <h2>Canonical Record</h2>
+                  <p class="framework-panel-subtitle">Inspect the PostgreSQL-backed publication surface with governed filters, explicit NULLs, jurisdiction type, and exports.</p>
                 </div>
                 <div class="framework-panel-badges">
-                  <span class="badge badge-ghost">Live</span>
-                  <span class="badge badge-ghost">Exportable</span>
+                  <span class="badge badge-ghost">Canonical</span>
+                  <span class="badge badge-ghost">PostgreSQL</span>
                 </div>
               </header>
               <div class="framework-panel-body">
+                <div class="panel-context-status" id="canonicalContextStatus" data-context-tone="unlinked" aria-live="polite">
+                  <span class="panel-context-label">Evidence relationship</span>
+                  <span>No source-to-canonical lineage is established. Canonical rows remain independently governed.</span>
+                </div>
                 <div class="db-table-section db-table-compact" id="warehouseTableSection">
                     <div class="table-toolbar" role="region" aria-label="Table controls">
                         <div class="left-controls">
@@ -315,22 +380,26 @@
 
                 <details class="warehouse-upload" id="warehouseUpload">
                   <summary class="warehouse-upload-summary">
-                    <span class="warehouse-upload-title">Warehouse Upload Pipeline</span>
-                    <span class="warehouse-upload-subtitle">Move vetted datasets into PostgreSQL with quality checkpoints.</span>
+                    <span class="warehouse-upload-title">Review + Publish Pipeline</span>
+                    <span class="warehouse-upload-subtitle">Move vetted input through validation and quality gates before governed publication.</span>
                   </summary>
                   <div class="warehouse-upload-body">
-                    <article class="framework-panel upload-panel" aria-label="Upload pipeline">
+                    <article class="framework-panel upload-panel" data-workbench-role="review-publish" aria-label="Upload pipeline">
                       <header class="framework-panel-header">
                         <div>
-                          <h2>Warehouse Upload Pipeline</h2>
-                          <p class="framework-panel-subtitle">Move vetted datasets into PostgreSQL with quality checkpoints.</p>
+                          <h2>Review + Publish Pipeline</h2>
+                          <p class="framework-panel-subtitle">Ingest into the review path, validate structure, run quality checks, then publish deliberately.</p>
                         </div>
                         <div class="framework-panel-badges">
-                          <span class="badge badge-ghost">PostgreSQL</span>
+                          <span class="badge badge-ghost">Staging &rarr; Canonical</span>
                           <span class="badge badge-ghost">Quality gates</span>
                         </div>
                       </header>
                       <div class="framework-panel-body">
+                        <div class="panel-context-status" id="reviewContextStatus" data-context-tone="unlinked" aria-live="polite">
+                          <span class="panel-context-label">Evidence relationship</span>
+                          <span>No selected source is linked to this review pipeline. Upload and publication actions remain separate governed operations.</span>
+                        </div>
                         <div class="pipeline-steps" id="uploadPipelineSteps">
                           <button type="button" class="pipeline-step is-active" data-step="ingest">1 Ingest</button>
                           <button type="button" class="pipeline-step" data-step="validate">2 Validate</button>
@@ -357,29 +426,26 @@
             </article>
           </section>
 
-          <aside class="framework-column framework-column-right" aria-label="Ghost framework placeholder">
-            <article class="framework-panel ghost-panel" id="ghostPanel">
+          <aside class="framework-column framework-column-right" aria-label="Authority and provenance guide">
+            <article class="framework-panel ghost-panel" id="ghostPanel" data-workbench-role="authority-guide">
               <header class="framework-panel-header">
                 <div>
-                  <h2>Future Expansion</h2>
-                  <p class="framework-panel-subtitle">Placeholder for dynamic data visualizations and analytics.</p>
+                  <h2>Authority + Provenance Guide</h2>
+                  <p class="framework-panel-subtitle">A persistent reminder of the semantic rules that govern every Data Framework view.</p>
                 </div>
                 <div class="framework-panel-actions">
                   <div class="framework-panel-badges">
-                    <span class="badge badge-ghost">Coming soon</span>
+                    <span class="badge badge-ghost">Governed semantics</span>
                   </div>
-                  <button id="ghostPanelToggle" type="button" class="btn action" aria-label="Minimize placeholder">−</button>
+                  <button id="ghostPanelToggle" type="button" class="btn action" aria-label="Minimize authority guide">&minus;</button>
                 </div>
               </header>
               <div class="framework-panel-body ghost-panel-body" id="ghostPanelBody">
-                <div class="ghost-content">
-                  <p>This space is reserved for:</p>
-                  <ul>
-                    <li>Real-time data streaming</li>
-                    <li>Advanced analytics dashboards</li>
-                    <li>Custom visualization templates</li>
-                    <li>Interactive data exploration tools</li>
-                  </ul>
+                <div class="ghost-content authority-guide">
+                  <div class="authority-rule"><strong>NULL is evidence.</strong><span>Unknown, unavailable, or unreported values stay NULL; they are never display-coerced to zero.</span></div>
+                  <div class="authority-rule"><strong>Scope stays precise.</strong><span>Jurisdiction type and name remain explicit; district, county, and precinct are not interchangeable.</span></div>
+                  <div class="authority-rule"><strong>Staging is not canonical.</strong><span>Review and publication state must remain visible rather than inferred from where a row happens to appear.</span></div>
+                  <div class="authority-rule"><strong>Provenance travels with data.</strong><span>Source labels, evidence links, and reported-versus-derived meaning remain distinguishable.</span></div>
                 </div>
               </div>
             </article>
@@ -405,6 +471,6 @@
 
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='g241') }}" defer></script>
 </body>
 </html>

@@ -183,4 +183,101 @@ describe('SMART Elections Worklist UI', () => {
     expect(payload.inspection_result).toBe('pass');
     expect(payload.checklist_results).toBeDefined();
   });
+
+    test('retires DB-Lite source cards without replacing operational Worklist authority', () => {
+        const fs = require('fs');
+        const path = require('path');
+
+        const jsPath = path.join(__dirname, '..', 'smart_elections_worklist.js');
+        const htmlPath = path.join(__dirname, '..', '..', 'html', 'smart_elections_worklist.html');
+
+        const js = fs.readFileSync(jsPath, 'utf8');
+        const html = fs.readFileSync(htmlPath, 'utf8');
+
+        [
+            '/api/election_data/db_lite/finalized?limit=200',
+            '/api/election_data/db_lite/down_ballot?limit=200',
+            'loadDbLiteFinalized',
+            'loadDbLiteDownBallot',
+            'dblite-finalized-sheet-name',
+            'dblite-finalized-row-count',
+            'dblite-finalized-fetch-status',
+            'dblite-down-sheet-name',
+            'dblite-down-row-count',
+            'dblite-down-fetch-status',
+        ].forEach(retired => expect(js).not.toContain(retired));
+
+        [
+            'DB-Lite Finalized',
+            'DB-Lite Down-Ballot',
+            'dblite-finalized-sheet-name',
+            'dblite-finalized-row-count',
+            'dblite-finalized-fetch-status',
+            'dblite-down-sheet-name',
+            'dblite-down-row-count',
+            'dblite-down-fetch-status',
+        ].forEach(retired => expect(html).not.toContain(retired));
+
+        expect(js).toContain("fetch('/api/election_data/worklist/overview?limit=200'");
+        expect(js).toContain("fetch('/api/election_data/worklist'");
+        expect(html).toContain('<h2>Worklist Source</h2>');
+        expect(html).toContain('<h3>Worklist Overview</h3>');
+        expect(html).toContain('id="worklist-sheet-name"');
+        expect(html).toContain('id="worklist-row-count"');
+        expect(html).toContain('id="worklist-fetch-status"');
+    });
+  test('public row presents stable operator pseudonyms instead of raw names', async () => {
+    await flushPromises();
+    await flushPromises();
+
+    const row = document.querySelector('#worklist-body tr');
+    expect(row).toBeTruthy();
+
+    const dl1 = row.querySelector('.col-dl1');
+    const dl2 = row.querySelector('.col-dl2');
+
+    expect(dl1).toBeTruthy();
+    expect(dl2).toBeTruthy();
+    expect(dl1.textContent.trim()).toMatch(/^DT-\d{4}$/);
+    expect(dl2.textContent.trim()).toMatch(/^DT-\d{4}$/);
+    expect(row.textContent).not.toContain('alice');
+    expect(row.textContent).not.toContain('bob');
+  });
+
+  test('runtime Flask template follows the tested Worklist DOM authority', () => {
+    const runtimePath = path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'templates',
+      'worklist.html'
+    );
+    const runtime = fs.readFileSync(runtimePath, 'utf8');
+
+    [
+      'modal-assign-dl',
+      'modal-dl-editor',
+      'modal-preqc-results',
+      'modal-qc1-form',
+      'modal-qc2-form',
+    ].forEach(id => {
+      expect(runtime).toContain(`id="${id}"`);
+    });
+
+    [
+      'DB-Lite Finalized',
+      'DB-Lite Down-Ballot',
+      'dblite-finalized-sheet-name',
+      'dblite-down-sheet-name',
+    ].forEach(retired => {
+      expect(runtime).not.toContain(retired);
+    });
+
+    expect(runtime).toContain("{{ url_for('ballot_lens') }}");
+    expect(runtime).toContain("{{ url_for('data_framework') }}");
+    expect(runtime).toContain('g.csp_nonce');
+    expect(runtime).toContain('static_version');
+  });
+
 });

@@ -38,6 +38,7 @@ from .config import (
 from .Context_Integration.librarian import get_safe_log_path
 from .navigator import NavigationInstructionRunner, NavigationRecipeStore
 from .navigator.dom_snapshot import snapshot_mode_pipeline
+from .services.browser_challenge_adapter import adapt_legacy_challenge_detection
 from .state_router import get_handler, preload_handler_map
 from .utils.browser_utils import (
     SCROLL_METRIC_KEYS,
@@ -321,6 +322,61 @@ def _register_cloudflare_detection(session_id: str | None, target_url: str, agen
     except Exception:
         pass
     return detection_count
+
+def _observe_legacy_challenge_noncanonical(
+    *,
+    session_id: str | None,
+    browser_context_ref: str,
+    vendor_hint: str | None = None,
+    challenge_type_hint: str | None = None,
+    browser_engine_hint: str | None = None,
+    indicators: tuple[str, ...] = (),
+) -> Any:
+    # Best-effort typed observation that cannot control browser behavior.
+    try:
+        return adapt_legacy_challenge_detection(
+            True,
+            session_id=session_id or "no_session",
+            browser_context_ref=browser_context_ref,
+            vendor_hint=vendor_hint,
+            challenge_type_hint=challenge_type_hint,
+            browser_engine_hint=browser_engine_hint,
+            indicators=indicators,
+            evidence_refs=(),
+            human_intervention_required=None,
+            human_intervention_completed=None,
+            observed_at=None,
+            create_human_handoff=False,
+        )
+    except Exception:
+        return None
+
+def _observe_legacy_human_handoff_noncanonical(
+    *,
+    session_id: str | None,
+    browser_context_ref: str,
+    vendor_hint: str | None = None,
+    challenge_type_hint: str | None = None,
+    indicators: tuple[str, ...] = (),
+) -> Any:
+    # Policy observation only; the current legacy presentation is not rewired here.
+    try:
+        return adapt_legacy_challenge_detection(
+            True,
+            session_id=session_id or "no_session",
+            browser_context_ref=browser_context_ref,
+            vendor_hint=vendor_hint,
+            challenge_type_hint=challenge_type_hint,
+            browser_engine_hint=None,
+            indicators=indicators,
+            evidence_refs=(),
+            human_intervention_required=True,
+            human_intervention_completed=False,
+            observed_at=None,
+            create_human_handoff=True,
+        )
+    except Exception:
+        return None
 
 
 def _prompt_for_captcha_assist(
@@ -1951,6 +2007,14 @@ def orchestrate_url(
                         continue
                     if nav_meta.get("cloudflare_detected") and ENABLE_SELENIUM_FALLBACK:
                         detection_count = _register_cloudflare_detection(session_id, target_url, "playwright")
+                        _observe_legacy_challenge_noncanonical(
+                            session_id=session_id,
+                            browser_context_ref=f"playwright-navigation-attempt-{attempt_idx}",
+                            vendor_hint="cloudflare",
+                            challenge_type_hint="legacy-cloudflare-detection",
+                            browser_engine_hint=None,
+                            indicators=("nav_meta.cloudflare_detected",),
+                        )
                         if detection_count < 2:
                             decision = _prompt_for_captcha_assist(
                                 session_id,
@@ -1977,6 +2041,13 @@ def orchestrate_url(
                                 return
                             if decision == "assist":
                                 captcha_assist_requested = True
+                                _observe_legacy_human_handoff_noncanonical(
+                                    session_id=session_id,
+                                    browser_context_ref=f"playwright-navigation-attempt-{attempt_idx}",
+                                    vendor_hint="cloudflare",
+                                    challenge_type_hint="legacy-cloudflare-detection",
+                                    indicators=("user_selected_captcha_assist",),
+                                )
                         else:
                             captcha_assist_requested = True
                             logger.warning({

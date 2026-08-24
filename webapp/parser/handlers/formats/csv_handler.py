@@ -35,18 +35,64 @@ from ...utils.shared_logic import (
     safe_slug,
 )
 from ...utils.table_builder import build_table_noninteractive
+from ...utils.table_builder import build_table_noninteractive_result
+from ...services.ephemeral_pipeline_inspection import ProcessLocalInspectionStore
+from ...services.pipeline_inspection import project_pipeline_inspection
 from ...utils.table_core import robust_table_extraction
 
 # ==============================================================
 # 🗳️ Smart Elections: Universal CSV Election Results Parser
 # ==============================================================
 
+def _store_pipeline_inspection_if_requested(
+    result,
+    *,
+    inspection_store=None,
+    session_id=None,
+    principal=None,
+):
+    requested = inspection_store is not None or principal is not None
+    if not requested:
+        return False
+
+    if inspection_store is None or not session_id or not principal:
+        raise ValueError(
+            "inspection capture requires inspection_store, session_id, "
+            "and inspection_principal"
+        )
+
+    if not isinstance(inspection_store, ProcessLocalInspectionStore):
+        raise TypeError("inspection_store must be ProcessLocalInspectionStore")
+
+    payload = project_pipeline_inspection(result)
+    inspection_store.put(
+        session_id=session_id,
+        principal=principal,
+        payload=payload,
+    )
+    return True
+
+
+def _emit_pipeline_inspection_if_requested(
+    result,
+    *,
+    inspection_emit_func=None,
+):
+    if inspection_emit_func is None:
+        return False
+    if not callable(inspection_emit_func):
+        raise TypeError("inspection_emit_func must be callable")
+
+    payload = project_pipeline_inspection(result)
+    inspection_emit_func(payload)
+    return True
+
+
 def parse_csv_election_results(
     csv_path: str,
     session_id: Optional[str] = None,
     coordinator: Any = None,
-    html_context: Optional[Dict[str, Any]] = None,
-) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
+    html_context: Optional[Dict[str, Any]] = None, *, inspection_store=None, inspection_principal=None, inspection_emit_func=None) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
     data: List[Dict[str, Any]] = []
     headers: List[str] = []
     contest_column = None
@@ -235,15 +281,20 @@ def parse_csv_election_results(
         context["candidate_party_detection"] = party_diag
     headers, data = expand_single_rawjson_row(headers, data, context=context)
     
-    headers_final, data_final, _entity_info = build_table_noninteractive(
-        domain=domain,
-        headers=headers,
-        data=data,
-        coordinator=coordinator,
-        context=context,
-        pivot_to_wide=True,
-        debug=False
+    _c2g_table_result = build_table_noninteractive_result(domain=domain, headers=headers, data=data, coordinator=coordinator, context=context, pivot_to_wide=True, debug=False, source_type='csv')
+    _store_pipeline_inspection_if_requested(
+        _c2g_table_result,
+        inspection_store=inspection_store,
+        session_id=session_id,
+        principal=inspection_principal,
     )
+    _emit_pipeline_inspection_if_requested(
+        _c2g_table_result,
+        inspection_emit_func=inspection_emit_func,
+    )
+    headers_final = list(_c2g_table_result.headers)
+    data_final = [dict(row) for row in _c2g_table_result.rows]
+    _entity_info = _c2g_table_result.semantic_annotations["entity_info"]
 
     finalize_context = {
         "handler": "csv_handler",
@@ -330,7 +381,7 @@ def parse(
     html_context: Dict[str, Any] | None = None,
     manual_file: str | None = None,
     session_id: Optional[str] = None,
-    **kwargs: Any,
+    *, inspection_store=None, inspection_principal=None, inspection_emit_func=None, **kwargs: Any,
 ) -> Tuple[List[str] | None, List[Dict[str, Any]] | None, str | None, Dict[str, Any]]:
     """
     Universal pipeline entry: Accepts a CSV file path (manual_file) from the format router.
@@ -442,7 +493,10 @@ def parse(
         session_id=session_id,
         coordinator=coordinator,
         html_context=html_context,
-    )
+            inspection_store=inspection_store,
+        inspection_principal=inspection_principal,
+        inspection_emit_func=inspection_emit_func,
+)
 
     result_any = cast(Any, result)
     if not (isinstance(result_any, tuple) and len(result_any) == 4):

@@ -88,7 +88,7 @@
                 <div class="results-preview-meta" aria-live="polite">
                   <span id="promptStatusChip" class="badge badge-soft prompt-status-chip prompt-status-idle" aria-label="Prompt: Idle" aria-describedby="promptStatusChipHelp">Prompt: Idle</span>
                   <!-- Hidden help text for screen readers; contains legend of all chip states -->
-                  <span id="promptStatusChipHelp" style="display: none; visibility: hidden;">Legend: Idle=no active prompt | Awaiting=input required | Standby=waiting on parser | Complete=run finished | Error=run failed | Cancelled=run cancelled | Hidden=prompt dismissed with restore available</span>
+                  <span id="promptStatusChipHelp" class="visually-hidden">Legend: Idle=no active prompt | Awaiting=input required | Standby=waiting on parser | Complete=run finished | Error=run failed | Cancelled=run cancelled | Hidden=prompt dismissed with restore available</span>
                   <span class="meta-sep" aria-hidden="true">•</span>
                   <span id="resultCountBadge" class="badge badge-soft">0 results</span>
                   <span class="meta-sep" aria-hidden="true">•</span>
@@ -441,7 +441,32 @@
                   </div>
                 </details>
 
-              </section>
+                                              <details class="artifact-card collapsible-card" id="pipelineInspectionPanel" hidden>
+                                  <summary class="artifact-card-header">
+                                    <div class="artifact-title">Why: Why this interpretation?</div>
+                                    <span id="pipelineInspectionBadge" class="badge badge-soft" aria-label="Authority badge">noncanonical</span>
+                                    <div class="artifact-preview">
+                                      <span class="preview-label">Stage</span>
+                                      <span class="preview-items mono" id="pipelineInspectionStagePreview">-</span>
+                                    </div>
+                                  </summary>
+                                  <div class="artifact-card-body">
+                                    <p class="artifact-copy">Read-only parser explanation. This evidence can describe what the parser observed and how it interpreted it, but it cannot approve or promote election data.</p>
+                                    <section aria-labelledby="pipelineInspectionSummaryTitle">
+                                      <h4 id="pipelineInspectionSummaryTitle">Inspection summary</h4>
+                                      <div id="pipelineInspectionSummary"></div>
+                                    </section>
+                                    <section aria-labelledby="pipelineInspectionTransformationsTitle">
+                                      <h4 id="pipelineInspectionTransformationsTitle">Transformations</h4>
+                                      <div id="pipelineInspectionTransformations"></div>
+                                    </section>
+                                    <section aria-labelledby="pipelineInspectionWarningsTitle">
+                                      <h4 id="pipelineInspectionWarningsTitle">Warnings</h4>
+                                      <div id="pipelineInspectionWarnings"></div>
+                                    </section>
+                                  </div>
+                                </details>
+</section>
             </main>
 
             <!-- RIGHT SIDEBAR -->
@@ -730,6 +755,8 @@
     <!-- Shared authentication utilities -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>
     <!-- Modern dashboard interface (includes all features) -->
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/pipeline_inspection_consumer.js') }}?v={{ static_version }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/pipeline_inspection_panel.js') }}?v={{ static_version }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot_lens_modern.js') }}?v={{ static_version }}" defer></script>
     <!-- Quality Assurance Panel Integration -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/quality_assurance_panel.js') }}?v={{ static_version }}" defer></script>

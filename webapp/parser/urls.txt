@@ -137,8 +137,8 @@ TBD	Results Archive	Oregon	statewide	HTML	ORSOS record 6873777	https://records.s
 2020	Governor	Missouri	statewide	HTML	Official results	https://www.sos.mo.gov/elections/results
 2020	President	Vermont	statewide	HTML	Election archive	https://electionarchive.vermont.gov/elections/view/144513/
 2020	Senate	Wyoming	statewide	HTML	Results portal	https://sos.wyo.gov/Elections/Docs/2020/2020GeneralResults.aspx
-2012	President	Rhode Island	-	-	https://elections.ri.gov/elections/previous-election-results						
-2012	Senate	Rhode Island		-	https://elections.ri.gov/elections/previous-election-results						
+2012	President	Rhode Island	statewide	HTML	Previous election results	https://elections.ri.gov/elections/previous-election-results
+2012	Senate	Rhode Island	statewide	HTML	Previous election results	https://elections.ri.gov/elections/previous-election-results
 2016	President	Nevada	statewide	HTML	Silver State ENR	https://www.nvsos.gov/silverstate2016gen/
 2016	President	Wisconsin	statewide	XLSX	County recount report	https://elections.wi.gov/sites/default/files/legacy/County%2520by%2520County%2520Report%2520President%2520of%2520the%2520United%2520States%2520Recount.xlsx
 2016	President	Tennessee	statewide	HTML	Results portal	https://sos.tn.gov/elections/results#2020

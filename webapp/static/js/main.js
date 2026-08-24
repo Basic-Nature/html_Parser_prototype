@@ -405,11 +405,12 @@
     const MOON_ORBIT_R = 28.5;
     const EARTH_R = 8;
     const MOON_R = 2.5;
-    const EARTH_ORBIT_MS = 60000;
-    const EARTH_ROT_MS = Math.max(2000, EARTH_ORBIT_MS / 365.25);
-    const MOON_ORBIT_MS = EARTH_ORBIT_MS * (27.3 / 365.25);
-    const MOON_ROT_MS = MOON_ORBIT_MS;
-    const SUNSPOT_ROT_MS = 90000;
+    // Observatory aesthetic cadence: slow enough to become atmosphere, not foreground motion.
+    const EARTH_ORBIT_MS = 240000;
+    const EARTH_ROT_MS = 90000;
+    const MOON_ORBIT_MS = 60000;
+    const MOON_ROT_MS = 60000;
+    const SUNSPOT_ROT_MS = 180000;
 
     /* Sun texture */
     const sunTex = (() => {
@@ -423,8 +424,8 @@
         const x = Math.cos(a) * r;
         const y = Math.sin(a) * r;
         const g = c.createRadialGradient(x, y, 0, x, y, 3);
-        g.addColorStop(0, 'rgba(255,220,120,0.15)');
-        g.addColorStop(1, 'rgba(255,170,60,0)');
+        g.addColorStop(0, 'rgba(255,247,220,0.13)');
+        g.addColorStop(1, 'rgba(229,179,116,0)');
         c.fillStyle = g;
         c.beginPath();
         c.arc(x, y, 3, 0, Math.PI * 2);
@@ -454,14 +455,14 @@
         dur: rand(900, 1600),
         a0, a1, aMid,
         height: rand(SUN_R + 12, SUN_R + 42),
-        hue: rand(10, 45),
-        power: rand(0.45, 0.9),
+        hue: rand(8, 24),
+        power: rand(0.28, 0.62),
         particles: []
       });
       if (flares.length > 5) flares.shift();
     }
     function drawFlares(now) {
-      if (Math.random() < 0.015) spawnFlare(now);
+      if (Math.random() < 0.006) spawnFlare(now);
       for (let i = flares.length - 1; i >= 0; i--) {
         const f = flares[i];
         if (f.phase === 'loop') {
@@ -477,9 +478,9 @@
           const yc = CY + Math.sin(aCtrl) * (f.height * (0.7 + 0.3 * ease));
           ctx.save();
           ctx.globalCompositeOperation = 'lighter';
-          ctx.shadowColor = `hsla(${f.hue},100%,60%,${0.35 * f.power})`;
+          ctx.shadowColor = `hsla(${f.hue},78%,76%,${0.28 * f.power})`;
           ctx.shadowBlur = 12 + 14 * f.power;
-          ctx.strokeStyle = `hsla(${f.hue},100%,60%,${0.30 * f.power})`;
+          ctx.strokeStyle = `hsla(${f.hue},78%,76%,${0.24 * f.power})`;
           ctx.lineWidth = 1.4 + 1.2 * f.power;
           ctx.beginPath();
           ctx.moveTo(x0, y0);
@@ -491,7 +492,7 @@
             const by = (1 - u) ** 2 * y0 + 2 * (1 - u) * u * yc + u * u * y1;
             ctx.beginPath();
             ctx.arc(bx, by, 0.8 + 0.9 * f.power, 0, Math.PI * 2);
-            ctx.fillStyle = `hsla(${f.hue},100%,65%,${0.35 * f.power})`;
+            ctx.fillStyle = `hsla(${f.hue},76%,80%,${0.27 * f.power})`;
             ctx.fill();
           }
           ctx.restore();
@@ -528,8 +529,8 @@
             if (fade <= 0) { parts.splice(p, 1); continue; }
             ctx.beginPath();
             ctx.arc(pt.x, pt.y, pt.size * (0.6 + 0.8 * fade), 0, Math.PI * 2);
-            ctx.fillStyle = `hsla(${pt.hue},100%,${60 - 10 * (1 - fade)}%,${pt.alpha * fade})`;
-            ctx.shadowColor = `hsla(${pt.hue},100%,60%,${0.25 * fade})`;
+            ctx.fillStyle = `hsla(${pt.hue},72%,${76 - 10 * (1 - fade)}%,${pt.alpha * fade})`;
+            ctx.shadowColor = `hsla(${pt.hue},70%,74%,${0.18 * fade})`;
             ctx.shadowBlur = 8;
             ctx.fill();
           }
@@ -541,21 +542,32 @@
 
     /* Sun rendering */
     function drawSun(now) {
-      const pulse = 1 + 0.025 * Math.sin(now / 700) + 0.018 * Math.sin(now / 1230);
+      const pulse = 1 + 0.012 * Math.sin(now / 1100) + 0.008 * Math.sin(now / 1730);
       const innerR = SUN_R * pulse;
-      const outerR = 140;
+      const outerR = 128;
       const g1 = ctx.createRadialGradient(CX, CY, 0, CX, CY, innerR + 10);
-      g1.addColorStop(0, 'rgba(255,235,140,0.95)');
-      g1.addColorStop(0.65, 'rgba(255,200,80,0.55)');
-      g1.addColorStop(1, 'rgba(255,160,50,0.06)');
+      g1.addColorStop(0, 'rgba(255,250,232,0.94)');
+      g1.addColorStop(0.62, 'rgba(255,231,187,0.58)');
+      g1.addColorStop(1, 'rgba(226,170,115,0.045)');
       ctx.beginPath();
       ctx.arc(CX, CY, innerR + 10, 0, Math.PI * 2);
       ctx.fillStyle = g1;
       ctx.fill();
 
+      // Restrained chromosphere: the legacy Sun ring becomes a material accent, not the solar body.
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(CX, CY, innerR + 2.2, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,218,177,0.20)';
+      ctx.lineWidth = 1.1;
+      ctx.shadowColor = 'rgba(255,226,194,0.22)';
+      ctx.shadowBlur = 5;
+      ctx.stroke();
+      ctx.restore();
+
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.28;
+      ctx.globalAlpha = 0.20;
       ctx.drawImage(sunTex, 0, 0);
       ctx.restore();
 
@@ -580,9 +592,9 @@
       ctx.restore();
 
       const g2 = ctx.createRadialGradient(CX, CY, innerR, CX, CY, outerR);
-      g2.addColorStop(0, 'rgba(255,180,0,0.22)');
-      g2.addColorStop(0.65, 'rgba(255,180,0,0.10)');
-      g2.addColorStop(1, 'rgba(255,180,0,0.00)');
+      g2.addColorStop(0, 'rgba(255,228,184,0.13)');
+      g2.addColorStop(0.58, 'rgba(229,226,203,0.055)');
+      g2.addColorStop(1, 'rgba(118,196,211,0.00)');
       ctx.beginPath();
       ctx.arc(CX, CY, outerR, 0, Math.PI * 2);
       ctx.fillStyle = g2;
@@ -591,7 +603,7 @@
       if (imgSun.complete) {
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.5;
+        ctx.globalAlpha = 0.18;
         ctx.drawImage(imgSun, 0, 0, 300, 300);
         ctx.restore();
       }

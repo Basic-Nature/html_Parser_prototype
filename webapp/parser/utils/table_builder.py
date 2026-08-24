@@ -21,6 +21,13 @@ from ..config import (
     TABLE_BUILDER_AUTO_ACCEPT_THRESHOLD,
     TABLE_BUILDER_LOW_CONFIDENCE_THRESHOLD,
 )
+from ..contracts.table_pipeline import (
+    SourceProvenance,
+    TablePipelineResult,
+    TableStage,
+    TransformationRecord,
+    collect_transformations,
+)
 from ..Context_Integration.Context_Library.constants import (
     BALLOT_TYPES_SORT_ORDER,
     LOCATION_KEYWORDS,
@@ -1068,6 +1075,92 @@ def build_table_noninteractive(
         pivot_to_wide=pivot_to_wide,
         debug=debug
     )
+
+
+def build_table_noninteractive_result(
+    domain: str,
+    headers: List[str] | None,
+    data: List[Dict[str, Any]] | None,
+    coordinator: CoordinatorProtocol | None = None,
+    context: dict | None = None,
+    pivot_to_wide: bool = True,
+    debug: bool = False,
+    *,
+    source_type: str,
+    source_uri: str | None = None,
+    source_sha256: str | None = None,
+    artifact_id: str | None = None,
+    evidence_ref: str | None = None,
+) -> TablePipelineResult:
+    """Adapt the legacy non-interactive builder boundary to a typed result.
+
+    C2G 1.2 intentionally delegates all table behavior to
+    ``build_table_noninteractive`` and only wraps its existing return values.
+
+    Contract:
+    - semantic stage is INTERPRETED because the legacy builder harmonizes,
+      annotates and can pivot semantic election structure;
+    - completeness remains UNKNOWN because the legacy boundary does not prove
+      source completeness;
+    - write authority remains NONE;
+    - no canonical promotion, persistence, timestamping or serialization occurs;
+    - caller must declare ``source_type`` rather than this adapter inventing
+      source provenance.
+    """
+
+    with collect_transformations() as observed_transformations:
+        built_headers, built_rows, entity_info = build_table_noninteractive(
+            domain=domain,
+            headers=headers,
+            data=data,
+            coordinator=coordinator,
+            context=context,
+            pivot_to_wide=pivot_to_wide,
+            debug=debug,
+        )
+
+    provenance = SourceProvenance(
+        source_type=source_type,
+        source_uri=source_uri,
+        source_sha256=source_sha256,
+        artifact_id=artifact_id,
+        evidence_ref=evidence_ref,
+        metadata={
+            "domain": domain,
+            "adapter": "build_table_noninteractive_result",
+            "legacy_boundary": "build_table_noninteractive",
+        },
+    )
+
+    boundary_record = TransformationRecord(
+        sequence=len(observed_transformations),
+        from_stage=TableStage.INTERPRETED,
+        to_stage=TableStage.INTERPRETED,
+        operation="typed_boundary_adaptation",
+        rule_source="table_builder.build_table_noninteractive_result",
+        confidence=None,
+        evidence_refs=(evidence_ref,) if evidence_ref else (),
+        details={
+            "adapter": "build_table_noninteractive_result",
+            "legacy_boundary": "build_table_noninteractive",
+            "source_type": source_type,
+            "domain": domain,
+            "pivot_to_wide": pivot_to_wide,
+            "semantic_value_mutation": False,
+        },
+    )
+
+    return TablePipelineResult.from_sequences(
+        stage=TableStage.INTERPRETED,
+        headers=built_headers,
+        rows=built_rows,
+        source_provenance=provenance,
+        transformations=tuple(observed_transformations) + (boundary_record,),
+        semantic_annotations={
+            "entity_info": entity_info,
+        },
+    )
+
 
 # ===================================================================
 # CACHE MANAGEMENT STRATEGY

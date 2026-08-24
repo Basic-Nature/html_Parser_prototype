@@ -2518,6 +2518,45 @@ async function ensureSocketForMutation(targetUrl) {
 }
 
 let currentSessionId = null;
+const PipelineInspectionFrontend = (() => {
+  const consumer = (
+    typeof window !== 'undefined'
+    && window.PipelineInspectionConsumer
+  )
+    ? window.PipelineInspectionConsumer
+    : null;
+
+  if (!consumer || typeof consumer.attach !== 'function') {
+    console.warn(
+      '[Pipeline Inspection] Consumer module unavailable; listener not attached.'
+    );
+    return null;
+  }
+
+  return consumer.attach(
+    socket,
+    () => currentSessionId,
+    {
+      onAccepted: (envelope) => {
+        ErrorBoundary.safeExecute(() => {
+          document.dispatchEvent(
+            new CustomEvent('pipeline:inspection', {
+              detail: envelope,
+            })
+          );
+        }, 'socket:pipeline_inspection');
+      },
+      onRejected: (rejection) => {
+        console.warn(
+          '[Pipeline Inspection] Rejected socket payload:',
+          rejection && rejection.reason
+            ? rejection.reason
+            : 'unknown_reason'
+        );
+      },
+    }
+  );
+})();
 let activePromptMessage = null;
 let activePromptOptions = [];
 let bundleExpandedState = new Map(); // Track which bundles are expanded
@@ -4014,100 +4053,61 @@ function previewFile(resultId) {
  * @returns {void}
  */
 function loadFilePreview(result) {
-  // In real implementation, fetch the actual file
-  // For now, show sample data
-
-  if (result.type === 'csv' || result.type === 'xlsx') {
-    displayTablePreview(result);
-  } else if (result.type === 'json') {
-    displayJsonPreview(result);
-  }
-
+  displayExtractedResultPreview(result);
   displayFileInfo(result);
 }
 
 /**
- * @typedef {string[]} TableRow
- * @typedef {TableRow[]} TableData
- */
-
-/**
- * Display a simple table preview for a result.
- * @param {FilePreviewResult} _result
+ * Display only the real extracted preview payload already attached to the
+ * canonical result group. Never synthesize candidate names or vote totals.
+ * @param {FilePreviewResult} result
  * @returns {void}
  */
-function displayTablePreview(_result) {
-  // Simulated data - in production, load actual file
-  /** @type {TableData} */
-  const sampleData = [
-    ['Candidate', 'Votes', 'Percentage', 'Party'],
-    ['Alice Johnson', '45234', '52.3%', 'Democratic'],
-    ['Bob Smith', '41123', '47.7%', 'Republican'],
-  ];
-  
-  /** @type {HTMLTableElement} */
-  const table = /** @type {HTMLTableElement} */ ($('#previewTable'));
+function displayExtractedResultPreview(result) {
+  const table = /** @type {HTMLTableElement|null} */ ($('#previewTable'));
+  if (!table) return;
+
   table.innerHTML = '';
-  
-  // Headers
-  /** @type {HTMLTableSectionElement} */
+
   const thead = document.createElement('thead');
   const headerRow = document.createElement('tr');
-  (sampleData[0] || []).forEach(h => {
-    const th = document.createElement('th');
-    th.textContent = String(h);
-    headerRow.appendChild(th);
-  });
+  const th = document.createElement('th');
+  th.textContent = 'Extracted preview';
+  headerRow.appendChild(th);
   thead.appendChild(headerRow);
   table.appendChild(thead);
 
-  // Body
-  /** @type {HTMLTableSectionElement} */
   const tbody = document.createElement('tbody');
-  sampleData.slice(1, CONFIG.maxPreviewRows + 1).forEach(row => {
-    const tr = document.createElement('tr');
-    (row || []).forEach(cell => {
-      const td = document.createElement('td');
-      td.textContent = String(cell);
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
-}
+  const rawPreview = String(result?.preview || '').trim();
+  const previewLines = (
+    rawPreview
+    && rawPreview !== '(No preview available)'
+  )
+    ? rawPreview
+        .split(' • ')
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+    : [];
 
-/**
- * @typedef {{ name: string, votes: number }} Candidate
- * @typedef {{ contest: string, candidates: Candidate[] }} JsonPreviewData
- */
-
-/**
- * Display a JSON preview for a result.
- * @param {FilePreviewResult} _result
- * @returns {void}
- */
-function displayJsonPreview(_result) {
-  /** @type {HTMLElement | null} */
-  const tabContent = /** @type {HTMLElement | null} */ ($('#tabPreview'));
-  /** @type {JsonPreviewData} */
-  const sampleJson = {
-    contest: 'County Attorney',
-    candidates: [
-      { name: 'Alice Brown', votes: 45234 },
-      { name: 'Bob Smith', votes: 41123 },
-    ],
-  };
-
-  /** @type {HTMLPreElement} */
-  const pre = /** @type {HTMLPreElement} */ (document.createElement('pre'));
-  pre.textContent = JSON.stringify(sampleJson, null, 2);
-  // Use CSS class to apply pre styling instead of inline styles
-  pre.classList.add('pre-styled');
-
-  if (tabContent) {
-    tabContent.innerHTML = '';
-    tabContent.appendChild(pre);
+  if (previewLines.length === 0) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.textContent = 'No extracted preview payload is available for this canonical result.';
+    row.appendChild(cell);
+    tbody.appendChild(row);
+  } else {
+    previewLines
+      .slice(0, CONFIG.maxPreviewRows)
+      .forEach(value => {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.appendChild(cell);
+        tbody.appendChild(row);
+      });
   }
+
+  table.appendChild(tbody);
 }
 
 /**
@@ -8667,66 +8667,53 @@ const UrlListManager = (() => {
    * Falls back to URL-based heuristics if mappings unavailable.
   * @param {Array} _meta - URL metadata (fallback only)
    */
-  function populateTaxonomy(_meta) {
+  function populateTaxonomy(meta) {
     const stateSelect = $('#urlStateFilter');
     const countySelect = $('#urlCountyFilter');
-    if (!stateSelect || !(stateSelect instanceof HTMLSelectElement) || !countySelect || !(countySelect instanceof HTMLSelectElement)) return;
+    if (
+      !stateSelect ||
+      !(stateSelect instanceof HTMLSelectElement) ||
+      !countySelect ||
+      !(countySelect instanceof HTMLSelectElement)
+    ) return;
 
-    // Use authoritative Google Sheets data if available
-    if (mappingsFetched && stateCountyMappings.states.length > 0) {
-      // Populate states from Google Sheets
-      stateSelect.innerHTML = '<option value="">— Filter by state —</option>';
-      stateCountyMappings.states.forEach(state => {
-        const opt = document.createElement('option');
-        opt.value = state;
-        opt.textContent = state;
-        stateSelect.appendChild(opt);
-      });
+    const entries = Array.isArray(meta) ? meta : [];
+    const states = Array.from(new Set(
+      entries
+        .map(entry => String(entry?.state || '').trim())
+        .filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b));
 
-      // Populate counties for selected state
-      countySelect.innerHTML = '<option value="">— Select a state first —</option>';
-      countySelect.disabled = !selectedState;
+    stateSelect.innerHTML = '<option value="">Filter by state</option>';
+    states.forEach(state => {
+      const option = document.createElement('option');
+      option.value = state;
+      option.textContent = state;
+      stateSelect.appendChild(option);
+    });
+    stateSelect.disabled = states.length === 0;
 
-      if (selectedState && stateCountyMappings.counties[selectedState]) {
-        const counties = stateCountyMappings.counties[selectedState];
-        if (counties.length > 0) {
-          countySelect.innerHTML = '<option value="">— Filter by county —</option>';
-          counties.forEach(county => {
-            const opt = document.createElement('option');
-            opt.value = county;
-            opt.textContent = county;
-            countySelect.appendChild(opt);
-          });
-          countySelect.disabled = false;
-        } else {
-          countySelect.innerHTML = `<option value="">No counties for ${selectedState}</option>`;
-          countySelect.disabled = true;
-        }
-      }
-    } else {
-      // Authoritative-only mode: legacy URL heuristics removed
-      selectedState = '';
-      selectedCounty = '';
-      stateSelect.innerHTML = '<option value="">State filter unavailable (authenticate to load mappings)</option>';
-      stateSelect.disabled = true;
-      countySelect.innerHTML = '<option value="">County filter unavailable</option>';
-      countySelect.disabled = true;
-      return;
-    }
+    countySelect.innerHTML = '<option value="">Select a state first</option>';
+    countySelect.disabled = !selectedState;
 
-    stateSelect.disabled = false;
+    if (!selectedState) return;
 
-    // Restore selections if still present
-    if (selectedState) {
-      stateSelect.value = selectedState;
-    }
-    if (selectedCounty) {
-      const match = Array.from(countySelect.options).some(o => o.value === selectedCounty);
-      countySelect.value = match ? selectedCounty : '';
-      if (!match) selectedCounty = '';
-    }
+    const counties = Array.from(new Set(
+      entries
+        .filter(entry => String(entry?.state || '').trim() === selectedState)
+        .map(entry => String(entry?.county || '').trim())
+        .filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b));
+
+    countySelect.innerHTML = '<option value="">Filter by county</option>';
+    counties.forEach(county => {
+      const option = document.createElement('option');
+      option.value = county;
+      option.textContent = county;
+      countySelect.appendChild(option);
+    });
+    countySelect.disabled = counties.length === 0;
   }
-
   function renderUrlList(meta, filter = '', stateFilter = '', countyFilter = '') {
     const listBox = $('#urlLinesBox');
     if (!listBox) return;
@@ -9105,7 +9092,6 @@ const UrlListManager = (() => {
 
   async function fetchUrls() {
     try {
-      await fetchStateCountyMappings();
       const response = await fetch('/api/urls');
 
       // Prefer JSON when available; otherwise handle text/HTML gracefully
@@ -9153,8 +9139,31 @@ const UrlListManager = (() => {
         data = { urls: [] };
       }
 
-      cachedUrls = (data && Array.isArray(data.urls)) ? data.urls : [];
-      cachedMeta = cachedUrls.map(extractMeta);
+      const structuredEntries = (data && Array.isArray(data.entries))
+        ? data.entries.filter(entry => entry && entry.url && entry.parser_eligible === true)
+        : [];
+
+      cachedMeta = structuredEntries.length
+        ? structuredEntries.map(entry => ({
+            url: String(entry.url || ''),
+            state: entry.state || null,
+            county: entry.county || null,
+            year: entry.year || null,
+            contest: entry.contest || null,
+            format: entry.format || null,
+            notes: entry.notes || null,
+            review_status: entry.review_status || 'approved',
+            parser_eligible: true,
+          }))
+        : ((data && Array.isArray(data.urls)) ? data.urls : []).map(url => ({
+            url: String(url || ''),
+            state: null,
+            county: null,
+            review_status: 'legacy_response',
+            parser_eligible: true,
+          }));
+
+      cachedUrls = cachedMeta.map(entry => entry.url);
       populateTaxonomy(cachedMeta);
       renderUrlList(cachedMeta, lastSearch, selectedState, selectedCounty);
       return cachedUrls;
@@ -9205,7 +9214,6 @@ const UrlListManager = (() => {
     loadWarehouseCoverage();
     
     // Load authoritative state-to-county mappings from Google Sheets
-    fetchStateCountyMappings();
     
     const searchBox = $('.url-search-box');
     const refreshBtn = $('#refreshUrlListBtn');
@@ -9555,43 +9563,32 @@ const UrlListManager = (() => {
     }
 
     if (addForm) {
-      addForm.addEventListener('submit', async (e) => {
+      addForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const urlVal = newUrlInput ? newUrlInput.value.trim() : '';
+
         if (!urlVal) {
-          setAddUrlStatus('Enter a URL to add.', 'warning');
-          LiveMessenger.announce('Enter a URL to add.', { focusTarget: newUrlInput });
+          setAddUrlStatus('Enter a URL to review.', 'warning');
+          LiveMessenger.announce('Enter a URL to review.', { focusTarget: newUrlInput });
           return;
         }
 
-        setAddUrlStatus('Adding URL...', 'info');
-        if (addUrlButton instanceof HTMLButtonElement) addUrlButton.disabled = true;
+        if (schemaUrl) schemaUrl.value = urlVal;
 
-        try {
-          const response = await fetch('/api/urls', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: urlVal, session_id: currentSessionId || undefined })
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok || !payload.success) {
-            const errMsg = payload.error || 'Unable to add URL. Ensure it is http/https and allowed.';
-            if (response.status === 403 || String(errMsg).toLowerCase().includes('guarded')) {
-              showToast('Guarded ingestion key required to add URLs.', 'warning');
-            }
-            throw new Error(errMsg);
-          }
-          setAddUrlStatus('URL added to library.', 'success');
-          LiveMessenger.announce('URL added to library.', { focusTarget: addUrlStatus || addForm });
-          if (newUrlInput) newUrlInput.value = '';
-          await fetchUrls();
-        } catch (/** @type {any} */ err) {
-          const msg = err?.message || 'Unable to add URL.';
-          setAddUrlStatus(msg, 'error');
-          LiveMessenger.alert(`Add URL failed: ${msg}`, { focusTarget: addUrlStatus || addForm });
-        } finally {
-          if (addUrlButton instanceof HTMLButtonElement) addUrlButton.disabled = false;
+        const message = (
+          'Direct URL registry writes are disabled. '
+          + 'Review the source, complete the schema helper, and add the approved row '
+          + 'through the repository review workflow.'
+        );
+
+        setAddUrlStatus(message, 'warning');
+        LiveMessenger.announce(message, { focusTarget: schemaUrl || addUrlStatus || addForm });
+
+        const schemaCard = document.getElementById('schemaHelperCard');
+        if (schemaCard && typeof schemaCard.scrollIntoView === 'function') {
+          schemaCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
+        if (schemaUrl) schemaUrl.focus();
       });
     }
 
@@ -10652,71 +10649,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // -------------------------------
   // Card row height sync (JS resize sync)
   // -------------------------------
-  function syncCardHeights() {
-    try {
-      const grid = document.querySelector('.results-grid');
-      if (!grid) return;
-
-      // Unwrap any previously created row wrappers to avoid nesting
-      const prevRows = Array.from(grid.querySelectorAll(':scope > .results-row'));
-      prevRows.forEach((row) => {
-        try {
-          while (row.firstChild) grid.insertBefore(row.firstChild, row);
-          row.remove();
-        } catch (e) { /* ignore */ }
-      });
-
-      const cards = Array.from(grid.querySelectorAll(':scope > .result-card'));
-      if (!cards.length) return;
-
-      // Group cards by their visual top offset
-      const rows = new Map();
-      cards.forEach((c) => {
-        const top = Math.round((/** @type {HTMLElement} */ (c)).getBoundingClientRect().top);
-        const list = rows.get(top) || [];
-        list.push(c);
-        rows.set(top, list);
-      });
-
-      // Sort row keys to preserve visual order
-      const sortedTops = Array.from(rows.keys()).sort((a,b) => a - b);
-      sortedTops.forEach((top) => {
-        const rowCards = rows.get(top) || [];
-        let max = 0;
-        rowCards.forEach((c) => { max = Math.max(max, /** @type {HTMLElement} */ (c).offsetHeight); });
-
-        // Create a wrapper that will carry the CSS custom property for the row
-        const wrapper = document.createElement('div');
-        wrapper.className = 'results-row';
-        // use display: contents via CSS class to avoid inline presentation styles
-        wrapper.classList.add('display-contents');
-
-        // Append wrapper and move row cards into it in order
-        grid.appendChild(wrapper);
-        rowCards.forEach((c) => { wrapper.appendChild(c); });
-      });
-    } catch (e) {
-      /* ignore measurement errors */
-    }
-  }
-
-  const debouncedSyncCardHeights = debounce(syncCardHeights, 120);
-  // initial run
-  try { syncCardHeights(); } catch (e) {}
-  // wire to resize/orientation
-  window.addEventListener('resize', () => { try { debouncedSyncCardHeights(); } catch (e) {} });
-  window.addEventListener('orientationchange', () => { try { debouncedSyncCardHeights(); } catch (e) {} });
-
-  // Observe DOM changes in the results grid to re-run sync (e.g., cards added/removed)
-  try {
-    const resultsGrid = document.querySelector('.results-grid');
-    if (resultsGrid && typeof MutationObserver !== 'undefined') {
-      /** @typedef {Element & { _cardSizeObserver?: MutationObserver }} ResultsGridContainer */
-      const ro = new MutationObserver(debounce(() => { try { syncCardHeights(); } catch (e) {} }, 120));
-      ro.observe(resultsGrid, { childList: true, subtree: true, attributes: true });
-      try { /** @type {ResultsGridContainer} */ (resultsGrid)._cardSizeObserver = ro; } catch (e) {}
-    }
-  } catch (e) { /* ignore observer failures */ }
+  // Results cards remain direct children of the CSS results grid.
+  // Do not measure and structurally rewrap this same MutationObserver-owned
+  // subtree. The retired synchronizer caused self-triggering DOM churn and
+  // forced layout work without applying its computed row maximum.
 
   // Ensure navbar action buttons reliably trigger expected behaviors.
   // Uses event delegation on `.navbar-actions` so buttons that are moved in the DOM
@@ -11005,11 +10941,11 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(data => {
           if (worklistLoadingIndicator) worklistLoadingIndicator.classList.add('hidden');
           
-          if (!data.success || !Array.isArray(data.urls)) {
+          if (!data.success || !Array.isArray(data.records)) {
             throw new Error(data.error || 'Invalid response format');
           }
           
-          worklistData = data.urls;
+          worklistData = data.records;
           populateWorklistTable(worklistData);
           
           if (worklistTableContainer) worklistTableContainer.classList.remove('hidden');

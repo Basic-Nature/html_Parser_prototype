@@ -273,6 +273,15 @@ from webapp.parser.routes import (
     create_url_library_blueprint,
     create_utility_admin_blueprint,
 )
+from webapp.parser.routes.workflow_blueprint import create_workflow_v1_blueprint
+from webapp.parser.services.workflow_reader import (
+    WORKFLOW_AUTHORITY,
+    WorkflowReadValidationError,
+    read_workflow_facets,
+    read_workflow_item_detail,
+    read_workflow_items,
+    read_workflow_stats,
+)
 from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socket_handler
 from webapp.parser.url_parser import (
     parse_url_simple,
@@ -1301,6 +1310,22 @@ except Exception as e:
         "session_id": None
     })
 
+# Register Workflow v1 read-only operational routes Blueprint
+try:
+    app.register_blueprint(create_workflow_v1_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Workflow v1 read routes blueprint registered",
+        "session_id": None
+    })
+except Exception as e:
+    logger.warning({
+        "level": "WARNING",
+        "type": "status",
+        "message": f"Failed to register Workflow v1 read routes blueprint: {e}",
+        "session_id": None
+    })
 # Register Health routes Blueprint
 try:
     app.register_blueprint(create_health_blueprint())
@@ -1475,6 +1500,10 @@ except Exception as e:
 def _register_legacy_endpoint_aliases(app: Flask) -> None:
     """Backfill un-namespaced endpoint aliases for legacy url_for calls."""
 
+    # Versioned governed APIs are new authority surfaces, not legacy url_for aliases.
+    # Preserve established compatibility aliases without synthesizing bare workflow_v1 endpoints.
+    legacy_alias_excluded_namespaces = {"workflow_v1_routes"}
+
     alias_map = {
         "index": "public_pages_routes.index",
         "auth_welcome": "public_pages_routes.auth_welcome",
@@ -1495,7 +1524,9 @@ def _register_legacy_endpoint_aliases(app: Flask) -> None:
     for endpoint_name in app.view_functions.keys():
         if "." not in endpoint_name:
             continue
-        suffix = endpoint_name.rsplit(".", 1)[-1]
+        endpoint_namespace, suffix = endpoint_name.rsplit(".", 1)
+        if endpoint_namespace in legacy_alias_excluded_namespaces:
+            continue
         endpoint_index.setdefault(suffix, []).append(endpoint_name)
 
     for suffix, candidates in endpoint_index.items():
@@ -1505,6 +1536,9 @@ def _register_legacy_endpoint_aliases(app: Flask) -> None:
             alias_map[suffix] = candidates[0]
 
     for legacy_endpoint, namespaced_endpoint in alias_map.items():
+        namespaced_endpoint_namespace = namespaced_endpoint.rsplit(".", 1)[0] if "." in namespaced_endpoint else ""
+        if namespaced_endpoint_namespace in legacy_alias_excluded_namespaces:
+            continue
         if legacy_endpoint in app.view_functions:
             continue
 
@@ -3068,147 +3102,93 @@ def index() -> str:
 
 @_rate_limit("30/minute")
 def api_urls():
-    urls_file = str(URL_LIST_FILE)
+    # Read the reviewed URL registry. GET remains backward compatible through
+    # ``urls`` while also returning structured metadata in ``entries``.
+    # Direct HTTP registry writes are intentionally retired.
+    from webapp.parser.utils.url_registry import load_url_registry
+
     try:
         if request.method == "GET":
-            if not os.path.exists(urls_file):
-                return jsonify({"urls": []})
-            urls = []
-            with open(urls_file, "r", encoding="utf-8") as f:
-                for raw in f:
-                    s = safe_strip(raw)
-                    if not s or s.startswith('#'):
-                        continue
-                    u, lbl = extract_url_and_label(s)
-                    urls.append(u or s)
-            return jsonify({"urls": urls})
-        elif request.method == "POST":
+            entries, diagnostics = load_url_registry(URL_LIST_FILE)
+
+            public_entries = [
+                {
+                    "year": entry.get("year"),
+                    "contest": entry.get("contest"),
+                    "state": entry.get("state"),
+                    "scope": entry.get("scope"),
+                    "county": entry.get("county"),
+                    "format": entry.get("format"),
+                    "notes": entry.get("notes"),
+                    "url": entry.get("url"),
+                    "review_status": entry.get("review_status"),
+                    "parser_eligible": bool(entry.get("parser_eligible")),
+                }
+                for entry in entries
+            ]
+
+            approved_urls = []
+            seen = set()
+            for entry in entries:
+                if not entry.get("parser_eligible"):
+                    continue
+                url = str(entry.get("url") or "").strip()
+                if not url or url in seen:
+                    continue
+                seen.add(url)
+                approved_urls.append(url)
+
+            return jsonify({
+                "urls": approved_urls,
+                "entries": public_entries,
+                "diagnostics": {
+                    "row_count": diagnostics.get("row_count", 0),
+                    "malformed_row_count": diagnostics.get("malformed_row_count", 0),
+                    "quarantine_row_count": diagnostics.get("quarantine_row_count", 0),
+                    "parser_eligible_count": diagnostics.get("parser_eligible_count", 0),
+                },
+                "registry_write_mode": "review_required",
+            })
+
+        if request.method == "POST":
             cert_resp = _require_client_cert("api_urls")
             if cert_resp:
                 return cert_resp
+
             guard_ok, guard_reason = _guarded_ingestion_allowed("api_urls")
             if not guard_ok:
                 logger.warning({
                     "level": "WARNING",
                     "type": "security",
-                    "message": f"URL ingestion blocked by guarded gate: {guard_reason}",
+                    "message": f"URL review submission blocked by guarded gate: {guard_reason}",
                     "session_id": None,
                 })
-                return jsonify({"success": False, "error": "Guarded ingestion key required."}), 403
-            data = request.get_json() or {}
-            raw_url = safe_strip(safe_get(data, "url", ""))
-            if not raw_url:
-                return jsonify({"success": False, "error": "URL required."}), 400
-            if len(raw_url) > 2048 or any(ord(ch) < 32 for ch in raw_url):
-                log_flagged_url({
-                    "event": "url_invalid",
-                    "url": raw_url,
-                    "reason": "invalid_chars_or_length",
-                    **_ingestion_audit_context(safe_strip(safe_get(data, "session_id"))),
-                })
-                return jsonify({"success": False, "error": "URL too long or contains invalid characters."}), 400
-            url, lbl = extract_url_and_label(raw_url)
-            if not url:
-                return jsonify({"success": False, "error": "No valid http(s) URL found."}), 400
+                return jsonify({
+                    "success": False,
+                    "review_required": True,
+                    "error": "Guarded ingestion key required.",
+                }), 403
 
-            if len(url) > 2048:
-                log_flagged_url({
-                    "event": "url_invalid",
-                    "url": url,
-                    "reason": "url_too_long",
-                    **_ingestion_audit_context(safe_strip(safe_get(data, "session_id"))),
-                })
-                return jsonify({"success": False, "error": "URL too long."}), 400
+            return jsonify({
+                "success": False,
+                "review_required": True,
+                "error": (
+                    "Direct URL registry append is retired. "
+                    "Build a schema-valid review row and add it through the "
+                    "reviewed repository workflow."
+                ),
+            }), 409
 
-            parsed = urlparse(url)
-            if parsed.username or parsed.password:
-                log_flagged_url({
-                    "event": "url_invalid",
-                    "url": url,
-                    "reason": "credentials_in_url",
-                    **_ingestion_audit_context(safe_strip(safe_get(data, "session_id"))),
-                })
-                return jsonify({"success": False, "error": "URLs with credentials are not allowed."}), 400
-            if parsed.fragment:
-                url = urlunparse(parsed._replace(fragment=""))
-                parsed = urlparse(url)
-            host = (parsed.hostname or "").lower()
-            session_id = safe_strip(safe_get(data, "session_id"))
-            allowed, reason = safe_validate_external_url(
-                url,
-                allowlist_suffixes=URL_ALLOWLIST_SUFFIXES,
-                allowlist_hosts=URL_ALLOWLIST_HOSTS,
-                enforce_allowlist=URL_ENFORCE_ALLOWLIST,
-                block_private_ips=URL_BLOCK_PRIVATE_IPS,
-            )
-            if not allowed:
-                log_flagged_url({
-                    "event": "url_blocked",
-                    "url": url,
-                    "reason": reason,
-                    **_ingestion_audit_context(session_id),
-                })
-                return jsonify({"success": False, "error": f"URL blocked: {reason}"}), 400
-            suspicious_tokens = (
-                "dropbox.com",
-                "drive.google",
-                "docs.google",
-                "googleusercontent.com",
-                "storage.googleapis",
-                "amazonaws.com",
-                "s3.amazonaws.com",
-                "digitaloceanspaces.com",
-                "box.com",
-                "onedrive",
-                "sharepoint",
-                "github.com",
-                "raw.githubusercontent",
-                "gitlab",
-                "pastebin",
-                "notion.so",
-                "cloudfront.net",
-            )
-            if ALLOW_GOOGLE_DOCS:
-                suspicious_tokens = tuple(
-                    tok for tok in suspicious_tokens
-                    if tok not in {"drive.google", "docs.google", "googleusercontent.com"}
-                )
-            if parsed.scheme not in {"http", "https"} or not host:
-                log_flagged_url({
-                    "event": "url_invalid",
-                    "url": url,
-                    "reason": "invalid_url",
-                    **_ingestion_audit_context(session_id),
-                })
-                return jsonify({"success": False, "error": "Only http/https URLs with a host are accepted."}), 400
+        return jsonify({"success": False, "error": "Method not allowed."}), 405
 
-            if any(tok in host for tok in suspicious_tokens):
-                log_flagged_url({
-                    "event": "url_blocked",
-                    "url": url,
-                    "reason": "suspicious_host",
-                    "host": host,
-                    **_ingestion_audit_context(session_id),
-                })
-                return jsonify({"success": False, "error": "Host requires manual review; URL logged for safety."}), 400
-
-            if url_already_listed(urls_file, url):
-                return jsonify({"success": True, "already_present": True})
-
-            with open(urls_file, "a", encoding="utf-8") as f:
-                f.write(url + "\n")
-            if ENABLE_URL_INGESTION_AUDIT:
-                log_flagged_url({
-                    "event": "url_ingested",
-                    "url": url,
-                    "label": lbl,
-                    "source": "api",
-                    **_ingestion_audit_context(session_id),
-                })
-            return jsonify({"success": True})
     except Exception as exc:
-        logger.error({"level": "ERROR", "type": "api", "message": f"api_urls GET/POST failed: {exc}", "session_id": None})
-        return jsonify({"urls": [], "error": "internal"}), 500
+        logger.error({
+            "level": "ERROR",
+            "type": "api",
+            "message": f"api_urls failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify({"urls": [], "entries": [], "error": "internal"}), 500
 
 
 @_rate_limit("60/minute")
@@ -4893,6 +4873,67 @@ def api_health_socket_test():
         return jsonify({"error": f"Socket test failed: {str(e)}"}), 500
 
 
+def api_data_framework_canonical_facets():
+    """Return complete self-excluding canonical scope facets for the Data Framework."""
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify({"error": "Unauthorized"}), 403
+    try:
+        state = _validate_filter_value("state", request.args.get("state"), max_len=64)
+        jurisdiction = _validate_filter_value(
+            "jurisdiction",
+            request.args.get("jurisdiction") or request.args.get("county"),
+            max_len=256,
+        )
+        contest = _validate_filter_value("contest", request.args.get("contest"), max_len=140)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    year_value = None
+    year_raw = safe_strip(request.args.get("year", ""))
+    if year_raw:
+        try:
+            year_value = int(year_raw)
+        except ValueError:
+            return jsonify({"error": "year must be an integer"}), 400
+
+    from webapp.parser.services.canonical_election_reader import (
+        CanonicalFacetFilters,
+        query_canonical_facets,
+    )
+
+    filters = CanonicalFacetFilters(
+        state=state,
+        year=year_value,
+        jurisdiction=jurisdiction,
+        contest=contest,
+    )
+
+    try:
+        facets = query_canonical_facets(get_engine(), filters)
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": "database",
+            "message": f"Canonical facet read failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify({"error": "Canonical facet query failed"}), 500
+
+    return jsonify({
+        **facets,
+        "contract": "canonical_facets_v1",
+        "data_source": "canonical",
+        "authority": "canonical_production",
+        "filter_model": "bidirectional_faceted",
+        "semantic_contract": {
+            "facet_mode": "self_excluding",
+            "lineage": "not_inferred",
+            "null": "preserved_null",
+            "no_warehouse_fallback": True,
+        },
+    })
+
 app.config["_DATA_FRAMEWORK_ROUTE_HANDLERS"] = {
     "data_framework": data_framework,
     "api_data_framework_preview": api_data_framework_preview,
@@ -4900,6 +4941,7 @@ app.config["_DATA_FRAMEWORK_ROUTE_HANDLERS"] = {
     "api_data_framework_scaffold_csv": api_data_framework_scaffold_csv,
     "api_data_framework_curated": api_data_framework_curated,
     "api_data_framework_warehouse_status": api_data_framework_warehouse_status,
+    "api_data_framework_canonical_facets": api_data_framework_canonical_facets,
     "api_data_framework_exports": api_data_framework_exports,
 }
 
@@ -8061,6 +8103,86 @@ app.config["_FILE_IO_ROUTE_HANDLERS"] = {
 # Role enforcement: DL1 ≠ DL2 ≠ QC1 ≠ QC2
 # Complete audit trail with chain of custody
 
+# =====================================================================
+# 4.9 WORKFLOW V1 READ PLANE - OPERATIONAL / NONCANONICAL
+# =====================================================================
+# This is intentionally a thin HTTP adapter over workflow_reader.py.
+# It is GET-only, requires the existing principal policy, never commits,
+# and does not establish canonical election-result authority.
+
+def _workflow_v1_error_payload(message: str) -> dict:
+    return {
+        "success": False,
+        "error": message,
+        "schema_version": "workflow_read_v1",
+        "authority": dict(WORKFLOW_AUTHORITY),
+    }
+
+
+def _workflow_v1_read(handler, *args, **kwargs):
+    principal, _, _ = get_request_principal()
+    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+        return jsonify(_workflow_v1_error_payload("Unauthorized")), 403
+
+    db_session = SessionLocal()
+    try:
+        payload = handler(db_session, *args, **kwargs)
+        if payload is None:
+            return jsonify(_workflow_v1_error_payload("Not found")), 404
+        return jsonify(payload)
+    except WorkflowReadValidationError as exc:
+        return jsonify(_workflow_v1_error_payload(str(exc))), 400
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": "workflow_v1",
+            "message": f"Workflow v1 read failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify(
+            _workflow_v1_error_payload("Workflow read unavailable.")
+        ), 503
+    finally:
+        try:
+            db_session.rollback()
+        finally:
+            db_session.close()
+
+
+def api_workflow_v1_items():
+    return _workflow_v1_read(
+        read_workflow_items,
+        request.args.to_dict(flat=True),
+    )
+
+
+def api_workflow_v1_item_detail(item_id):
+    return _workflow_v1_read(
+        read_workflow_item_detail,
+        item_id,
+    )
+
+
+def api_workflow_v1_facets():
+    return _workflow_v1_read(
+        read_workflow_facets,
+        request.args.to_dict(flat=True),
+    )
+
+
+def api_workflow_v1_stats():
+    return _workflow_v1_read(
+        read_workflow_stats,
+        request.args.to_dict(flat=True),
+    )
+
+
+app.config["_WORKFLOW_V1_ROUTE_HANDLERS"] = {
+    "api_workflow_v1_items": api_workflow_v1_items,
+    "api_workflow_v1_item_detail": api_workflow_v1_item_detail,
+    "api_workflow_v1_facets": api_workflow_v1_facets,
+    "api_workflow_v1_stats": api_workflow_v1_stats,
+}
 def api_election_data_worklist():
     """
     Get Worklist - all races with step-by-step status tracking.

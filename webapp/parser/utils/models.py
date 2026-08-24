@@ -686,6 +686,464 @@ class CanonicalVerificationEvent(Base):
     )
 
 
+
+# --- GOVERNED OPERATIONAL WORKFLOW ---
+#
+# These tables describe review/workflow state only. They are NONCANONICAL.
+# Canonical election truth remains owned by the canonical_* publication tables
+# and may only be changed through the governed canonical writer boundary.
+#
+# A pass is a generic independently acquired/reviewed lane. DL1/DL2 are labels,
+# not a fixed schema limit; a future DL3 is another WorkflowPass row.
+#
+# Principal fields intentionally remain strings because ElectionPulse currently
+# has no authoritative ORM User table. Do not invent a user foreign key.
+#
+# WORKFLOW_JSON is intentionally distinct from EVIDENCE_JSON. Operational
+# workflow state is queryable as JSONB on PostgreSQL while remaining portable
+# JSON for SQLite/test dialects.
+WORKFLOW_JSON = JSON().with_variant(JSONB(), "postgresql")
+
+
+class WorkflowItem(Base):
+    """One noncanonical operational work item for an election-data review scope."""
+
+    __tablename__ = "workflow_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lifecycle_state = Column(String(32), default="queued", nullable=False)
+    current_stage = Column(String(48), default="source_intake", nullable=False)
+    stage_condition = Column(String(32), default="pending", nullable=False)
+    priority = Column(Integer, default=0, nullable=False)
+
+    election_year = Column(Integer, nullable=True)
+    election_date = Column(Date, nullable=True)
+    state = Column(String(64), nullable=True)
+    jurisdiction_name = Column(String(256), nullable=True)
+    jurisdiction_type = Column(String(32), nullable=True)
+    contest = Column(String(256), nullable=True)
+    office_basic = Column(String(64), nullable=True)
+    election_type = Column(String(64), nullable=True)
+    source_race_id = Column(String(128), nullable=True)
+    source_url = Column(String(2048), nullable=True)
+
+    canonical_race_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_election_races.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    blocked_reason_code = Column(String(64), nullable=True)
+    blocker_detail = Column(Text, nullable=True)
+    created_by_principal = Column(String(256), nullable=True)
+    workflow_metadata = Column(WORKFLOW_JSON, default=dict, nullable=False)
+    row_version = Column(Integer, default=1, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "priority >= 0",
+            name="ck_workflow_items_priority_nonnegative",
+        ),
+        CheckConstraint(
+            "row_version >= 1",
+            name="ck_workflow_items_row_version_positive",
+        ),
+        Index(
+            "ix_workflow_items_lifecycle_stage",
+            "lifecycle_state",
+            "current_stage",
+            "stage_condition",
+        ),
+        Index(
+            "ix_workflow_items_year_state",
+            "election_year",
+            "state",
+        ),
+        Index(
+            "ix_workflow_items_canonical_race",
+            "canonical_race_id",
+        ),
+    )
+
+
+class WorkflowPass(Base):
+    """One immutable revision of an independently acquired workflow pass."""
+
+    __tablename__ = "workflow_passes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workflow_item_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    pass_number = Column(Integer, nullable=False)
+    pass_label = Column(String(16), nullable=False)
+    revision_number = Column(Integer, default=1, nullable=False)
+    is_current = Column(Boolean, default=True, nullable=False)
+    status = Column(String(32), default="pending", nullable=False)
+
+    assigned_principal = Column(String(256), nullable=True)
+    source_evidence_ref = Column(String(512), nullable=True)
+    staging_batch_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("batch_metadata.batch_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    candidate_check_status = Column(String(32), nullable=True)
+    candidate_check_result = Column(WORKFLOW_JSON, nullable=True)
+    semantic_validation_status = Column(String(32), nullable=True)
+    semantic_validation_result = Column(WORKFLOW_JSON, nullable=True)
+
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
+    superseded_at = Column(DateTime(timezone=True), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_item_id",
+            "pass_number",
+            "revision_number",
+            name="uq_workflow_pass_item_number_revision",
+        ),
+        CheckConstraint(
+            "pass_number >= 1",
+            name="ck_workflow_pass_number_positive",
+        ),
+        CheckConstraint(
+            "revision_number >= 1",
+            name="ck_workflow_pass_revision_positive",
+        ),
+        Index(
+            "ix_workflow_pass_item_current",
+            "workflow_item_id",
+            "is_current",
+        ),
+        Index(
+            "ix_workflow_pass_status",
+            "status",
+        ),
+        Index(
+            "ix_workflow_pass_assignee",
+            "assigned_principal",
+        ),
+    )
+
+
+class WorkflowComparison(Base):
+    """Comparison outcome between two independent workflow pass revisions."""
+
+    __tablename__ = "workflow_comparisons"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workflow_item_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    left_pass_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_passes.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    right_pass_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_passes.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    comparison_version = Column(Integer, default=1, nullable=False)
+    status = Column(String(32), default="pending", nullable=False)
+
+    strict_equality_passed = Column(Boolean, nullable=True)
+    difference_count = Column(Integer, nullable=True)
+    difference_summary = Column(WORKFLOW_JSON, nullable=True)
+    checked_at = Column(DateTime(timezone=True), nullable=True)
+    checked_by_service_version = Column(String(128), nullable=True)
+    reviewed_by_principal = Column(String(256), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_item_id",
+            "left_pass_id",
+            "right_pass_id",
+            "comparison_version",
+            name="uq_workflow_comparison_pair_version",
+        ),
+        CheckConstraint(
+            "left_pass_id <> right_pass_id",
+            name="ck_workflow_comparison_distinct_passes",
+        ),
+        CheckConstraint(
+            "comparison_version >= 1",
+            name="ck_workflow_comparison_version_positive",
+        ),
+        CheckConstraint(
+            "difference_count IS NULL OR difference_count >= 0",
+            name="ck_workflow_comparison_difference_count_nonnegative",
+        ),
+        Index(
+            "ix_workflow_comparison_item_status",
+            "workflow_item_id",
+            "status",
+        ),
+    )
+
+
+class WorkflowDiscrepancy(Base):
+    """One explicit discrepancy; value-state fields preserve missing/null semantics."""
+
+    __tablename__ = "workflow_discrepancies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    comparison_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_comparisons.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    workflow_item_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    category = Column(String(64), nullable=False)
+    semantic_key = Column(WORKFLOW_JSON, nullable=False)
+    left_value = Column(WORKFLOW_JSON, nullable=True)
+    right_value = Column(WORKFLOW_JSON, nullable=True)
+    left_value_state = Column(String(32), nullable=True)
+    right_value_state = Column(String(32), nullable=True)
+
+    severity = Column(String(32), nullable=True)
+    resolution_status = Column(String(32), default="open", nullable=False)
+    resolution_code = Column(String(64), nullable=True)
+    resolution_notes = Column(Text, nullable=True)
+    resolved_by_principal = Column(String(256), nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_workflow_discrepancy_item_status",
+            "workflow_item_id",
+            "resolution_status",
+        ),
+        Index(
+            "ix_workflow_discrepancy_comparison",
+            "comparison_id",
+        ),
+    )
+
+
+class WorkflowReview(Base):
+    """Human or governed-service review decision for a workflow stage."""
+
+    __tablename__ = "workflow_reviews"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workflow_item_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    review_stage = Column(String(48), nullable=False)
+    reviewer_principal = Column(String(256), nullable=False)
+    decision = Column(String(32), nullable=False)
+
+    selected_pass_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_passes.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    selected_staging_batch_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("batch_metadata.batch_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    checklist_version = Column(String(64), nullable=True)
+    checklist_result = Column(WORKFLOW_JSON, nullable=True)
+    reason_codes = Column(WORKFLOW_JSON, nullable=True)
+    notes = Column(Text, nullable=True)
+    reviewed_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_workflow_review_item_stage",
+            "workflow_item_id",
+            "review_stage",
+        ),
+        Index(
+            "ix_workflow_review_decision",
+            "decision",
+        ),
+        Index(
+            "ix_workflow_review_principal",
+            "reviewer_principal",
+        ),
+    )
+
+
+class WorkflowArtifactLink(Base):
+    """Typed reference from workflow state to evidence/staging/canonical artifacts."""
+
+    __tablename__ = "workflow_artifact_links"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workflow_item_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    pass_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_passes.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    relation_type = Column(String(64), nullable=False)
+    artifact_type = Column(String(64), nullable=False)
+    artifact_ref = Column(String(512), nullable=False)
+    artifact_sha256 = Column(String(64), nullable=True)
+    canonical_source_artifact_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_source_artifacts.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    staging_batch_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("batch_metadata.batch_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    artifact_metadata = Column(WORKFLOW_JSON, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_workflow_artifact_item_relation",
+            "workflow_item_id",
+            "relation_type",
+        ),
+        Index(
+            "ix_workflow_artifact_pass",
+            "pass_id",
+        ),
+    )
+
+
+class WorkflowEvent(Base):
+    """Append-only audit-event row; immutability is enforced by workflow service policy."""
+
+    __tablename__ = "workflow_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workflow_item_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    actor_type = Column(String(32), default="human", nullable=False)
+    actor_principal = Column(String(256), nullable=True)
+    actor_service = Column(String(128), nullable=True)
+    event_type = Column(String(64), nullable=False)
+    stage = Column(String(48), nullable=True)
+
+    prior_state = Column(WORKFLOW_JSON, nullable=True)
+    new_state = Column(WORKFLOW_JSON, nullable=True)
+
+    related_pass_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_passes.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    related_comparison_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_comparisons.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    related_review_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_reviews.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    related_staging_batch_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("batch_metadata.batch_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    related_canonical_race_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_election_races.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    reason_code = Column(String(64), nullable=True)
+    summary = Column(Text, nullable=True)
+    event_metadata = Column(WORKFLOW_JSON, default=dict, nullable=False)
+    occurred_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_workflow_event_item_time",
+            "workflow_item_id",
+            "occurred_at",
+        ),
+        Index(
+            "ix_workflow_event_type",
+            "event_type",
+        ),
+        Index(
+            "ix_workflow_event_actor",
+            "actor_principal",
+        ),
+    )
+
+
 class DataFrameworkPreviewCache(Base):
     """
     Temporary preview cache for Data Framework UI sampling.

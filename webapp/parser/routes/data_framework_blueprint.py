@@ -50,6 +50,10 @@ def create_data_framework_blueprint() -> Blueprint:
     def api_data_framework_warehouse_status_route():
         return _call_handler("api_data_framework_warehouse_status")
 
+    @bp.route("/api/data_framework/canonical_facets", methods=["GET"], endpoint="api_data_framework_canonical_facets")
+    def api_data_framework_canonical_facets_route():
+        return _call_handler("api_data_framework_canonical_facets")
+
     @bp.route("/api/data_framework/exports", methods=["GET"], endpoint="api_data_framework_exports")
     def api_data_framework_exports_route():
         return _call_handler("api_data_framework_exports")

@@ -55,6 +55,7 @@ from ..utils.html_scanner import (
     load_pattern_kb,
 )
 from ..utils.logger_singleton import logger
+from ..utils.prompt_singleton import prompt
 from ..utils.model_registry import ModelRegistry
 from ..utils.shared_logic import (
     keyphrase_match,
@@ -2643,7 +2644,7 @@ class ContextCoordinator(object):
         logger.info(f"[SEGMENT_PROMPT][interactive] Segment HTML: {html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
         label = None
         try:
-            label = input("Please enter the semantic label for this segment: ").strip()
+            label = prompt.prompt_input('Please enter the semantic label for this segment:', session_id=session_id, allow_cancel=False).strip()
         except Exception:
             label = "unknown"
         self.log_field_selection(

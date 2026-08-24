@@ -6,6 +6,9 @@
  *  - Sanitized search term (length + control char stripping)
  *  - Strict sort direction cycling / no arbitrary query fragments
  *  - Safe CSV generation (quotes + CR/LF normalized)
+ *
+ * G2.3.1: preserve jurisdiction name/type through canonical visualization,
+ *         keep county-specific tooling explicit, and clarify cached priority metadata.
  */
 document.addEventListener('DOMContentLoaded', () => {
   // ---------- Bootstrap activation ----------
@@ -29,11 +32,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const scaffoldCsvUrl = cfgEl?.dataset?.scaffoldCsvUrl || '/api/data_framework/scaffold.csv';
   const curatedUrl = cfgEl?.dataset?.curatedUrl || '/api/data_framework/curated';
   const priorityUrl = cfgEl?.dataset?.priorityUrl || '/api/data_framework/warehouse_status';
-  const previewUrl = cfgEl?.dataset?.previewUrl || '/api/data_framework/preview';
-  const dbLiteFinalizedUrl = cfgEl?.dataset?.dbliteFinalizedUrl || '/api/election_data/db_lite/finalized?limit=2000';
-  const dbLiteDownBallotUrl = cfgEl?.dataset?.dbliteDownballotUrl || '/api/election_data/db_lite/down_ballot?limit=2000';
-  const worklistOverviewUrl = '/api/election_data/worklist/overview';
-  const statesCountiesUrl = '/api/election_data/states_counties';
+  const canonicalFacetsUrl =
+    cfgEl?.dataset?.canonicalFacetsUrl || '/api/data_framework/canonical_facets';
+
+  // G3.1C2: Data Framework election-result consumers are canonical-only.
+  // Transitional DB-Lite / worklist / legacy preview endpoint identifiers are retired.
   const csrfToken = cfgEl?.dataset?.csrfToken || null;
 
   // ---------- Elements ----------
@@ -121,7 +124,16 @@ document.addEventListener('DOMContentLoaded', () => {
     pipelineSteps: document.getElementById('uploadPipelineSteps'),
     pipelineDetail: document.getElementById('uploadPipelineDetail'),
     readOnlyBanner: document.getElementById('dataFrameworkReadOnlyBanner'),
-    readOnlyMessage: document.getElementById('dataFrameworkReadOnlyMessage')
+    readOnlyMessage: document.getElementById('dataFrameworkReadOnlyMessage'),
+    evidenceContextBar: document.getElementById('evidenceContextBar'),
+    evidenceContextTitle: document.getElementById('evidenceContextTitle'),
+    evidenceContextScope: document.getElementById('evidenceContextScope'),
+    evidenceContextAnalysis: document.getElementById('evidenceContextAnalysis'),
+    evidenceContextReview: document.getElementById('evidenceContextReview'),
+    evidenceContextCanonical: document.getElementById('evidenceContextCanonical'),
+    analysisContextStatus: document.getElementById('analysisContextStatus'),
+    reviewContextStatus: document.getElementById('reviewContextStatus'),
+    canonicalContextStatus: document.getElementById('canonicalContextStatus')
   };
   const colWrap = el.colBtn?.parentElement;
 
@@ -147,8 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let priorityState = '';
   let priorityYear = '';
   let lastPriorityPayload = null;
-  let worklistOverviewRecords = [];
-  let _worklistOverviewMeta = null;
+
   let curatedItems = [];
   let curatedSelection = null;
   let curatedSearch = '';
@@ -156,10 +167,25 @@ document.addEventListener('DOMContentLoaded', () => {
   let curatedCounty = '';
   let vizRows = [];
   let warehouseVizRows = [];
-  let dbLiteFinalizedRows = [];
-  let dbLiteDownBallotRows = [];
-  let finalizedMetadata = { states: [], counties: {}, years: [], contests: [] };
-  let vizDataset = 'finalized';
+  // Stable unfiltered canonical pool survives scoped Explore requests.
+  let canonicalPreviewRows = [];
+  let canonicalFacetPayload = null;
+  let canonicalFacetUniversePayload = null;
+  let canonicalFacetRequestSeq = 0;
+  let canonicalFacetAbortController = null;
+  let canonicalDataRequestSeq = 0;
+  let canonicalDataAbortController = null;
+  // Canonical Record is an independent consumer surface. It must never share
+  // request cancellation or scope ownership with Analysis.
+  let canonicalRecordRequestSeq = 0;
+  let canonicalRecordAbortController = null;
+  // Canonical Record selector availability is independent from Analysis scope.
+  let canonicalRecordFacetPayload = null;
+  let canonicalRecordFacetRequestSeq = 0;
+  let canonicalRecordFacetAbortController = null;
+  let analysisRowsPossiblyTruncated = false;
+
+  let vizDataset = 'warehouse_core';
   let vizYear = '';
   let vizState = '';
   let vizCounty = '';
@@ -171,6 +197,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let vizTopRaceCount = 5;
   let vizAutoOrder = [];
   let vizAutoPaused = false;
+  let vizHoverPaused = false;
+  // G2.4.3B1: Preview playback and operator Explore scope are distinct states.
+  let vizInteractionMode = 'preview';
   let vizOverlayEnabled = false;
   let vizStatusBase = '';
   let previewActive = false;
@@ -207,6 +236,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const SKELETON_ROWS = 6;
   const COMPACT_TABLE_KEY = 'df_table_compact';
   const COMPACT_AUTO_THRESHOLD = 300;
+  // G3.1C1.6: canonical publication currently clamps result reads to 1,000 rows.
+  // Hitting this limit must be presented as a bounded subset, never as completeness.
+  const CANONICAL_CLIENT_ROW_LIMIT = 1000;
   const PRIORITY_REFRESH_MS = 60000;
   const DROPOFF_DRAWER_KEY = 'df_dropoff_drawer';
   const VIZ_OVERLAY_KEY = 'df_viz_overlay_enabled';
@@ -217,10 +249,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const VIZ_FILTER_SNAPSHOT_KEY = 'df_viz_filter_snapshot_v1';
   const WAREHOUSE_STATUS_SNAPSHOT_KEY = 'df_warehouse_status_snapshot_v1';
   const VIZ_MODE_HELP_DISMISSED_KEY = 'df_viz_mode_help_dismissed_v1';
-  const VIZ_DATASET_FINALIZED = 'finalized';
-  const VIZ_DATASET_DOWN_BALLOT = 'down_ballot';
   const VIZ_DATASET_WAREHOUSE = 'warehouse_core';
-  const DEFAULT_VISIBLE_COLUMNS = ['state', 'jurisdiction_name', 'county', 'contest', 'candidate', 'party', 'votes'];
+  const VIZ_INTERACTION_PREVIEW = 'preview';
+  const VIZ_INTERACTION_EXPLORE = 'explore';
+  const DEFAULT_VISIBLE_COLUMNS = ['state', 'jurisdiction_name', 'jurisdiction_type', 'contest', 'candidate', 'party', 'votes'];
   const COLUMN_LABELS = {
     jurisdiction_name: 'Jurisdiction',
     jurisdiction_type: 'Jurisdiction Type',
@@ -258,14 +290,15 @@ document.addEventListener('DOMContentLoaded', () => {
     authReason,
     retries = 2,
     baseDelayMs = 450,
-    headers = { 'Accept': 'application/json' }
+    headers = { 'Accept': 'application/json' },
+    signal = undefined
   } = {}) {
     let lastError = null;
     let lastStatus = null;
 
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
-        const response = await fetch(url, { headers });
+        const response = await fetch(url, { headers, signal });
         lastStatus = response.status;
         if (isAuthForbiddenStatus(response.status)) {
           enterAuthRestrictedMode(authReason || 'Authentication required for protected Data Framework endpoints.');
@@ -281,6 +314,16 @@ document.addEventListener('DOMContentLoaded', () => {
           break;
         }
       } catch (err) {
+        if (err && err.name === 'AbortError') {
+          return {
+            ok: false,
+            authBlocked: false,
+            aborted: true,
+            status: lastStatus,
+            data: null,
+            error: 'aborted'
+          };
+        }
         lastError = err;
         if (!(attempt < retries)) {
           break;
@@ -320,7 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
     previewActive = false;
     previewMode = 'idle';
     setPreviewState(false);
-    setPreviewStatus('Read-only mode: authenticate to enable curated/worklist/preview feeds.');
+    setPreviewStatus('Read-only mode: authenticate to enable curated and canonical analysis feeds.');
     setPriorityStatus('Read-only mode: priority tracker requires authentication.', 'info');
     if (el.curatedStatus) {
       setStatusText(el.curatedStatus, 'Read-only mode: authenticate to load curated datasets.');
@@ -336,6 +379,158 @@ document.addEventListener('DOMContentLoaded', () => {
   const safeGet = v => (v == null ? '' : String(v));
   const displayValue = v => (v == null ? '—' : String(v));
   const exportValue = v => (v == null ? 'NULL' : String(v));
+
+  // G2.4.1: propagate selected evidence context without claiming unsupported lineage.
+  function setContextText(target, text) {
+    if (!target) return;
+    target.textContent = text || '';
+  }
+
+  function setContextTone(target, tone) {
+    if (!target) return;
+    target.setAttribute('data-context-tone', tone || 'idle');
+  }
+
+  function setRelationState(target, state, text) {
+    if (!target) return;
+    const relation = target.closest('.evidence-relation');
+    if (relation) relation.setAttribute('data-state', state || 'idle');
+    target.textContent = text || '';
+  }
+
+  function setFlowStepState(stepName, state) {
+    const step = document.querySelector(`[data-flow-step="${stepName}"]`);
+    if (step) step.setAttribute('data-flow-state', state || 'idle');
+  }
+
+  function getEvidenceDatasetLabel() {
+    return 'Canonical Production';
+  }
+
+  function getEvidenceScopeParts(item) {
+    if (!item) return [];
+    const parts = [];
+    if (item.state) parts.push(`State ${item.state}`);
+    if (item.county) parts.push(`Jurisdiction ${item.county}`);
+    if (item.contest) parts.push(`Contest ${item.contest}`);
+    if (item.year) parts.push(`Metadata year ${item.year}`);
+    return parts;
+  }
+
+  function getEvidenceMatchAxes(item) {
+    if (!item) return [];
+    const axes = [];
+    if (item.state) axes.push('state');
+    if (item.county) axes.push('jurisdiction');
+    if (item.contest) axes.push('contest');
+    return axes;
+  }
+
+  function resetEvidenceRelationshipContext() {
+    if (el.evidenceContextBar) el.evidenceContextBar.setAttribute('data-context-state', 'idle');
+    setContextText(el.evidenceContextTitle, 'No source evidence selected');
+    setContextText(
+      el.evidenceContextScope,
+      'Select a Source Evidence item to align supported workbench context. No lineage is inferred.'
+    );
+    setRelationState(el.evidenceContextAnalysis, 'idle', 'Waiting for selection');
+    setRelationState(el.evidenceContextReview, 'unlinked', 'Not linked');
+    setRelationState(el.evidenceContextCanonical, 'unlinked', 'Lineage not established');
+
+    setContextTone(el.analysisContextStatus, 'idle');
+    setContextText(
+      el.analysisContextStatus?.querySelector('span:last-child'),
+      'No source selected; the current analysis view is independent.'
+    );
+    setContextTone(el.reviewContextStatus, 'unlinked');
+    setContextText(
+      el.reviewContextStatus?.querySelector('span:last-child'),
+      'No selected source is linked to this review pipeline. Upload and publication actions remain separate governed operations.'
+    );
+    setContextTone(el.canonicalContextStatus, 'unlinked');
+    setContextText(
+      el.canonicalContextStatus?.querySelector('span:last-child'),
+      'No source-to-canonical lineage is established. Canonical rows remain independently governed.'
+    );
+
+    setFlowStepState('source', 'idle');
+    setFlowStepState('analysis', 'idle');
+    setFlowStepState('review', 'unlinked');
+    setFlowStepState('authority', 'unlinked');
+    setFlowStepState('canonical', 'unlinked');
+  }
+
+  function updateEvidenceRelationshipContext(item, analysisResult = {}) {
+    if (!item) {
+      resetEvidenceRelationshipContext();
+      return;
+    }
+
+    const title = item.title || item.contest || 'Selected source evidence';
+    const scopeParts = getEvidenceScopeParts(item);
+    const analysisStatus = analysisResult.status || 'no-match';
+    const analysisCount = Number(analysisResult.count || 0);
+    const axes = Array.isArray(analysisResult.axes) ? analysisResult.axes : getEvidenceMatchAxes(item);
+    const axesText = axes.length ? axes.join(', ') : 'available scope fields';
+
+    if (el.evidenceContextBar) el.evidenceContextBar.setAttribute('data-context-state', 'selected');
+    setContextText(el.evidenceContextTitle, title);
+    setContextText(
+      el.evidenceContextScope,
+      scopeParts.length
+        ? `${scopeParts.join(' • ')} • Context only; source-to-canonical lineage is not established.`
+        : 'Selected evidence has no usable scope fields. Context only; lineage is not established.'
+    );
+
+    setFlowStepState('source', 'selected');
+    setFlowStepState('review', 'unlinked');
+    setFlowStepState('authority', 'unlinked');
+    setFlowStepState('canonical', 'unlinked');
+
+    if (analysisStatus === 'context-match') {
+      setRelationState(
+        el.evidenceContextAnalysis,
+        'context-match',
+        `Context match only (${analysisCount.toLocaleString()} rows)`
+      );
+      setFlowStepState('analysis', 'context-match');
+      setContextTone(el.analysisContextStatus, 'context-match');
+      setContextText(
+        el.analysisContextStatus?.querySelector('span:last-child'),
+        `Selected evidence aligns with ${analysisCount.toLocaleString()} ${getEvidenceDatasetLabel()} rows by ${axesText}. This is contextual alignment, not provenance lineage.`
+      );
+    } else if (analysisStatus === 'feed-unavailable') {
+      setRelationState(el.evidenceContextAnalysis, 'no-match', 'Analysis feed unavailable');
+      setFlowStepState('analysis', 'no-match');
+      setContextTone(el.analysisContextStatus, 'no-match');
+      setContextText(
+        el.analysisContextStatus?.querySelector('span:last-child'),
+        `Selected evidence is retained as context, but ${getEvidenceDatasetLabel()} is not currently available.`
+      );
+    } else {
+      setRelationState(el.evidenceContextAnalysis, 'no-match', 'No scope match');
+      setFlowStepState('analysis', 'no-match');
+      setContextTone(el.analysisContextStatus, 'no-match');
+      setContextText(
+        el.analysisContextStatus?.querySelector('span:last-child'),
+        `No ${getEvidenceDatasetLabel()} rows match the selected evidence by ${axesText}. The existing analysis view remains independent.`
+      );
+    }
+
+    setRelationState(el.evidenceContextReview, 'unlinked', 'Not linked');
+    setContextTone(el.reviewContextStatus, 'unlinked');
+    setContextText(
+      el.reviewContextStatus?.querySelector('span:last-child'),
+      `Selected evidence: ${title}. No direct source-to-review key is established; upload and review actions do not automatically attach this source.`
+    );
+
+    setRelationState(el.evidenceContextCanonical, 'unlinked', 'Lineage not established');
+    setContextTone(el.canonicalContextStatus, 'unlinked');
+    setContextText(
+      el.canonicalContextStatus?.querySelector('span:last-child'),
+      `Selected evidence: ${title}. Canonical lineage is not established; the PostgreSQL rows below remain independently governed.`
+    );
+  }
 
   function firstPresent(...values) {
     for (const value of values) {
@@ -431,51 +626,8 @@ document.addEventListener('DOMContentLoaded', () => {
     el.warehousePriorityMeta.textContent = text || '';
   }
 
-  function hydratePriorityStates(payload) {
-    if (!(el.priorityStateSelect instanceof HTMLSelectElement)) return;
-    const states = Array.isArray(payload?.states) ? payload.states : [];
-    if (!states.length) return;
-    const existing = Array.from(el.priorityStateSelect.options).map(opt => opt.value);
-    if (existing.length > 1) return;
-    el.priorityStateSelect.innerHTML = '';
-    const allOpt = document.createElement('option');
-    allOpt.value = '';
-    allOpt.textContent = 'All states';
-    el.priorityStateSelect.appendChild(allOpt);
-    states.forEach(state => {
-      const opt = document.createElement('option');
-      opt.value = state;
-      opt.textContent = state;
-      el.priorityStateSelect.appendChild(opt);
-    });
-    if (priorityState) el.priorityStateSelect.value = priorityState;
-  }
-
-  function hydratePriorityYears(payload) {
-    if (!(el.priorityYearSelect instanceof HTMLSelectElement)) return;
-    const years = Array.isArray(payload?.available_years) ? payload.available_years : [];
-    el.priorityYearSelect.innerHTML = '';
-    const allOpt = document.createElement('option');
-    allOpt.value = '';
-    allOpt.textContent = 'All years';
-    el.priorityYearSelect.appendChild(allOpt);
-    years.forEach(year => {
-      const opt = document.createElement('option');
-      opt.value = String(year);
-      opt.textContent = String(year);
-      el.priorityYearSelect.appendChild(opt);
-    });
-    if (priorityYear && years.length && !years.map(String).includes(String(priorityYear))) {
-      priorityYear = '';
-    }
-    const selectedYear = payload?.selected_year ? String(payload.selected_year) : '';
-    if (!priorityYear && selectedYear) {
-      priorityYear = selectedYear;
-    }
-    if (priorityYear) {
-      el.priorityYearSelect.value = priorityYear;
-    }
-  }
+  // Warehouse status is priority metadata only. Canonical selectors are
+  // populated from canonical facet authority, never from warehouse coverage.
 
   function getSelectedPriorityYear(payload) {
     if (priorityYear) return String(priorityYear);
@@ -579,8 +731,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const years = Array.isArray(payload?.available_years) ? payload.available_years : [];
     const yearText = years.length ? `Years: ${years.join(', ')}` : 'Years: —';
     const divText = formatDivisionSummary(payload);
-    const worklistText = buildWorklistSummary(worklistOverviewRecords, payload);
-    return [yearText, divText, worklistText].filter(Boolean).join(' | ');
+    return [yearText, divText].filter(Boolean).join(' | ');
   }
 
   function formatPrioritySummary(payload) {
@@ -630,8 +781,7 @@ document.addEventListener('DOMContentLoaded', () => {
       setPriorityMeta('');
       return false;
     }
-    hydratePriorityStates(payload);
-    hydratePriorityYears(payload);
+    // Do not let warehouse-status availability mutate Canonical Record scope.
     lastPriorityPayload = payload;
     const summary = formatPrioritySummary(payload);
     const statusText = fromCache
@@ -639,7 +789,7 @@ document.addEventListener('DOMContentLoaded', () => {
       : (summary || 'Priority tracker ready.');
     setPriorityStatus(statusText, payload.missing_total ? 'info' : 'ok');
     const baseMeta = formatPriorityMeta(payload);
-    const suffix = fromCache ? ' | Source: cached snapshot' : '';
+    const suffix = fromCache ? ' | Priority metadata: cached snapshot' : '';
     setPriorityMeta(`${baseMeta}${suffix}`);
     return true;
   }
@@ -678,32 +828,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (cached?.payload && applyPriorityPayload(cached.payload, true)) return;
       setPriorityStatus('Priority tracker unavailable.', 'error');
       setPriorityMeta('');
-    }
-  }
-
-  async function fetchWorklistOverview() {
-    if (!worklistOverviewUrl) return;
-    if (authRestrictedMode) return;
-    try {
-      const url = new URL(worklistOverviewUrl, window.location.origin);
-      url.searchParams.set('limit', '200');
-      const result = await fetchJsonWithRetry(url.toString(), {
-        authReason: 'Authentication required for Data Framework worklist and DB-Lite feeds.',
-        retries: 2
-      });
-      if (result.authBlocked || !result.ok) return;
-      const payload = result.data;
-      if (!payload || payload.success === false) return;
-      worklistOverviewRecords = Array.isArray(payload.records) ? payload.records : [];
-      _worklistOverviewMeta = {
-        sheet: payload.sheet_name || '',
-        rowCount: payload.row_count || 0
-      };
-      if (lastPriorityPayload) {
-        setPriorityMeta(formatPriorityMeta(lastPriorityPayload));
-      }
-    } catch (err) {
-      // Best-effort only.
     }
   }
 
@@ -804,16 +928,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function loadVizPlaybackPreference() {
+    // G2.4.3B1.2: a fresh page load always begins in Preview auto.
+    // Pause/Explore state is intentionally local to this page instance.
+    vizAutoPaused = false;
     try {
-      const stored = window.localStorage?.getItem(VIZ_PLAYBACK_PAUSED_KEY);
-      if (stored === null) return;
-      const paused = stored === 'true';
-      if (paused) {
-        vizAutoLocked = true;
-        vizAutoPaused = true;
-      }
+      window.localStorage?.removeItem(VIZ_PLAYBACK_PAUSED_KEY);
     } catch (err) {
-      // Ignore storage read errors.
+      // Ignore storage cleanup errors.
     }
   }
 
@@ -838,12 +959,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function saveVizPlaybackPreference(paused) {
-    try {
-      window.localStorage?.setItem(VIZ_PLAYBACK_PAUSED_KEY, String(!!paused));
-    } catch (err) {
-      // Ignore storage write errors.
-    }
+  function saveVizPlaybackPreference(_paused) {
+    // Playback state is intentionally not persisted across reloads.
   }
 
   function loadDropoffPreferences() {
@@ -892,13 +1009,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderCuratedDetail(item) {
     stopPreviewCycle();
-    curatedSelection = item;
+    curatedSelection = item || null;
     if (el.curatedRows) el.curatedRows.textContent = item?.row_count != null ? String(item.row_count) : '—';
     if (el.curatedColumns) el.curatedColumns.textContent = item?.column_count != null ? String(item.column_count) : '—';
     if (el.curatedUpdated) el.curatedUpdated.textContent = item?.updated_at || '—';
     if (el.curatedMeta) {
       const parts = [item?.contest, item?.state, item?.county].filter(Boolean).join(' • ');
-      el.curatedMeta.textContent = parts || 'No additional metadata available.';
+      el.curatedMeta.textContent = item
+        ? (parts || 'No additional metadata available.')
+        : 'Pick a dataset to see its summary and source links.';
     }
     if (el.curatedLinks) {
       el.curatedLinks.innerHTML = '';
@@ -913,7 +1032,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    updateVisualizationFromCurated(item);
+    if (!item) {
+      resetEvidenceRelationshipContext();
+      return;
+    }
+
+    const analysisResult = updateVisualizationFromCurated(item);
+    updateEvidenceRelationshipContext(item, analysisResult);
   }
 
   function clearVisualization() {
@@ -1055,15 +1180,13 @@ document.addEventListener('DOMContentLoaded', () => {
       el.vizTable.innerHTML = '<div class="viz-placeholder">No rows available for this dataset.</div>';
       return;
     }
-    const datasetType = rows[0]?.dataset_type || VIZ_DATASET_FINALIZED;
+
     const sorted = [...rows].sort((a, b) => compareNullableNumbersDesc(a.votes, b.votes));
     const table = document.createElement('table');
     table.className = 'viz-table';
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
-    const headers = datasetType === VIZ_DATASET_DOWN_BALLOT
-      ? ['County', 'Party', 'Down-Ballot Votes', 'Presidential Votes', 'Drop-off %']
-      : ['County/District', 'Dem Votes', 'Rep Votes', 'Other Votes', 'Write-In Votes', 'Uncategorized Votes', 'Total Votes'];
+    const headers = ['Jurisdiction', 'Type', 'Dem Votes', 'Rep Votes', 'Other Votes', 'Write-In Votes', 'Uncategorized Votes', 'Total Votes'];
     headers.forEach(label => {
       const th = document.createElement('th');
       th.textContent = label;
@@ -1071,110 +1194,108 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     thead.appendChild(headRow);
     table.appendChild(thead);
+
     const tbody = document.createElement('tbody');
     const renderValue = value => {
-      if (value == null || value === '') return '—';
+      if (value == null || value === '') return 'â€”';
       if (typeof value === 'number') return value.toLocaleString();
       return String(value);
     };
-    if (datasetType === VIZ_DATASET_DOWN_BALLOT) {
-      sorted.slice(0, 8).forEach(row => {
-        const tr = document.createElement('tr');
-        const cells = [
-          row.county,
-          row.party,
-          row.down_ballot_votes,
-          row.presidential_votes,
-          row.dropoff_pct
-        ];
-        cells.forEach(value => {
-          const td = document.createElement('td');
-          td.textContent = renderValue(value);
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
+
+    const hasJurisdictionFocus = !!vizCounty || new Set(
+      sorted.map(row => normalizeCountyKey(getVizJurisdictionName(row)))
+    ).size <= 1;
+
+    if (hasJurisdictionFocus) {
+      headRow.innerHTML = '';
+      ['Candidate', 'Party', 'Votes', 'Jurisdiction', 'Type'].forEach(label => {
+        const th = document.createElement('th');
+        th.textContent = label;
+        headRow.appendChild(th);
       });
-    } else {
-      const hasCountyFocus = !!vizCounty || new Set(sorted.map(row => normalizeCountyKey(row.county))).size <= 1;
-      if (hasCountyFocus) {
-        const focusHeaders = ['Candidate', 'Party', 'Votes', 'County/District'];
-        headRow.innerHTML = '';
-        focusHeaders.forEach(label => {
-          const th = document.createElement('th');
-          th.textContent = label;
-          headRow.appendChild(th);
-        });
-        sorted
-          .slice()
-          .sort((a, b) => compareNullableNumbersDesc(a.votes, b.votes))
-          .slice(0, 18)
-          .forEach(row => {
-            const tr = document.createElement('tr');
-            const partyBucket = normalizePartyBucket(row.party || row.ballot_party || '');
-            const partyLabel = partyBucket === 'writein' ? 'Write-In' : (row.party || row.ballot_party || 'Other');
-            const candidateLabel = row.candidate || 'Unspecified Candidate';
-            const cells = [
-              candidateLabel,
-              partyLabel,
-              parseNumeric(row.votes),
-              row.county || '—',
-            ];
-            cells.forEach(value => {
-              const td = document.createElement('td');
-              td.textContent = renderValue(value);
-              tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
+
+      sorted
+        .slice()
+        .sort((a, b) => compareNullableNumbersDesc(a.votes, b.votes))
+        .slice(0, 18)
+        .forEach(row => {
+          const tr = document.createElement('tr');
+          const partyBucket = normalizePartyBucket(row.party || row.ballot_party || '');
+          const partyLabel = partyBucket === 'writein'
+            ? 'Write-In'
+            : (row.party || row.ballot_party || 'Other');
+          const cells = [
+            row.candidate || 'Unspecified Candidate',
+            partyLabel,
+            parseNumeric(row.votes),
+            getVizJurisdictionName(row) || 'â€”',
+            getVizJurisdictionType(row) || null,
+          ];
+          cells.forEach(value => {
+            const td = document.createElement('td');
+            td.textContent = renderValue(value);
+            tr.appendChild(td);
           });
-        table.appendChild(tbody);
-        el.vizTable.appendChild(table);
-        return;
+          tbody.appendChild(tr);
+        });
+
+      table.appendChild(tbody);
+      el.vizTable.appendChild(table);
+      return;
+    }
+
+    const grouped = new Map();
+    sorted.forEach(row => {
+      const jurisdictionLabel = String(getVizJurisdictionName(row) || 'â€”').trim() || 'â€”';
+      const jurisdictionType = getVizJurisdictionType(row);
+      const jurisdictionKey = `${normalizeCountyKey(jurisdictionLabel) || 'â€”'}::${normalizeCountyKey(jurisdictionType)}`;
+      const entry = grouped.get(jurisdictionKey) || {
+        jurisdiction: jurisdictionLabel,
+        jurisdiction_type: jurisdictionType,
+        dem: 0,
+        rep: 0,
+        other: 0,
+        writein: 0,
+        uncategorized: 0,
+        total: 0,
+        dem_missing: false,
+        rep_missing: false,
+        other_missing: false,
+        writein_missing: false,
+        uncategorized_missing: false,
+        total_missing: false,
+      };
+
+      const bucket = normalizePartyBucket(row.party || row.ballot_party || '');
+      const bucketKey = ['dem', 'rep', 'writein'].includes(bucket) ? bucket : 'other';
+      const votes = parseNumeric(row.votes);
+      const uncategorized = parseNumeric(row.uncategorized_votes);
+
+      if (votes === null) {
+        entry[`${bucketKey}_missing`] = true;
+        entry.total_missing = true;
+      } else {
+        entry[bucketKey] += votes;
+        entry.total += votes;
       }
 
-      const grouped = new Map();
-      sorted.forEach(row => {
-        const countyLabel = String(row.county || '—').trim() || '—';
-        const countyKey = normalizeCountyKey(countyLabel) || '—';
-        const entry = grouped.get(countyKey) || {
-          county: countyLabel,
-          dem: 0,
-          rep: 0,
-          other: 0,
-          writein: 0,
-          uncategorized: 0,
-          total: 0,
-          dem_missing: false,
-          rep_missing: false,
-          other_missing: false,
-          writein_missing: false,
-          uncategorized_missing: false,
-          total_missing: false,
-        };
-        const bucket = normalizePartyBucket(row.party || row.ballot_party || '');
-        const bucketKey = ['dem', 'rep', 'writein'].includes(bucket) ? bucket : 'other';
-        const votes = parseNumeric(row.votes);
-        const uncategorized = parseNumeric(row.uncategorized_votes);
-        if (votes === null) {
-          entry[`${bucketKey}_missing`] = true;
-          entry.total_missing = true;
-        } else {
-          entry[bucketKey] += votes;
-          entry.total += votes;
-        }
-        if (uncategorized === null) {
-          entry.uncategorized_missing = true;
-        } else {
-          entry.uncategorized += uncategorized;
-        }
-        grouped.set(countyKey, entry);
-      });
-      const countyRows = Array.from(grouped.values())
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 12);
-      countyRows.forEach(row => {
+      if (uncategorized === null) {
+        entry.uncategorized_missing = true;
+      } else {
+        entry.uncategorized += uncategorized;
+      }
+
+      grouped.set(jurisdictionKey, entry);
+    });
+
+    Array.from(grouped.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 12)
+      .forEach(row => {
         const tr = document.createElement('tr');
         const cells = [
-          row.county,
+          row.jurisdiction,
+          row.jurisdiction_type || null,
           row.dem_missing ? null : row.dem,
           row.rep_missing ? null : row.rep,
           row.other_missing ? null : row.other,
@@ -1189,11 +1310,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         tbody.appendChild(tr);
       });
-    }
+
     table.appendChild(tbody);
     el.vizTable.appendChild(table);
   }
-
   function setVizOverlayEnabled(enabled, persist = true) {
     vizOverlayEnabled = !!enabled;
     if (el.vizDropoffOverlayToggle instanceof HTMLInputElement) {
@@ -1208,11 +1328,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function syncVizOverlayAvailability() {
-    const canOverlay = vizDataset === VIZ_DATASET_FINALIZED && Array.isArray(dropoffData) && dropoffData.length > 0;
+    // Governed canonical drop-off derivation is not published yet.
+    // Keep the dormant overlay unavailable without retaining DB-Lite authority.
     if (el.vizDropoffOverlayToggle instanceof HTMLInputElement) {
-      el.vizDropoffOverlayToggle.disabled = !canOverlay;
+      el.vizDropoffOverlayToggle.disabled = true;
     }
-    if (!canOverlay && vizOverlayEnabled) {
+    if (vizOverlayEnabled) {
       setVizOverlayEnabled(false);
     }
   }
@@ -1223,6 +1344,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function normalizeCountyKey(value) {
     return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function getVizJurisdictionName(row) {
+    if (!row || typeof row !== 'object') return '';
+    return String(firstPresent(row.jurisdiction_name, '') || '').trim();
+  }
+
+  function getVizJurisdictionType(row) {
+    if (!row || typeof row !== 'object') return '';
+    return String(firstPresent(row.jurisdiction_type, '') || '').trim();
   }
 
   function getUniqueCountyValues(rows, getter) {
@@ -1253,7 +1384,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function getRowsForYearStateCounty(rows, year, state, county) {
     const byYearState = getRowsForYearState(rows, year, state);
     if (!county) return byYearState;
-    return byYearState.filter(row => String(row.county || '') === String(county));
+    return byYearState.filter(row => getVizJurisdictionName(row) === String(county));
   }
 
   function setSelectOptions(selectEl, values, preferredValue = '', allowEmpty = false, emptyLabel = 'All') {
@@ -1330,7 +1461,7 @@ document.addEventListener('DOMContentLoaded', () => {
       vizState = setSelectOptions(el.vizState, options.states || [], selection.vizState);
     }
     if (el.vizCounty instanceof HTMLSelectElement) {
-      vizCounty = setSelectOptions(el.vizCounty, options.counties || [], selection.vizCounty, true, 'All counties');
+      vizCounty = setSelectOptions(el.vizCounty, options.counties || [], selection.vizCounty, true, 'All jurisdictions');
     }
     if (el.vizContest instanceof HTMLSelectElement) {
       vizContest = setSelectOptions(el.vizContest, options.contests || [], selection.vizContest);
@@ -1342,7 +1473,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!Array.isArray(rows) || !rows.length) return;
     const years = Array.from(new Set(rows.map(row => getRowYear(row)).filter(Boolean))).sort((a, b) => Number(b) - Number(a));
     const states = getUniqueValues(getRowsForYear(rows, vizYear), row => row.state);
-    const counties = getUniqueValues(getRowsForYearState(rows, vizYear, vizState), row => row.county);
+    const counties = getUniqueValues(getRowsForYearState(rows, vizYear, vizState), row => getVizJurisdictionName(row));
     const contests = getUniqueValues(getRowsForYearStateCounty(rows, vizYear, vizState, vizCounty), row => row.contest);
 
     writeVizSnapshot(vizDataset, {
@@ -1363,13 +1494,331 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  
+function getCanonicalScopeFilters() {
+    return {
+      year: vizYear || '',
+      state: vizState || '',
+      jurisdiction: vizCounty || '',
+      contest: vizContest || '',
+    };
+  }
+
+  function hasCanonicalScope(filters = getCanonicalScopeFilters()) {
+    return !!(
+      filters.year
+      || filters.state
+      || filters.jurisdiction
+      || filters.contest
+    );
+  }
+
+  function buildCanonicalFacetUrl(filters = getCanonicalScopeFilters()) {
+    const url = new URL(canonicalFacetsUrl, window.location.origin);
+    if (filters.year) url.searchParams.set('year', filters.year);
+    if (filters.state) url.searchParams.set('state', filters.state);
+    if (filters.jurisdiction) url.searchParams.set('jurisdiction', filters.jurisdiction);
+    if (filters.contest) url.searchParams.set('contest', filters.contest);
+    return url.toString();
+  }
+
+  function buildCanonicalDataUrl(filters = getCanonicalScopeFilters()) {
+    const url = new URL(apiUrl, window.location.origin);
+    url.searchParams.set('limit', '1000');
+    if (filters.year) url.searchParams.set('year', filters.year);
+    if (filters.state) url.searchParams.set('state', filters.state);
+    if (filters.jurisdiction) url.searchParams.set('jurisdiction', filters.jurisdiction);
+    if (filters.contest) url.searchParams.set('contest', filters.contest);
+    return url.toString();
+  }
+
+  function buildCanonicalRecordDataUrl() {
+    const url = new URL(apiUrl, window.location.origin);
+    url.searchParams.set('limit', String(CANONICAL_CLIENT_ROW_LIMIT));
+    // Canonical Record owns its visible State / Year selectors independently
+    // from Analysis' vizYear / vizState / vizJurisdiction / vizContest scope.
+    if (priorityYear) url.searchParams.set('year', priorityYear);
+    if (priorityState) url.searchParams.set('state', priorityState);
+    return url.toString();
+  }
+
+  function isCanonicalFacetPayload(payload) {
+    return !!(
+      payload
+      && payload.contract === 'canonical_facets_v1'
+      && payload.data_source === 'canonical'
+      && payload.authority === 'canonical_production'
+      && payload.filter_model === 'bidirectional_faceted'
+      && payload.semantic_contract?.facet_mode === 'self_excluding'
+      && payload.semantic_contract?.lineage === 'not_inferred'
+      && payload.semantic_contract?.null === 'preserved_null'
+      && payload.semantic_contract?.no_warehouse_fallback === true
+      && Array.isArray(payload.years)
+      && Array.isArray(payload.states)
+      && Array.isArray(payload.jurisdictions)
+      && Array.isArray(payload.contests)
+    );
+  }
+
+  function replaceCanonicalOptions(
+    select,
+    universeEntries,
+    availableEntries,
+    selected,
+    allLabel,
+    valueOf,
+    labelOf,
+    decorate
+  ) {
+    if (!(select instanceof HTMLSelectElement)) return selected || '';
+
+    const desired = String(selected || '');
+    const universe = Array.isArray(universeEntries) ? universeEntries : [];
+    const available = new Set(
+      (Array.isArray(availableEntries) ? availableEntries : [])
+        .map(entry => String(valueOf(entry) || ''))
+        .filter(Boolean)
+    );
+    const valid = new Set();
+
+    while (select.firstChild) select.removeChild(select.firstChild);
+
+    const all = document.createElement('option');
+    all.value = '';
+    all.textContent = allLabel;
+    all.dataset.availability = 'available';
+    select.appendChild(all);
+
+    universe.forEach(entry => {
+      const value = String(valueOf(entry) || '');
+      if (!value || valid.has(value)) return;
+      valid.add(value);
+
+      const option = document.createElement('option');
+      const isAvailable = available.has(value);
+      const baseLabel = labelOf(entry) || value;
+
+      option.value = value;
+      option.dataset.availability = isAvailable ? 'available' : 'unavailable';
+      option.textContent = isAvailable
+        ? baseLabel
+        : `${baseLabel} — no current match`;
+
+      // Preserve a currently-selected valid no-result scope so the user can
+      // see and clear it. Other valid-but-unavailable options remain visible
+      // but use the native disabled presentation.
+      option.disabled = !isAvailable && value !== desired;
+
+      if (!isAvailable) {
+        option.title = 'Valid canonical option; no rows match the other active filters.';
+      }
+      if (decorate) decorate(option, entry);
+      select.appendChild(option);
+    });
+
+    // Only values outside the canonical universe are invalid and cleared.
+    const resolved = desired && valid.has(desired) ? desired : '';
+    select.value = resolved;
+    return resolved;
+  }
+
+  function canonicalJurisdictionOptions(entries) {
+    const grouped = new Map();
+    (Array.isArray(entries) ? entries : []).forEach(entry => {
+      if (!entry || typeof entry !== 'object') return;
+      const name = String(entry.name || '').trim();
+      const type = String(entry.type || '').trim();
+      if (!name) return;
+      if (!grouped.has(name)) grouped.set(name, new Set());
+      if (type) grouped.get(name).add(type);
+    });
+    return Array.from(grouped.entries())
+      .map(([name, types]) => ({ name, types: Array.from(types).sort() }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function applyCanonicalFacetPayload(payload) {
+    if (!isCanonicalFacetPayload(payload)) return false;
+    canonicalFacetPayload = payload;
+
+    const universePayload = isCanonicalFacetPayload(canonicalFacetUniversePayload)
+      ? canonicalFacetUniversePayload
+      : payload;
+
+    vizYear = replaceCanonicalOptions(
+      el.vizYear,
+      universePayload.years,
+      payload.years,
+      vizYear,
+      'All years',
+      value => String(value),
+      value => String(value)
+    );
+    vizState = replaceCanonicalOptions(
+      el.vizState,
+      universePayload.states,
+      payload.states,
+      vizState,
+      'All states',
+      value => String(value),
+      value => String(value)
+    );
+
+    const universeJurisdictions = canonicalJurisdictionOptions(
+      universePayload.jurisdictions
+    );
+    const availableJurisdictions = canonicalJurisdictionOptions(
+      payload.jurisdictions
+    );
+    vizCounty = replaceCanonicalOptions(
+      el.vizCounty,
+      universeJurisdictions,
+      availableJurisdictions,
+      vizCounty,
+      'All jurisdictions',
+      entry => entry.name,
+      entry => entry.types.length
+        ? `${entry.name} — ${entry.types.join(' / ')}`
+        : entry.name,
+      (option, entry) => {
+        option.dataset.jurisdictionTypes = entry.types.join('|');
+      }
+    );
+
+    vizContest = replaceCanonicalOptions(
+      el.vizContest,
+      universePayload.contests,
+      payload.contests,
+      vizContest,
+      'All contests',
+      value => String(value),
+      value => String(value)
+    );
+
+    updateVizModeBadges();
+    renderVizStatus();
+    return true;
+  }
+
+  function getCanonicalRecordFacetFilters() {
+    return {
+      year: priorityYear || '',
+      state: priorityState || '',
+      jurisdiction: '',
+      contest: '',
+    };
+  }
+
+  function applyCanonicalRecordFacetPayload(payload) {
+    if (!isCanonicalFacetPayload(payload)) return false;
+    canonicalRecordFacetPayload = payload;
+
+    const universePayload = isCanonicalFacetPayload(canonicalFacetUniversePayload)
+      ? canonicalFacetUniversePayload
+      : payload;
+
+    priorityYear = replaceCanonicalOptions(
+      el.priorityYearSelect,
+      universePayload.years,
+      payload.years,
+      priorityYear,
+      'All years',
+      value => String(value),
+      value => String(value)
+    );
+    priorityState = replaceCanonicalOptions(
+      el.priorityStateSelect,
+      universePayload.states,
+      payload.states,
+      priorityState,
+      'All states',
+      value => String(value),
+      value => String(value)
+    );
+
+    return true;
+  }
+
+  async function fetchCanonicalRecordFacets({ useUniverse = false } = {}) {
+    if (
+      useUniverse
+      && isCanonicalFacetPayload(canonicalFacetUniversePayload)
+    ) {
+      return applyCanonicalRecordFacetPayload(
+        canonicalFacetUniversePayload
+      );
+    }
+
+    const requestSeq = ++canonicalRecordFacetRequestSeq;
+
+    if (canonicalRecordFacetAbortController) {
+      canonicalRecordFacetAbortController.abort();
+    }
+    canonicalRecordFacetAbortController = new AbortController();
+
+    const result = await fetchJsonWithRetry(
+      buildCanonicalFacetUrl(getCanonicalRecordFacetFilters()),
+      {
+        authReason: 'Authentication required for Canonical Record facets.',
+        retries: 2,
+        signal: canonicalRecordFacetAbortController.signal,
+      }
+    );
+
+    if (
+      result?.aborted
+      || requestSeq !== canonicalRecordFacetRequestSeq
+    ) {
+      return false;
+    }
+    if (result?.authBlocked || !result?.ok) return false;
+    if (!isCanonicalFacetPayload(result.data)) return false;
+
+    return applyCanonicalRecordFacetPayload(result.data);
+  }
+
+  async function fetchCanonicalFacets({ universe = false } = {}) {
+    const requestSeq = ++canonicalFacetRequestSeq;
+    if (canonicalFacetAbortController) canonicalFacetAbortController.abort();
+    canonicalFacetAbortController = new AbortController();
+
+    const filters = universe
+      ? { year: '', state: '', jurisdiction: '', contest: '' }
+      : getCanonicalScopeFilters();
+
+    const result = await fetchJsonWithRetry(buildCanonicalFacetUrl(filters), {
+      authReason: 'Authentication required for canonical Data Framework facets.',
+      retries: 2,
+      signal: canonicalFacetAbortController.signal,
+    });
+
+    if (result?.aborted || requestSeq !== canonicalFacetRequestSeq) return false;
+    if (result?.authBlocked || !result?.ok) return false;
+
+    if (!isCanonicalFacetPayload(result.data)) {
+      setPreviewStatus('Canonical facet response rejected — authority contract mismatch.');
+      return false;
+    }
+
+    if (universe || !hasCanonicalScope(filters)) {
+      canonicalFacetUniversePayload = result.data;
+    }
+    return applyCanonicalFacetPayload(result.data);
+  }
+
+  function refreshCanonicalExploreScope() {
+    if (vizInteractionMode !== VIZ_INTERACTION_EXPLORE) return;
+    fetchCanonicalFacets();
+    fetchData(false);
+  }
+
   function setVizFilters(rows) {
+    if (canonicalFacetPayload && applyCanonicalFacetPayload(canonicalFacetPayload)) {
+      return;
+    }
     vizTopRaces = [];
     const computedYears = Array.from(new Set(rows.map(row => getRowYear(row)).filter(Boolean))).sort((a, b) => Number(b) - Number(a));
-    const useMetadataOptions = !previewActive;
-    const years = (useMetadataOptions && vizDataset === VIZ_DATASET_FINALIZED && Array.isArray(finalizedMetadata.years) && finalizedMetadata.years.length)
-      ? finalizedMetadata.years.map(String)
-      : computedYears;
+    const years = computedYears;
     if (el.vizYear instanceof HTMLSelectElement) {
       vizYear = setSelectOptions(el.vizYear, years, vizYear);
     } else if (!years.includes(vizYear)) {
@@ -1378,7 +1827,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateVizStates();
 
-    if (!vizAutoLocked) {
+    if (vizInteractionMode === VIZ_INTERACTION_PREVIEW && !vizAutoLocked && !vizAutoPaused && !vizHoverPaused) {
       startVizAutoRotation();
     }
 
@@ -1389,10 +1838,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateVizStates() {
     const scopeRows = getRowsForYear(vizRows, vizYear);
     const computedStates = getUniqueValues(scopeRows, row => row.state);
-    const useMetadataOptions = !previewActive;
-    const states = (useMetadataOptions && vizDataset === VIZ_DATASET_FINALIZED && Array.isArray(finalizedMetadata.states) && finalizedMetadata.states.length)
-      ? finalizedMetadata.states
-      : computedStates;
+    const states = computedStates;
     if (el.vizState instanceof HTMLSelectElement) {
       vizState = setSelectOptions(el.vizState, states, vizState);
     } else if (!states.includes(vizState)) {
@@ -1403,16 +1849,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateVizCounties() {
     const scopeRows = getRowsForYearState(vizRows, vizYear, vizState);
-    const computedCounties = getUniqueCountyValues(scopeRows, row => row.county);
-    const useMetadataOptions = !previewActive;
-    const mappedCounties = (useMetadataOptions && vizDataset === VIZ_DATASET_FINALIZED && vizState && finalizedMetadata.counties && finalizedMetadata.counties[vizState])
-      ? finalizedMetadata.counties[vizState]
-      : [];
-    const counties = mappedCounties.length
-      ? getUniqueCountyValues(mappedCounties.map(name => ({ name })), item => item.name)
-      : computedCounties;
+    const computedCounties = getUniqueCountyValues(scopeRows, row => getVizJurisdictionName(row));
+    const counties = computedCounties;
     if (el.vizCounty instanceof HTMLSelectElement) {
-      vizCounty = setSelectOptions(el.vizCounty, counties, vizCounty, true, 'All counties');
+      vizCounty = setSelectOptions(el.vizCounty, counties, vizCounty, true, 'All jurisdictions');
     } else if (!counties.includes(vizCounty)) {
       vizCounty = '';
     }
@@ -1436,11 +1876,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const contestsByVotes = Object.entries(contestTotals)
       .sort((a, b) => b[1] - a[1])
       .map(entry => entry[0]);
-    const useMetadataOptions = !previewActive;
-    const metadataContests = (useMetadataOptions && vizDataset === VIZ_DATASET_FINALIZED && Array.isArray(finalizedMetadata.contests))
-      ? finalizedMetadata.contests
-      : [];
-    const contestOptions = metadataContests.length ? metadataContests : contestsByVotes;
+    const contestOptions = contestsByVotes;
 
     if (el.vizContest instanceof HTMLSelectElement) {
       vizContest = setSelectOptions(el.vizContest, contestOptions, vizContest);
@@ -1465,8 +1901,15 @@ document.addEventListener('DOMContentLoaded', () => {
       vizTopRaces = contestsByVotes;
     }
 
-    if (vizTopRaces.length && !vizTopRaces.includes(vizContest)) {
-      setVizContest(vizTopRaces[0]);
+    if (
+      vizInteractionMode === VIZ_INTERACTION_PREVIEW
+      && vizTopRaces.length
+      && !vizTopRaces.includes(vizContest)
+    ) {
+      vizContest = vizTopRaces[0];
+      if (el.vizContest instanceof HTMLSelectElement) {
+        el.vizContest.value = vizContest;
+      }
     }
   }
 
@@ -1498,7 +1941,7 @@ document.addEventListener('DOMContentLoaded', () => {
       filtered = filtered.filter(row => row.state === vizState);
     }
     if (vizCounty) {
-      filtered = filtered.filter(row => normalizeCountyKey(row.county) === normalizeCountyKey(vizCounty));
+      filtered = filtered.filter(row => normalizeCountyKey(getVizJurisdictionName(row)) === normalizeCountyKey(vizCounty));
     }
     if (vizContest) {
       filtered = filtered.filter(row => row.contest === vizContest);
@@ -1515,7 +1958,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function refreshViz() {
-    ensureVizSelectionHasData();
+    if (vizInteractionMode === VIZ_INTERACTION_PREVIEW) {
+      ensureVizSelectionHasData();
+    }
     const filtered = applyVizFilters(vizRows);
     renderVizChart(filtered);
     renderVizTable(filtered);
@@ -1561,17 +2006,13 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshViz();
   }
 
-  function setVizDataset(value) {
-    if (!value) return;
-    vizDataset = value;
+  function setVizDataset(_value) {
+    vizDataset = VIZ_DATASET_WAREHOUSE;
     if (el.vizDataset instanceof HTMLSelectElement) {
-      el.vizDataset.value = value;
+      el.vizDataset.value = VIZ_DATASET_WAREHOUSE;
     }
-    if (vizDataset !== VIZ_DATASET_FINALIZED) {
-      setVizOverlayEnabled(false);
-    }
-    const sourceRows = getVizSourceRows();
-    applyVizDatasetRows(sourceRows);
+    setVizOverlayEnabled(false);
+    applyVizDatasetRows(getVizSourceRows());
     syncVizOverlayAvailability();
     updateVizModeBadges();
     renderVizStatus();
@@ -1584,37 +2025,124 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function stopPreviewFeedTimer() {
+    if (previewTimer) {
+      window.clearInterval(previewTimer);
+      previewTimer = null;
+    }
+  }
+
+  function getVizPreviewPoolRows() {
+    const sourceRows = getVizSourceRows();
+    return sourceRows.length ? sourceRows : vizRows;
+  }
+
+  function buildVizPreviewFrames(rows = getVizPreviewPoolRows()) {
+    const frameMap = new Map();
+    (Array.isArray(rows) ? rows : []).forEach(row => {
+      const year = getRowYear(row);
+      const state = String(row.state || '').trim();
+      const contest = String(row.contest || '').trim();
+      if (!year || !state || !contest) return;
+      const key = `${year}\u0000${state}\u0000${contest}`;
+      const votes = parseNumeric(row.votes);
+      const current = frameMap.get(key) || {
+        year,
+        state,
+        contest,
+        jurisdiction: '',
+        totalVotes: 0,
+      };
+      if (votes !== null) {
+        current.totalVotes += votes;
+      }
+      frameMap.set(key, current);
+    });
+    return Array.from(frameMap.values())
+      .filter(frame => frame.totalVotes > 0)
+      .sort((a, b) => {
+        if (b.totalVotes !== a.totalVotes) return b.totalVotes - a.totalVotes;
+        return `${b.year}|${b.state}|${b.contest}`.localeCompare(`${a.year}|${a.state}|${a.contest}`);
+      });
+  }
+
+  function setVizPreviewFrame(frame) {
+    if (!frame || vizInteractionMode !== VIZ_INTERACTION_PREVIEW) return;
+    vizYear = String(frame.year || '');
+    vizState = String(frame.state || '');
+    vizCounty = String(frame.jurisdiction || '');
+    vizContest = String(frame.contest || '');
+
+    if (el.vizYear instanceof HTMLSelectElement) el.vizYear.value = vizYear;
+    updateVizStates();
+
+    if (el.vizState instanceof HTMLSelectElement) el.vizState.value = vizState;
+    updateVizCounties();
+
+    if (el.vizCounty instanceof HTMLSelectElement) el.vizCounty.value = vizCounty;
+    if (el.vizContest instanceof HTMLSelectElement) el.vizContest.value = vizContest;
+
+    refreshViz();
+  }
+
   function startVizAutoRotation(_resetOrder = true) {
-    if (vizAutoLocked || vizAutoPaused) {
+    if (
+      vizInteractionMode !== VIZ_INTERACTION_PREVIEW
+      || vizAutoLocked
+      || vizAutoPaused
+      || vizHoverPaused
+    ) {
       stopVizAutoRotation();
       updateVizAutoToggleLabel();
       return;
     }
+
     stopVizAutoRotation();
-    const states = getVizStateList();
-    if (!states.length) return;
-    // Always rebuild order from scratch (never persist position)
-    vizAutoOrder = [...states];
-    // Shuffle for randomized start position each session
-    for (let i = vizAutoOrder.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [vizAutoOrder[i], vizAutoOrder[j]] = [vizAutoOrder[j], vizAutoOrder[i]];
+    const frames = buildVizPreviewFrames(vizRows);
+    if (!frames.length) return;
+
+    if (_resetOrder || !vizAutoOrder.length) {
+      vizAutoOrder = _shuffleArray([...frames]);
+      vizAutoIndex = 0;
+    } else {
+      const availableKeys = new Set(frames.map(frame => `${frame.year}\u0000${frame.state}\u0000${frame.contest}`));
+      vizAutoOrder = vizAutoOrder.filter(frame => availableKeys.has(`${frame.year}\u0000${frame.state}\u0000${frame.contest}`));
+      if (!vizAutoOrder.length) {
+        vizAutoOrder = _shuffleArray([...frames]);
+        vizAutoIndex = 0;
+      } else {
+        vizAutoIndex = Math.min(vizAutoIndex, vizAutoOrder.length - 1);
+      }
     }
-    vizAutoIndex = 0;
-    setVizStateContext(vizAutoOrder[vizAutoIndex]);
+
+    setVizPreviewFrame(vizAutoOrder[vizAutoIndex]);
     vizAutoTimer = window.setInterval(() => {
-      if (vizAutoLocked) return;
+      if (
+        vizInteractionMode !== VIZ_INTERACTION_PREVIEW
+        || vizAutoLocked
+        || vizAutoPaused
+        || vizHoverPaused
+      ) return;
       vizAutoIndex = (vizAutoIndex + 1) % vizAutoOrder.length;
-      setVizStateContext(vizAutoOrder[vizAutoIndex]);
+      setVizPreviewFrame(vizAutoOrder[vizAutoIndex]);
     }, 6000);
     updateVizAutoToggleLabel();
   }
 
   function pauseVizAutoRotation() {
-    if (vizAutoLocked) return;
-    vizAutoPaused = true;
+    if (
+      vizInteractionMode !== VIZ_INTERACTION_PREVIEW
+      || vizAutoLocked
+      || vizAutoPaused
+      || vizHoverPaused
+    ) return;
+    vizHoverPaused = true;
     stopVizAutoRotation();
-    if (el.vizHint) el.vizHint.classList.add('is-visible');
+    if (el.vizHint) {
+      el.vizHint.textContent = 'Preview paused while focused - move pointer away to resume.';
+      el.vizHint.classList.add('is-visible');
+    }
+    el.vizPanel?.classList.add('is-focus-paused');
     updateVizAutoToggleLabel();
   }
 
@@ -1623,76 +2151,121 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function resumeVizAutoRotation() {
-    if (vizAutoLocked || !vizAutoPaused) return;
-    vizAutoPaused = false;
+    if (
+      vizInteractionMode !== VIZ_INTERACTION_PREVIEW
+      || vizAutoLocked
+      || vizAutoPaused
+      || !vizHoverPaused
+    ) return;
+    vizHoverPaused = false;
+    el.vizPanel?.classList.remove('is-focus-paused');
     startVizAutoRotation(false);
     hideVizHint();
     updateVizAutoToggleLabel();
   }
 
-  function getVizStateList() {
-    // Return sorted list; startVizAutoRotation will shuffle for random start
-    const scopeRows = vizYear
-      ? vizRows.filter(row => getRowYear(row) === vizYear)
-      : vizRows;
-    return Array.from(new Set(scopeRows.map(row => String(row.state || '').trim()).filter(Boolean))).sort();
-  }
-
-  function pickTopContestForState(state) {
-    if (!state) return '';
-    const totals = {};
-    vizRows.forEach(row => {
-      if ((getRowYear(row) || '') !== (vizYear || '')) return;
-      if (String(row.state || '').trim() !== state) return;
-      if (!row.contest) return;
-      const votes = parseNumeric(row.votes);
-      if (votes === null) return;
-      totals[row.contest] = (totals[row.contest] || 0) + votes;
-    });
-    const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]);
-    return sorted[0]?.[0] || '';
-  }
-
-  function setVizStateContext(state) {
-    if (!state) return;
-    vizState = state;
-    if (el.vizState instanceof HTMLSelectElement) {
-      el.vizState.value = state;
+  function enterVizExploreMode(reason = 'manual') {
+    vizInteractionMode = VIZ_INTERACTION_EXPLORE;
+    vizAutoLocked = true;
+    vizAutoPaused = true;
+    vizHoverPaused = false;
+    previewActive = false;
+    previewMode = 'idle';
+    stopPreviewFeedTimer();
+    stopVizAutoRotation();
+    setPreviewState(false);
+    el.vizPanel?.classList.remove('is-focus-paused');
+    hideVizHint();
+    saveVizPlaybackPreference(true);
+    updateVizAutoToggleLabel();
+    if (reason && reason !== 'manual') {
+      setPreviewStatus(`Explore mode • ${reason}`);
     }
-    updateVizCounties();
-    const topContest = pickTopContestForState(state);
-    if (topContest) {
-      vizContest = topContest;
-      if (el.vizContest instanceof HTMLSelectElement) el.vizContest.value = topContest;
-    }
-    refreshViz();
   }
 
-  function stepVizState(step) {
-    const states = getVizStateList();
-    if (!states.length) return;
-    const currentIndex = Math.max(0, states.indexOf(vizState));
-    const nextIndex = (currentIndex + step + states.length) % states.length;
-    setVizStateContext(states[nextIndex]);
-    vizAutoOrder = [...states];
-    vizAutoIndex = nextIndex;
+  function enterVizPreviewMode({ paused = false, preserveRows = true } = {}) {
+    vizInteractionMode = VIZ_INTERACTION_PREVIEW;
+    vizAutoLocked = false;
+    vizAutoPaused = !!paused;
+    vizHoverPaused = false;
+    previewActive = true;
+    previewMode = 'idle';
+    setPreviewState(true);
+    el.vizPanel?.classList.remove('is-focus-paused');
+    hideVizHint();
+    saveVizPlaybackPreference(vizAutoPaused);
+
+    const sourceRows = getVizSourceRows();
+    if (!preserveRows && sourceRows.length) {
+      applyVizDatasetRows(sourceRows);
+    }
+    if (sourceRows.length) {
+      stopPreviewFeedTimer();
+      if (!vizAutoPaused) {
+        startVizAutoRotation(false);
+      }
+    } else if (!vizAutoPaused) {
+      startPreviewCycle('idle');
+    }
+    updateVizAutoToggleLabel();
+  }
+
+  function stepVizPreviewFrame(step) {
+    if (vizInteractionMode !== VIZ_INTERACTION_PREVIEW) {
+      enterVizPreviewMode({ paused: true, preserveRows: false });
+    } else {
+      vizAutoPaused = true;
+      vizAutoLocked = false;
+      vizHoverPaused = false;
+      stopVizAutoRotation();
+      saveVizPlaybackPreference(true);
+    }
+
+    const frames = buildVizPreviewFrames(vizRows);
+    if (!frames.length) {
+      updateVizAutoToggleLabel();
+      return;
+    }
+
+    const keys = new Map(frames.map(frame => [`${frame.year}\u0000${frame.state}\u0000${frame.contest}`, frame]));
+    if (!vizAutoOrder.length) {
+      vizAutoOrder = _shuffleArray([...frames]);
+      vizAutoIndex = 0;
+    } else {
+      vizAutoOrder = vizAutoOrder
+        .map(frame => keys.get(`${frame.year}\u0000${frame.state}\u0000${frame.contest}`))
+        .filter(Boolean);
+      if (!vizAutoOrder.length) {
+        vizAutoOrder = _shuffleArray([...frames]);
+        vizAutoIndex = 0;
+      }
+    }
+
+    vizAutoIndex = (vizAutoIndex + step + vizAutoOrder.length) % vizAutoOrder.length;
+    setVizPreviewFrame(vizAutoOrder[vizAutoIndex]);
+    updateVizAutoToggleLabel();
   }
 
   function updateVizAutoToggleLabel() {
     if (!el.vizAutoToggleBtn) return;
-    el.vizAutoToggleBtn.textContent = vizAutoPaused ? 'Start' : 'Pause';
+    const shouldStart = (
+      vizInteractionMode === VIZ_INTERACTION_EXPLORE
+      || vizAutoPaused
+    );
+    el.vizAutoToggleBtn.textContent = shouldStart ? 'Start' : 'Pause';
     updateVizModeBadges();
     renderVizStatus();
   }
 
   function getVizPlaybackLabel() {
+    if (vizInteractionMode === VIZ_INTERACTION_EXPLORE) return 'Explore';
     if (vizAutoPaused) return 'Paused';
-    if (vizAutoLocked) return 'Manual';
+    if (vizHoverPaused) return 'Focused';
     return 'Auto';
   }
 
   function getVizScopeLabel() {
-    return vizCounty ? 'County focus' : 'All counties';
+    return vizCounty ? 'Jurisdiction focus' : 'All jurisdictions';
   }
 
   function updateVizModeBadges() {
@@ -1703,7 +2276,7 @@ document.addEventListener('DOMContentLoaded', () => {
       el.vizScopeBadge.textContent = `Scope: ${getVizScopeLabel()}`;
     }
     if (el.vizCountyScopeBadge) {
-      el.vizCountyScopeBadge.textContent = vizCounty ? `County: ${vizCounty}` : 'All counties';
+      el.vizCountyScopeBadge.textContent = vizCounty ? `Jurisdiction: ${vizCounty}` : 'All jurisdictions';
       el.vizCountyScopeBadge.classList.toggle('is-focused', !!vizCounty);
     }
   }
@@ -1711,7 +2284,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderVizStatus() {
     if (!el.vizPreviewStatus) return;
     const baseText = vizStatusBase || 'Visualization ready';
-    el.vizPreviewStatus.textContent = `${baseText} • Scope: ${getVizScopeLabel()} • Playback: ${getVizPlaybackLabel()}`;
+    const modeLabel = vizInteractionMode === VIZ_INTERACTION_EXPLORE ? 'Explore' : 'Preview';
+    el.vizPreviewStatus.textContent = `${baseText} • Mode: ${modeLabel} • Scope: ${getVizScopeLabel()} • Playback: ${getVizPlaybackLabel()}`;
   }
 
   function setPreviewStatus(text) {
@@ -1735,98 +2309,50 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 700);
   }
 
-  function buildPreviewUrl(mode) {
-    if (!previewUrl) return null;
-    const url = new URL(previewUrl, window.location.origin);
-    url.searchParams.set('mode', mode || 'idle');
-    url.searchParams.set('limit', '140');
-    if (mode === 'active') {
-      const state = getSelectedDropoffState();
-      const county = getSelectedDropoffCounty();
-      const contest = getSelectedDropoffContest();
-      const year = getSelectedDropoffYear();
-      if (state) url.searchParams.set('state', state);
-      if (county) url.searchParams.set('county', county);
-      if (contest) url.searchParams.set('contest', contest);
-      if (year) url.searchParams.set('year', year);
-    }
-    return url.toString();
-  }
-
-  async function fetchPreviewPayload(mode) {
-    const url = buildPreviewUrl(mode);
-    if (!url) return null;
-    if (authRestrictedMode) return null;
-    try {
-      const result = await fetchJsonWithRetry(url, {
-        authReason: 'Authentication required for Data Framework preview feed.',
-        retries: 2
-      });
-      if (result.authBlocked || !result.ok) return null;
-      return result.data;
-    } catch (err) {
-      return null;
-    }
-  }
-
   async function refreshPreview() {
     if (!previewActive) return;
-    if (curatedSelection) return;
     const sourceRows = getVizSourceRows();
-    if (sourceRows.length) {
-      applyVizDatasetRows(sourceRows);
-      const label = vizDataset === VIZ_DATASET_DOWN_BALLOT
-        ? 'DB-Lite Down-Ballot'
-        : vizDataset === VIZ_DATASET_WAREHOUSE
-          ? 'Warehouse SQL Core'
-          : 'DB-Lite Finalized';
-      setPreviewStatus(`${label} • ${sourceRows.length} rows`);
-      ghostPreviewPanels();
-      return;
-    }
-    const payload = await fetchPreviewPayload(previewMode);
-    const rows = Array.isArray(payload?.rows) ? payload.rows : [];
-    if (!rows.length) {
-      setPreviewStatus('Preview unavailable — waiting for warehouse data.');
-      clearVisualization();
-      return;
-    }
-    vizRows = rows
-      .map(mapWarehouseVizRecord)
-      .filter(Boolean);
-    if (!vizRows.length) {
-      setPreviewStatus('Preview rows could not be normalized for visualization.');
-      clearVisualization();
-      return;
-    }
-    setVizFilters(vizRows);
-    refreshViz();
-    ghostPreviewPanels();
-    const meta = payload?.meta || {};
-    const label = [meta.contest, meta.county, meta.state, meta.year].filter(Boolean).join(' • ');
-    setPreviewStatus(label ? `Previewing ${label}` : 'Previewing warehouse sample');
-  }
 
+    if (!sourceRows.length) {
+      setPreviewStatus('Preview waiting for canonical publication rows.');
+      return;
+    }
+
+    stopPreviewFeedTimer();
+    if (!vizRows.length || vizRows !== sourceRows) {
+      applyVizDatasetRows(sourceRows);
+    }
+    setPreviewStatus(`Canonical Production â€¢ ${sourceRows.length} rows`);
+    if (!vizAutoPaused && !vizHoverPaused) {
+      startVizAutoRotation(false);
+    }
+  }
   function startPreviewCycle(mode = 'idle') {
-    if (!previewUrl) return;
     if (authRestrictedMode) return;
+    if (vizInteractionMode !== VIZ_INTERACTION_PREVIEW) return;
     previewActive = true;
     previewMode = mode;
     setPreviewState(true);
-    if (previewTimer) {
-      window.clearInterval(previewTimer);
-      previewTimer = null;
+    stopPreviewFeedTimer();
+
+    const sourceRows = getVizSourceRows();
+    if (sourceRows.length) {
+      if (!vizRows.length || vizRows !== sourceRows) {
+        applyVizDatasetRows(sourceRows);
+      }
+      if (!vizAutoPaused && !vizHoverPaused) {
+        startVizAutoRotation(false);
+      }
+      return;
     }
+
     refreshPreview();
     previewTimer = window.setInterval(refreshPreview, 12000);
   }
 
   function stopPreviewCycle() {
     previewActive = false;
-    if (previewTimer) {
-      window.clearInterval(previewTimer);
-      previewTimer = null;
-    }
+    stopPreviewFeedTimer();
     setPreviewState(false);
     setPreviewStatus('');
   }
@@ -1842,83 +2368,14 @@ document.addEventListener('DOMContentLoaded', () => {
     return (value || '').toString().trim().toLowerCase();
   }
 
-  function mapDbLiteFinalizedRecord(record) {
-    if (!record || typeof record !== 'object') return null;
-    const rawParty = firstPresent(record['Ballot Party'], record['Party'], record.party, '');
-    const writeInRaw = firstPresent(record['Is Write In'], '');
-    const isWriteIn = String(writeInRaw).toLowerCase() === 'true'
-      || String(writeInRaw).toLowerCase() === 'yes'
-      || String(writeInRaw) === '1';
-    const partyLabel = isWriteIn ? 'Write-In' : rawParty;
-    return {
-      dataset_type: VIZ_DATASET_FINALIZED,
-      state: firstPresent(record['State'], record.state, '') || '',
-      county: firstPresent(record['County/District'], record['County'], record.county, record.jurisdiction_name, '') || '',
-      contest: firstPresent(record['Office'], record['Contest'], record.contest, '') || '',
-      candidate: firstPresent(record['Ballot Candidate Name'], record['Candidate'], record.candidate, '') || '',
-      party: firstPresent(partyLabel, record['Party'], record.party, '') || '',
-      votes: firstNumeric(record['Total Votes'], record['Uncategorized Votes'], record.votes, record.total_votes),
-      uncategorized_votes: firstNumeric(record['Uncategorized Votes'], record.uncategorized_votes),
-      early_votes: firstNumeric(record['Early Votes'], record.early_votes),
-      election_day_votes: firstNumeric(record['Election Day Votes'], record.election_day_votes),
-      mail_in_votes: firstNumeric(record['Mail in Votes'], record.mail_in_votes),
-      provisional_votes: firstNumeric(record['Provisional Votes'], record.provisional_votes),
-      write_in_votes: isWriteIn ? 1 : 0,
-      year: extractYearFromValue(firstPresent(record['Year'], record.year, record.election_year, record['Election Date'], record['Contest'], '') || '')
-    };
-  }
-
-  function mapDbLiteDownBallotRecord(record) {
-    if (!record || typeof record !== 'object') return null;
-    const downVotes = firstNumeric(record['Down-Ballot Votes'], record.down_ballot_votes);
-    const presidentialVotes = firstNumeric(record['Presidential Votes'], record.presidential_votes);
-    const deltaVotes = (downVotes !== null && presidentialVotes !== null)
-      ? downVotes - presidentialVotes
-      : null;
-    const explicitPct = parsePercent(firstPresent(record['Drop-off %'], record.dropoff_pct));
-    const computedPct = (
-      explicitPct === null
-      && deltaVotes !== null
-      && presidentialVotes !== null
-      && presidentialVotes !== 0
-    )
-      ? (deltaVotes / presidentialVotes) * 100
-      : null;
-    const eligibleVoters = firstNumeric(
-      record['Eligible Voters'],
-      record['Total Eligible Voters'],
-      record['Registered Voters'],
-      record['Voting Age Population'],
-      record.eligible_voters,
-      record.registered_voters
-    );
-    return {
-      dataset_type: VIZ_DATASET_DOWN_BALLOT,
-      year: extractYearFromValue(firstPresent(record['Year'], record.year, '') || ''),
-      state: firstPresent(record['State'], record.state, '') || '',
-      county: firstPresent(record['County'], record.county, record.jurisdiction_name, '') || '',
-      contest: firstPresent(record['Office'], record.office, 'Down-Ballot') || 'Down-Ballot',
-      party: firstPresent(record['Party'], record.party, '') || '',
-      votes: firstNumeric(downVotes, presidentialVotes, record.votes),
-      down_ballot_votes: downVotes,
-      presidential_votes: presidentialVotes,
-      delta_votes: deltaVotes,
-      dropoff_pct: explicitPct !== null ? explicitPct : computedPct,
-      eligible_voters: eligibleVoters,
-      turnout_pct: (
-        presidentialVotes !== null
-        && eligibleVoters !== null
-        && eligibleVoters !== 0
-      ) ? (presidentialVotes / eligibleVoters) * 100 : null
-    };
-  }
-
   function mapWarehouseVizRecord(record) {
     if (!record || typeof record !== 'object') return null;
     return {
       dataset_type: VIZ_DATASET_WAREHOUSE,
       state: firstPresent(record.state, record.State, '') || '',
-      county: firstPresent(record.jurisdiction_name, record.county, record['County/District'], record.County, '') || '',
+      jurisdiction_name: firstPresent(record.jurisdiction_name, '') || '',
+      jurisdiction_type: firstPresent(record.jurisdiction_type, '') || '',
+      county: firstPresent(record.county, record.County, '') || '',
       contest: firstPresent(record.contest, record.office, record.Office, record.race, '') || '',
       candidate: firstPresent(record.candidate, record.Candidate, record['Ballot Candidate Name'], '') || '',
       party: firstPresent(record.party, record.Party, record['Ballot Party'], '') || '',
@@ -1929,20 +2386,28 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function getVizSourceRows() {
-    if (vizDataset === VIZ_DATASET_DOWN_BALLOT) return dbLiteDownBallotRows;
-    if (vizDataset === VIZ_DATASET_WAREHOUSE) return warehouseVizRows;
-    return dbLiteFinalizedRows;
+    if (vizInteractionMode === VIZ_INTERACTION_PREVIEW && canonicalPreviewRows.length) {
+      return canonicalPreviewRows;
+    }
+    return warehouseVizRows;
   }
 
   function applyVizDatasetRows(rows) {
     vizRows = Array.isArray(rows) ? rows : [];
     if (!vizRows.length) {
-      hydrateVizFiltersFromSnapshot(vizDataset);
+      // G2.4.3B1.2: a no-result Explore response is a valid result, not a request
+      // to reset the operator scope or erase available facet options.
+      if (vizInteractionMode === VIZ_INTERACTION_PREVIEW) {
+        hydrateVizFiltersFromSnapshot(vizDataset);
+      }
+      renderVizChart([]);
+      renderVizTable([]);
       syncVizOverlayAvailability();
-      clearVisualization();
+      updateVizModeBadges();
+      renderVizStatus();
       return;
     }
-    vizAutoLocked = false;
+    // G2.4.3B1: applying asynchronous rows must never clear an operator Explore lock.
     setVizFilters(vizRows);
     refreshViz();
     syncVizOverlayAvailability();
@@ -1950,23 +2415,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateVisualizationFromCurated(item) {
     if (!item) {
-      clearVisualization();
-      return;
+      return { status: 'idle', count: 0, axes: [] };
     }
-    vizAutoLocked = false;
+
+    // G3.1C1.6: Source Evidence is relationship context only. Selecting evidence
+    // must never change Preview/Explore mode and must never replace Analysis rows.
+    const axes = getEvidenceMatchAxes(item);
     const sourceRows = getVizSourceRows();
+
     if (!sourceRows.length) {
-      clearVisualization();
-      return;
+      return { status: 'feed-unavailable', count: 0, axes };
     }
+
     const filtered = sourceRows.filter(row => {
       const matchState = item.state ? normalizeValue(row.state) === normalizeValue(item.state) : true;
-      const matchCounty = item.county ? normalizeValue(row.county) === normalizeValue(item.county) : true;
+      const matchCounty = item.county ? normalizeValue(getVizJurisdictionName(row)) === normalizeValue(item.county) : true;
       const matchContest = item.contest ? normalizeValue(row.contest) === normalizeValue(item.contest) : true;
-      const matchYear = item.year ? getRowYear(row) === String(item.year) : true;
-      return matchState && matchCounty && matchContest && matchYear;
+      return matchState && matchCounty && matchContest;
     });
-    applyVizDatasetRows(filtered.length ? filtered : sourceRows);
+
+    if (!filtered.length) {
+      return { status: 'no-match', count: 0, axes };
+    }
+
+    return { status: 'context-match', count: filtered.length, axes };
   }
 
   function renderCuratedList(items) {
@@ -2015,6 +2487,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectedId = curatedSelection?.id || null;
     if (!selectedId || !items.some(item => item.id === selectedId)) {
       curatedSelection = null;
+      resetEvidenceRelationshipContext();
       if (items[0] && !previewActive) {
         renderCuratedDetail(items[0]);
         const firstButton = el.curatedList?.querySelector('.curated-item');
@@ -2034,7 +2507,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (result.authBlocked) return;
     if (!result.ok || !result.data) {
       curatedItems = [];
+      curatedSelection = null;
       renderCuratedList([]);
+      resetEvidenceRelationshipContext();
       setStatusText(el.curatedStatus, 'Failed to load curated datasets.');
       return;
     }
@@ -2047,133 +2522,6 @@ document.addEventListener('DOMContentLoaded', () => {
       clearVisualization();
     }
     setStatusText(el.curatedStatus, curatedItems.length ? `Loaded ${curatedItems.length} datasets.` : 'No curated datasets available.');
-  }
-
-  async function fetchDbLiteDataset(url, mapper) {
-    if (!url) return { ok: false, rows: [] };
-    if (authRestrictedMode) return { ok: false, rows: [] };
-    try {
-      const result = await fetchJsonWithRetry(url, {
-        authReason: 'Authentication required for DB-Lite dataset feeds.',
-        retries: 2
-      });
-      if (result.authBlocked || !result.ok) return { ok: false, rows: [] };
-      const payload = result.data;
-      const records = Array.isArray(payload?.records) ? payload.records : [];
-      const rows = records.map(mapper).filter(Boolean);
-      return {
-        ok: true,
-        rows,
-        rowCount: payload?.row_count || rows.length,
-        sheetName: payload?.sheet_name || ''
-      };
-    } catch (err) {
-      return { ok: false, rows: [] };
-    }
-  }
-
-  async function fetchFinalizedMetadata() {
-    if (!statesCountiesUrl) return;
-    try {
-      const result = await fetchJsonWithRetry(statesCountiesUrl, {
-        retries: 1
-      });
-      if (!result.ok) return;
-      const payload = result.data;
-      if (!payload || payload.success === false) return;
-      finalizedMetadata = {
-        states: Array.isArray(payload.states) ? payload.states : [],
-        counties: payload.counties && typeof payload.counties === 'object' ? payload.counties : {},
-        years: Array.isArray(payload.years) ? payload.years.map(String) : [],
-        contests: Array.isArray(payload.contests) ? payload.contests : [],
-      };
-    } catch (err) {
-      // best-effort only
-    }
-  }
-
-  async function refreshFinalizedSliceForSelection() {
-    if (vizDataset !== VIZ_DATASET_FINALIZED) return;
-    if (authRestrictedMode) return;
-    try {
-      const url = new URL('/api/election_data/db_lite/finalized', window.location.origin);
-      url.searchParams.set('limit', '2000');
-      if (vizState) url.searchParams.set('state', vizState);
-      if (vizYear) url.searchParams.set('year', vizYear);
-      if (vizCounty) url.searchParams.set('county', vizCounty);
-      if (vizContest) url.searchParams.set('contest', vizContest);
-
-      const result = await fetchJsonWithRetry(url.toString(), {
-        authReason: 'Authentication required for DB-Lite finalized dataset queries.',
-        retries: 2
-      });
-      if (result.authBlocked || !result.ok) return;
-      const payload = result.data;
-      if (!payload || payload.success === false) return;
-      const records = Array.isArray(payload.records) ? payload.records : [];
-      const rows = records.map(mapDbLiteFinalizedRecord).filter(Boolean);
-      if (!rows.length) return;
-      dbLiteFinalizedRows = rows;
-      applyVizDatasetRows(dbLiteFinalizedRows);
-      setPreviewStatus(`DB-Lite Finalized • ${payload.filtered_count || rows.length} filtered rows`);
-    } catch (err) {
-      // best-effort only
-    }
-  }
-
-  async function fetchDbLiteFinalized() {
-    const result = await fetchDbLiteDataset(dbLiteFinalizedUrl, mapDbLiteFinalizedRecord);
-    dbLiteFinalizedRows = result.ok ? result.rows : [];
-    if (result.ok && dbLiteFinalizedRows.length) {
-      writeVizSnapshot(VIZ_DATASET_FINALIZED, {
-        rowCount: dbLiteFinalizedRows.length,
-        options: {
-          years: Array.from(new Set(dbLiteFinalizedRows.map(row => getRowYear(row)).filter(Boolean))).sort((a, b) => Number(b) - Number(a))
-        },
-        selection: {
-          vizYear,
-          vizState,
-          vizCounty,
-          vizContest,
-        },
-      });
-    }
-    if (result.ok && vizDataset === VIZ_DATASET_FINALIZED && !curatedSelection) {
-      applyVizDatasetRows(dbLiteFinalizedRows);
-      setPreviewStatus(`DB-Lite Finalized • ${result.rowCount || dbLiteFinalizedRows.length} rows`);
-    }
-    syncVizOverlayAvailability();
-  }
-
-  async function fetchDbLiteDownBallot() {
-    const result = await fetchDbLiteDataset(dbLiteDownBallotUrl, mapDbLiteDownBallotRecord);
-    dbLiteDownBallotRows = result.ok ? result.rows : [];
-    if (result.ok && dbLiteDownBallotRows.length) {
-      writeVizSnapshot(VIZ_DATASET_DOWN_BALLOT, {
-        rowCount: dbLiteDownBallotRows.length,
-        options: {
-          years: Array.from(new Set(dbLiteDownBallotRows.map(row => getRowYear(row)).filter(Boolean))).sort((a, b) => Number(b) - Number(a))
-        },
-        selection: {
-          vizYear,
-          vizState,
-          vizCounty,
-          vizContest,
-        },
-      });
-    }
-    loadDropoffData();
-    if (result.ok && vizDataset === VIZ_DATASET_DOWN_BALLOT && !curatedSelection) {
-      applyVizDatasetRows(dbLiteDownBallotRows);
-      setPreviewStatus(`DB-Lite Down-Ballot • ${result.rowCount || dbLiteDownBallotRows.length} rows`);
-    }
-    syncVizOverlayAvailability();
-  }
-
-  function loadDropoffData() {
-    dropoffData = Array.isArray(dbLiteDownBallotRows) ? [...dbLiteDownBallotRows] : [];
-    hydrateDropoffSelectors(dropoffData);
-    syncVizOverlayAvailability();
   }
 
   function getDropoffRowsForControls(rows = dropoffData) {
@@ -2648,6 +2996,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setStatus(el.uploadStatus, 'ok', 'Upload successful!');
             showInfoToast('Upload successful.');
             fetchData(true);
+            fetchCanonicalRecordData(true);
           } else {
             setStatus(el.uploadStatus, 'error', `Upload failed: ${json.error || 'Unknown error'}`);
             showErrorToast('Upload failed.');
@@ -2960,7 +3309,7 @@ document.addEventListener('DOMContentLoaded', () => {
     render();
   });
 
-  el.refresh?.addEventListener('click', () => fetchData(true));
+  el.refresh?.addEventListener('click', () => fetchCanonicalRecordData(true));
 
   el.resetFilters?.addEventListener('click', () => {
     searchTerm = '';
@@ -3031,7 +3380,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const tgt = e.target;
     if (tgt instanceof HTMLSelectElement) {
       priorityState = tgt.value || '';
+      fetchCanonicalRecordFacets();
       fetchPriorityStatus();
+      fetchCanonicalRecordData(true);
     }
   });
 
@@ -3039,7 +3390,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const tgt = e.target;
     if (tgt instanceof HTMLSelectElement) {
       priorityYear = tgt.value || '';
+      fetchCanonicalRecordFacets();
       fetchPriorityStatus();
+      fetchCanonicalRecordData(true);
     }
   });
 
@@ -3073,7 +3426,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   el.curatedRefresh?.addEventListener('click', () => fetchCuratedDatasets());
 
-  // Pause auto-rotation when hovering over chart, table, OR filter dropdowns
+  // Preview hover/focus freezes transient playback only; it never changes Explore scope.
   el.vizChart?.addEventListener('mouseenter', pauseVizAutoRotation);
   el.vizChart?.addEventListener('mouseleave', resumeVizAutoRotation);
   el.vizTable?.addEventListener('mouseenter', pauseVizAutoRotation);
@@ -3084,12 +3437,9 @@ document.addEventListener('DOMContentLoaded', () => {
   el.vizDataset?.addEventListener('change', e => {
     const tgt = e.target;
     if (tgt instanceof HTMLSelectElement) {
-      vizAutoLocked = true;
-      stopVizAutoRotation();
-      setVizDataset(tgt.value || VIZ_DATASET_FINALIZED);
-      if ((tgt.value || VIZ_DATASET_FINALIZED) === VIZ_DATASET_FINALIZED) {
-        refreshFinalizedSliceForSelection();
-      }
+      enterVizExploreMode('analysis view selected');
+      setVizDataset(VIZ_DATASET_WAREHOUSE);
+      refreshCanonicalExploreScope();
       updateVizAutoToggleLabel();
     }
   });
@@ -3097,13 +3447,10 @@ document.addEventListener('DOMContentLoaded', () => {
   el.vizYear?.addEventListener('change', e => {
     const tgt = e.target;
     if (tgt instanceof HTMLSelectElement) {
-      vizAutoLocked = true;
-      stopVizAutoRotation();
+      enterVizExploreMode('year selected');
       hideVizHint();
-      setVizYear(tgt.value);
-      if (vizDataset === VIZ_DATASET_FINALIZED) {
-        refreshFinalizedSliceForSelection();
-      }
+      vizYear = tgt.value || '';
+      refreshCanonicalExploreScope();
       updateVizAutoToggleLabel();
     }
   });
@@ -3111,13 +3458,10 @@ document.addEventListener('DOMContentLoaded', () => {
   el.vizState?.addEventListener('change', e => {
     const tgt = e.target;
     if (tgt instanceof HTMLSelectElement) {
-      vizAutoLocked = true;
-      stopVizAutoRotation();
+      enterVizExploreMode('state selected');
       hideVizHint();
-      setVizState(tgt.value);
-      if (vizDataset === VIZ_DATASET_FINALIZED) {
-        refreshFinalizedSliceForSelection();
-      }
+      vizState = tgt.value || '';
+      refreshCanonicalExploreScope();
       updateVizAutoToggleLabel();
     }
   });
@@ -3125,13 +3469,10 @@ document.addEventListener('DOMContentLoaded', () => {
   el.vizCounty?.addEventListener('change', e => {
     const tgt = e.target;
     if (tgt instanceof HTMLSelectElement) {
-      vizAutoLocked = true;
-      stopVizAutoRotation();
+      enterVizExploreMode('jurisdiction selected');
       hideVizHint();
-      setVizCounty(tgt.value);
-      if (vizDataset === VIZ_DATASET_FINALIZED) {
-        refreshFinalizedSliceForSelection();
-      }
+      vizCounty = tgt.value || '';
+      refreshCanonicalExploreScope();
       updateVizAutoToggleLabel();
     }
   });
@@ -3139,50 +3480,35 @@ document.addEventListener('DOMContentLoaded', () => {
   el.vizContest?.addEventListener('change', e => {
     const tgt = e.target;
     if (tgt instanceof HTMLSelectElement) {
-      vizAutoLocked = true;
-      stopVizAutoRotation();
+      enterVizExploreMode('contest selected');
       hideVizHint();
-      setVizContest(tgt.value);
-      if (vizDataset === VIZ_DATASET_FINALIZED) {
-        refreshFinalizedSliceForSelection();
-      }
+      vizContest = tgt.value || '';
+      refreshCanonicalExploreScope();
       updateVizAutoToggleLabel();
     }
   });
 
   el.vizPrevStateBtn?.addEventListener('click', () => {
-    vizAutoLocked = true;
-    vizAutoPaused = true;
-    stopVizAutoRotation();
     hideVizHint();
-    stepVizState(-1);
-    saveVizPlaybackPreference(true);
-    updateVizAutoToggleLabel();
+    stepVizPreviewFrame(-1);
   });
 
   el.vizNextStateBtn?.addEventListener('click', () => {
-    vizAutoLocked = true;
-    vizAutoPaused = true;
-    stopVizAutoRotation();
     hideVizHint();
-    stepVizState(1);
-    saveVizPlaybackPreference(true);
-    updateVizAutoToggleLabel();
+    stepVizPreviewFrame(1);
   });
 
   el.vizAutoToggleBtn?.addEventListener('click', () => {
-    if (vizAutoPaused || vizAutoLocked) {
-      vizAutoLocked = false;
-      vizAutoPaused = false;
-      hideVizHint();
-      startVizAutoRotation(false);
-      saveVizPlaybackPreference(false);
+    if (vizInteractionMode === VIZ_INTERACTION_EXPLORE || vizAutoPaused) {
+      enterVizPreviewMode({ paused: false, preserveRows: false });
     } else {
-      pauseVizAutoRotation();
-      vizAutoLocked = true;
+      vizAutoPaused = true;
+      vizHoverPaused = false;
+      stopVizAutoRotation();
       saveVizPlaybackPreference(true);
+      hideVizHint();
+      updateVizAutoToggleLabel();
     }
-    updateVizAutoToggleLabel();
   });
 
   el.vizDropoffOverlayToggle?.addEventListener('change', e => {
@@ -3321,33 +3647,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- Data Fetch ----------
   function fetchData(showLoading = false) {
+    const requestSeq = ++canonicalDataRequestSeq;
+    if (canonicalDataAbortController) canonicalDataAbortController.abort();
+    canonicalDataAbortController = new AbortController();
+
     (async () => {
       if (showLoading) {
-        setStatus(el.status, 'info', 'Loading data...');
-        renderSkeleton();
+        setPreviewStatus('Loading Canonical Production Analysis...');
       }
-      const result = await fetchJsonWithRetry(apiUrl, {
-        authReason: 'Authentication required for data framework table feed.',
+
+      const result = await fetchJsonWithRetry(buildCanonicalDataUrl(), {
+        authReason: 'Authentication required for canonical Analysis feed.',
         retries: 2,
+        signal: canonicalDataAbortController.signal,
       });
+      if (result?.aborted || requestSeq !== canonicalDataRequestSeq) return;
       if (result.authBlocked) return;
       if (!result.ok || !result.data) {
         throw new Error(`Server error ${result.status || 'unknown'}.`);
       }
+
       const data = result.data;
-      rawData = Array.isArray(data)
+      const canonicalRows = Array.isArray(data)
         ? data
         : Array.isArray(data?.rows) ? data.rows
         : Array.isArray(data?.items) ? data.items
         : [];
-      if (!Array.isArray(rawData)) rawData = [];
 
-      warehouseVizRows = rawData.map(mapWarehouseVizRecord).filter(Boolean);
+      warehouseVizRows = canonicalRows
+        .map(mapWarehouseVizRecord)
+        .filter(Boolean);
+
+      analysisRowsPossiblyTruncated =
+        canonicalRows.length >= CANONICAL_CLIENT_ROW_LIMIT;
+
+      if (!hasCanonicalScope() && warehouseVizRows.length) {
+        canonicalPreviewRows = [...warehouseVizRows];
+      }
+
       if (warehouseVizRows.length) {
         writeVizSnapshot(VIZ_DATASET_WAREHOUSE, {
           rowCount: warehouseVizRows.length,
           options: {
-            years: Array.from(new Set(warehouseVizRows.map(row => getRowYear(row)).filter(Boolean))).sort((a, b) => Number(b) - Number(a))
+            years: Array.from(
+              new Set(warehouseVizRows.map(row => getRowYear(row)).filter(Boolean))
+            ).sort((a, b) => Number(b) - Number(a))
           },
           selection: {
             vizYear,
@@ -3356,49 +3700,124 @@ document.addEventListener('DOMContentLoaded', () => {
             vizContest,
           },
         });
-        if (vizDataset === VIZ_DATASET_WAREHOUSE && !curatedSelection) {
-          applyVizDatasetRows(warehouseVizRows);
-          setPreviewStatus(`Canonical Production • ${warehouseVizRows.length} rows`);
+      }
+
+      if (vizDataset === VIZ_DATASET_WAREHOUSE) {
+        // Fresh canonical Analysis rows always win. Evidence is evaluated only
+        // after the canonical scope has been rendered, so a no-match cannot
+        // leave stale rows from the previous Analysis request.
+        applyVizDatasetRows(warehouseVizRows);
+
+        if (curatedSelection) {
+          const analysisResult = updateVisualizationFromCurated(curatedSelection);
+          updateEvidenceRelationshipContext(curatedSelection, analysisResult);
+        }
+
+        if (analysisRowsPossiblyTruncated) {
+          setPreviewStatus(
+            `Canonical Production - ${warehouseVizRows.length} rows - API cap reached; totals may be partial`
+          );
+        } else {
+          setPreviewStatus(`Canonical Production - ${warehouseVizRows.length} rows`);
         }
       }
+    })().catch(err => {
+      if (requestSeq !== canonicalDataRequestSeq || (err && err.name === 'AbortError')) {
+        return;
+      }
+      const msg = err?.message || String(err);
+      setPreviewStatus(`Canonical Analysis load failed - ${msg}`);
+      showErrorToast('Failed to load Analysis data.');
+    });
+  }
 
-      if (!compactPreferenceSet && rawData.length) {
-        setCompactTable(rawData.length >= COMPACT_AUTO_THRESHOLD);
+  function fetchCanonicalRecordData(showLoading = false) {
+    const requestSeq = ++canonicalRecordRequestSeq;
+    if (canonicalRecordAbortController) canonicalRecordAbortController.abort();
+    canonicalRecordAbortController = new AbortController();
+
+    (async () => {
+      if (showLoading) {
+        setStatus(el.status, 'info', 'Loading Canonical Record data...');
+        renderSkeleton();
       }
 
-      // Trim objects with non-plain types
+      const result = await fetchJsonWithRetry(buildCanonicalRecordDataUrl(), {
+        authReason: 'Authentication required for Canonical Record feed.',
+        retries: 2,
+        signal: canonicalRecordAbortController.signal,
+      });
+      if (result?.aborted || requestSeq !== canonicalRecordRequestSeq) return;
+      if (result.authBlocked) return;
+      if (!result.ok || !result.data) {
+        throw new Error(`Server error ${result.status || 'unknown'}.`);
+      }
+
+      const data = result.data;
+      rawData = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.rows) ? data.rows
+        : Array.isArray(data?.items) ? data.items
+        : [];
+      if (!Array.isArray(rawData)) rawData = [];
+
       rawData = rawData.map(r => {
         if (r && typeof r === 'object' && !Array.isArray(r)) return r;
         return {};
       });
 
-      // Build allowlist / columns
+      if (!compactPreferenceSet && rawData.length) {
+        setCompactTable(rawData.length >= COMPACT_AUTO_THRESHOLD);
+      }
+
       allowedColumns.clear();
       buildColumns();
 
+      const scopeParts = [];
+      if (priorityYear) scopeParts.push(`Year ${priorityYear}`);
+      if (priorityState) scopeParts.push(`State ${priorityState}`);
+      const scopeText = scopeParts.length ? ` - ${scopeParts.join(' / ')}` : '';
+
       if (!rawData.length) {
-        setStatus(el.status, 'error', 'No data found in the database.');
+        setStatus(el.status, 'error', `No Canonical Record rows found${scopeText}.`);
+      } else if (rawData.length >= CANONICAL_CLIENT_ROW_LIMIT) {
+        setStatus(
+          el.status,
+          'ok',
+          `Loaded first ${rawData.length} Canonical Record rows${scopeText}; API cap reached, result may be partial.`
+        );
       } else {
-        setStatus(el.status, 'ok', `Loaded ${rawData.length} rows.`);
+        setStatus(el.status, 'ok', `Loaded ${rawData.length} Canonical Record rows${scopeText}.`);
       }
-      fetchPriorityStatus();
+
+      page = 1;
       render();
     })().catch(err => {
+      if (requestSeq !== canonicalRecordRequestSeq || (err && err.name === 'AbortError')) {
+        return;
+      }
+
       rawData = [];
       allowedColumns.clear();
       buildColumns();
       render();
+
       const msg = err?.message || String(err);
       if (/does not exist/i.test(msg)) {
-        setStatus(el.status, 'error', 'Backend table missing. Waiting for initialization (reload shortly).');
+        setStatus(
+          el.status,
+          'error',
+          'Canonical Record backend unavailable. Waiting for initialization.'
+        );
       } else {
         setStatus(el.status, 'error', msg);
       }
-      showErrorToast('Failed to load data.');
+      showErrorToast('Failed to load Canonical Record data.');
     });
   }
 
   // ---------- Init ----------
+  resetEvidenceRelationshipContext();
   initPipelineSteps();
   loadVizOverlayPreference();
   loadVizPlaybackPreference();
@@ -3441,16 +3860,29 @@ document.addEventListener('DOMContentLoaded', () => {
   async function bootstrapProtectedFeeds() {
     await fetchPriorityStatus();
     if (authRestrictedMode) return;
+
+    // Canonical facet authority defines valid State / Year options. Warehouse
+    // status remains contextual priority metadata and never defines record scope.
+    const canonicalUniverseReady = await fetchCanonicalFacets({ universe: true });
+    if (canonicalUniverseReady) {
+      await fetchCanonicalRecordFacets({ useUniverse: true });
+    }
+
+    fetchCanonicalRecordData(true);
+
     priorityTimer = window.setInterval(fetchPriorityStatus, PRIORITY_REFRESH_MS);
-    startPreviewCycle('idle');
-    fetchWorklistOverview();
     fetchCuratedDatasets();
-    fetchDbLiteFinalized();
-    fetchDbLiteDownBallot();
+
+    if (
+      vizInteractionMode === VIZ_INTERACTION_PREVIEW
+      && !vizAutoPaused
+      && !vizAutoLocked
+    ) {
+      startPreviewCycle('idle');
+    }
   }
 
-  bootstrapProtectedFeeds();
-  fetchFinalizedMetadata();
-  loadDropoffData();
+  // Canonical publication rows are the sole election-result Analysis feed.
   fetchData(true);
+  bootstrapProtectedFeeds();
 });  
