@@ -339,7 +339,7 @@ def test_log_object_normalization(page, result):
 
 
 def test_prompt_dedupe_after_submit(page, result):
-    """Ensure identical prompt is suppressed after user submits a response once."""
+    """Ensure submit enters standby and identical answered prompt stays suppressed."""
     try:
         probe = page.evaluate("""() => {
             if (typeof handlePromptLog !== 'function') {
@@ -368,36 +368,93 @@ def test_prompt_dedupe_after_submit(page, result):
             const modal = document.getElementById('promptModal');
             const input = document.getElementById('promptInput');
             const submitBtn = document.getElementById('btnSubmitPrompt');
+            const messageEl = document.getElementById('promptMessage');
+
             if (!modal || !input || !submitBtn) {
-                return { ok: false, reason: 'prompt modal controls missing' };
+                return {
+                    ok: false,
+                    reason: 'prompt modal controls missing'
+                };
             }
 
             const visibleAfterFirst = !modal.classList.contains('hidden');
+            const activeBeforeSubmit = !modal.classList.contains(
+                'prompt-standby-active'
+            );
+
             input.value = '2';
             submitBtn.click();
 
-            const hiddenAfterSubmit = modal.classList.contains('hidden');
+            const visibleAfterSubmit = !modal.classList.contains('hidden');
+            const standbyAfterSubmit = modal.classList.contains(
+                'prompt-standby-active'
+            );
+            const inputDisabledAfterSubmit = !!input.disabled;
+            const submitDisabledAfterSubmit = !!submitBtn.disabled;
+            const messageAfterSubmit = messageEl
+                ? String(messageEl.textContent || '')
+                : '';
+
             handlePromptLog(payload);
+
             const visibleAfterDuplicate = !modal.classList.contains('hidden');
+            const standbyAfterDuplicate = modal.classList.contains(
+                'prompt-standby-active'
+            );
+            const inputDisabledAfterDuplicate = !!input.disabled;
+            const submitDisabledAfterDuplicate = !!submitBtn.disabled;
+            const messageAfterDuplicate = messageEl
+                ? String(messageEl.textContent || '')
+                : '';
+
+            const duplicateSuppressed = (
+                visibleAfterDuplicate
+                && standbyAfterDuplicate
+                && inputDisabledAfterDuplicate
+                && submitDisabledAfterDuplicate
+                && messageAfterDuplicate === messageAfterSubmit
+            );
 
             return {
                 ok: true,
                 visibleAfterFirst,
-                hiddenAfterSubmit,
+                activeBeforeSubmit,
+                visibleAfterSubmit,
+                standbyAfterSubmit,
+                inputDisabledAfterSubmit,
+                submitDisabledAfterSubmit,
+                messageAfterSubmit,
                 visibleAfterDuplicate,
-                duplicateSuppressed: !visibleAfterDuplicate
+                standbyAfterDuplicate,
+                inputDisabledAfterDuplicate,
+                submitDisabledAfterDuplicate,
+                messageAfterDuplicate,
+                duplicateSuppressed
             };
         }""")
 
         passed = bool(
             probe.get("ok")
             and probe.get("visibleAfterFirst")
-            and probe.get("hiddenAfterSubmit")
+            and probe.get("activeBeforeSubmit")
+            and probe.get("visibleAfterSubmit")
+            and probe.get("standbyAfterSubmit")
+            and probe.get("inputDisabledAfterSubmit")
+            and probe.get("submitDisabledAfterSubmit")
             and probe.get("duplicateSuppressed")
         )
-        result.add_test("Prompt Dedupe After Submit", passed, probe)
+
+        result.add_test(
+            "Prompt Standby + Dedupe After Submit",
+            passed,
+            probe,
+        )
     except Exception as e:
-        result.add_test("Prompt Dedupe After Submit", False, {"error": str(e)})
+        result.add_test(
+            "Prompt Standby + Dedupe After Submit",
+            False,
+            {"error": str(e)},
+        )
 
 
 def test_blocked_toggle_behavior(page, result):

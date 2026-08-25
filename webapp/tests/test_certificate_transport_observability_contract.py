@@ -180,7 +180,11 @@ def test_status_source_keeps_transport_and_authority_semantics_distinct():
     assert "observe_client_certificate_transport" in source
     assert '"certificate_transport"' in source
     assert '"certificate_present"' in source
-    assert "principal.startswith" in source
+    # Transport evidence remains a separate diagnostic surface; status now
+    # consumes the centralized provider-neutral authority classifier instead
+    # of re-implementing certificate recognition inline.
+    assert "authority = classify_authority(" in source
+    assert '"authority": authority' in source
 
 
 def test_cert_metadata_validity_members_are_properties_not_calls():

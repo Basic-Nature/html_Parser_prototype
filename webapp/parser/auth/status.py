@@ -14,6 +14,8 @@ from __future__ import annotations
 from contextvars import ContextVar
 from datetime import datetime, timezone
 
+from webapp.parser.auth.authority_model import classify_authority
+
 
 _RUNTIME_BINDINGS: ContextVar[dict[str, object]] = ContextVar(
     "electionpulse_authority_status_runtime",
@@ -90,15 +92,30 @@ def api_auth_status():
         get_request_principal()
     )
 
+    # Provider-neutral authority vocabulary keeps current mTLS proof distinct
+    # from a bounded certificate-backed session and gives future OIDC/Keycloak
+    # integration one normalized seam.
+    authority = classify_authority(
+        principal,
+        principal_source,
+    )
+
     certificate_present = bool(
-        principal
-        and principal.startswith(
-            "cert:"
-        )
+        authority["certificate_present"]
+    )
+
+    certificate_session_authenticated = bool(
+        authority[
+            "certificate_session_authenticated"
+        ]
+    )
+
+    certificate_backed_authority = bool(
+        authority["certificate_backed_authority"]
     )
 
     authenticated = bool(
-        principal
+        authority["authenticated"]
     )
 
     next_target = sanitize_internal_next(
@@ -111,7 +128,7 @@ def api_auth_status():
     try:
         session_id = resolve_session_id(
             {},
-            create_if_missing=False,
+            create_if_missing=certificate_present,
         )
     except Exception:
         session_id = None
@@ -212,6 +229,8 @@ def api_auth_status():
     response = {
         "authenticated": authenticated,
 
+        "authority": authority,
+
         "certificate_present": (
             certificate_present
         ),
@@ -227,7 +246,15 @@ def api_auth_status():
 
         "certificate_action_required": bool(
             certificate_required_for_mutations
-            and not certificate_present
+            and not certificate_backed_authority
+        ),
+
+        "certificate_session_authenticated": (
+            certificate_session_authenticated
+        ),
+
+        "certificate_backed_authority": (
+            certificate_backed_authority
         ),
 
         "principal": principal,
@@ -273,7 +300,9 @@ def api_auth_status():
         ),
 
         "status_source": (
-            "current_request_principal"
+            "certificate_backed_session"
+            if certificate_session_authenticated
+            else "current_request_principal"
         ),
 
         "session_context": {

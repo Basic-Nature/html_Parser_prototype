@@ -1118,8 +1118,8 @@ const _TablePreview = (() => {
 
     const bodyDiv = document.createElement('div');
     bodyDiv.className = 'modal-body';
-    bodyDiv.innerHTML = '<p>This action requires a client certificate. Please present your certificate and try again.</p>' +
-      '<p class="text-muted">If you are not prompted, the site may be running in optional client-certificate mode. Reloading or opening the certificate screen can trigger the prompt.</p>';
+    bodyDiv.innerHTML = '<p>This protected action needs a trusted ElectionPulse session.</p>' +
+      '<p class="text-muted">Present an approved client certificate to establish a short-lived certificate-backed session. Public features remain available without signing in.</p>';
 
     const footer = document.createElement('div');
     footer.className = 'modal-footer';

@@ -20,10 +20,12 @@
                 <p>Smart Elections Parser</p>
                 {% if certificate_present %}
                 <span class="cert-status-badge valid" id="statusBadge">Certificate Verified</span>
+                {% elif certificate_session_authenticated %}
+                <span class="cert-status-badge valid" id="statusBadge">Trusted Session Active</span>
                 {% elif require_cert %}
                 <span class="cert-status-badge warning" id="statusBadge">Certificate Required</span>
                 {% else %}
-                <span class="cert-status-badge valid" id="statusBadge">Certificate Not Required</span>
+                <span class="cert-status-badge valid" id="statusBadge">Public Access</span>
                 {% endif %}
             </div>
 
@@ -31,7 +33,7 @@
             <div id="messageContainer"></div>
 
             <!-- Certificate Information -->
-            {% if not require_cert %}
+            {% if certificate_present %}
             <div class="cert-info-section" id="certInfoSection">
                 <div class="cert-info-row">
                     <span class="cert-info-label">Common Name (CN)</span>
@@ -58,8 +60,10 @@
                     <span class="cert-info-value" id="certAlgorithm">—</span>
                 </div>
             </div>
+            {% endif %}
 
             <!-- Privilege Tier -->
+            {% if not require_cert %}
             <div class="tier-info">
                 <span>Access Tier:</span>
                 <span class="tier-badge standard" id="tierBadge">Standard User</span>
@@ -69,17 +73,23 @@
             <!-- Explanation -->
             <div class="auth-welcome-explanation">
                 {% if require_cert %}
-                <strong>Certificate not yet presented.</strong>
-                ElectionPulse certificate policy is <code>{{ certificate_policy }}</code>.
-                Azure client-certificate mode is <code>{{ azure_client_cert_mode }}</code>.
-                Use <strong>Check Certificate &amp; Continue</strong> to make an explicit certificate-challenge navigation.
+                <strong>Trusted access has not been established yet.</strong>
+                ElectionPulse keeps most public tools available anonymously. Protected actions use an approved client certificate to establish a short-lived, pseudonymous trusted session without requiring a username or password.
+                Use <strong>Check Certificate &amp; Continue</strong> to present your certificate.
                 {% if challenge_attempted %}
                 <br><br>
-                The last challenge request still did not include a client certificate. Your session remains available for UI continuity, but it is not accepted as certificate proof.
+                The last challenge did not present an approved certificate, so protected actions remain locked. Public access is unaffected.
                 {% endif %}
                 If you do not have an approved certificate, return to the public site or contact an administrator.
+                {% elif certificate_session_authenticated %}
+                <strong>Trusted session active.</strong>
+                A recently verified ElectionPulse client certificate established this short-lived pseudonymous session. The current request is using that bounded session authority; it is not claiming that a certificate was freshly presented on this TLS request.
+                {% elif certificate_present %}
+                <strong>Certificate verified.</strong>
+                This request presented an approved ElectionPulse client certificate and established trusted application authority. You can continue to protected tools while the bounded session remains valid.
                 {% else %}
-                <strong>What is this?</strong> Your client certificate has been verified. This certificate is used to authenticate your identity and determine your access level within the Smart Elections Parser system. You can now proceed to the main application.
+                <strong>Public access.</strong>
+                No trusted identity is required for this page. Protected actions can request stronger authentication only when needed.
                 {% endif %}
             </div>
 

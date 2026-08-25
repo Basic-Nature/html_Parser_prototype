@@ -98,6 +98,24 @@ AZURE_CLIENT_CERT_MODE = (
     .replace(" ", "_")
 )
 
+try:
+    CERT_SESSION_AUTH_TTL_SECONDS = int(
+        os.environ.get(
+            "CERT_SESSION_AUTH_TTL_SECONDS",
+            "1800",
+        )
+    )
+except (TypeError, ValueError):
+    CERT_SESSION_AUTH_TTL_SECONDS = 1800
+
+CERT_SESSION_AUTH_TTL_SECONDS = max(
+    60,
+    min(
+        CERT_SESSION_AUTH_TTL_SECONDS,
+        86400,
+    ),
+)
+
 
 def _auth_mode_requires_certificate() -> bool:
     # Compatibility wrapper retained during Tranche 1.
@@ -1978,12 +1996,14 @@ from webapp.parser.auth import policy as _authority_policy
 from webapp.parser.auth import status as _authority_status
 from webapp.parser.auth.authorization import tier_satisfies
 from webapp.parser.auth import socket_lifecycle as _socket_lifecycle
+from webapp.parser.auth.authority_model import classify_authority
 
 
 def _configure_authority_context_runtime():
     _authority_context.configure_runtime(
         ALLOW_AUTO_SESSION_REUSE=ALLOW_AUTO_SESSION_REUSE,
         ALLOW_DEV_NO_PRINCIPAL=ALLOW_DEV_NO_PRINCIPAL,
+        CERT_SESSION_AUTH_TTL_SECONDS=CERT_SESSION_AUTH_TTL_SECONDS,
         CERT_SESSION_BINDING=CERT_SESSION_BINDING,
         CERT_SESSION_CAP=CERT_SESSION_CAP,
         ENABLE_FINGERPRINT_SESSION_RECOVERY=ENABLE_FINGERPRINT_SESSION_RECOVERY,
@@ -7566,11 +7586,23 @@ def auth_welcome():
         get_request_principal()
     )
 
+    authority = classify_authority(
+        principal,
+        principal_source,
+    )
+
     certificate_present = bool(
-        principal
-        and principal.startswith(
-            "cert:"
-        )
+        authority["certificate_present"]
+    )
+
+    certificate_session_authenticated = bool(
+        authority[
+            "certificate_session_authenticated"
+        ]
+    )
+
+    certificate_backed_authority = bool(
+        authority["certificate_backed_authority"]
     )
 
     normalized_target = sanitize_internal_next(
@@ -7599,7 +7631,7 @@ def auth_welcome():
             DEPLOY_ENV == "local"
             and _is_local_request()
         )
-        and not certificate_present
+        and not certificate_backed_authority
     )
 
     challenge_attempted = (
@@ -7650,6 +7682,18 @@ def auth_welcome():
                 certificate_present
             ),
 
+            certificate_session_authenticated=(
+                certificate_session_authenticated
+            ),
+
+            certificate_backed_authority=(
+                certificate_backed_authority
+            ),
+
+            authority_state=(
+                authority["state"]
+            ),
+
             challenge_attempted=(
                 challenge_attempted
             ),
@@ -7677,10 +7721,12 @@ def auth_welcome():
     )
 
 def auth_challenge():
-    # Explicit navigation checkpoint.
+    # Explicit trusted-access navigation checkpoint.
     #
-    # Only the current request principal can satisfy certificate presence.
-    # Existing session/cache state is intentionally ignored.
+    # Ordinary protected navigation accepts either a fresh mTLS proof or the
+    # bounded certificate-backed application session established from a recent
+    # valid proof. Future high-risk step-up operations should use a distinct
+    # fresh-proof gate rather than overloading this navigation checkpoint.
 
     next_url = sanitize_internal_next(
         request.args.get("next"),
@@ -7705,16 +7751,18 @@ def auth_challenge():
             next_url
         )
 
-    principal, _, _ = (
+    principal, principal_source, _ = (
         get_request_principal()
     )
 
-    if (
-        principal
-        and principal.startswith(
-            "cert:"
-        )
-    ):
+    authority = classify_authority(
+        principal,
+        principal_source,
+    )
+
+    if authority[
+        "certificate_backed_authority"
+    ]:
         return redirect(
             next_url
         )

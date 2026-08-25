@@ -299,3 +299,35 @@
     flex-direction: column;
   }
 }
+
+/* CERT-U: certificate-auth readability */
+.auth-welcome-page .auth-welcome-card {
+  background: rgba(255, 255, 255, 0.985);
+  opacity: 1;
+  filter: none;
+  backdrop-filter: none;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+}
+
+.auth-welcome-page .auth-welcome-explanation {
+  background: #f8fafc;
+  color: #1f2937;
+  font-size: 1.02rem;
+  line-height: 1.7;
+  border: 1px solid #d7dee7;
+}
+
+.auth-welcome-page .auth-welcome-explanation strong {
+  color: #0f172a;
+}
+
+.auth-welcome-page .footer-note,
+.auth-welcome-page .cert-info-label {
+  color: #475569;
+  opacity: 1;
+}
+
+.auth-welcome-page .session-id-text,
+.auth-welcome-page .cert-info-value {
+  color: #1f2937;
+}

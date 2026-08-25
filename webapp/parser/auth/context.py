@@ -8,6 +8,7 @@ monkeypatch seams remain intact during Tranche 1.
 from __future__ import annotations
 
 from contextvars import ContextVar
+import time
 
 
 _RUNTIME_BINDINGS: ContextVar[dict[str, object]] = ContextVar(
@@ -28,20 +29,88 @@ def _runtime_binding(name: str):
     return bindings[name]
 
 
+def _clear_certificate_session_authority(session) -> None:
+    session.pop("certificate_session_principal", None)
+    session.pop("certificate_session_established_at", None)
+
+
+def _cache_certificate_session_authority(session, principal: str) -> None:
+    if not isinstance(principal, str) or not principal.startswith("cert:"):
+        return
+    session["certificate_session_principal"] = principal
+    session["certificate_session_established_at"] = int(time.time())
+
+
+def _get_certificate_session_authority(
+    session,
+    *,
+    ttl_seconds: int,
+) -> str | None:
+    principal = session.get("certificate_session_principal")
+    established_at = session.get("certificate_session_established_at")
+
+    if (
+        not isinstance(principal, str)
+        or not principal.startswith("cert:")
+        or not isinstance(established_at, (int, float))
+    ):
+        _clear_certificate_session_authority(session)
+        return None
+
+    age_seconds = max(0, int(time.time() - float(established_at)))
+
+    if age_seconds > ttl_seconds:
+        _clear_certificate_session_authority(session)
+        return None
+
+    return principal
+
+
 def get_request_principal():
-    """Return (principal, source, cert_metadata) preferring client cert, then SSO OID."""
+    """
+    Resolve effective request authority.
+
+    Current client-certificate proof always wins. A successful certificate
+    request establishes a bounded signed Flask-session authority so later
+    HTTP/Socket.IO requests can retain the same pseudonymous principal without
+    falsely claiming that the certificate is physically present on that later
+    TLS request.
+    """
     ALLOW_DEV_NO_PRINCIPAL = _runtime_binding('ALLOW_DEV_NO_PRINCIPAL')
+    CERT_SESSION_AUTH_TTL_SECONDS = _runtime_binding(
+        'CERT_SESSION_AUTH_TTL_SECONDS'
+    )
     _is_local_host = _runtime_binding('_is_local_host')
     extract_client_principal = _runtime_binding('extract_client_principal')
     request = _runtime_binding('request')
+    session = _runtime_binding('session')
+
     principal, source, cert_meta = extract_client_principal(request.headers)
+
     if principal:
+        if isinstance(principal, str) and principal.startswith("cert:"):
+            _cache_certificate_session_authority(session, principal)
         return (principal, source, cert_meta)
+
+    cached_certificate_principal = _get_certificate_session_authority(
+        session,
+        ttl_seconds=CERT_SESSION_AUTH_TTL_SECONDS,
+    )
+
+    if cached_certificate_principal:
+        return (
+            cached_certificate_principal,
+            "certificate_session",
+            None,
+        )
+
     host = (request.host or '').lower()
     is_local = _is_local_host(host)
+
     if ALLOW_DEV_NO_PRINCIPAL and is_local:
         remote = request.remote_addr or 'local'
         return (f'dev:{remote}', 'dev_bypass', None)
+
     return (None, None, None)
 
 
@@ -139,6 +208,7 @@ def resolve_session_reuse_policy(
     allow_reuse = bool(
         allow_auto_session_reuse
         or reuse_hint
+        or principal_source == "certificate_session"
     )
 
     if (
@@ -177,8 +247,14 @@ def resolve_session_id(data=None, create_if_missing=True):
         socket_sid = safe_sid()
     except Exception:
         socket_sid = getattr(request, 'sid', None)
+
     if not isinstance(socket_sid, str) or not socket_sid:
-        return None
+        socket_sid = None
+
+    def _bind_socket_if_available(resolved_session_id: str) -> None:
+        if socket_sid:
+            session_manager.bind_socket(socket_sid, resolved_session_id)
+
     principal, principal_source, _ = get_request_principal()
     reuse_hint, allow_reuse = resolve_session_reuse_policy(
         data,
@@ -191,7 +267,7 @@ def resolve_session_id(data=None, create_if_missing=True):
     if isinstance(data, dict):
         sid = safe_get(data, 'session_id')
     if isinstance(sid, str) and sid:
-        session_manager.bind_socket(socket_sid, sid)
+        _bind_socket_if_available(sid)
         if principal:
             session_manager.set_principal(sid, principal, principal_source)
         _apply_auth_context(sid, principal, principal_source)
@@ -200,7 +276,7 @@ def resolve_session_id(data=None, create_if_missing=True):
     if allow_reuse and principal:
         mapped_principal = session_manager.resolve_principal(principal)
         if isinstance(mapped_principal, str) and mapped_principal:
-            session_manager.bind_socket(socket_sid, mapped_principal)
+            _bind_socket_if_available(mapped_principal)
             session['logical_session_id'] = mapped_principal
             _apply_auth_context(mapped_principal, principal, principal_source)
             _log_resolution('reuse_principal', mapped_principal, principal_source)
@@ -219,14 +295,53 @@ def resolve_session_id(data=None, create_if_missing=True):
     if allow_reuse:
         cookie_sid = session.get('logical_session_id')
         if isinstance(cookie_sid, str) and cookie_sid:
+            if principal_source == "certificate_session" and principal:
+                # The Flask session is signed and the bounded certificate
+                # authority TTL was validated by get_request_principal().
+                # Re-hydrate SessionManager on this worker if necessary.
+                session_manager.ensure_session(cookie_sid)
+                session_manager.set_principal(
+                    cookie_sid,
+                    principal,
+                    principal_source,
+                )
+                _bind_socket_if_available(cookie_sid)
+                _apply_auth_context(
+                    cookie_sid,
+                    principal,
+                    principal_source,
+                )
+                _log_resolution(
+                    'reuse_certificate_session',
+                    cookie_sid,
+                    'signed bounded certificate session',
+                )
+                return cookie_sid
+
             if not principal and _session_has_principal(cookie_sid):
-                _log_resolution('reuse_cookie_blocked', cookie_sid, 'principal_required')
+                _log_resolution(
+                    'reuse_cookie_blocked',
+                    cookie_sid,
+                    'principal_required',
+                )
             else:
-                session_manager.bind_socket(socket_sid, cookie_sid)
+                _bind_socket_if_available(cookie_sid)
                 if principal:
-                    session_manager.set_principal(cookie_sid, principal, principal_source)
-                _apply_auth_context(cookie_sid, principal, principal_source)
-                _log_resolution('reuse_cookie', cookie_sid, 'logical_session_id cookie')
+                    session_manager.set_principal(
+                        cookie_sid,
+                        principal,
+                        principal_source,
+                    )
+                _apply_auth_context(
+                    cookie_sid,
+                    principal,
+                    principal_source,
+                )
+                _log_resolution(
+                    'reuse_cookie',
+                    cookie_sid,
+                    'logical_session_id cookie',
+                )
                 return cookie_sid
     fingerprint = client_fingerprint() if ENABLE_FINGERPRINT_SESSION_RECOVERY else None
     if allow_reuse and ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
@@ -235,7 +350,7 @@ def resolve_session_id(data=None, create_if_missing=True):
             if not principal and _session_has_principal(fp_sid):
                 _log_resolution('reuse_fingerprint_blocked', fp_sid, 'principal_required')
             else:
-                session_manager.bind_socket(socket_sid, fp_sid)
+                _bind_socket_if_available(fp_sid)
                 session['logical_session_id'] = fp_sid
                 if principal:
                     session_manager.set_principal(fp_sid, principal, principal_source)
@@ -246,7 +361,7 @@ def resolve_session_id(data=None, create_if_missing=True):
         active_sessions = session_manager.list_principal_sessions(principal, active_only=True)
         if len(active_sessions) >= CERT_SESSION_CAP:
             reuse_sid = session_manager.select_principal_session(principal, active_only=True) or active_sessions[0]
-            session_manager.bind_socket(socket_sid, reuse_sid)
+            _bind_socket_if_available(reuse_sid)
             session['logical_session_id'] = reuse_sid
             session_manager.set_principal(reuse_sid, principal, principal_source)
             _apply_auth_context(reuse_sid, principal, principal_source)
@@ -261,7 +376,7 @@ def resolve_session_id(data=None, create_if_missing=True):
             cert_session_id = mapped_principal
         if ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
             session_manager.bind_fingerprint(fingerprint, cert_session_id)
-        session_manager.bind_socket(socket_sid, cert_session_id)
+        _bind_socket_if_available(cert_session_id)
         session['logical_session_id'] = cert_session_id
         session_manager.ensure_session(cert_session_id)
         _ensure_quick_copy_dir(cert_session_id)
@@ -272,7 +387,7 @@ def resolve_session_id(data=None, create_if_missing=True):
     new_sid = 'sess_' + secrets.token_urlsafe(16)
     if ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
         session_manager.bind_fingerprint(fingerprint, new_sid)
-    session_manager.bind_socket(socket_sid, new_sid)
+    _bind_socket_if_available(new_sid)
     session['logical_session_id'] = new_sid
     session_manager.ensure_session(new_sid)
     _ensure_quick_copy_dir(new_sid)
