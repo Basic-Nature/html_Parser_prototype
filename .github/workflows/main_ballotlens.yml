@@ -12,6 +12,7 @@ on:
       - 'webapp/**'
       - 'scripts/**'
       - '!scripts/maintenance/**'
+      - 'alembic/**'
       - 'tests/testdata/**'
       - 'Dockerfile'
       - '.dockerignore'
@@ -526,10 +527,10 @@ jobs:
           az webapp config container set \
             --name BallotLens \
             --resource-group BallotLens_group \
-            --docker-custom-image-name ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
-            --docker-registry-server-url https://${{ secrets.ACR_LOGIN_SERVER }} \
-            --docker-registry-server-user ${{ secrets.ACR_USERNAME }} \
-            --docker-registry-server-password ${{ secrets.ACR_PASSWORD }}
+            --container-image-name ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            --container-registry-url https://${{ secrets.ACR_LOGIN_SERVER }} \
+            --container-registry-user ${{ secrets.ACR_USERNAME }} \
+            --container-registry-password ${{ secrets.ACR_PASSWORD }}
 
       - name: Enforce HTTPS-only and redirect HTTP to HTTPS
         run: |

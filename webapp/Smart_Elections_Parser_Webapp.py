@@ -4329,350 +4329,288 @@ def api_data_framework_curated():
 
 
 def api_data_framework_warehouse_status():
+    """Return public aggregate coverage from the governed operational workflow plane."""
     assert_public_read_surface("data_framework_warehouse_status", request.method)
 
-    ensure_db_tables()
     engine = get_engine()
     state_filter = safe_strip(request.args.get("state", ""))
-    state_filter = state_filter.lower() if state_filter else ""
     year_filter = safe_strip(request.args.get("year", ""))
+    started_at = time.perf_counter()
+
     year_value = None
     if year_filter:
         try:
             year_value = int(year_filter)
         except Exception:
             year_value = None
+
+    params: dict[str, Any] = {}
+    filters: list[str] = []
+    if state_filter:
+        filters.append("LOWER(TRIM(state)) = LOWER(TRIM(:state))")
+        params["state"] = state_filter
+    if year_value is not None:
+        filters.append("election_year = :year")
+        params["year"] = year_value
+
+    where_sql = (" WHERE " + " AND ".join(filters)) if filters else ""
+    and_sql = (" AND " + " AND ".join(filters)) if filters else ""
+
     try:
+        dialect = str(engine.dialect.name or "").lower()
         with engine.connect() as conn:
-            exists = conn.execute(text("SELECT to_regclass('workflow.contests')")).scalar()
-            if not exists:
-                return jsonify({
+            if dialect == "postgresql":
+                conn.execute(text("SET TRANSACTION READ ONLY"))
+                exists = conn.execute(
+                    text("SELECT to_regclass('public.workflow_items')")
+                ).scalar()
+                workflow_items_exists = bool(exists)
+            else:
+                workflow_items_exists = bool(
+                    inspect(engine).has_table("workflow_items")
+                )
+
+            if not workflow_items_exists:
+                payload = {
                     "available": False,
-                    "error": "workflow.contests table not found",
-                    "expected_total": 0,
-                    "missing_total": 0,
+                    "degraded": True,
+                    "reason": "workflow_schema_not_provisioned",
+                    "required_migration": "e7b2c4d91f60",
+                    "authority": dict(WORKFLOW_AUTHORITY),
+                    "coverage_basis": "workflow_item_canonical_race_linkage",
+                    "expected_total": None,
+                    "missing_total": None,
                     "by_priority": [],
-                })
+                    "by_status": [],
+                    "sample_missing": [],
+                    "states": [],
+                    "years": [],
+                    "semantic_contract": {
+                        "legacy_workflow_contests": "retired",
+                        "unavailable_counts": "null",
+                        "canonical_and_operational_authorities_are_distinct": True,
+                        "identity_fields": "not_exposed",
+                    },
+                }
+                _log_endpoint_latency(
+                    "data_framework_warehouse_status",
+                    started_at,
+                    context={
+                        "available": False,
+                        "reason": "workflow_schema_not_provisioned",
+                    },
+                )
+                return jsonify(payload)
 
             states_result = conn.execute(text(
                 """
                 SELECT DISTINCT state
-                FROM workflow.contests
+                FROM workflow_items
                 WHERE state IS NOT NULL
                 ORDER BY state
                 """
             ))
             available_states = [row[0] for row in states_result if row[0]]
 
-            years_params = {}
-            years_where = "WHERE state IS NOT NULL AND year IS NOT NULL"
+            years_params: dict[str, Any] = {}
+            years_where = ""
             if state_filter:
-                years_where += " AND LOWER(TRIM(state)) = :state"
+                years_where = (
+                    " WHERE LOWER(TRIM(state)) = LOWER(TRIM(:state))"
+                )
                 years_params["state"] = state_filter
-            years_result = conn.execute(text(
+
+            years_sql = (
                 f"""
-                SELECT DISTINCT year
-                FROM workflow.contests
+                SELECT DISTINCT election_year
+                FROM workflow_items
                 {years_where}
-                ORDER BY year DESC
+                AND election_year IS NOT NULL
+                ORDER BY election_year DESC
                 """
-            ), years_params)
-            available_years = [int(row[0]) for row in years_result if row[0] is not None]
+                if years_where
+                else
+                """
+                SELECT DISTINCT election_year
+                FROM workflow_items
+                WHERE election_year IS NOT NULL
+                ORDER BY election_year DESC
+                """
+            )
+            years_result = conn.execute(text(years_sql), years_params)
+            available_years = [
+                int(row[0]) for row in years_result if row[0] is not None
+            ]
 
-            columns = _get_warehouse_columns(engine)
-            has_precinct = "precinct" in columns
-            year_filter_sql = "AND year = :year" if year_value is not None else ""
-            warehouse_filter_sql = "WHERE state IS NOT NULL"
-            if state_filter:
-                warehouse_filter_sql += " AND LOWER(TRIM(state)) = :state"
-            if year_value is not None:
-                warehouse_filter_sql += " AND EXTRACT(YEAR FROM election_date)::int = :year"
-            division_case = """
-                CASE
-                    WHEN county IS NULL OR TRIM(county) = '' THEN 'state'
-                    WHEN LOWER(county) LIKE '%district%' OR LOWER(county) LIKE '%dist.%' THEN 'district'
-                    ELSE 'county'
-                END
-            """
-            if has_precinct:
-                division_case = """
-                    CASE
-                        WHEN precinct IS NOT NULL AND TRIM(precinct) <> ''
-                             AND LOWER(TRIM(precinct)) NOT IN ('all precincts','all') THEN 'precinct'
-                        WHEN county IS NULL OR TRIM(county) = '' THEN 'state'
-                        WHEN LOWER(county) LIKE '%district%' OR LOWER(county) LIKE '%dist.%' THEN 'district'
-                        ELSE 'county'
-                    END
-                """
-            division_params = {}
-            division_where = "WHERE state IS NOT NULL"
-            if state_filter:
-                division_where += " AND LOWER(TRIM(state)) = :state"
-                division_params["state"] = state_filter
-            if year_value is not None:
-                division_where += " AND EXTRACT(YEAR FROM election_date)::int = :year"
-                division_params["year"] = year_value
-            division_summary = conn.execute(text(
-                f"""
-                SELECT {division_case} AS division_type,
-                       COUNT(*) AS rows
-                FROM warehouse_election_results
-                {division_where}
-                GROUP BY division_type
-                ORDER BY rows DESC
-                """
-            ), division_params).mappings().all()
-
-            division_year_params = {}
-            division_year_where = "WHERE state IS NOT NULL AND election_date IS NOT NULL"
-            if state_filter:
-                division_year_where += " AND LOWER(TRIM(state)) = :state"
-                division_year_params["state"] = state_filter
-            if year_value is not None:
-                division_year_where += " AND EXTRACT(YEAR FROM election_date)::int = :year"
-                division_year_params["year"] = year_value
-            division_summary_by_year = conn.execute(text(
-                f"""
-                SELECT EXTRACT(YEAR FROM election_date)::int AS year,
-                       {division_case} AS division_type,
-                       COUNT(*) AS rows
-                FROM warehouse_election_results
-                {division_year_where}
-                GROUP BY year, division_type
-                ORDER BY year DESC, rows DESC
-                """
-            ), division_year_params).mappings().all()
-
-            state_filter_sql = "AND LOWER(TRIM(state)) = :state" if state_filter else ""
-            state_params = {"state": state_filter} if state_filter else {}
-            if year_value is not None:
-                state_params["year"] = year_value
-
-            summary = conn.execute(text(
-                """
-                WITH expected AS (
+            summary = conn.execute(
+                text(
+                    f"""
                     SELECT
-                        LOWER(TRIM(state)) AS state,
-                        LOWER(COALESCE(TRIM(county), '')) AS county,
-                        LOWER(TRIM(race)) AS contest,
-                        year,
+                        COUNT(*) AS expected_total,
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN canonical_race_id IS NULL THEN 1
+                                    ELSE 0
+                                END
+                            ),
+                            0
+                        ) AS missing_total
+                    FROM workflow_items
+                    {where_sql}
+                    """
+                ),
+                params,
+            ).mappings().first()
+
+            by_priority = conn.execute(
+                text(
+                    f"""
+                    SELECT
                         priority,
-                        status
-                    FROM workflow.contests
-                    WHERE state IS NOT NULL AND race IS NOT NULL AND year IS NOT NULL
-                    {state_filter_sql}
-                    {year_filter_sql}
+                        COUNT(*) AS expected,
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN canonical_race_id IS NULL THEN 1
+                                    ELSE 0
+                                END
+                            ),
+                            0
+                        ) AS missing
+                    FROM workflow_items
+                    {where_sql}
+                    GROUP BY priority
+                    ORDER BY priority ASC
+                    """
                 ),
-                warehouse AS (
-                    SELECT
-                        LOWER(TRIM(state)) AS state,
-                        LOWER(COALESCE(TRIM(county), '')) AS county,
-                        LOWER(TRIM(contest)) AS contest,
-                        EXTRACT(YEAR FROM election_date)::int AS year,
-                        COUNT(*) AS rows
-                    FROM warehouse_election_results
-                    {warehouse_filter_sql}
-                    GROUP BY 1,2,3,4
-                ),
-                missing AS (
-                    SELECT e.*
-                    FROM expected e
-                    LEFT JOIN warehouse w
-                      ON e.state = w.state
-                     AND e.county = w.county
-                     AND e.contest = w.contest
-                     AND e.year = w.year
-                    WHERE COALESCE(w.rows, 0) = 0
-                )
-                SELECT
-                    (SELECT COUNT(*) FROM expected) AS expected_total,
-                    (SELECT COUNT(*) FROM missing) AS missing_total
-                """.format(
-                    state_filter_sql=state_filter_sql,
-                    year_filter_sql=year_filter_sql,
-                    warehouse_filter_sql=warehouse_filter_sql,
-                )
-            ), state_params).mappings().first()
+                params,
+            ).mappings().all()
 
-            by_priority = conn.execute(text(
-                """
-                WITH expected AS (
+            by_status = conn.execute(
+                text(
+                    f"""
                     SELECT
-                        LOWER(TRIM(state)) AS state,
-                        LOWER(COALESCE(TRIM(county), '')) AS county,
-                        LOWER(TRIM(race)) AS contest,
-                        year,
-                        priority,
-                        status
-                    FROM workflow.contests
-                    WHERE state IS NOT NULL AND race IS NOT NULL AND year IS NOT NULL
-                    {state_filter_sql}
-                    {year_filter_sql}
+                        lifecycle_state AS status,
+                        COUNT(*) AS expected,
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN canonical_race_id IS NULL THEN 1
+                                    ELSE 0
+                                END
+                            ),
+                            0
+                        ) AS missing
+                    FROM workflow_items
+                    {where_sql}
+                    GROUP BY lifecycle_state
+                    ORDER BY lifecycle_state ASC
+                    """
                 ),
-                warehouse AS (
-                    SELECT
-                        LOWER(TRIM(state)) AS state,
-                        LOWER(COALESCE(TRIM(county), '')) AS county,
-                        LOWER(TRIM(contest)) AS contest,
-                        EXTRACT(YEAR FROM election_date)::int AS year,
-                        COUNT(*) AS rows
-                    FROM warehouse_election_results
-                    {warehouse_filter_sql}
-                    GROUP BY 1,2,3,4
-                ),
-                missing AS (
-                    SELECT e.*
-                    FROM expected e
-                    LEFT JOIN warehouse w
-                      ON e.state = w.state
-                     AND e.county = w.county
-                     AND e.contest = w.contest
-                     AND e.year = w.year
-                    WHERE COALESCE(w.rows, 0) = 0
-                )
-                SELECT priority,
-                       COUNT(*) AS missing,
-                       (SELECT COUNT(*) FROM expected e2 WHERE e2.priority = missing.priority) AS expected
-                FROM missing
-                GROUP BY priority
-                ORDER BY missing DESC
-                """.format(
-                    state_filter_sql=state_filter_sql,
-                    year_filter_sql=year_filter_sql,
-                    warehouse_filter_sql=warehouse_filter_sql,
-                )
-            ), state_params).mappings().all()
+                params,
+            ).mappings().all()
 
-            by_status = conn.execute(text(
-                """
-                WITH expected AS (
-                    SELECT
-                        LOWER(TRIM(state)) AS state,
-                        LOWER(COALESCE(TRIM(county), '')) AS county,
-                        LOWER(TRIM(race)) AS contest,
-                        year,
-                        priority,
-                        status
-                    FROM workflow.contests
-                    WHERE state IS NOT NULL AND race IS NOT NULL AND year IS NOT NULL
-                    {state_filter_sql}
-                    {year_filter_sql}
-                ),
-                warehouse AS (
-                    SELECT
-                        LOWER(TRIM(state)) AS state,
-                        LOWER(COALESCE(TRIM(county), '')) AS county,
-                        LOWER(TRIM(contest)) AS contest,
-                        EXTRACT(YEAR FROM election_date)::int AS year,
-                        COUNT(*) AS rows
-                    FROM warehouse_election_results
-                    {warehouse_filter_sql}
-                    GROUP BY 1,2,3,4
-                ),
-                missing AS (
-                    SELECT e.*
-                    FROM expected e
-                    LEFT JOIN warehouse w
-                      ON e.state = w.state
-                     AND e.county = w.county
-                     AND e.contest = w.contest
-                     AND e.year = w.year
-                    WHERE COALESCE(w.rows, 0) = 0
-                )
-                SELECT status,
-                       COUNT(*) AS missing,
-                       (SELECT COUNT(*) FROM expected e2 WHERE e2.status = missing.status) AS expected
-                FROM missing
-                GROUP BY status
-                ORDER BY missing DESC
-                """.format(
-                    state_filter_sql=state_filter_sql,
-                    year_filter_sql=year_filter_sql,
-                    warehouse_filter_sql=warehouse_filter_sql,
-                )
-            ), state_params).mappings().all()
-
-            sample = conn.execute(text(
-                """
-                WITH expected AS (
+            sample_missing = conn.execute(
+                text(
+                    f"""
                     SELECT
                         state,
-                        county,
-                        race,
-                        year,
+                        jurisdiction_name,
+                        jurisdiction_type,
+                        contest,
+                        election_year AS year,
                         priority,
-                        status
-                    FROM workflow.contests
-                    WHERE state IS NOT NULL AND race IS NOT NULL AND year IS NOT NULL
-                    {state_filter_sql}
-                    {year_filter_sql}
+                        lifecycle_state AS status
+                    FROM workflow_items
+                    WHERE canonical_race_id IS NULL
+                    {and_sql}
+                    ORDER BY
+                        priority ASC,
+                        election_year DESC,
+                        state ASC,
+                        jurisdiction_name ASC,
+                        contest ASC
+                    LIMIT 25
+                    """
                 ),
-                warehouse AS (
-                    SELECT
-                        LOWER(TRIM(state)) AS state,
-                        LOWER(COALESCE(TRIM(county), '')) AS county,
-                        LOWER(TRIM(contest)) AS contest,
-                        EXTRACT(YEAR FROM election_date)::int AS year,
-                        COUNT(*) AS rows
-                    FROM warehouse_election_results
-                    {warehouse_filter_sql}
-                    GROUP BY 1,2,3,4
-                )
-                SELECT e.state,
-                       e.county,
-                       e.race AS contest,
-                       e.year,
-                       e.priority,
-                       e.status
-                FROM expected e
-                LEFT JOIN warehouse w
-                  ON LOWER(TRIM(e.state)) = w.state
-                 AND LOWER(COALESCE(TRIM(e.county), '')) = w.county
-                 AND LOWER(TRIM(e.race)) = w.contest
-                 AND e.year = w.year
-                WHERE COALESCE(w.rows, 0) = 0
-                ORDER BY e.priority NULLS LAST, e.year DESC
-                LIMIT 8
-                """.format(
-                    state_filter_sql=state_filter_sql,
-                    year_filter_sql=year_filter_sql,
-                    warehouse_filter_sql=warehouse_filter_sql,
-                )
-            ), state_params).mappings().all()
+                params,
+            ).mappings().all()
 
         payload = {
-            "expected_total": int(summary.get("expected_total") or 0) if summary else 0,
-            "missing_total": int(summary.get("missing_total") or 0) if summary else 0,
+            "available": True,
+            "degraded": False,
+            "authority": dict(WORKFLOW_AUTHORITY),
+            "coverage_basis": "workflow_item_canonical_race_linkage",
+            "expected_total": (
+                int(summary.get("expected_total") or 0) if summary else 0
+            ),
+            "missing_total": (
+                int(summary.get("missing_total") or 0) if summary else 0
+            ),
             "by_priority": [dict(row) for row in by_priority],
             "by_status": [dict(row) for row in by_status],
-            "sample_missing": [dict(row) for row in sample],
+            "sample_missing": [dict(row) for row in sample_missing],
             "states": available_states,
-            "selected_state": state_filter or None,
-            "selected_year": year_value,
-            "available_years": available_years,
-            "division_summary": [
-                {"type": row["division_type"], "rows": int(row["rows"])}
-                for row in division_summary
-            ],
-            "division_summary_by_year": [
-                {
-                    "year": int(row["year"]) if row["year"] is not None else None,
-                    "type": row["division_type"],
-                    "rows": int(row["rows"]),
-                }
-                for row in division_summary_by_year
-            ],
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "years": available_years,
+            "filters": {
+                "state": state_filter or None,
+                "year": year_value,
+            },
+            "semantic_contract": {
+                "legacy_workflow_contests": "retired",
+                "missing_definition": "workflow_item_without_canonical_race_link",
+                "canonical_and_operational_authorities_are_distinct": True,
+                "identity_fields": "not_exposed",
+            },
         }
+        _log_endpoint_latency(
+            "data_framework_warehouse_status",
+            started_at,
+            context={
+                "available": True,
+                "expected_total": payload["expected_total"],
+                "missing_total": payload["missing_total"],
+            },
+        )
         return jsonify(payload)
     except Exception as exc:
-        logger.warning({
-            "level": "WARNING",
-            "type": "db",
-            "message": f"Warehouse status query failed: {exc}",
+        logger.error({
+            "level": "ERROR",
+            "type": "data_framework",
+            "message": "Governed workflow coverage read unavailable.",
             "session_id": None,
+            "error_type": type(exc).__name__,
         })
-        return jsonify({"error": "Warehouse status query failed"}), 500
+        _log_endpoint_latency(
+            "data_framework_warehouse_status",
+            started_at,
+            context={
+                "available": False,
+                "reason": "workflow_read_unavailable",
+            },
+        )
+        return jsonify({
+            "available": False,
+            "degraded": True,
+            "reason": "workflow_read_unavailable",
+            "error": "Governed workflow coverage read unavailable.",
+            "authority": dict(WORKFLOW_AUTHORITY),
+            "coverage_basis": "workflow_item_canonical_race_linkage",
+            "expected_total": None,
+            "missing_total": None,
+            "by_priority": [],
+            "by_status": [],
+            "sample_missing": [],
+            "states": [],
+            "years": [],
+            "semantic_contract": {
+                "legacy_workflow_contests": "retired",
+                "unavailable_counts": "null",
+                "canonical_and_operational_authorities_are_distinct": True,
+                "identity_fields": "not_exposed",
+            },
+        }), 503
 
 
 def api_data_framework_exports():

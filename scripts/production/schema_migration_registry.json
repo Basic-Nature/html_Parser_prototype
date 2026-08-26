@@ -1,0 +1,31 @@
+{
+  "migrations": {
+    "e7b2c4d91f60": {
+      "expect_new_tables_empty": true,
+      "expected_new_tables": [
+        "workflow_items",
+        "workflow_passes",
+        "workflow_comparisons",
+        "workflow_discrepancies",
+        "workflow_reviews",
+        "workflow_artifact_links",
+        "workflow_events"
+      ],
+      "from_revision": "c2a3f7e91b4d",
+      "kind": "governed_noncanonical_workflow_schema_foundation",
+      "migration_path": "alembic/versions/e7b2c4d91f60_governed_workflow_schema_foundation.py",
+      "migration_sha256": "a097a6547da1753f8d7c56eb400cb5b2708ebb68fb5ea97b4a371a3e03f2e520",
+      "preserve_canonical_publication_metrics": true,
+      "required_existing_tables": [
+        "alembic_version",
+        "batch_metadata",
+        "canonical_election_races",
+        "canonical_election_results",
+        "canonical_source_artifacts"
+      ],
+      "rollback_policy": "manual_review_only_no_automatic_downgrade",
+      "target_revision": "e7b2c4d91f60"
+    }
+  },
+  "schema_version": "electionpulse_production_schema_migration_registry_v1"
+}

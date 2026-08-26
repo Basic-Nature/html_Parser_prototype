@@ -1,0 +1,133 @@
+name: Production Schema Migration - Governed
+
+run-name: >-
+  Production schema ${{ inputs.mode }}:
+  ${{ inputs.target_revision }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_revision:
+        description: "Allow-listed Alembic target revision"
+        required: true
+        type: choice
+        options:
+          - e7b2c4d91f60
+      mode:
+        description: "Read-only preflight or explicitly approved apply"
+        required: true
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - apply
+      confirmation:
+        description: >-
+          Required for apply. Exact format:
+          APPLY:<from_revision>:<target_revision>
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: electionpulse-production-schema-migration
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  governed-schema-migration:
+    name: Governed production schema migration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production-schema-migration
+
+    steps:
+      - name: Checkout exact workflow commit
+        uses: actions/checkout@v5
+
+      - name: Login to Azure with OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify allow-listed migration source
+        env:
+          TARGET_REVISION: ${{ inputs.target_revision }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          registry_path = Path("scripts/production/schema_migration_registry.json")
+          registry = json.loads(registry_path.read_text(encoding="utf-8"))
+          target = os.environ["TARGET_REVISION"]
+          spec = registry["migrations"].get(target)
+          if not spec:
+              raise SystemExit(f"Target {target!r} is not allow-listed.")
+
+          migration_path = Path(spec["migration_path"])
+          if not migration_path.is_file():
+              raise SystemExit(f"Migration file missing: {migration_path}")
+
+          actual = hashlib.sha256(migration_path.read_bytes()).hexdigest()
+          expected = spec["migration_sha256"]
+          if actual != expected:
+              raise SystemExit(
+                  f"Migration SHA mismatch: expected={expected} actual={actual}"
+              )
+
+          print(f"ALLOWLIST_TARGET={target}")
+          print(f"FROM_REVISION={spec['from_revision']}")
+          print(f"MIGRATION_SHA256={actual}")
+          print("ALLOWLIST_SOURCE_CONTRACT=PASS")
+          PY
+
+      - name: Run governed schema controller
+        env:
+          MODE: ${{ inputs.mode }}
+          TARGET_REVISION: ${{ inputs.target_revision }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          python scripts/production/governed_schema_migration.py \
+            --role controller \
+            --mode "$MODE" \
+            --target "$TARGET_REVISION" \
+            --confirmation "$CONFIRMATION"
+
+      - name: Upload governed migration evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: production-schema-migration-${{ github.run_id }}
+          path: output/reports/production_schema_migration_*.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Governance summary
+        if: always()
+        run: |
+          {
+            echo "## Governed production schema migration"
+            echo "- Trigger: manual workflow_dispatch only"
+            echo "- Mode: \`${{ inputs.mode }}\`"
+            echo "- Target: \`${{ inputs.target_revision }}\`"
+            echo "- Source commit: \`${{ github.sha }}\`"
+            echo "- Azure authentication: OIDC"
+            echo "- Kudu authentication: Microsoft Entra bearer token"
+            echo "- Normal application deploy workflow does not run Alembic"
+            echo "- Automatic downgrade: disabled"
+            echo "- Evidence artifact retention: 90 days"
+          } >> "$GITHUB_STEP_SUMMARY"
