@@ -261,13 +261,16 @@ class SmartElectionsWorklist {
      * Render statistics bar
      */
     renderStats(stats) {
+        const displayStat = (value) => (
+            value === null || value === undefined ? '—' : value
+        );
         const statElements = {
-            'stat-total': stats.total_races || 0,
-            'stat-dl1-ready': stats.dl1_ready || 0,
-            'stat-dl2-ready': stats.dl2_ready || 0,
-            'stat-preqc-passed': stats.preqc_passed || 0,
-            'stat-qc1-pending': stats.qc1_pending || 0,
-            'stat-production': stats.production_records || 0
+            'stat-total': displayStat(stats.total_races),
+            'stat-dl1-ready': displayStat(stats.dl1_ready),
+            'stat-dl2-ready': displayStat(stats.dl2_ready),
+            'stat-preqc-passed': displayStat(stats.preqc_passed),
+            'stat-qc1-pending': displayStat(stats.qc1_pending),
+            'stat-production': displayStat(stats.production_records)
         };
 
         for (const [id, value] of Object.entries(statElements)) {

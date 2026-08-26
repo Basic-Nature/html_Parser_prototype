@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, request
+
+from webapp.parser.auth.capability_policy import assert_public_read_surface
+from webapp.parser.services.public_read_runtime import (
+    read_public_workflow_facets,
+    read_public_workflow_stats,
+)
+from webapp.parser.services.workflow_reader import (
+    WORKFLOW_AUTHORITY,
+    WORKFLOW_READ_SCHEMA_VERSION,
+    WorkflowReadValidationError,
+)
 
 from .route_monitor import record_route_monitor_event
 
@@ -50,6 +61,43 @@ def _call_handler(handler_name: str, *args, **kwargs):
         raise
 
 
+def _workflow_error_payload(message: str) -> dict:
+    return {
+        "success": False,
+        "error": message,
+        "schema_version": WORKFLOW_READ_SCHEMA_VERSION,
+        "authority": dict(WORKFLOW_AUTHORITY),
+    }
+
+
+def _call_public_reader(handler_name: str, surface: str, reader):
+    assert_public_read_surface(surface, request.method)
+    try:
+        payload = reader(request.args.to_dict(flat=True))
+        record_route_monitor_event(
+            "workflow_v1",
+            handler_name,
+            "success",
+        )
+        return jsonify(payload), 200
+    except WorkflowReadValidationError as exc:
+        record_route_monitor_event(
+            "workflow_v1",
+            handler_name,
+            "failure",
+        )
+        return jsonify(_workflow_error_payload(str(exc))), 400
+    except Exception:
+        record_route_monitor_event(
+            "workflow_v1",
+            handler_name,
+            "failure",
+        )
+        return jsonify(
+            _workflow_error_payload("Workflow read unavailable.")
+        ), 503
+
+
 def create_workflow_v1_blueprint() -> Blueprint:
     bp = Blueprint("workflow_v1_routes", __name__)
 
@@ -78,7 +126,11 @@ def create_workflow_v1_blueprint() -> Blueprint:
         endpoint="api_workflow_v1_facets",
     )
     def facets_route():
-        return _call_handler("api_workflow_v1_facets")
+        return _call_public_reader(
+            "api_workflow_v1_facets",
+            "workflow_v1_facets",
+            read_public_workflow_facets,
+        )
 
     @bp.route(
         "/api/workflow/v1/stats",
@@ -86,6 +138,10 @@ def create_workflow_v1_blueprint() -> Blueprint:
         endpoint="api_workflow_v1_stats",
     )
     def stats_route():
-        return _call_handler("api_workflow_v1_stats")
+        return _call_public_reader(
+            "api_workflow_v1_stats",
+            "workflow_v1_stats",
+            read_public_workflow_stats,
+        )
 
     return bp

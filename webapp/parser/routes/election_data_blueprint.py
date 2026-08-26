@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, request
+
+from webapp.parser.auth.capability_policy import assert_public_read_surface
+from webapp.parser.services.public_read_runtime import (
+    read_public_election_stats,
+    read_public_scope_directory,
+    read_public_worklist,
+)
 
 from .route_monitor import record_route_monitor_event
 
@@ -23,12 +30,38 @@ def _call_handler(handler_name: str, *args, **kwargs):
         raise
 
 
+def _call_public_reader(
+    handler_name: str,
+    surface: str,
+    reader,
+    *args,
+    **kwargs,
+):
+    assert_public_read_surface(surface, request.method)
+    try:
+        payload = reader(*args, **kwargs)
+        record_route_monitor_event("election_data", handler_name, "success")
+        return jsonify(payload), 200
+    except Exception:
+        record_route_monitor_event("election_data", handler_name, "failure")
+        return jsonify({
+            "success": False,
+            "error": "Public read unavailable.",
+            "surface": surface,
+        }), 503
+
+
 def create_election_data_blueprint() -> Blueprint:
     bp = Blueprint("election_data_routes", __name__)
 
     @bp.route("/api/election_data/worklist", methods=["GET"], endpoint="api_election_data_worklist")
     def api_election_data_worklist_route():
-        return _call_handler("api_election_data_worklist")
+        return _call_public_reader(
+            "api_election_data_worklist",
+            "election_data_worklist_public_projection",
+            read_public_worklist,
+            request.args.to_dict(flat=True),
+        )
 
     @bp.route("/api/election_data/worklist/overview", methods=["GET"], endpoint="api_election_data_worklist_overview")
     def api_election_data_worklist_overview_route():
@@ -48,7 +81,11 @@ def create_election_data_blueprint() -> Blueprint:
 
     @bp.route("/api/election_data/states_counties", methods=["GET"], endpoint="api_election_data_states_counties")
     def api_election_data_states_counties_route():
-        return _call_handler("api_election_data_states_counties")
+        return _call_public_reader(
+            "api_election_data_states_counties",
+            "election_data_states_counties",
+            read_public_scope_directory,
+        )
 
     @bp.route("/api/election_data/worklist/<race_id>/assign", methods=["POST"], endpoint="api_assign_dl_owner")
     def api_assign_dl_owner_route(race_id):
@@ -64,7 +101,11 @@ def create_election_data_blueprint() -> Blueprint:
 
     @bp.route("/api/election_data/stats", methods=["GET"], endpoint="api_election_data_stats")
     def api_election_data_stats_route():
-        return _call_handler("api_election_data_stats")
+        return _call_public_reader(
+            "api_election_data_stats",
+            "election_data_stats",
+            read_public_election_stats,
+        )
 
     @bp.route("/api/ballotlens-database", methods=["GET"], endpoint="api_ballotlens_database")
     def api_ballotlens_database_route():
