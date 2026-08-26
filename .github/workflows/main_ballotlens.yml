@@ -615,6 +615,15 @@ jobs:
       - name: Restart Web App
         run: az webapp restart --name BallotLens --resource-group BallotLens_group
 
+      - name: Wait for Web App to Initialize (Warm-up)
+        run: |
+          echo "Waiting 30 seconds for Azure container/worker processes to reboot..."
+          sleep 30
+          
+          echo "Warming up application routing instance..."
+          # Quietly ping the endpoint until it responds with a valid HTTP status code
+          curl -s -I https://www.electionpulse.org/ || true
+
       - name: Post-deploy HTTPS redirect probe
         run: |
           set -e
@@ -641,6 +650,16 @@ jobs:
           
           if [ "$FINAL2" != "$OK_WWW" ] && [ "$FINAL2" != "$OK_APEX" ]; then
             echo "ERROR: http://www.electionpulse.org did not end at an approved landing page (got $FINAL2)"
+            exit 1
+          fi
+          
+          if [ "$FINAL3" != "$OK_WWW" ] && [ "$FINAL3" != "$OK_APEX" ]; then
+            echo "ERROR: https://electionpulse.org did not end at an approved landing page (got $FINAL3)"
+            exit 1
+          fi
+          
+          echo "Redirect probe OK: Routing resolves securely."
+
             exit 1
           fi
           
