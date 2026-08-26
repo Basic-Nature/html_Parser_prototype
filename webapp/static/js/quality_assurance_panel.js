@@ -58,6 +58,24 @@ const QAPanel = (() => {
   // ============================================
   // API Communication
   // ============================================
+  async function hasTrustedSession() {
+    try {
+      const response = await fetch('/api/auth/status', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store',
+      });
+      if (!response.ok) return false;
+      const status = await response.json();
+      return Boolean(
+        status?.authenticated === true
+        || status?.certificate_backed_authority === true
+        || status?.certificate_session_authenticated === true
+      );
+    } catch (error) {
+      return false;
+    }
+  }
 
   /**
     * @typedef {Object} QAMetadata
@@ -209,6 +227,9 @@ const QAPanel = (() => {
    */
   async function getPendingReviews(limit = 50) {
     try {
+      if (!(await hasTrustedSession())) {
+        return [];
+      }
       const response = await fetch(`/api/data-assurance/pending-dl2-reviews?limit=${limit}`);
       if (!response.ok) throw new Error(`API error: ${response.statusText}`);
       
@@ -228,6 +249,18 @@ const QAPanel = (() => {
    */
   async function getQueueActions(limit = 200, state = '') {
     try {
+      if (!(await hasTrustedSession())) {
+        return {
+          total: 0,
+          state_filter: null,
+          restricted: true,
+          groups: {
+            auto_pass_candidates: [],
+            warn_review_queue: [],
+            hard_fail_retry_queue: [],
+          },
+        };
+      }
       const params = new URLSearchParams();
       params.set('limit', String(limit));
       if (state) params.set('state', String(state));

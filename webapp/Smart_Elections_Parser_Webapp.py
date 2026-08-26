@@ -304,6 +304,7 @@ from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socke
 from webapp.parser.url_parser import (
     parse_url_simple,
 )
+from webapp.parser.auth.capability_policy import assert_public_read_surface
 from webapp.parser.utils.cert_utils import extract_client_principal
 from webapp.parser.utils.db_utils import SessionLocal, get_engine
 from webapp.parser.utils.misc_utils import extract_url_and_label, load_processed_urls
@@ -4284,9 +4285,7 @@ def api_data_framework_preview():
 
 
 def api_data_framework_scaffold():
-    principal, _, _ = get_request_principal()
-    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
-        return jsonify({"error": "Unauthorized"}), 403
+    assert_public_read_surface("data_framework_scaffold", request.method)
     try:
         limit = int(request.args.get("limit") or 100)
         limit = max(1, min(500, limit))
@@ -4297,9 +4296,7 @@ def api_data_framework_scaffold():
 
 
 def api_data_framework_scaffold_csv():
-    principal, _, _ = get_request_principal()
-    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
-        return Response("Unauthorized", status=403, mimetype="text/plain")
+    assert_public_read_surface("data_framework_scaffold_csv", request.method)
     try:
         limit = int(request.args.get("limit") or 100)
         limit = max(1, min(500, limit))
@@ -4321,9 +4318,7 @@ def api_data_framework_scaffold_csv():
 
 
 def api_data_framework_curated():
-    principal, _, _ = get_request_principal()
-    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
-        return jsonify({"error": "Unauthorized"}), 403
+    assert_public_read_surface("data_framework_curated", request.method)
     try:
         limit = int(request.args.get("limit") or 80)
         limit = max(1, min(200, limit))
@@ -4334,9 +4329,7 @@ def api_data_framework_curated():
 
 
 def api_data_framework_warehouse_status():
-    principal, _, _ = get_request_principal()
-    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
-        return jsonify({"error": "Unauthorized"}), 403
+    assert_public_read_surface("data_framework_warehouse_status", request.method)
 
     ensure_db_tables()
     engine = get_engine()
@@ -4895,9 +4888,7 @@ def api_health_socket_test():
 
 def api_data_framework_canonical_facets():
     """Return complete self-excluding canonical scope facets for the Data Framework."""
-    principal, _, _ = get_request_principal()
-    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
-        return jsonify({"error": "Unauthorized"}), 403
+    assert_public_read_surface("data_framework_canonical_facets", request.method)
     try:
         state = _validate_filter_value("state", request.args.get("state"), max_len=64)
         jurisdiction = _validate_filter_value(
@@ -5708,9 +5699,7 @@ def api_ballotlens_database():
     warehouse_election_results. JSON null values are preserved as null; zero is
     returned only when the canonical value is numerically zero.
     """
-    principal, _, _ = get_request_principal()
-    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
-        return jsonify({"error": "Unauthorized"}), 403
+    assert_public_read_surface("ballotlens_canonical", request.method)
 
     try:
         state = _validate_filter_value("state", request.args.get("state"), max_len=64)
@@ -8167,11 +8156,18 @@ def _workflow_v1_error_payload(message: str) -> dict:
     }
 
 
-def _workflow_v1_read(handler, *args, **kwargs):
-    principal, _, _ = get_request_principal()
-    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
-        return jsonify(_workflow_v1_error_payload("Unauthorized")), 403
-
+def _workflow_v1_read(
+    handler,
+    *args,
+    public_surface: str | None = None,
+    **kwargs,
+):
+    if public_surface:
+        assert_public_read_surface(public_surface, request.method)
+    else:
+        principal, _, _ = get_request_principal()
+        if not principal and not ALLOW_DEV_NO_PRINCIPAL:
+            return jsonify(_workflow_v1_error_payload("Unauthorized")), 403
     db_session = SessionLocal()
     try:
         payload = handler(db_session, *args, **kwargs)
@@ -8215,6 +8211,7 @@ def api_workflow_v1_facets():
     return _workflow_v1_read(
         read_workflow_facets,
         request.args.to_dict(flat=True),
+        public_surface="workflow_v1_facets",
     )
 
 
@@ -8222,6 +8219,7 @@ def api_workflow_v1_stats():
     return _workflow_v1_read(
         read_workflow_stats,
         request.args.to_dict(flat=True),
+        public_surface="workflow_v1_stats",
     )
 
 
@@ -8242,8 +8240,27 @@ def api_election_data_worklist():
     - limit: max records (default 100)
     """
     principal, _, _ = get_request_principal()
-    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
-        return jsonify({"error": "Unauthorized"}), 403
+    public_projection = not bool(principal)
+    assert_public_read_surface(
+        "election_data_worklist_public_projection",
+        request.method,
+    )
+
+    def _public_worklist_record(record: dict) -> dict:
+        if not public_projection:
+            return record
+
+        public_record = dict(record)
+        for sensitive_field in (
+            "dl1_assigned_to",
+            "dl2_assigned_to",
+            "qc1_assigned_to",
+            "qc2_assigned_to",
+            "qc1_selected_dl",
+        ):
+            public_record[sensitive_field] = None
+        public_record["visibility"] = "public_projection"
+        return public_record
 
     def _overview_status_to_workflow(value: str) -> str:
         text = (value or '').strip().lower()
@@ -8356,7 +8373,10 @@ def api_election_data_worklist():
                 'updated_at': None,
             })
 
-        return rows[:limit], None
+        return [
+            _public_worklist_record(record)
+            for record in rows[:limit]
+        ], None
 
     try:
         from sqlalchemy import create_engine
@@ -8411,7 +8431,20 @@ def api_election_data_worklist():
                 'updated_at': r.updated_at.isoformat() if r.updated_at else None,
             } for r in records]
 
-            return jsonify({'success': True, 'total': total, 'records': worklist}), 200
+            worklist = [
+                _public_worklist_record(record)
+                for record in worklist
+            ]
+            return jsonify({
+                'success': True,
+                'total': total,
+                'records': worklist,
+                'visibility': (
+                    'public_projection'
+                    if public_projection
+                    else 'trusted_full'
+                ),
+            }), 200
 
         finally:
             session.close()
@@ -8708,19 +8741,7 @@ def api_election_data_states_counties():
         }
     """
     started_at = time.perf_counter()
-    principal, _, _ = get_request_principal()
-    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
-        # Graceful degradation: return empty mappings for unauthenticated users
-        # This prevents 403 errors in console when users browse without cert
-        _log_endpoint_latency("/api/election_data/states_counties", started_at, cache_hit=False, context={"auth": "required"})
-        return jsonify({
-            "success": True,
-            "states": [],
-            "counties": {},
-            "total_states": 0,
-            "total_counties": 0,
-            "note": "Authentication required for state/county mappings"
-        }), 200
+    assert_public_read_surface("election_data_states_counties", request.method)
 
     cached_payload = _get_ttl_cache_payload("states_counties")
     if isinstance(cached_payload, dict):
@@ -9092,9 +9113,7 @@ def api_qc1_submit(race_id):
 
 def api_election_data_stats():
     """Get overall election data pipeline statistics."""
-    principal, _, _ = get_request_principal()
-    if not principal and not ALLOW_DEV_NO_PRINCIPAL:
-        return jsonify({"error": "Unauthorized"}), 403
+    assert_public_read_surface("election_data_stats", request.method)
 
     def _build_stats_from_overview() -> dict:
         from webapp.parser.data_standardization.google_sheets_client import fetch_worklist_overview

@@ -1159,6 +1159,21 @@ const _TablePreview = (() => {
     if (input && typeof input.url === 'string') return input.url;
     return '';
   }
+  function getRequestMethod(input, init) {
+    if (init && typeof init.method === 'string' && init.method.trim()) {
+      return init.method.trim().toUpperCase();
+    }
+    if (input && typeof input.method === 'string' && input.method.trim()) {
+      return input.method.trim().toUpperCase();
+    }
+    return 'GET';
+  }
+  function isReadOnlyRequestMethod(method) {
+    const normalized = String(method || 'GET').toUpperCase();
+    return normalized === 'GET'
+      || normalized === 'HEAD'
+      || normalized === 'OPTIONS';
+  }
 
   function isCertProtectedUrl(url) {
     if (!url) return false;
@@ -1180,7 +1195,13 @@ const _TablePreview = (() => {
       return nativeFetch(input, init).then((resp) => {
         try {
           const url = getRequestUrl(input);
-          if (resp && resp.status === 401 && isCertProtectedUrl(url)) {
+          const method = getRequestMethod(input, init);
+          if (
+            resp
+            && (resp.status === 401 || resp.status === 403)
+            && isCertProtectedUrl(url)
+            && !isReadOnlyRequestMethod(method)
+          ) {
             showCertRequiredModal(url);
           }
         } catch (e) {

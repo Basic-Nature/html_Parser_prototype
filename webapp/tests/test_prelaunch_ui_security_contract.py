@@ -27,39 +27,52 @@ def _function_source(path: Path, name: str) -> str:
     raise AssertionError(f"function not found: {name}")
 
 
-def test_worklist_get_apis_require_principal_before_backend_access():
-    backend_markers = {
-        "api_election_data_worklist": (
-            "create_engine",
-            "fetch_worklist_overview",
-        ),
-        "api_election_data_worklist_overview": (
-            "fetch_worklist_overview",
-        ),
-    }
+def test_worklist_public_projection_and_overview_keep_distinct_boundaries():
+    public_body = _function_source(APP, "api_election_data_worklist")
 
-    for name, markers in backend_markers.items():
-        body = _function_source(APP, name)
+    principal_index = public_body.index("get_request_principal()")
+    projection_index = public_body.index("public_projection = not bool(principal)")
+    capability_index = public_body.index("assert_public_read_surface(")
+    surface_index = public_body.index(
+        '"election_data_worklist_public_projection"'
+    )
 
-        principal_index = body.index("get_request_principal()")
-        guard_index = body.index(
-            "not principal and not ALLOW_DEV_NO_PRINCIPAL"
+    assert principal_index < projection_index < capability_index < surface_index
+    assert "not principal and not ALLOW_DEV_NO_PRINCIPAL" not in public_body
+    assert 'public_record[sensitive_field] = None' in public_body
+    assert 'public_record["visibility"] = "public_projection"' in public_body
+
+    for marker in ("create_engine", "fetch_worklist_overview"):
+        if marker in public_body:
+            assert surface_index < public_body.index(marker)
+
+    overview_body = _function_source(
+        APP,
+        "api_election_data_worklist_overview",
+    )
+    overview_principal_index = overview_body.index("get_request_principal()")
+    overview_guard_index = overview_body.index(
+        "not principal and not ALLOW_DEV_NO_PRINCIPAL"
+    )
+    overview_unauthorized_index = min(
+        value
+        for value in (
+            overview_body.find('"Unauthorized"'),
+            overview_body.find("'Unauthorized'"),
         )
-        unauthorized_index = min(
-            value
-            for value in (
-                body.find('"Unauthorized"'),
-                body.find("'Unauthorized'"),
-            )
-            if value >= 0
-        )
+        if value >= 0
+    )
 
-        assert ", 403" in body
-        assert principal_index < guard_index < unauthorized_index
-
-        for marker in markers:
-            if marker in body:
-                assert unauthorized_index < body.index(marker)
+    assert ", 403" in overview_body
+    assert (
+        overview_principal_index
+        < overview_guard_index
+        < overview_unauthorized_index
+    )
+    assert "assert_public_read_surface(" not in overview_body
+    assert overview_unauthorized_index < overview_body.index(
+        "fetch_worklist_overview"
+    )
 
 
 def test_raw_worklist_identity_is_not_a_public_row_render():

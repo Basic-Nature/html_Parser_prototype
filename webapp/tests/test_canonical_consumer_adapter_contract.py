@@ -241,16 +241,20 @@ def test_frontend_uses_configured_canonical_api_and_preserves_null_semantics():
         assert token not in data_framework
 
 
-def test_canonical_endpoint_preserves_principal_boundary_and_does_not_infer_null_reason():
+def test_canonical_endpoint_uses_public_read_capability_and_does_not_infer_null_reason():
     main_source = (REPO_ROOT / "webapp/Smart_Elections_Parser_Webapp.py").read_text(encoding="utf-8")
     handler_block = main_source.split("def api_ballotlens_database():", 1)[1].split(
         "def api_warehouse_election_results():",
         1,
     )[0]
 
-    assert "principal, _, _ = get_request_principal()" in handler_block
-    assert "if not principal and not ALLOW_DEV_NO_PRINCIPAL:" in handler_block
-    assert 'return jsonify({"error": "Unauthorized"}), 403' in handler_block
+    assert (
+        'assert_public_read_surface("ballotlens_canonical", request.method)'
+        in handler_block
+    )
+    assert "principal, _, _ = get_request_principal()" not in handler_block
+    assert "if not principal and not ALLOW_DEV_NO_PRINCIPAL:" not in handler_block
+
     assert '"contract": "canonical_results_v1"' in handler_block
     assert '"null": "preserved_null"' in handler_block
     assert '"null_reason": "not_inferred"' in handler_block
