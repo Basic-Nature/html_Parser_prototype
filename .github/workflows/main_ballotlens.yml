@@ -621,28 +621,34 @@ jobs:
           echo "Probing apex (http) -> final URL"
           FINAL1=$(curl -L -s -o /dev/null -w "%{url_effective}" http://electionpulse.org)
           echo "Final (http://electionpulse.org) -> $FINAL1"
+          
           echo "Probing apex with www (http) -> final URL"
           FINAL2=$(curl -L -s -o /dev/null -w "%{url_effective}" http://www.electionpulse.org)
           echo "Final (http://www.electionpulse.org) -> $FINAL2"
+          
           echo "Probing apex (https) -> final URL"
           FINAL3=$(curl -L -s -o /dev/null -w "%{url_effective}" https://electionpulse.org/)
           echo "Final (https://electionpulse.org/) -> $FINAL3"
-          # Accept either with or without trailing slash
-          OK1="https://www.electionpulse.org"
-          OK2="https://www.electionpulse.org/"
-          if [ "$FINAL1" != "$OK1" ] && [ "$FINAL1" != "$OK2" ]; then
-            echo "ERROR: http://electionpulse.org did not end at https://www.electionpulse.org (got $FINAL1)"
+          
+          # Target must strictly include the trailing slash
+          EXPECTED="https://www.electionpulse.org/"
+          
+          if [ "$FINAL1" != "$EXPECTED" ]; then
+            echo "ERROR: http://electionpulse.org did not end at $EXPECTED (got $FINAL1)"
             exit 1
           fi
-          if [ "$FINAL2" != "$OK1" ] && [ "$FINAL2" != "$OK2" ]; then
-            echo "ERROR: http://www.electionpulse.org did not end at https://www.electionpulse.org (got $FINAL2)"
+          
+          if [ "$FINAL2" != "$EXPECTED" ]; then
+            echo "ERROR: http://www.electionpulse.org did not end at $EXPECTED (got $FINAL2)"
             exit 1
           fi
-          if [ "$FINAL3" != "$OK1" ] && [ "$FINAL3" != "$OK2" ]; then
-            echo "ERROR: https://electionpulse.org did not end at https://www.electionpulse.org (got $FINAL3)"
+          
+          if [ "$FINAL3" != "$EXPECTED" ]; then
+            echo "ERROR: https://electionpulse.org did not end at $EXPECTED (got $FINAL3)"
             exit 1
           fi
-          echo "Redirect probe OK: apex resolves to https://www.electionpulse.org"
+          
+          echo "Redirect probe OK: apex resolves to $EXPECTED"
 
   postdeploy-live-db-confirmation:
     name: "Post-Deploy Validation: Live app + data confirmation"
