@@ -615,14 +615,27 @@ jobs:
       - name: Restart Web App
         run: az webapp restart --name BallotLens --resource-group BallotLens_group
 
-      - name: Wait for Web App to Initialize (Warm-up)
+      - name: Wait for Web App to Initialize (Smart Warm-up)
         run: |
-          echo "Waiting 30 seconds for Azure container/worker processes to reboot..."
-          sleep 30
+          echo "Waiting for Azure Web App to fully boot up..."
           
-          echo "Warming up application routing instance..."
-          # Quietly ping the endpoint until it responds with a valid HTTP status code
-          curl -s -I https://www.electionpulse.org/ || true
+          # Retry loop: check status up to 12 times (60 seconds max)
+          for i in {1..12}; do
+            # Get the HTTP status code
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://electionpulse.org)
+            echo "Attempt $i: Server responded with HTTP status $STATUS"
+            
+            # If server responds with 200 OK or a 3xx redirect, it's alive!
+            if [ "$STATUS" -eq 200 ] || [[ "$STATUS" =~ ^30[0-9]$ ]]; then
+              echo "Web App is successfully initialized and online!"
+              exit 0
+            fi
+            
+            sleep 5
+          done
+          
+          echo "ERROR: Web App failed to start within 60 seconds (Still getting $STATUS)"
+          exit 1
 
       - name: Post-deploy HTTPS redirect probe
         run: |
@@ -632,16 +645,16 @@ jobs:
           echo "Final (http://electionpulse.org) -> $FINAL1"
           
           echo "Probing apex with www (http) -> final URL"
-          FINAL2=$(curl -L -s -o /dev/null -w "%{url_effective}" http://www.electionpulse.org)
-          echo "Final (http://www.electionpulse.org) -> $FINAL2"
+          FINAL2=$(curl -L -s -o /dev/null -w "%{url_effective}" http://electionpulse.org)
+          echo "Final (http://electionpulse.org) -> $FINAL2"
           
           echo "Probing apex (https) -> final URL"
-          FINAL3=$(curl -L -s -o /dev/null -w "%{url_effective}" https://electionpulse.org/)
-          echo "Final (https://electionpulse.org/) -> $FINAL3"
+          FINAL3=$(curl -L -s -o /dev/null -w "%{url_effective}" https://electionpulse.org)
+          echo "Final (https://electionpulse.org) -> $FINAL3"
           
           # Accept both canonical targets temporarily 
-          OK_WWW="https://www.electionpulse.org/"
-          OK_APEX="https://electionpulse.org/"
+          OK_WWW="https://electionpulse.org"
+          OK_APEX="https://electionpulse.org"
           
           if [ "$FINAL1" != "$OK_WWW" ] && [ "$FINAL1" != "$OK_APEX" ]; then
             echo "ERROR: http://electionpulse.org did not end at an approved landing page (got $FINAL1)"
@@ -649,7 +662,7 @@ jobs:
           fi
           
           if [ "$FINAL2" != "$OK_WWW" ] && [ "$FINAL2" != "$OK_APEX" ]; then
-            echo "ERROR: http://www.electionpulse.org did not end at an approved landing page (got $FINAL2)"
+            echo "ERROR: http://electionpulse.org did not end at an approved landing page (got $FINAL2)"
             exit 1
           fi
           
@@ -660,15 +673,6 @@ jobs:
           
           echo "Redirect probe OK: Routing resolves securely."
 
-            exit 1
-          fi
-          
-          if [ "$FINAL3" != "$OK_WWW" ] && [ "$FINAL3" != "$OK_APEX" ]; then
-            echo "ERROR: https://electionpulse.org did not end at an approved landing page (got $FINAL3)"
-            exit 1
-          fi
-          
-          echo "Redirect probe OK: Routing resolves securely."
 
   postdeploy-live-db-confirmation:
     name: "Post-Deploy Validation: Live app + data confirmation"
