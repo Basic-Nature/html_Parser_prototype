@@ -625,8 +625,8 @@ jobs:
           FINAL2=$(curl -L -s -o /dev/null -w "%{url_effective}" http://www.electionpulse.org)
           echo "Final (http://www.electionpulse.org) -> $FINAL2"
           echo "Probing apex (https) -> final URL"
-          FINAL3=$(curl -L -s -o /dev/null -w "%{url_effective}" https://electionpulse.org)
-          echo "Final (https://electionpulse.org) -> $FINAL3"
+          FINAL3=$(curl -L -s -o /dev/null -w "%{url_effective}" https://electionpulse.org/)
+          echo "Final (https://electionpulse.org/) -> $FINAL3"
           # Accept either with or without trailing slash
           OK1="https://www.electionpulse.org"
           OK2="https://www.electionpulse.org/"
