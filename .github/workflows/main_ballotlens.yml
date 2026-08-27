@@ -522,15 +522,87 @@ jobs:
           cache-from: type=gha,scope=ballotlens
           cache-to: type=gha,mode=max,scope=ballotlens
 
-      - name: Configure Web App to use custom container
+      - name: Verify immutable image is available in ACR
+        shell: bash
+        env:
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
         run: |
+          set -euo pipefail
+          EXPECTED_IMAGE="${ACR_LOGIN_SERVER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+
+          # docker/login-action has already authenticated this runner to ACR.
+          # Refuse to point production at a tag that cannot be resolved.
+          if ! docker buildx imagetools inspect "$EXPECTED_IMAGE" >/dev/null; then
+            echo "::error::Immutable deployment image is not resolvable in ACR."
+            echo "Repository: ${{ env.IMAGE_NAME }}"
+            echo "Tag: ${{ env.IMAGE_TAG }}"
+            exit 1
+          fi
+
+          echo "Immutable ACR image verified: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+
+      - name: Configure Web App to use immutable custom container
+        shell: bash
+        env:
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: |
+          set -euo pipefail
+          EXPECTED_IMAGE="${ACR_LOGIN_SERVER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+
           az webapp config container set \
             --name BallotLens \
             --resource-group BallotLens_group \
-            --container-image-name ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
-            --container-registry-url https://${{ secrets.ACR_LOGIN_SERVER }} \
-            --container-registry-user ${{ secrets.ACR_USERNAME }} \
-            --container-registry-password ${{ secrets.ACR_PASSWORD }}
+            --container-image-name "$EXPECTED_IMAGE" \
+            --container-registry-url "https://${ACR_LOGIN_SERVER}" \
+            --container-registry-user "$ACR_USERNAME" \
+            --container-registry-password "$ACR_PASSWORD" \
+            --only-show-errors \
+            --output none
+
+      - name: Verify App Service immutable container target
+        shell: bash
+        env:
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+        run: |
+          set -euo pipefail
+          EXPECTED_IMAGE="${ACR_LOGIN_SERVER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          EXPECTED_SUFFIX="${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+
+          LINUX_FX_VERSION="$(
+            az webapp config show \
+              --name BallotLens \
+              --resource-group BallotLens_group \
+              --query linuxFxVersion \
+              --output tsv \
+              --only-show-errors
+          )"
+
+          if [ -z "$LINUX_FX_VERSION" ]; then
+            echo "::error::Azure returned empty linuxFxVersion after container configuration."
+            exit 1
+          fi
+
+          if [[ "$LINUX_FX_VERSION" != *"$EXPECTED_SUFFIX"* ]]; then
+            echo "::error::App Service did not record the expected immutable image tag."
+            echo "Expected suffix: $EXPECTED_SUFFIX"
+            echo "Configured linuxFxVersion: $LINUX_FX_VERSION"
+            exit 1
+          fi
+
+          # If Azure stores the registry hostname in linuxFxVersion, require the
+          # exact ACR authority too. Older/classic representations may retain
+          # only the repo:tag there while registry settings are stored separately.
+          if [[ "$LINUX_FX_VERSION" == *".azurecr.io/"* ]] && \
+             [[ "$LINUX_FX_VERSION" != *"$EXPECTED_IMAGE"* ]]; then
+            echo "::error::App Service recorded a different ACR image authority."
+            echo "Expected image: $EXPECTED_IMAGE"
+            echo "Configured linuxFxVersion: $LINUX_FX_VERSION"
+            exit 1
+          fi
+
+          echo "App Service immutable container target verified: $LINUX_FX_VERSION"
 
       - name: Enforce HTTPS-only and redirect HTTP to HTTPS
         run: |
@@ -616,25 +688,55 @@ jobs:
         run: az webapp restart --name BallotLens --resource-group BallotLens_group
 
       - name: Wait for Web App to Initialize (Smart Warm-up)
+        shell: bash
         run: |
-          echo "Waiting for Azure Web App to fully boot up..."
-          
-          # Retry loop: check status up to 12 times (60 seconds max)
-          for i in {1..12}; do
-            # Get the HTTP status code
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://electionpulse.org)
-            echo "Attempt $i: Server responded with HTTP status $STATUS"
-            
-            # If server responds with 200 OK or a 3xx redirect, it's alive!
-            if [ "$STATUS" -eq 200 ] || [[ "$STATUS" =~ ^30[0-9]$ ]]; then
-              echo "Web App is successfully initialized and online!"
+          set -euo pipefail
+          HEALTH_URL="${DYNAMIC_SITE_URL%/}/health"
+          AZURE_HOST="$(
+            az webapp show \
+              --name BallotLens \
+              --resource-group BallotLens_group \
+              --query defaultHostName \
+              --output tsv \
+              --only-show-errors
+          )"
+
+          echo "Waiting for the deployed container to become healthy..."
+          echo "Canonical health target: $HEALTH_URL"
+
+          # Allow up to five minutes for image pull + application startup.
+          for i in {1..30}; do
+            STATUS="$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" "$HEALTH_URL" || true)"
+            AZURE_STATUS="unavailable"
+            if [ -n "$AZURE_HOST" ]; then
+              AZURE_STATUS="$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" "https://${AZURE_HOST}/health" || true)"
+            fi
+
+            echo "Attempt $i/30: canonical=$STATUS azure-host=$AZURE_STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Web App health endpoint is HTTP 200."
               exit 0
             fi
-            
-            sleep 5
+            sleep 10
           done
-          
-          echo "ERROR: Web App failed to start within 60 seconds (Still getting $STATUS)"
+
+          echo "::error::Web App did not become healthy within five minutes."
+          echo "Safe App Service diagnostics follow (no registry password is queried)."
+
+          az webapp show \
+            --name BallotLens \
+            --resource-group BallotLens_group \
+            --query "{state:state,defaultHostName:defaultHostName,httpsOnly:httpsOnly}" \
+            --output json \
+            --only-show-errors || true
+
+          az webapp config show \
+            --name BallotLens \
+            --resource-group BallotLens_group \
+            --query "{linuxFxVersion:linuxFxVersion,alwaysOn:alwaysOn,http20Enabled:http20Enabled,minTlsVersion:minTlsVersion}" \
+            --output json \
+            --only-show-errors || true
+
           exit 1
 
       - name: Post-deploy HTTPS redirect probe
