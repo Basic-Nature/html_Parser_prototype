@@ -358,6 +358,55 @@ def test_runner_retries_only_exact_kudu_trigger_state_conflict() -> None:
         raise AssertionError("Unrelated Kudu HTTP 500 must not be retried/swallowed.")
 
 
+def test_runner_parses_kudu_prefixed_governed_worker_marker() -> None:
+    module = _load_runner()
+    payload = {
+        "schema": "electionpulse_governed_schema_migration_worker_v1",
+        "mode": "preflight",
+        "result": "PASS",
+        "database_mutation": "NONE",
+    }
+    output = (
+        "[08/27/2026 04:35:00 > abc123: SYS INFO] Status changed to Running\n"
+        "[08/27/2026 04:35:01 > abc123: INFO] "
+        + module.RESULT_MARKER
+        + json.dumps(payload, sort_keys=True)
+        + "\n"
+        "[08/27/2026 04:35:01 > abc123: SYS INFO] Status changed to Success\n"
+    )
+
+    assert module.parse_worker_result(output) == payload
+
+
+def test_runner_preserves_webjob_stdout_and_stderr_before_marker_parse() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+    assert 'error_url = payload.get("error_url")' in text
+    assert 'evidence["webjob_status"] = run_payload.get("status")' in text
+    assert 'evidence["webjob_output_tail"] = safe_output[-12000:]' in text
+    assert 'evidence["webjob_error_tail"] = safe_error_output[-12000:]' in text
+    assert text.index('evidence["webjob_output_tail"]') < text.index(
+        'worker = parse_worker_result(output)'
+    )
+
+
+def test_runner_redacts_database_password_from_preserved_webjob_logs() -> None:
+    module = _load_runner()
+    original = module.os.environ.get("POSTGRES_PASSWORD")
+    module.os.environ["POSTGRES_PASSWORD"] = "super-secret-db-password"
+    try:
+        sanitized = module.sanitize_webjob_log(
+            "failure password=super-secret-db-password"
+        )
+    finally:
+        if original is None:
+            module.os.environ.pop("POSTGRES_PASSWORD", None)
+        else:
+            module.os.environ["POSTGRES_PASSWORD"] = original
+
+    assert "super-secret-db-password" not in sanitized
+    assert "<REDACTED_PASSWORD>" in sanitized
+
+
 def test_runner_keeps_canonical_metrics_as_migration_invariants() -> None:
     text = RUNNER.read_text(encoding="utf-8")
     assert "canonical_result_count" in text

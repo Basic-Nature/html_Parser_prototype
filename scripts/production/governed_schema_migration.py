@@ -465,7 +465,7 @@ def wait_for_job(
     run_url: str,
     *,
     scm_base: str,
-) -> tuple[dict[str, Any], str]:
+) -> tuple[dict[str, Any], str, str]:
     if not run_url:
         time.sleep(2)
         run_url = newest_history_url(token, scm_base=scm_base)
@@ -486,7 +486,9 @@ def wait_for_job(
         status = str(payload.get("status") or "").lower()
         if status not in {"running", "pending", "starting", "initializing"}:
             output = ""
+            error_output = ""
             output_url = payload.get("output_url")
+            error_url = payload.get("error_url")
             if output_url:
                 _, _, output_body = kudu_request(
                     token,
@@ -496,7 +498,16 @@ def wait_for_job(
                     timeout=60,
                 )
                 output = output_body.decode("utf-8", errors="replace")
-            return payload, output
+            if error_url:
+                _, _, error_body = kudu_request(
+                    token,
+                    "GET",
+                    str(error_url),
+                    scm_base=scm_base,
+                    timeout=60,
+                )
+                error_output = error_body.decode("utf-8", errors="replace")
+            return payload, output, error_output
         time.sleep(3)
 
     raise RuntimeError(f"Timed out waiting for WebJob completion: {last!r}")
@@ -515,14 +526,41 @@ def delete_job(token: str, *, scm_base: str) -> None:
 
 
 def parse_worker_result(output: str) -> dict[str, Any]:
-    matches = [
-        line[len(RESULT_MARKER):]
-        for line in output.splitlines()
-        if line.startswith(RESULT_MARKER)
-    ]
+    matches: list[str] = []
+    for line in output.splitlines():
+        marker_at = line.find(RESULT_MARKER)
+        if marker_at < 0:
+            continue
+        candidate = line[marker_at + len(RESULT_MARKER):].strip()
+        if candidate:
+            matches.append(candidate)
+
     if not matches:
         raise RuntimeError("WebJob output did not contain governed result marker.")
-    return json.loads(matches[-1])
+
+    last_error: Exception | None = None
+    decoder = json.JSONDecoder()
+    for candidate in reversed(matches):
+        try:
+            payload, _ = decoder.raw_decode(candidate)
+        except Exception as exc:
+            last_error = exc
+            continue
+        if not isinstance(payload, dict):
+            raise RuntimeError("Governed worker result marker did not contain a JSON object.")
+        return payload
+
+    raise RuntimeError(
+        "WebJob output contained governed result marker but JSON parsing failed: "
+        f"{last_error}"
+    )
+
+
+def sanitize_webjob_log(text: str) -> str:
+    password = os.environ.get("POSTGRES_PASSWORD") or ""
+    if password:
+        text = text.replace(password, "<REDACTED_PASSWORD>")
+    return text
 
 
 def controller_main(args: argparse.Namespace) -> int:
@@ -602,10 +640,20 @@ def controller_main(args: argparse.Namespace) -> int:
             target=args.target,
             confirmation=args.confirmation or "",
         )
-        run_payload, output = wait_for_job(token, run_url, scm_base=scm_base)
-        worker = parse_worker_result(output)
+        run_payload, output, error_output = wait_for_job(
+            token,
+            run_url,
+            scm_base=scm_base,
+        )
+        safe_output = sanitize_webjob_log(output)
+        safe_error_output = sanitize_webjob_log(error_output)
 
         evidence["webjob_status"] = run_payload.get("status")
+        evidence["webjob_run_id"] = run_payload.get("id")
+        evidence["webjob_output_tail"] = safe_output[-12000:]
+        evidence["webjob_error_tail"] = safe_error_output[-12000:]
+
+        worker = parse_worker_result(output)
         evidence["worker_result"] = worker
 
         if str(run_payload.get("status") or "").lower() != "success":
@@ -618,7 +666,10 @@ def controller_main(args: argparse.Namespace) -> int:
         evidence["database_mutation"] = worker.get("database_mutation", "UNKNOWN")
         evidence["result"] = "PASS"
 
-        print(output[-14000:])
+        print(safe_output[-14000:])
+        if safe_error_output:
+            print("--- WEBJOB STDERR ---")
+            print(safe_error_output[-14000:])
         print(f"CONTROLLER_RESULT=PASS")
         print(f"MODE={args.mode}")
         print(f"TARGET_REVISION={args.target}")
