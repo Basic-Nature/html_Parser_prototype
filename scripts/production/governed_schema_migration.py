@@ -22,10 +22,46 @@ APP_NAME = "BallotLens"
 RESOURCE_GROUP = "BallotLens_group"
 EXPECTED_DB_NAME = "ballotlens-database"
 EXPECTED_DB_HOST = "ballotlens-server.postgres.database.azure.com"
-WEBJOB_NAME = "ElectionPulseGovernedSchemaMigration"
+WEBJOB_BASE_NAME = "ElectionPulseGovernedSchemaMigration"
 REGISTRY_FILENAME = "schema_migration_registry.json"
 RESULT_MARKER = "EP_SCHEMA_MIGRATION_RESULT_JSON="
 MAX_HISTORY_WAIT_SECONDS = 300
+
+
+def build_governed_webjob_name(
+    run_id: str | None = None,
+    run_attempt: str | None = None,
+) -> str:
+    # Use a fresh Kudu object for every GitHub workflow attempt. Reusing one
+    # fixed triggered-WebJob name can collide with Kudu's asynchronous
+    # create/delete lifecycle and leave the next invocation in a stale state.
+    if run_id is None:
+        run_id = (os.environ.get("GITHUB_RUN_ID") or "").strip()
+    else:
+        run_id = str(run_id).strip()
+
+    if run_attempt is None:
+        run_attempt = (os.environ.get("GITHUB_RUN_ATTEMPT") or "1").strip()
+    else:
+        run_attempt = str(run_attempt).strip()
+
+    # Local/import-only contexts do not have GitHub run metadata. Preserve the
+    # historical base name there so unit tests and local inspection remain
+    # deterministic without creating a production collision.
+    if not run_id:
+        return WEBJOB_BASE_NAME
+
+    if not run_id.isdigit():
+        raise RuntimeError(f"Unexpected GITHUB_RUN_ID format: {run_id!r}")
+    if not run_attempt.isdigit():
+        raise RuntimeError(
+            f"Unexpected GITHUB_RUN_ATTEMPT format: {run_attempt!r}"
+        )
+
+    return f"{WEBJOB_BASE_NAME}-{run_id}-{run_attempt}"
+
+
+WEBJOB_NAME = build_governed_webjob_name()
 
 
 def utc_now() -> str:
@@ -597,6 +633,7 @@ def controller_main(args: argparse.Namespace) -> int:
         "source_mutation": "NONE",
         "git_mutation": "NONE",
         "temporary_webjob": "NOT_CREATED",
+        "temporary_webjob_name": WEBJOB_NAME,
         "temporary_webjob_removed": False,
         "authentication": "microsoft_entra_bearer_to_kudu",
     }

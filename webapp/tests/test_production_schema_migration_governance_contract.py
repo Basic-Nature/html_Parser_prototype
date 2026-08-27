@@ -194,6 +194,32 @@ def test_runner_derives_kudu_scm_authority_from_azure_metadata() -> None:
     assert "scm_base=scm_base" in runner_text
 
 
+def test_runner_uses_unique_temporary_webjob_name_per_github_attempt() -> None:
+    module = _load_runner()
+
+    assert module.WEBJOB_BASE_NAME == "ElectionPulseGovernedSchemaMigration"
+    assert module.build_governed_webjob_name("33041848008", "1") == (
+        "ElectionPulseGovernedSchemaMigration-33041848008-1"
+    )
+    assert module.build_governed_webjob_name("33041848008", "2") == (
+        "ElectionPulseGovernedSchemaMigration-33041848008-2"
+    )
+    assert module.build_governed_webjob_name("", "") == module.WEBJOB_BASE_NAME
+
+    for run_id, attempt in (("not-a-run", "1"), ("33041848008", "x")):
+        try:
+            module.build_governed_webjob_name(run_id, attempt)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("Malformed GitHub run identity must fail closed.")
+
+    runner_text = RUNNER.read_text(encoding="utf-8")
+    assert 'WEBJOB_NAME = build_governed_webjob_name()' in runner_text
+    assert '"temporary_webjob_name": WEBJOB_NAME' in runner_text
+    assert 'WEBJOB_NAME = "ElectionPulseGovernedSchemaMigration"' not in runner_text
+
+
 def test_runner_uploads_webjob_zip_with_required_filename_header() -> None:
     module = _load_runner()
     captured = {}
