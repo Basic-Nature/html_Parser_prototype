@@ -9,8 +9,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 APP = REPO_ROOT / "webapp" / "Smart_Elections_Parser_Webapp.py"
 WORKLIST_TEMPLATE = REPO_ROOT / "webapp" / "templates" / "worklist.html"
-WORKLIST_CSS = REPO_ROOT / "webapp" / "static" / "css" / "smart_elections.css"
-WORKLIST_JS = REPO_ROOT / "webapp" / "static" / "js" / "smart_elections_worklist.js"
+WORKLIST_CSS = REPO_ROOT / "webapp" / "static" / "css" / "workflow_public.css"
+WORKLIST_JS = REPO_ROOT / "webapp" / "static" / "js" / "workflow_public.js"
 BALLOT_JS = REPO_ROOT / "webapp" / "static" / "js" / "ballot_lens_modern.js"
 
 
@@ -75,18 +75,21 @@ def test_worklist_public_projection_and_overview_keep_distinct_boundaries():
     )
 
 
-def test_raw_worklist_identity_is_not_a_public_row_render():
+def test_raw_workflow_identity_is_not_present_in_public_runtime():
     source = WORKLIST_JS.read_text(encoding="utf-8")
 
-    start = source.index("renderRaceRow(race) {")
-    end = source.index("Render status badge", start)
-    block = source[start:end]
+    assert "/api/workflow/v1/public/items" in source
+    assert "/api/election_data/worklist" not in source
 
-    assert "publicOperatorId(value, prefix = 'DT')" in source
-    assert "this.publicOperatorId(race.dl1_assigned_to, 'DT')" in block
-    assert "this.publicOperatorId(race.dl2_assigned_to, 'DT')" in block
-    assert "this.escapeHtml(race.dl1_assigned_to" not in block
-    assert "this.escapeHtml(race.dl2_assigned_to" not in block
+    for identity_token in (
+        "created_by_principal",
+        "assigned_principal",
+        "reviewer_principal",
+        "resolved_by_principal",
+        "actor_principal",
+        "workflow_metadata",
+    ):
+        assert identity_token not in source
 
 
 def test_worklist_template_is_csp_clean_and_accessibility_polished():
@@ -94,10 +97,11 @@ def test_worklist_template_is_csp_clean_and_accessibility_polished():
 
     assert ' style="' not in template
     assert "?v={{ static_version }}" in template
-    assert "DL1 Operator" in template
-    assert "DL2 Operator" in template
-    assert "stable aliases" in template
+    assert "ElectionPulse Workflow" in template
+    assert "identity-safe public projection" in template
     assert 'aria-live="polite"' in template
+    assert "filename='js/workflow_public.js'" in template
+    assert "smart_elections_worklist.js" not in template
 
     assert "<thead>" in template
     assert "</thead>" in template
@@ -111,11 +115,11 @@ def test_worklist_template_is_csp_clean_and_accessibility_polished():
 def test_worklist_css_has_prelaunch_responsive_accessibility_layer():
     css = WORKLIST_CSS.read_text(encoding="utf-8")
 
-    assert "G3.1C2.14 PRE-LAUNCH POLISH" in css
-    assert "min-width: 1480px" in css
-    assert ".btn:focus-visible" in css
+    assert "W1 PUBLIC WORKFLOW PARTICIPATION FOUNDATION" in css
+    assert ":focus-visible" in css
     assert "prefers-reduced-motion: reduce" in css
     assert "scrollbar-gutter: stable" in css
+    assert "@media (max-width: 620px)" in css
     assert css.count("{") == css.count("}")
 
 

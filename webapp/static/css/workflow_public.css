@@ -1,0 +1,398 @@
+/* =====================================================================
+   W1 PUBLIC WORKFLOW PARTICIPATION FOUNDATION
+===================================================================== */
+
+:root {
+    color-scheme: light dark;
+    --workflow-bg: Canvas;
+    --workflow-text: CanvasText;
+    --workflow-muted: color-mix(in srgb, CanvasText 68%, Canvas 32%);
+    --workflow-border: color-mix(in srgb, CanvasText 18%, Canvas 82%);
+    --workflow-panel: color-mix(in srgb, Canvas 94%, CanvasText 6%);
+    --workflow-accent: #3478f6;
+    --workflow-accent-text: #ffffff;
+    --workflow-ok: #238636;
+    --workflow-warning: #9a6700;
+    --workflow-error: #cf222e;
+    --workflow-radius: 14px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--workflow-bg);
+    color: var(--workflow-text);
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+}
+
+.workflow-shell {
+    width: min(1500px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 32px 0 64px;
+}
+
+.workflow-hero,
+.workflow-authority,
+.workflow-filters,
+.workflow-table-section,
+.workflow-participation {
+    border: 1px solid var(--workflow-border);
+    border-radius: var(--workflow-radius);
+    background: var(--workflow-panel);
+}
+
+.workflow-hero {
+    padding: clamp(24px, 4vw, 48px);
+}
+
+.workflow-kicker,
+.workflow-section-kicker {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--workflow-accent);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.workflow-hero h1,
+.workflow-section-heading h2,
+.workflow-authority h2,
+.workflow-participation h2 {
+    margin: 0;
+}
+
+.workflow-hero h1 {
+    font-size: clamp(2rem, 5vw, 4.25rem);
+    line-height: 1;
+}
+
+.workflow-lead {
+    max-width: 760px;
+    margin: 18px 0 0;
+    color: var(--workflow-muted);
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    line-height: 1.65;
+}
+
+.workflow-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 28px;
+}
+
+.workflow-link,
+.workflow-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 10px 16px;
+    border: 1px solid var(--workflow-border);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--workflow-text);
+    font: inherit;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.workflow-link-primary,
+.workflow-button {
+    border-color: var(--workflow-accent);
+    background: var(--workflow-accent);
+    color: var(--workflow-accent-text);
+}
+
+.workflow-button-secondary {
+    border-color: var(--workflow-border);
+    background: transparent;
+    color: var(--workflow-text);
+}
+
+.workflow-link:focus-visible,
+.workflow-button:focus-visible,
+.workflow-filter-grid input:focus-visible,
+.workflow-filter-grid select:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--workflow-accent) 55%, transparent);
+    outline-offset: 3px;
+}
+
+.workflow-context {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 32px;
+}
+
+.workflow-context > div {
+    display: grid;
+    gap: 5px;
+    padding: 16px;
+    border: 1px solid var(--workflow-border);
+    border-radius: 12px;
+}
+
+.workflow-context span,
+.workflow-section-heading p,
+.workflow-authority p,
+.workflow-participation p {
+    color: var(--workflow-muted);
+    line-height: 1.55;
+}
+
+.workflow-state {
+    margin: 18px 0;
+    padding: 14px 18px;
+    border: 1px solid var(--workflow-border);
+    border-radius: 12px;
+    font-weight: 700;
+}
+
+.workflow-state-loading {
+    color: var(--workflow-muted);
+}
+
+.workflow-state-ready {
+    border-color: color-mix(in srgb, var(--workflow-ok) 55%, var(--workflow-border));
+}
+
+.workflow-state-unavailable {
+    border-color: color-mix(in srgb, var(--workflow-warning) 60%, var(--workflow-border));
+}
+
+.workflow-state-error {
+    border-color: color-mix(in srgb, var(--workflow-error) 60%, var(--workflow-border));
+}
+
+.workflow-stats {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+    margin: 18px 0;
+}
+
+.workflow-stat-card {
+    display: grid;
+    gap: 8px;
+    min-height: 112px;
+    padding: 18px;
+    border: 1px solid var(--workflow-border);
+    border-radius: 12px;
+    background: var(--workflow-panel);
+}
+
+.workflow-stat-label {
+    color: var(--workflow-muted);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.workflow-stat-card strong {
+    font-size: clamp(1.65rem, 3vw, 2.5rem);
+}
+
+.workflow-authority {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 24px;
+    align-items: center;
+    padding: 24px;
+    margin-bottom: 18px;
+}
+
+.workflow-authority p {
+    max-width: 860px;
+    margin-bottom: 0;
+}
+
+.workflow-authority-state {
+    display: grid;
+    gap: 6px;
+    min-width: 210px;
+    padding: 14px;
+    border: 1px solid var(--workflow-border);
+    border-radius: 10px;
+}
+
+.workflow-authority-state span {
+    color: var(--workflow-muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.workflow-filters,
+.workflow-table-section,
+.workflow-participation {
+    padding: 24px;
+    margin-bottom: 18px;
+}
+
+.workflow-section-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    align-items: end;
+    margin-bottom: 20px;
+}
+
+.workflow-section-heading p {
+    max-width: 620px;
+    margin: 0;
+}
+
+.workflow-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.workflow-filter-grid label {
+    display: grid;
+    gap: 7px;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.workflow-filter-grid input,
+.workflow-filter-grid select {
+    width: 100%;
+    min-height: 42px;
+    padding: 9px 11px;
+    border: 1px solid var(--workflow-border);
+    border-radius: 9px;
+    background: var(--workflow-bg);
+    color: var(--workflow-text);
+    font: inherit;
+}
+
+.workflow-filter-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.workflow-table-wrap {
+    overflow-x: auto;
+    scrollbar-gutter: stable;
+    border: 1px solid var(--workflow-border);
+    border-radius: 12px;
+}
+
+.workflow-table {
+    width: 100%;
+    min-width: 1160px;
+    border-collapse: collapse;
+}
+
+.workflow-table th,
+.workflow-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--workflow-border);
+    text-align: left;
+    vertical-align: top;
+}
+
+.workflow-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--workflow-panel);
+    color: var(--workflow-muted);
+    font-size: 0.78rem;
+    letter-spacing: 0.035em;
+    text-transform: uppercase;
+}
+
+.workflow-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.workflow-badge,
+.workflow-participation-state {
+    display: inline-flex;
+    padding: 4px 8px;
+    border: 1px solid var(--workflow-border);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.workflow-empty-state {
+    margin-top: 14px;
+    padding: 28px;
+    border: 1px dashed var(--workflow-border);
+    border-radius: 12px;
+    color: var(--workflow-muted);
+    text-align: center;
+    line-height: 1.6;
+}
+
+.workflow-participation p {
+    max-width: 900px;
+    margin-bottom: 0;
+}
+
+@media (max-width: 980px) {
+    .workflow-context,
+    .workflow-stats,
+    .workflow-filter-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .workflow-authority,
+    .workflow-section-heading {
+        grid-template-columns: 1fr;
+        display: grid;
+        align-items: start;
+    }
+
+    .workflow-authority-state {
+        min-width: 0;
+    }
+}
+
+@media (max-width: 620px) {
+    .workflow-shell {
+        width: min(100% - 20px, 1500px);
+        padding-top: 12px;
+    }
+
+    .workflow-context,
+    .workflow-stats,
+    .workflow-filter-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .workflow-filter-actions,
+    .workflow-nav {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.001ms !important;
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}

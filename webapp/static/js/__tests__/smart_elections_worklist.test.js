@@ -244,7 +244,7 @@ describe('SMART Elections Worklist UI', () => {
     expect(row.textContent).not.toContain('bob');
   });
 
-  test('runtime Flask template follows the tested Worklist DOM authority', () => {
+  test('runtime Flask template uses W1 public Workflow authority', () => {
     const runtimePath = path.join(
       __dirname,
       '..',
@@ -261,21 +261,24 @@ describe('SMART Elections Worklist UI', () => {
       'modal-preqc-results',
       'modal-qc1-form',
       'modal-qc2-form',
-    ].forEach(id => {
-      expect(runtime).toContain(`id="${id}"`);
+      'Worklist Source',
+      'Worklist Overview',
+      'smart_elections_worklist.js',
+      '/api/election_data/worklist',
+    ].forEach(retiredRuntimeAuthority => {
+      expect(runtime).not.toContain(retiredRuntimeAuthority);
     });
 
-    [
-      'DB-Lite Finalized',
-      'DB-Lite Down-Ballot',
-      'dblite-finalized-sheet-name',
-      'dblite-down-sheet-name',
-    ].forEach(retired => {
-      expect(runtime).not.toContain(retired);
-    });
-
+    expect(runtime).toContain('<h1>ElectionPulse Workflow</h1>');
+    expect(runtime).toContain('Public verification workflow');
+    expect(runtime).toContain('Governed Workflow Plane');
+    expect(runtime).toContain(
+      'Public visibility now; contributor actions next'
+    );
     expect(runtime).toContain("{{ url_for('ballot_lens') }}");
     expect(runtime).toContain("{{ url_for('data_framework') }}");
+    expect(runtime).toContain("filename='js/workflow_public.js'");
+    expect(runtime).toContain("filename='css/workflow_public.css'");
     expect(runtime).toContain('g.csp_nonce');
     expect(runtime).toContain('static_version');
   });

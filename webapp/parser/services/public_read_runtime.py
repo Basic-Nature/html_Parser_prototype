@@ -452,6 +452,132 @@ def _workflow_degraded_base(filters: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+
+def _project_public_workflow_item(
+    row: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Strict allowlist projection for anonymous workflow participation reads."""
+
+    scope_raw = row.get("scope")
+    scope = scope_raw if isinstance(scope_raw, Mapping) else {}
+
+    canonical_raw = row.get("canonical_reference")
+    canonical = (
+        canonical_raw
+        if isinstance(canonical_raw, Mapping)
+        else {}
+    )
+
+    blocker_raw = row.get("blocker")
+    blocker = blocker_raw if isinstance(blocker_raw, Mapping) else {}
+
+    return {
+        "id": row.get("id"),
+        "authority": "operational_workflow",
+        "canonical_authority": False,
+        "lifecycle_state": row.get("lifecycle_state"),
+        "current_stage": row.get("current_stage"),
+        "stage_condition": row.get("stage_condition"),
+        "priority": row.get("priority"),
+        "scope": {
+            "election_year": scope.get("election_year"),
+            "election_date": scope.get("election_date"),
+            "state": scope.get("state"),
+            "jurisdiction_name": scope.get("jurisdiction_name"),
+            "jurisdiction_type": scope.get("jurisdiction_type"),
+            "contest": scope.get("contest"),
+            "office_basic": scope.get("office_basic"),
+            "election_type": scope.get("election_type"),
+            "source_race_id": scope.get("source_race_id"),
+        },
+        "canonical_reference": {
+            "linked": canonical.get("linked"),
+            "lineage_inferred": False,
+        },
+        "blocker": {
+            "reason_code": blocker.get("reason_code"),
+        },
+        "updated_at": row.get("updated_at"),
+        "visibility": "public_projection",
+        "contribution": {
+            "actions_enabled": False,
+            "state": "view_only_foundation",
+            "next_authority_milestone": "W3_keycloak_contributor_roles",
+        },
+    }
+
+
+def read_public_workflow_items(
+    raw_params: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Read governed Workflow tasks through an identity-safe public projection."""
+
+    from webapp.parser.services.workflow_reader import (
+        parse_pagination,
+        parse_workflow_filters,
+        read_workflow_items,
+    )
+    from webapp.parser.utils.db_utils import SessionLocal, get_engine
+
+    filters = parse_workflow_filters(raw_params)
+    limit, offset = parse_pagination(raw_params)
+    engine = get_engine()
+
+    if not _table_exists(engine, "workflow_items"):
+        base = _workflow_degraded_base(filters)
+        return {
+            **base,
+            "contract": "workflow_public_projection_v1",
+            "visibility": "public_projection",
+            "items": [],
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "returned": 0,
+                "total": None,
+                "has_more": False,
+            },
+            "semantic_contract": {
+                **base["semantic_contract"],
+                "identity_fields": "redacted",
+                "internal_metadata": "omitted",
+                "raw_source_url": "omitted",
+                "canonical_internal_id": "omitted",
+                "null": "preserved_null",
+                "contribution_actions": "privileged_not_public_read",
+            },
+        }
+
+    session = SessionLocal()
+    try:
+        payload = read_workflow_items(session, raw_params)
+        projected = [
+            _project_public_workflow_item(row)
+            for row in payload.get("items", [])
+        ]
+        return {
+            **payload,
+            "contract": "workflow_public_projection_v1",
+            "available": True,
+            "degraded": False,
+            "visibility": "public_projection",
+            "items": projected,
+            "semantic_contract": {
+                "identity_fields": "redacted",
+                "internal_metadata": "omitted",
+                "raw_source_url": "omitted",
+                "canonical_internal_id": "omitted",
+                "null": "preserved_null",
+                "zero": "numeric_zero_only",
+                "canonical_and_operational_authorities_are_distinct": True,
+                "contribution_actions": "privileged_not_public_read",
+            },
+        }
+    finally:
+        session.rollback()
+        session.close()
+
+
 def read_public_workflow_facets(
     raw_params: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:

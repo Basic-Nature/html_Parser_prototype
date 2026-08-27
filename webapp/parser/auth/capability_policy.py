@@ -23,6 +23,7 @@ PUBLIC_READ_SURFACES = frozenset(
         "election_data_states_counties",
         "election_data_stats",
         "election_data_worklist_public_projection",
+        "workflow_v1_public_items",
         "workflow_v1_facets",
         "workflow_v1_stats",
     }

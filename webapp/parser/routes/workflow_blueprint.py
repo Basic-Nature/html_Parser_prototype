@@ -7,6 +7,7 @@ from flask import Blueprint, current_app, jsonify, request
 from webapp.parser.auth.capability_policy import assert_public_read_surface
 from webapp.parser.services.public_read_runtime import (
     read_public_workflow_facets,
+    read_public_workflow_items,
     read_public_workflow_stats,
 )
 from webapp.parser.services.workflow_reader import (
@@ -118,6 +119,18 @@ def create_workflow_v1_blueprint() -> Blueprint:
         return _call_handler(
             "api_workflow_v1_item_detail",
             item_id=item_id,
+        )
+
+    @bp.route(
+        "/api/workflow/v1/public/items",
+        methods=["GET"],
+        endpoint="api_workflow_v1_public_items",
+    )
+    def public_items_route():
+        return _call_public_reader(
+            "api_workflow_v1_public_items",
+            "workflow_v1_public_items",
+            read_public_workflow_items,
         )
 
     @bp.route(

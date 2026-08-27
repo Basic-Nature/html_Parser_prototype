@@ -3,447 +3,207 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMART Elections Worklist - 4-Step Workflow</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/smart_elections.css') }}?v={{ static_version }}">
+    <title>ElectionPulse Workflow</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/workflow_public.css') }}?v={{ static_version }}">
 </head>
 <body>
-    <div class="smart-elections-container">
-        <!-- Header -->
-        <header class="se-header">
-            <h1>SMART Elections Worklist</h1>
-            <p class="subtitle">4-Step Workflow: Source &rarr; DL1/DL2 &rarr; Pre-QC &rarr; QC1 &rarr; QC2 &rarr; Production</p>
-            <div class="action-bar">
-                <a href="{{ url_for('ballot_lens') }}" class="btn btn-secondary">← Back to Ballot Lens</a>
-                <a href="{{ url_for('data_framework') }}" class="btn btn-secondary">Data Framework</a>
-            </div>
-            <div class="stats-bar">
-                <div class="stat">
-                    <span class="label">Total Races:</span>
-                    <span class="value" id="stat-total">0</span>
+    <main class="workflow-shell">
+        <header class="workflow-hero">
+            <div class="workflow-kicker">Public verification workflow</div>
+            <h1>ElectionPulse Workflow</h1>
+            <p class="workflow-lead">
+                See what election data still needs verification, follow its progress,
+                and understand where public participation will fit into the audit trail.
+            </p>
+
+            <nav class="workflow-nav" aria-label="ElectionPulse workflow navigation">
+                <a href="{{ url_for('ballot_lens') }}" class="workflow-link">← Ballot Lens</a>
+                <a href="{{ url_for('data_framework') }}" class="workflow-link workflow-link-primary">
+                    Explore Published Data →
+                </a>
+            </nav>
+
+            <div class="workflow-context">
+                <div>
+                    <strong>Workflow</strong>
+                    <span>Work being verified and work still needed.</span>
                 </div>
-                <div class="stat">
-                    <span class="label">DL1 Ready:</span>
-                    <span class="value" id="stat-dl1-ready">0</span>
+                <div>
+                    <strong>Data Framework</strong>
+                    <span>Published and reference election data available for inspection.</span>
                 </div>
-                <div class="stat">
-                    <span class="label">DL2 Ready:</span>
-                    <span class="value" id="stat-dl2-ready">0</span>
-                </div>
-                <div class="stat">
-                    <span class="label">Pre-QC Passed:</span>
-                    <span class="value" id="stat-preqc-passed">0</span>
-                </div>
-                <div class="stat">
-                    <span class="label">QC1 Pending:</span>
-                    <span class="value" id="stat-qc1-pending">0</span>
-                </div>
-                <div class="stat">
-                    <span class="label">Production Ready:</span>
-                    <span class="value" id="stat-production">0</span>
+                <div>
+                    <strong>Ballot Lens</strong>
+                    <span>Explore and analyze election results.</span>
                 </div>
             </div>
         </header>
 
-        <!-- Filters -->
-        <section class="se-filters">
-            <label>
-                Filter by State:
-                <input type="text" id="filter-state" placeholder="e.g., CA, NY" class="filter-input">
-            </label>
-            <label>
-                Filter by Year:
-                <input type="number" id="filter-year" placeholder="2024" class="filter-input">
-            </label>
-            <label>
-                Filter by Status:
-                <select id="filter-status" class="filter-select">
-                    <option value="">All Statuses</option>
-                    <option value="step_1">Step 1: Source URL</option>
-                    <option value="step_2">Step 2: DL1/DL2 Standardization</option>
-                    <option value="step_3">Step 3: QC1 Review</option>
-                    <option value="step_4">Step 4: QC2 Final</option>
-                    <option value="completed">Completed</option>
-                </select>
-            </label>
-            <button id="apply-filters" class="btn btn-primary">Apply Filters</button>
-            <button id="reset-filters" class="btn btn-secondary">Reset</button>
+        <section
+            id="workflow-state"
+            class="workflow-state workflow-state-loading"
+            aria-live="polite"
+            aria-atomic="true"
+        >
+            Loading governed public workflow…
         </section>
 
-        <!-- Live Google Sheets Sources -->
-        <section class="se-data-sources">
-            <h2>Worklist Source</h2>
-            <div class="source-grid">
-                <div class="source-card">
-                    <h3>Worklist Overview</h3>
-                    <div class="source-meta">Sheet: <span id="worklist-sheet-name">-</span></div>
-                    <div class="source-count">Rows: <span id="worklist-row-count">0</span></div>
-                    <div class="source-status" id="worklist-fetch-status" aria-live="polite">Not loaded</div>
-                    <div class="source-note">Public operator labels are stable aliases; authenticated workflow records retain audit identity.</div>
+        <section class="workflow-stats" aria-label="Workflow summary">
+            <article class="workflow-stat-card">
+                <span class="workflow-stat-label">Total Tasks</span>
+                <strong id="workflow-stat-total">—</strong>
+            </article>
+            <article class="workflow-stat-card">
+                <span class="workflow-stat-label">Active</span>
+                <strong id="workflow-stat-active">—</strong>
+            </article>
+            <article class="workflow-stat-card">
+                <span class="workflow-stat-label">Blocked</span>
+                <strong id="workflow-stat-blocked">—</strong>
+            </article>
+            <article class="workflow-stat-card">
+                <span class="workflow-stat-label">Ready for Publication</span>
+                <strong id="workflow-stat-ready">—</strong>
+            </article>
+            <article class="workflow-stat-card">
+                <span class="workflow-stat-label">Published</span>
+                <strong id="workflow-stat-published">—</strong>
+            </article>
+        </section>
+
+        <section class="workflow-authority" aria-labelledby="workflow-authority-title">
+            <div>
+                <span class="workflow-section-kicker">Authority</span>
+                <h2 id="workflow-authority-title">Governed Workflow Plane</h2>
+                <p>
+                    This page uses an identity-safe public projection of the
+                    noncanonical PostgreSQL workflow. Internal contributor identity,
+                    internal metadata, raw source URLs, and privileged actions are not
+                    exposed here.
+                </p>
+            </div>
+            <div class="workflow-authority-state">
+                <span>Source</span>
+                <strong id="workflow-source-status">Checking…</strong>
+            </div>
+        </section>
+
+        <section class="workflow-filters" aria-labelledby="workflow-filters-title">
+            <div class="workflow-section-heading">
+                <div>
+                    <span class="workflow-section-kicker">Find work</span>
+                    <h2 id="workflow-filters-title">Public Workflow Tasks</h2>
                 </div>
-
-
+                <p>
+                    Filters operate on governed workflow fields; missing values remain
+                    unknown rather than being converted to zero.
+                </p>
             </div>
-        </section>
 
-        <!-- Worklist Grid -->
-        <section class="se-worklist">
-            <div class="worklist-container">
-                <table class="worklist-grid" id="worklist-table">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="col-race-id">Race ID</th>
-                            <th scope="col" class="col-state">State</th>
-                            <th scope="col" class="col-county">County</th>
-                            <th scope="col" class="col-office">Office</th>
-                            <th scope="col" class="col-step-indicator">Progress</th>
-                            <th scope="col" class="col-dl1">DL1 Operator</th>
-                            <th scope="col" class="col-dl1-status">DL1 Status</th>
-                            <th scope="col" class="col-dl2">DL2 Operator</th>
-                            <th scope="col" class="col-dl2-status">DL2 Status</th>
-                            <th scope="col" class="col-preqc">Pre-QC Result</th>
-                            <th scope="col" class="col-qc1">QC1 Status</th>
-                            <th scope="col" class="col-qc2">QC2 Status</th>
-                            <th scope="col" class="col-workflow">Workflow Status</th>
-                            <th scope="col" class="col-actions">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="worklist-body">
-                        <!-- Populated by JavaScript -->
-                    </tbody>
-                </table>
-            </div>
-            <div class="loading-indicator is-hidden" id="loading-indicator">
-                <div class="spinner"></div>
-                <span>Loading worklist...</span>
-            </div>
-        </section>
-    </div>
-
-    <!-- Modal: Assign DL Owner -->
-    <div class="modal" id="modal-assign-dl">
-        <div class="modal-content">
-                <div class="modal-header">
-                <h2>Assign DL Owner</h2>
-                <button class="modal-close" data-action="close-modal" data-target="modal-assign-dl">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p id="assign-race-id" class="race-id-display"></p>
+            <div class="workflow-filter-grid">
                 <label>
-                    DL Type:
-                    <select id="assign-dl-type" class="form-control">
-                        <option value="DL1">DL1 (Human-Curated)</option>
-                        <option value="DL2">DL2 (Machine-Enriched)</option>
+                    State
+                    <select id="workflow-filter-state">
+                        <option value="">All states</option>
                     </select>
                 </label>
+
                 <label>
-                    Assign to Username:
-                    <input type="text" id="assign-username" placeholder="Enter username" class="form-control">
+                    Election year
+                    <input
+                        id="workflow-filter-year"
+                        type="number"
+                        min="1700"
+                        max="2300"
+                        placeholder="2024"
+                    >
                 </label>
-                <div class="modal-error" id="assign-error"></div>
+
+                <label>
+                    Lifecycle
+                    <select id="workflow-filter-lifecycle">
+                        <option value="">All lifecycle states</option>
+                    </select>
+                </label>
+
+                <label>
+                    Search
+                    <input
+                        id="workflow-filter-search"
+                        type="search"
+                        maxlength="256"
+                        placeholder="Contest, jurisdiction, source race ID"
+                    >
+                </label>
             </div>
-                <div class="modal-footer">
-                <button class="btn btn-secondary" data-action="close-modal" data-target="modal-assign-dl">Cancel</button>
-                <button class="btn btn-primary" data-action="submit-assign-dl">Assign</button>
+
+            <div class="workflow-filter-actions">
+                <button id="workflow-filter-apply" type="button" class="workflow-button">
+                    Apply filters
+                </button>
+                <button
+                    id="workflow-filter-reset"
+                    type="button"
+                    class="workflow-button workflow-button-secondary"
+                >
+                    Reset
+                </button>
             </div>
-        </div>
-    </div>
+        </section>
 
-    <!-- Modal: DL Editor (DL1/DL2 side-by-side) -->
-    <div class="modal modal-large" id="modal-dl-editor">
-        <div class="modal-content">
-                <div class="modal-header">
-                <h2>DL Editor - <span id="editor-race-id"></span></h2>
-                <button class="modal-close" data-action="close-modal" data-target="modal-dl-editor">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="editor-container">
-                    <!-- DL1 Tab -->
-                    <div class="editor-tabs">
-                        <button class="tab-button active" data-tab="dl1">DL1 (Human-Curated)</button>
-                        <button class="tab-button" data-tab="dl2">DL2 (Machine-Enriched)</button>
-                        <button class="tab-button" data-tab="preqc">Pre-QC Results</button>
-                    </div>
-
-                    <div class="tab-content" id="tab-dl1">
-                        <form class="record-form" id="form-dl1">
-                            <label>Candidate Name (standardized): <input type="text" name="standardized_candidate_name" class="form-control"></label>
-                            <label>Ballot Party: <input type="text" name="ballot_party" class="form-control"></label>
-                            <label>FEC Party: <input type="text" name="fec_party" class="form-control"></label>
-                            <label>FEC ID: <input type="text" name="fec_id" class="form-control"></label>
-                            <label>Total Votes: <input type="number" name="total_votes" class="form-control"></label>
-                            <label>Uncategorized: <input type="number" name="uncategorized" class="form-control"></label>
-                            <label>Early: <input type="number" name="early" class="form-control"></label>
-                            <label>Election Day: <input type="number" name="election_day" class="form-control"></label>
-                            <label>Mail: <input type="number" name="mail" class="form-control"></label>
-                            <label>Provisional: <input type="number" name="provisional" class="form-control"></label>
-                            <label>
-                                <input type="checkbox" name="is_write_in"> Write-In Candidate
-                            </label>
-                            <button type="button" class="btn btn-primary" data-action="save-dl1">Save DL1</button>
-                        </form>
-                    </div>
-
-                    <div class="tab-content" id="tab-dl2">
-                        <form class="record-form" id="form-dl2">
-                            <label>Candidate Name (standardized): <input type="text" name="standardized_candidate_name" class="form-control"></label>
-                            <label>Ballot Party: <input type="text" name="ballot_party" class="form-control"></label>
-                            <label>FEC Party: <input type="text" name="fec_party" class="form-control"></label>
-                            <label>FEC ID: <input type="text" name="fec_id" class="form-control"></label>
-                            <label>Total Votes: <input type="number" name="total_votes" class="form-control"></label>
-                            <label>Uncategorized: <input type="number" name="uncategorized" class="form-control"></label>
-                            <label>Early: <input type="number" name="early" class="form-control"></label>
-                            <label>Election Day: <input type="number" name="election_day" class="form-control"></label>
-                            <label>Mail: <input type="number" name="mail" class="form-control"></label>
-                            <label>Provisional: <input type="number" name="provisional" class="form-control"></label>
-                            <label>
-                                <input type="checkbox" name="is_write_in"> Write-In Candidate
-                            </label>
-                            <div class="auto-flags-section" id="auto-flags-dl2">
-                                <h3>ML Auto-Detected Issues:</h3>
-                                <div id="flags-list-dl2"></div>
-                            </div>
-                            <button type="button" class="btn btn-primary" data-action="save-dl2">Save DL2</button>
-                        </form>
-                    </div>
-
-                    <div class="tab-content" id="tab-preqc">
-                        <div id="preqc-comparison-results">
-                            <!-- Populated by JavaScript after Pre-QC comparison -->
-                        </div>
-                        <button type="button" class="btn btn-success" data-action="run-preqc">Run Pre-QC Check Now</button>
-                    </div>
+        <section class="workflow-table-section" aria-labelledby="workflow-table-title">
+            <div class="workflow-section-heading">
+                <div>
+                    <span class="workflow-section-kicker">Transparent process</span>
+                    <h2 id="workflow-table-title">Verification Queue</h2>
                 </div>
+                <p id="workflow-pagination-summary">Loading…</p>
             </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" data-action="close-modal" data-target="modal-dl-editor">Close</button>
+
+            <div class="workflow-table-wrap">
+                <table class="workflow-table" id="workflow-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Year</th>
+                            <th scope="col">State</th>
+                            <th scope="col">Jurisdiction</th>
+                            <th scope="col">Type</th>
+                            <th scope="col">Contest</th>
+                            <th scope="col">Stage</th>
+                            <th scope="col">Condition</th>
+                            <th scope="col">Priority</th>
+                            <th scope="col">Lifecycle</th>
+                            <th scope="col">Participation</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workflow-items-body"></tbody>
+                </table>
             </div>
-        </div>
-    </div>
 
-    <!-- Modal: Pre-QC Results -->
-    <div class="modal modal-large" id="modal-preqc-results">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Pre-QC Comparison Results - <span id="preqc-race-id"></span></h2>
-                <button class="modal-close" data-action="close-modal" data-target="modal-preqc-results">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="preqc-summary">
-                    <div class="summary-item">
-                        <label>Strict Equality:</label>
-                        <span id="preqc-strict" class="badge"></span>
-                    </div>
-                    <div class="summary-item">
-                        <label>Fuzzy Confidence:</label>
-                        <span id="preqc-fuzzy" class="badge"></span>
-                    </div>
-                    <div class="summary-item">
-                        <label>Status:</label>
-                        <span id="preqc-status" class="badge"></span>
-                    </div>
-                </div>
+            <div
+                id="workflow-empty-state"
+                class="workflow-empty-state"
+                aria-live="polite"
+                aria-atomic="true"
+                hidden
+            ></div>
+        </section>
 
-                <div class="preqc-details">
-                    <h3>Field-by-Field Comparison</h3>
-                    <table class="comparison-table">
-                        <thead>
-                            <tr>
-                                <th scope="col">Field</th>
-                                <th scope="col">DL1 Value</th>
-                                <th scope="col">DL2 Value</th>
-                                <th scope="col">Confidence</th>
-                                <th scope="col">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="preqc-details-body">
-                            <!-- Populated by JavaScript -->
-                        </tbody>
-                    </table>
-                </div>
+        <section class="workflow-participation" aria-labelledby="workflow-participation-title">
+            <span class="workflow-section-kicker">Participation foundation</span>
+            <h2 id="workflow-participation-title">Public visibility now; contributor actions next</h2>
+            <p>
+                W1 intentionally opens visibility without opening raw workflow identity
+                or mutation authority. Task claiming, approved-source parsing, uploads,
+                and submissions will be added through authenticated contributor roles
+                in W3/W4.
+            </p>
+        </section>
+    </main>
 
-                <div class="preqc-summary-text">
-                    <h3>Summary</h3>
-                    <p id="preqc-summary-text"></p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" data-action="close-modal" data-target="modal-preqc-results">Close</button>
-                <button class="btn btn-primary" data-action="proceed-qc1">Proceed to QC1 →</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal: QC1 Checkpoint Form -->
-    <div class="modal modal-large" id="modal-qc1-form">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>QC1 Checkpoint Review - <span id="qc1-race-id"></span></h2>
-                <button class="modal-close" data-action="close-modal" data-target="modal-qc1-form">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form id="form-qc1" class="qc1-form">
-                    <!-- ML Auto-Flags Section -->
-                    <section class="form-section">
-                        <h3>⚠️ ML Auto-Detected Issues</h3>
-                        <div class="auto-flags-card" id="qc1-auto-flags">
-                            <!-- Populated by JavaScript -->
-                        </div>
-                    </section>
-
-                    <!-- Data Inspection Checklist -->
-                    <section class="form-section">
-                        <h3>Data Inspection Checklist</h3>
-                        <div class="checklist">
-                            <label class="checkbox-item">
-                                <input type="checkbox" name="check-candidate-names">
-                                Candidate names are properly standardized (LASTNAME, FIRSTNAME)
-                            </label>
-                            <label class="checkbox-item">
-                                <input type="checkbox" name="check-fec-ids">
-                                FEC IDs are valid and match records
-                            </label>
-                            <label class="checkbox-item">
-                                <input type="checkbox" name="check-vote-totals">
-                                Vote totals reconcile correctly
-                            </label>
-                            <label class="checkbox-item">
-                                <input type="checkbox" name="check-party-codes">
-                                Party codes are correct and standardized
-                            </label>
-                            <label class="checkbox-item">
-                                <input type="checkbox" name="check-vote-types">
-                                Vote type categories are appropriate
-                            </label>
-                        </div>
-                    </section>
-
-                    <!-- Source Selection -->
-                    <section class="form-section">
-                        <h3>Select Data Source for Import</h3>
-                        <label class="radio-item">
-                            <input type="radio" name="selected_dl" value="DL1" checked>
-                            <strong>DL1 (Human-Curated)</strong> - Manually entered and verified
-                        </label>
-                        <label class="radio-item">
-                            <input type="radio" name="selected_dl" value="DL2">
-                            <strong>DL2 (Machine-Enriched)</strong> - Auto-enriched from Google Sheets
-                        </label>
-                    </section>
-
-                    <!-- Inspection Result -->
-                    <section class="form-section">
-                        <h3>Inspection Result</h3>
-                        <label>
-                            Data Inspection Result:
-                            <select name="inspection_result" class="form-control">
-                                <option value="">-- Select Result --</option>
-                                <option value="pass">✓ Pass - Data is ready for QC2</option>
-                                <option value="fail">✗ Fail - Data requires corrections</option>
-                            </select>
-                        </label>
-                        <label>
-                            Review Notes:
-                            <textarea name="notes" class="form-control" rows="4" placeholder="Add any notes about this review..."></textarea>
-                        </label>
-                    </section>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" data-action="close-modal" data-target="modal-qc1-form">Cancel</button>
-                <button class="btn btn-danger" data-action="submit-qc1" data-arg="reject">Reject - Return to DL</button>
-                <button class="btn btn-primary" data-action="submit-qc1" data-arg="approve">Approve & Proceed →</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal: QC2 Final Review -->
-    <div class="modal modal-large" id="modal-qc2-form">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>QC2 Final Review - <span id="qc2-race-id"></span></h2>
-                <button class="modal-close" data-action="close-modal" data-target="modal-qc2-form">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form id="form-qc2" class="qc2-form">
-                    <!-- Import File Info -->
-                    <section class="form-section">
-                        <h3>Import File</h3>
-                        <p><strong>Selected Source:</strong> <span id="qc2-selected-dl"></span></p>
-                        <p><strong>Record Count:</strong> <span id="qc2-record-count"></span></p>
-                        <p><strong>Imported At:</strong> <span id="qc2-imported-at"></span></p>
-                    </section>
-
-                    <!-- ML Flagged Issues -->
-                    <section class="form-section">
-                        <h3>⚠️ ML-Flagged Issues for QC2 Attention</h3>
-                        <div class="flagged-issues" id="qc2-flagged-issues">
-                            <!-- Populated by JavaScript -->
-                        </div>
-                    </section>
-
-                    <!-- Address Flags -->
-                    <section class="form-section">
-                        <h3>Address ML-Flagged Issues</h3>
-                        <label>
-                            <input type="checkbox" name="flags-addressed" id="flags-addressed">
-                            All ML-flagged issues have been reviewed and addressed (or documented reasoning provided)
-                        </label>
-                    </section>
-
-                    <!-- Validation -->
-                    <section class="form-section">
-                        <h3>Data Validation</h3>
-                        <label>
-                            Validation Status:
-                            <select name="validation_status" class="form-control">
-                                <option value="">-- Select Status --</option>
-                                <option value="passed">✓ Validation Passed</option>
-                                <option value="failed">✗ Validation Failed</option>
-                            </select>
-                        </label>
-                        <label>
-                            Validation Notes:
-                            <textarea name="validation_notes" class="form-control" rows="3" placeholder="Document any validation issues..."></textarea>
-                        </label>
-                    </section>
-
-                    <!-- Final Approval -->
-                    <section class="form-section">
-                        <h3>Final Approval</h3>
-                        <label>
-                            Final Review Result:
-                            <select name="final_result" class="form-control">
-                                <option value="">-- Select Result --</option>
-                                <option value="approved">✓ Approved for Production</option>
-                                <option value="rejected">✗ Rejected - Return for Correction</option>
-                            </select>
-                        </label>
-                        <label>
-                            Final Notes:
-                            <textarea name="final_notes" class="form-control" rows="3" placeholder="Final reviewer notes..."></textarea>
-                        </label>
-                    </section>
-
-                    <!-- Chain of Custody Preview -->
-                    <section class="form-section">
-                        <h3>Chain of Custody</h3>
-                        <div class="custody-log" id="qc2-custody-log">
-                            <p><em>Loading audit trail...</em></p>
-                        </div>
-                    </section>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" data-action="close-modal" data-target="modal-qc2-form">Cancel</button>
-                <button class="btn btn-danger" data-action="submit-qc2" data-arg="rejected">Reject & Return</button>
-                <button class="btn btn-success" data-action="submit-qc2" data-arg="approved">Export to Production ✓</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Success/Error Toast Notifications -->
-    <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
-
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/smart_elections_worklist.js') }}?v={{ static_version }}"></script>
+    <script
+        nonce="{{ g.csp_nonce }}"
+        src="{{ url_for('static', filename='js/workflow_public.js') }}?v={{ static_version }}"
+    ></script>
 </body>
 </html>

@@ -7,111 +7,93 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = REPO_ROOT / "webapp" / "templates" / "worklist.html"
-STATIC_FIXTURE = (
-    REPO_ROOT
-    / "webapp"
-    / "static"
-    / "html"
-    / "smart_elections_worklist.html"
-)
-JS = (
-    REPO_ROOT
-    / "webapp"
-    / "static"
-    / "js"
-    / "smart_elections_worklist.js"
-)
+PUBLIC_JS = REPO_ROOT / "webapp" / "static" / "js" / "workflow_public.js"
+PUBLIC_CSS = REPO_ROOT / "webapp" / "static" / "css" / "workflow_public.css"
 
 
-def test_runtime_worklist_uses_full_tested_workflow_dom():
-    runtime = RUNTIME.read_text(encoding="utf-8")
-    fixture = STATIC_FIXTURE.read_text(encoding="utf-8")
-
-    assert "<h2>Worklist Source</h2>" in fixture
-    assert "<h2>Worklist Source</h2>" in runtime
-
-    for modal_id in (
-        "modal-assign-dl",
-        "modal-dl-editor",
-        "modal-preqc-results",
-        "modal-qc1-form",
-        "modal-qc2-form",
-    ):
-        assert f'id="{modal_id}"' in fixture
-        assert runtime.count(f'id="{modal_id}"') == 1
-
-    for class_name in (
-        "col-race-id",
-        "col-state",
-        "col-county",
-        "col-office",
-        "col-step-indicator",
-        "col-dl1",
-        "col-dl1-status",
-        "col-dl2",
-        "col-dl2-status",
-        "col-preqc",
-        "col-qc1",
-        "col-qc2",
-        "col-workflow",
-        "col-actions",
-    ):
-        assert f'class="{class_name}"' in runtime
-
-
-def test_runtime_worklist_has_no_duplicate_ids_or_retired_dblite_cards():
+def test_runtime_worklist_is_w1_public_workflow_surface():
     runtime = RUNTIME.read_text(encoding="utf-8")
 
+    assert "<h1>ElectionPulse Workflow</h1>" in runtime
+    assert "Public verification workflow" in runtime
+    assert "Explore Published Data" in runtime
+    assert "Governed Workflow Plane" in runtime
+    assert "workflow-empty-state" in runtime
+
+    assert "filename='js/workflow_public.js'" in runtime
+    assert "filename='css/workflow_public.css'" in runtime
+    assert "smart_elections_worklist.js" not in runtime
+
+    for retired_runtime_ui in (
+        "Assign DL Owner",
+        "DL Editor",
+        "QC1 Checkpoint Review",
+        "QC2 Final Review",
+        "DL1 Operator",
+        "DL2 Operator",
+        "Worklist Source",
+    ):
+        assert retired_runtime_ui not in runtime
+
+
+def test_runtime_workflow_has_no_duplicate_ids_and_is_csp_clean():
+    runtime = RUNTIME.read_text(encoding="utf-8")
     counts = Counter(
         re.findall(r'\bid=["\']([^"\']+)["\']', runtime)
     )
-    assert {
+    duplicates = {
         key: value
         for key, value in counts.items()
         if value > 1
-    } == {}
+    }
 
-    for retired in (
-        "DB-Lite Finalized",
-        "DB-Lite Down-Ballot",
-        "dblite-finalized-sheet-name",
-        "dblite-finalized-row-count",
-        "dblite-finalized-fetch-status",
-        "dblite-down-sheet-name",
-        "dblite-down-row-count",
-        "dblite-down-fetch-status",
-    ):
-        assert retired not in runtime
+    assert duplicates == {}
+    assert ' style="' not in runtime
+    assert "nonce=\"{{ g.csp_nonce }}\"" in runtime
+    assert "?v={{ static_version }}" in runtime
+
+    headers = re.findall(r"<th\b[^>]*>", runtime)
+    assert headers
+    assert all('scope="col"' in header for header in headers)
 
 
-def test_runtime_worklist_preserves_flask_navigation_and_csp_assets():
+def test_runtime_workflow_navigation_explains_surface_boundaries():
     runtime = RUNTIME.read_text(encoding="utf-8")
 
     assert "{{ url_for('ballot_lens') }}" in runtime
     assert "{{ url_for('data_framework') }}" in runtime
-    assert "filename='css/smart_elections.css'" in runtime
-    assert "filename='js/smart_elections_worklist.js'" in runtime
-    assert "g.csp_nonce" in runtime
-    assert "static_version" in runtime
+    assert "Work being verified and work still needed." in runtime
+    assert "Published and reference election data" in runtime
+    assert "Explore and analyze election results." in runtime
 
 
-def test_public_worklist_row_pseudonymizes_operator_identity_only():
-    source = JS.read_text(encoding="utf-8")
+def test_runtime_public_workflow_js_uses_only_governed_get_reads():
+    source = PUBLIC_JS.read_text(encoding="utf-8")
 
-    assert "publicOperatorId(value, prefix = 'DT')" in source
-    assert "Math.imul(hash, 16777619)" in source
-    assert "(hash % 9999) + 1" in source
+    for endpoint in (
+        "/api/workflow/v1/public/items",
+        "/api/workflow/v1/facets",
+        "/api/workflow/v1/stats",
+    ):
+        assert endpoint in source
 
-    start = source.index("renderRaceRow(race) {")
-    end = source.index("Render status badge", start)
-    block = source[start:end]
+    for legacy_endpoint in (
+        "/api/election_data/worklist",
+        "/api/election_data/worklist/overview",
+    ):
+        assert legacy_endpoint not in source
 
-    assert "this.publicOperatorId(race.dl1_assigned_to, 'DT')" in block
-    assert "this.publicOperatorId(race.dl2_assigned_to, 'DT')" in block
-    assert "this.escapeHtml(race.dl1_assigned_to" not in block
-    assert "this.escapeHtml(race.dl2_assigned_to" not in block
+    assert "method: 'GET'" in source
+    assert "method: 'POST'" not in source
+    assert "method: 'PUT'" not in source
+    assert "method: 'DELETE'" not in source
 
-    # Raw fields remain in application logic because this is a presentation
-    # boundary, not deletion of operational/audit identity.
-    assert "dl1_assigned_to" in source
-    assert "dl2_assigned_to" in source
+
+def test_runtime_public_workflow_assets_have_accessibility_layer():
+    css = PUBLIC_CSS.read_text(encoding="utf-8")
+
+    assert "W1 PUBLIC WORKFLOW PARTICIPATION FOUNDATION" in css
+    assert ":focus-visible" in css
+    assert "prefers-reduced-motion: reduce" in css
+    assert "scrollbar-gutter: stable" in css
+    assert css.count("{") == css.count("}")
