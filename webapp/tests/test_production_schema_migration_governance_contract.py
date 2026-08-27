@@ -194,6 +194,51 @@ def test_runner_derives_kudu_scm_authority_from_azure_metadata() -> None:
     assert "scm_base=scm_base" in runner_text
 
 
+def test_runner_uploads_webjob_zip_with_required_filename_header() -> None:
+    module = _load_runner()
+    captured = {}
+
+    def fake_kudu_request(
+        token,
+        method,
+        path_or_url,
+        *,
+        scm_base,
+        body=None,
+        content_type=None,
+        content_disposition=None,
+        timeout=60,
+    ):
+        captured.update(
+            {
+                "token": token,
+                "method": method,
+                "path_or_url": path_or_url,
+                "scm_base": scm_base,
+                "body": body,
+                "content_type": content_type,
+                "content_disposition": content_disposition,
+                "timeout": timeout,
+            }
+        )
+        return 200, {}, b""
+
+    module.kudu_request = fake_kudu_request
+    module.upload_job(
+        "entra-token",
+        b"zip-bytes",
+        scm_base="https://example.scm.azurewebsites.net",
+    )
+
+    assert captured["method"] == "PUT"
+    assert captured["content_type"] == "application/zip"
+    assert captured["content_disposition"] == (
+        f"attachment; filename={module.WEBJOB_NAME}.zip"
+    )
+    assert captured["body"] == b"zip-bytes"
+    assert captured["timeout"] == 90
+
+
 def test_runner_keeps_canonical_metrics_as_migration_invariants() -> None:
     text = RUNNER.read_text(encoding="utf-8")
     assert "canonical_result_count" in text

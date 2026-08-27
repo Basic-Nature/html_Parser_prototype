@@ -245,6 +245,7 @@ def kudu_request(
     scm_base: str,
     body: bytes | None = None,
     content_type: str | None = None,
+    content_disposition: str | None = None,
     timeout: int = 60,
 ) -> tuple[int, dict[str, str], bytes]:
     if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
@@ -262,6 +263,8 @@ def kudu_request(
     }
     if content_type:
         headers["Content-Type"] = content_type
+    if content_disposition:
+        headers["Content-Disposition"] = content_disposition
 
     req = urllib.request.Request(
         url,
@@ -304,6 +307,7 @@ def upload_job(token: str, job_zip: bytes, *, scm_base: str) -> None:
         scm_base=scm_base,
         body=job_zip,
         content_type="application/zip",
+        content_disposition=f"attachment; filename={WEBJOB_NAME}.zip",
         timeout=90,
     )
     if status not in {200, 201, 202, 204}:
