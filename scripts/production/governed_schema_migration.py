@@ -25,7 +25,6 @@ EXPECTED_DB_HOST = "ballotlens-server.postgres.database.azure.com"
 WEBJOB_NAME = "ElectionPulseGovernedSchemaMigration"
 REGISTRY_FILENAME = "schema_migration_registry.json"
 RESULT_MARKER = "EP_SCHEMA_MIGRATION_RESULT_JSON="
-SCM_BASE = "https://ballotlens.scm.azurewebsites.net"
 MAX_HISTORY_WAIT_SECONDS = 300
 
 
@@ -111,6 +110,45 @@ def az_tsv(*args: str) -> str:
     return run_az(*args, "-o", "tsv").stdout.strip()
 
 
+def resolve_scm_base(site: dict[str, Any]) -> str:
+    # Resolve the authoritative Kudu/SCM HTTPS origin from Azure metadata.
+    candidates: list[str] = []
+
+    ssl_states = site.get("hostNameSslStates")
+    if isinstance(ssl_states, list):
+        for item in ssl_states:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("hostType") or "").strip().lower() != "repository":
+                continue
+            host = str(item.get("name") or "").strip().lower().rstrip(".")
+            if host:
+                candidates.append(host)
+
+    # Some API/CLI projections can omit hostNameSslStates. Fall back to the
+    # enabled SCM hostname, but still require a single unambiguous Azure host.
+    if not candidates:
+        enabled = site.get("enabledHostNames")
+        if isinstance(enabled, list):
+            for value in enabled:
+                host = str(value or "").strip().lower().rstrip(".")
+                if ".scm." in host and host.endswith(".azurewebsites.net"):
+                    candidates.append(host)
+
+    candidates = sorted(set(candidates))
+    if len(candidates) != 1:
+        raise RuntimeError(
+            "Could not resolve exactly one authoritative App Service SCM hostname "
+            f"from Azure metadata: {candidates!r}"
+        )
+
+    host = candidates[0]
+    if not host.endswith(".azurewebsites.net") or ".scm." not in host:
+        raise RuntimeError(f"Resolved unexpected SCM hostname: {host!r}")
+
+    return f"https://{host}"
+
+
 def ensure_azure_target() -> dict[str, Any]:
     site = az_json(
         "webapp",
@@ -140,6 +178,7 @@ def ensure_azure_target() -> dict[str, Any]:
         "http20_enabled": config.get("http20Enabled"),
         "min_tls_version": config.get("minTlsVersion"),
         "linux_fx_version": config.get("linuxFxVersion"),
+        "scm_base": resolve_scm_base(site),
     }
 
     if state["name"] != APP_NAME or state["resource_group"] != RESOURCE_GROUP:
@@ -203,17 +242,18 @@ def kudu_request(
     method: str,
     path_or_url: str,
     *,
+    scm_base: str,
     body: bytes | None = None,
     content_type: str | None = None,
     timeout: int = 60,
 ) -> tuple[int, dict[str, str], bytes]:
     if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
         parsed = urllib.parse.urlparse(path_or_url)
-        url = SCM_BASE.rstrip("/") + parsed.path
+        url = scm_base.rstrip("/") + parsed.path
         if parsed.query:
             url += "?" + parsed.query
     else:
-        url = SCM_BASE.rstrip("/") + "/" + path_or_url.lstrip("/")
+        url = scm_base.rstrip("/") + "/" + path_or_url.lstrip("/")
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -256,11 +296,12 @@ def build_job_zip(script_path: Path, registry_path: Path) -> bytes:
     return payload.getvalue()
 
 
-def upload_job(token: str, job_zip: bytes) -> None:
+def upload_job(token: str, job_zip: bytes, *, scm_base: str) -> None:
     status, _, _ = kudu_request(
         token,
         "PUT",
         f"/api/triggeredwebjobs/{WEBJOB_NAME}",
+        scm_base=scm_base,
         body=job_zip,
         content_type="application/zip",
         timeout=90,
@@ -272,6 +313,7 @@ def upload_job(token: str, job_zip: bytes) -> None:
 def trigger_job(
     token: str,
     *,
+    scm_base: str,
     mode: str,
     target: str,
     confirmation: str,
@@ -291,6 +333,7 @@ def trigger_job(
         token,
         "POST",
         f"/api/triggeredwebjobs/{WEBJOB_NAME}/run?{query}",
+        scm_base=scm_base,
         body=b"",
         timeout=60,
     )
@@ -299,11 +342,12 @@ def trigger_job(
     return headers.get("location", "")
 
 
-def newest_history_url(token: str) -> str:
+def newest_history_url(token: str, *, scm_base: str) -> str:
     _, _, body = kudu_request(
         token,
         "GET",
         f"/api/triggeredwebjobs/{WEBJOB_NAME}/history",
+        scm_base=scm_base,
         timeout=60,
     )
     payload = json.loads(body.decode("utf-8"))
@@ -319,16 +363,24 @@ def newest_history_url(token: str) -> str:
 def wait_for_job(
     token: str,
     run_url: str,
+    *,
+    scm_base: str,
 ) -> tuple[dict[str, Any], str]:
     if not run_url:
         time.sleep(2)
-        run_url = newest_history_url(token)
+        run_url = newest_history_url(token, scm_base=scm_base)
 
     deadline = time.time() + MAX_HISTORY_WAIT_SECONDS
     last: dict[str, Any] | None = None
 
     while time.time() < deadline:
-        _, _, body = kudu_request(token, "GET", run_url, timeout=60)
+        _, _, body = kudu_request(
+            token,
+            "GET",
+            run_url,
+            scm_base=scm_base,
+            timeout=60,
+        )
         payload = json.loads(body.decode("utf-8"))
         last = payload
         status = str(payload.get("status") or "").lower()
@@ -340,6 +392,7 @@ def wait_for_job(
                     token,
                     "GET",
                     str(output_url),
+                    scm_base=scm_base,
                     timeout=60,
                 )
                 output = output_body.decode("utf-8", errors="replace")
@@ -349,11 +402,12 @@ def wait_for_job(
     raise RuntimeError(f"Timed out waiting for WebJob completion: {last!r}")
 
 
-def delete_job(token: str) -> None:
+def delete_job(token: str, *, scm_base: str) -> None:
     status, _, _ = kudu_request(
         token,
         "DELETE",
         f"/api/triggeredwebjobs/{WEBJOB_NAME}",
+        scm_base=scm_base,
         timeout=60,
     )
     if status not in {200, 202, 204}:
@@ -410,10 +464,13 @@ def controller_main(args: argparse.Namespace) -> int:
     }
 
     token = ""
+    scm_base = ""
     uploaded = False
     try:
         azure_state = ensure_azure_target()
         evidence["azure_state_before"] = azure_state
+        scm_base = str(azure_state["scm_base"])
+        evidence["scm_base"] = scm_base
         if workflow_sha:
             require_deployed_commit(workflow_sha, azure_state)
 
@@ -421,17 +478,18 @@ def controller_main(args: argparse.Namespace) -> int:
         job_zip = build_job_zip(script_path, registry_path)
         evidence["job_zip_sha256"] = sha256_bytes(job_zip)
 
-        upload_job(token, job_zip)
+        upload_job(token, job_zip, scm_base=scm_base)
         uploaded = True
         evidence["temporary_webjob"] = "CREATED"
 
         run_url = trigger_job(
             token,
+            scm_base=scm_base,
             mode=args.mode,
             target=args.target,
             confirmation=args.confirmation or "",
         )
-        run_payload, output = wait_for_job(token, run_url)
+        run_payload, output = wait_for_job(token, run_url, scm_base=scm_base)
         worker = parse_worker_result(output)
 
         evidence["webjob_status"] = run_payload.get("status")
@@ -462,7 +520,7 @@ def controller_main(args: argparse.Namespace) -> int:
     finally:
         if uploaded and token:
             try:
-                delete_job(token)
+                delete_job(token, scm_base=scm_base)
                 evidence["temporary_webjob_removed"] = True
                 evidence["temporary_webjob"] = "CREATED_AND_REMOVED"
             except Exception as cleanup_exc:

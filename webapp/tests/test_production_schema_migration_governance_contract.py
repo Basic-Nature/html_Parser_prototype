@@ -149,6 +149,51 @@ def test_runner_preserves_accepted_tls_contract_and_deployed_sha_gate() -> None:
     assert 'os.environ.get("GITHUB_SHA"' in text
 
 
+def test_runner_derives_kudu_scm_authority_from_azure_metadata() -> None:
+    module = _load_runner()
+    unique_scm = (
+        "ballotlens-cubrcudretaebca9.scm."
+        "westus3-01.azurewebsites.net"
+    )
+    site = {
+        "enabledHostNames": [
+            "ballotlens-cubrcudretaebca9.westus3-01.azurewebsites.net",
+            unique_scm,
+        ],
+        "hostNameSslStates": [
+            {
+                "name": (
+                    "ballotlens-cubrcudretaebca9."
+                    "westus3-01.azurewebsites.net"
+                ),
+                "hostType": "Standard",
+            },
+            {
+                "name": unique_scm,
+                "hostType": "Repository",
+            },
+        ],
+    }
+
+    assert module.resolve_scm_base(site) == f"https://{unique_scm}"
+
+    legacy_projection = {
+        "enabledHostNames": [
+            "ballotlens.azurewebsites.net",
+            "ballotlens.scm.azurewebsites.net",
+        ]
+    }
+    assert (
+        module.resolve_scm_base(legacy_projection)
+        == "https://ballotlens.scm.azurewebsites.net"
+    )
+
+    runner_text = RUNNER.read_text(encoding="utf-8")
+    assert 'SCM_BASE = "https://ballotlens.scm.azurewebsites.net"' not in runner_text
+    assert '"scm_base": resolve_scm_base(site)' in runner_text
+    assert "scm_base=scm_base" in runner_text
+
+
 def test_runner_keeps_canonical_metrics_as_migration_invariants() -> None:
     text = RUNNER.read_text(encoding="utf-8")
     assert "canonical_result_count" in text
