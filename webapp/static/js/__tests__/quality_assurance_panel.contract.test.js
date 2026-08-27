@@ -45,6 +45,7 @@ describe('QAPanel API contract', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFetch.mockReset();
     if (qaPanel && typeof qaPanel.clearCache === 'function') {
       qaPanel.clearCache();
     }
@@ -200,70 +201,150 @@ describe('QAPanel API contract', () => {
     expect(qaPanel.getClassification('ds-clear-001')).toBeUndefined();
   });
 
-  // ─── getPendingReviews ────────────────────────────────────────────────────
+  // ─── reviewer queue auth guard + pending reviews ───────────────────────────
 
-  test('getPendingReviews returns empty array when API call throws', async () => {
-    mockFetch.mockRejectedValue(new Error('Network error'));
+  test('getPendingReviews returns empty array when auth status request throws', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
     const reviews = await qaPanel.getPendingReviews();
+
     expect(Array.isArray(reviews)).toBe(true);
     expect(reviews).toHaveLength(0);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(String(mockFetch.mock.calls[0][0])).toBe('/api/auth/status');
   });
 
-  test('getPendingReviews returns entries array from successful response', async () => {
-    mockFetch.mockResolvedValue(jsonResp({
-      entries: [
-        { dataset_id: 'pending-001', dl_status: 'DL1' },
-        { dataset_id: 'pending-002', dl_status: 'DL1' },
-      ],
+  test('getPendingReviews does not poll reviewer queue for anonymous session', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResp({
+      authenticated: false,
+      certificate_backed_authority: false,
+      certificate_session_authenticated: false,
     }));
 
+    const reviews = await qaPanel.getPendingReviews(25);
+
+    expect(reviews).toEqual([]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(String(mockFetch.mock.calls[0][0])).toBe('/api/auth/status');
+  });
+
+  test('getPendingReviews returns entries array after trusted-session check', async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResp({ authenticated: true }))
+      .mockResolvedValueOnce(jsonResp({
+        entries: [
+          { dataset_id: 'pending-001', dl_status: 'DL1' },
+          { dataset_id: 'pending-002', dl_status: 'DL1' },
+        ],
+      }));
+
     const reviews = await qaPanel.getPendingReviews(2);
+
     expect(reviews).toHaveLength(2);
     expect(reviews[0].dataset_id).toBe('pending-001');
     expect(reviews[1].dataset_id).toBe('pending-002');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(String(mockFetch.mock.calls[0][0])).toBe('/api/auth/status');
+    expect(String(mockFetch.mock.calls[1][0])).toContain(
+      '/api/data-assurance/pending-dl2-reviews'
+    );
   });
 
-  test('getPendingReviews uses correct API endpoint', async () => {
-    mockFetch.mockResolvedValue(jsonResp({ entries: [] }));
+  test('getPendingReviews uses reviewer endpoint only after trusted-session check', async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResp({
+        certificate_session_authenticated: true,
+      }))
+      .mockResolvedValueOnce(jsonResp({ entries: [] }));
+
     await qaPanel.getPendingReviews(10);
 
-    const url = String(mockFetch.mock.calls[0][0]);
-    expect(url).toContain('/api/data-assurance/pending-dl2-reviews');
-    expect(url).toContain('limit=10');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    const authUrl = String(mockFetch.mock.calls[0][0]);
+    const reviewsUrl = String(mockFetch.mock.calls[1][0]);
+
+    expect(authUrl).toBe('/api/auth/status');
+    expect(reviewsUrl).toContain('/api/data-assurance/pending-dl2-reviews');
+    expect(reviewsUrl).toContain('limit=10');
   });
 
-  test('getPendingReviews returns empty array for non-ok API response', async () => {
-    mockFetch.mockResolvedValue(jsonResp({ error: 'forbidden' }, 403));
+  test('getPendingReviews returns empty array for non-ok reviewer API response', async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResp({ authenticated: true }))
+      .mockResolvedValueOnce(jsonResp({ error: 'forbidden' }, 403));
 
     const reviews = await qaPanel.getPendingReviews();
+
     expect(Array.isArray(reviews)).toBe(true);
     expect(reviews).toHaveLength(0);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(String(mockFetch.mock.calls[1][0])).toContain(
+      '/api/data-assurance/pending-dl2-reviews'
+    );
   });
 
-  test('getQueueActions uses queue-actions endpoint and returns grouped payload', async () => {
-    mockFetch.mockResolvedValue(jsonResp({
-      total: 3,
-      state_filter: null,
-      groups: {
-        auto_pass_candidates: [{ id: 'a1' }],
-        warn_review_queue: [{ id: 'w1' }],
-        hard_fail_retry_queue: [{ id: 'h1' }],
-      },
+  // ─── reviewer queue actions ────────────────────────────────────────────────
+
+  test('getQueueActions does not poll reviewer queue for anonymous session', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResp({
+      authenticated: false,
+      certificate_backed_authority: false,
+      certificate_session_authenticated: false,
     }));
 
     const payload = await qaPanel.getQueueActions(200);
-    const url = String(mockFetch.mock.calls[0][0]);
-    expect(url).toContain('/api/data-assurance/queue-actions');
-    expect(url).toContain('limit=200');
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(String(mockFetch.mock.calls[0][0])).toBe('/api/auth/status');
+    expect(payload.restricted).toBe(true);
+    expect(payload.total).toBe(0);
+    expect(payload.groups.auto_pass_candidates).toEqual([]);
+    expect(payload.groups.warn_review_queue).toEqual([]);
+    expect(payload.groups.hard_fail_retry_queue).toEqual([]);
+  });
+
+  test('getQueueActions uses queue-actions endpoint after trusted-session check', async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResp({
+        certificate_backed_authority: true,
+      }))
+      .mockResolvedValueOnce(jsonResp({
+        total: 3,
+        state_filter: null,
+        groups: {
+          auto_pass_candidates: [{ id: 'a1' }],
+          warn_review_queue: [{ id: 'w1' }],
+          hard_fail_retry_queue: [{ id: 'h1' }],
+        },
+      }));
+
+    const payload = await qaPanel.getQueueActions(200);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    const authUrl = String(mockFetch.mock.calls[0][0]);
+    const queueUrl = String(mockFetch.mock.calls[1][0]);
+
+    expect(authUrl).toBe('/api/auth/status');
+    expect(queueUrl).toContain('/api/data-assurance/queue-actions');
+    expect(queueUrl).toContain('limit=200');
     expect(payload.total).toBe(3);
     expect(payload.groups.warn_review_queue).toHaveLength(1);
   });
 
-  test('getQueueActions returns empty grouped payload on error', async () => {
-    mockFetch.mockRejectedValue(new Error('network down'));
+  test('getQueueActions returns empty grouped payload when reviewer endpoint errors', async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResp({ authenticated: true }))
+      .mockRejectedValueOnce(new Error('network down'));
 
     const payload = await qaPanel.getQueueActions();
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(String(mockFetch.mock.calls[0][0])).toBe('/api/auth/status');
+    expect(String(mockFetch.mock.calls[1][0])).toContain(
+      '/api/data-assurance/queue-actions'
+    );
     expect(payload.total).toBe(0);
     expect(payload.groups.auto_pass_candidates).toEqual([]);
     expect(payload.groups.warn_review_queue).toEqual([]);
