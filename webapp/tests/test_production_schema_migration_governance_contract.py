@@ -239,6 +239,125 @@ def test_runner_uploads_webjob_zip_with_required_filename_header() -> None:
     assert captured["timeout"] == 90
 
 
+def test_runner_waits_for_uploaded_webjob_registration() -> None:
+    module = _load_runner()
+    calls = []
+    responses = [
+        module.KuduHttpError(
+            status=404,
+            method="GET",
+            path=f"/api/triggeredwebjobs/{module.WEBJOB_NAME}",
+            body="not found yet",
+        ),
+        (
+            200,
+            {},
+            json.dumps(
+                {
+                    "name": module.WEBJOB_NAME,
+                    "type": "triggered",
+                    "runCommand": "python run.py",
+                }
+            ).encode("utf-8"),
+        ),
+    ]
+
+    def fake_kudu_request(*args, **kwargs):
+        calls.append((args, kwargs))
+        response = responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    original_sleep = module.time.sleep
+    module.kudu_request = fake_kudu_request
+    module.time.sleep = lambda _: None
+    try:
+        payload = module.wait_for_uploaded_job_registration(
+            "entra-token",
+            scm_base="https://example.scm.azurewebsites.net",
+            timeout_seconds=30,
+        )
+    finally:
+        module.time.sleep = original_sleep
+
+    assert payload["name"] == module.WEBJOB_NAME
+    assert payload["type"] == "triggered"
+    assert payload["runCommand"] == "python run.py"
+    assert len(calls) == 2
+    assert calls[0][0][1] == "GET"
+
+
+def test_runner_retries_only_exact_kudu_trigger_state_conflict() -> None:
+    module = _load_runner()
+    calls = []
+
+    exact_conflict = module.KuduHttpError(
+        status=500,
+        method="POST",
+        path=f"/api/triggeredwebjobs/{module.WEBJOB_NAME}/run",
+        body=(
+            '{"code":"Kudu.Core.Hooks.ConflictException",'
+            '"message":"Operation is not valid due to the current state '
+            'of the object."}'
+        ),
+    )
+
+    responses = [
+        exact_conflict,
+        (
+            202,
+            {"location": "https://example/history/123"},
+            b"",
+        ),
+    ]
+
+    def fake_kudu_request(*args, **kwargs):
+        calls.append((args, kwargs))
+        response = responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    original_sleep = module.time.sleep
+    module.kudu_request = fake_kudu_request
+    module.time.sleep = lambda _: None
+    try:
+        location = module.trigger_job(
+            "entra-token",
+            scm_base="https://example.scm.azurewebsites.net",
+            mode="preflight",
+            target="e7b2c4d91f60",
+            confirmation="",
+        )
+    finally:
+        module.time.sleep = original_sleep
+
+    assert location == "https://example/history/123"
+    assert len(calls) == 2
+
+    unrelated = module.KuduHttpError(
+        status=500,
+        method="POST",
+        path=f"/api/triggeredwebjobs/{module.WEBJOB_NAME}/run",
+        body='{"code":"OtherFailure","message":"different server error"}',
+    )
+
+    module.kudu_request = lambda *args, **kwargs: (_ for _ in ()).throw(unrelated)
+    try:
+        module.trigger_job(
+            "entra-token",
+            scm_base="https://example.scm.azurewebsites.net",
+            mode="preflight",
+            target="e7b2c4d91f60",
+            confirmation="",
+        )
+    except module.KuduHttpError as exc:
+        assert exc is unrelated
+    else:
+        raise AssertionError("Unrelated Kudu HTTP 500 must not be retried/swallowed.")
+
+
 def test_runner_keeps_canonical_metrics_as_migration_invariants() -> None:
     text = RUNNER.read_text(encoding="utf-8")
     assert "canonical_result_count" in text

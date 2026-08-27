@@ -237,6 +237,25 @@ def acquire_kudu_token() -> str:
     return token
 
 
+class KuduHttpError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        status: int,
+        method: str,
+        path: str,
+        body: str,
+    ) -> None:
+        self.status = int(status)
+        self.method = method
+        self.path = path
+        self.body = body
+        super().__init__(
+            f"Kudu HTTP {self.status} for {self.method} "
+            f"{self.path}: {self.body[:1200]}"
+        )
+
+
 def kudu_request(
     token: str,
     method: str,
@@ -281,9 +300,11 @@ def kudu_request(
             )
     except urllib.error.HTTPError as exc:
         body_text = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"Kudu HTTP {exc.code} for {method} "
-            f"{urllib.parse.urlparse(url).path}: {body_text[:1200]}"
+        raise KuduHttpError(
+            status=int(exc.code),
+            method=method,
+            path=urllib.parse.urlparse(url).path,
+            body=body_text,
         ) from exc
 
 
@@ -314,6 +335,67 @@ def upload_job(token: str, job_zip: bytes, *, scm_base: str) -> None:
         raise RuntimeError(f"Unexpected Kudu WebJob upload status: {status}")
 
 
+def wait_for_uploaded_job_registration(
+    token: str,
+    *,
+    scm_base: str,
+    timeout_seconds: int = 30,
+) -> dict[str, Any]:
+    deadline = time.time() + timeout_seconds
+    last_payload: dict[str, Any] | None = None
+
+    while time.time() < deadline:
+        try:
+            _, _, body = kudu_request(
+                token,
+                "GET",
+                f"/api/triggeredwebjobs/{WEBJOB_NAME}",
+                scm_base=scm_base,
+                timeout=30,
+            )
+        except KuduHttpError as exc:
+            # A just-uploaded WebJob can briefly be absent while Kudu refreshes
+            # its repository view. Only that expected transient is tolerated.
+            if exc.status == 404:
+                time.sleep(1)
+                continue
+            raise
+
+        payload = json.loads(body.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise RuntimeError(
+                "Kudu returned a non-object triggered WebJob registration payload."
+            )
+        last_payload = payload
+
+        name = str(payload.get("name") or "")
+        job_type = str(payload.get("type") or "").lower()
+        run_command = str(
+            payload.get("runCommand")
+            or payload.get("run_command")
+            or ""
+        ).strip()
+
+        if name == WEBJOB_NAME and job_type == "triggered" and run_command:
+            return payload
+
+        time.sleep(1)
+
+    raise RuntimeError(
+        "Timed out waiting for uploaded Kudu WebJob registration readiness: "
+        f"{last_payload!r}"
+    )
+
+
+def _is_transient_kudu_trigger_conflict(exc: KuduHttpError) -> bool:
+    body = exc.body.lower()
+    return (
+        exc.status == 500
+        and "kudu.core.hooks.conflictexception" in body
+        and "current state of the object" in body
+    )
+
+
 def trigger_job(
     token: str,
     *,
@@ -333,17 +415,31 @@ def trigger_job(
     if confirmation:
         args.extend(["--confirmation", confirmation])
     query = urllib.parse.urlencode({"arguments": " ".join(args)})
-    status, headers, _ = kudu_request(
-        token,
-        "POST",
-        f"/api/triggeredwebjobs/{WEBJOB_NAME}/run?{query}",
-        scm_base=scm_base,
-        body=b"",
-        timeout=60,
-    )
-    if status not in {200, 201, 202, 204}:
-        raise RuntimeError(f"Unexpected Kudu trigger status: {status}")
-    return headers.get("location", "")
+    max_attempts = 6
+    for attempt in range(1, max_attempts + 1):
+        try:
+            status, headers, _ = kudu_request(
+                token,
+                "POST",
+                f"/api/triggeredwebjobs/{WEBJOB_NAME}/run?{query}",
+                scm_base=scm_base,
+                body=b"",
+                timeout=60,
+            )
+        except KuduHttpError as exc:
+            if (
+                _is_transient_kudu_trigger_conflict(exc)
+                and attempt < max_attempts
+            ):
+                time.sleep(2)
+                continue
+            raise
+
+        if status not in {200, 201, 202, 204}:
+            raise RuntimeError(f"Unexpected Kudu trigger status: {status}")
+        return headers.get("location", "")
+
+    raise RuntimeError("Kudu WebJob trigger retry loop exhausted unexpectedly.")
 
 
 def newest_history_url(token: str, *, scm_base: str) -> str:
@@ -485,6 +581,19 @@ def controller_main(args: argparse.Namespace) -> int:
         upload_job(token, job_zip, scm_base=scm_base)
         uploaded = True
         evidence["temporary_webjob"] = "CREATED"
+
+        registration = wait_for_uploaded_job_registration(
+            token,
+            scm_base=scm_base,
+        )
+        evidence["temporary_webjob_registration"] = {
+            "name": registration.get("name"),
+            "type": registration.get("type"),
+            "run_command_present": bool(
+                registration.get("runCommand")
+                or registration.get("run_command")
+            ),
+        }
 
         run_url = trigger_job(
             token,
