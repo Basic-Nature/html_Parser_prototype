@@ -739,42 +739,81 @@ jobs:
 
           exit 1
 
-      - name: Post-deploy HTTPS redirect probe
+      - name: Post-deploy HTTPS redirect and transport probe
+        shell: bash
         run: |
-          set -e
-          echo "Probing apex (http) -> final URL"
-          FINAL1=$(curl -L -s -o /dev/null -w "%{url_effective}" http://electionpulse.org)
-          echo "Final (http://electionpulse.org) -> $FINAL1"
-          
-          echo "Probing apex with www (http) -> final URL"
-          FINAL2=$(curl -L -s -o /dev/null -w "%{url_effective}" http://electionpulse.org)
-          echo "Final (http://electionpulse.org) -> $FINAL2"
-          
-          echo "Probing apex (https) -> final URL"
-          FINAL3=$(curl -L -s -o /dev/null -w "%{url_effective}" https://electionpulse.org)
-          echo "Final (https://electionpulse.org) -> $FINAL3"
-          
-          # Accept both canonical targets temporarily 
-          OK_WWW="https://electionpulse.org"
-          OK_APEX="https://electionpulse.org"
-          
-          if [ "$FINAL1" != "$OK_WWW" ] && [ "$FINAL1" != "$OK_APEX" ]; then
-            echo "ERROR: http://electionpulse.org did not end at an approved landing page (got $FINAL1)"
-            exit 1
-          fi
-          
-          if [ "$FINAL2" != "$OK_WWW" ] && [ "$FINAL2" != "$OK_APEX" ]; then
-            echo "ERROR: http://electionpulse.org did not end at an approved landing page (got $FINAL2)"
-            exit 1
-          fi
-          
-          if [ "$FINAL3" != "$OK_WWW" ] && [ "$FINAL3" != "$OK_APEX" ]; then
-            echo "ERROR: https://electionpulse.org did not end at an approved landing page (got $FINAL3)"
-            exit 1
-          fi
-          
-          echo "Redirect probe OK: Routing resolves securely."
+          set -euo pipefail
 
+          normalize_root_url() {
+            local url="$1"
+            while [[ "$url" == */ ]]; do
+              url="${url%/}"
+            done
+            printf '%s' "$url"
+          }
+
+          probe_final_url() {
+            local source_url="$1"
+            curl \
+              --fail \
+              --location \
+              --silent \
+              --show-error \
+              --output /dev/null \
+              --write-out "%{url_effective}" \
+              "$source_url"
+          }
+
+          echo "Verifying Azure App Service HTTPS-only transport policy..."
+          HTTPS_ONLY="$(
+            az webapp show \
+              --name BallotLens \
+              --resource-group BallotLens_group \
+              --query httpsOnly \
+              --output tsv \
+              --only-show-errors
+          )"
+
+          if [[ "${HTTPS_ONLY,,}" != "true" ]]; then
+            echo "::error::Azure App Service httpsOnly must be true (got: ${HTTPS_ONLY:-<empty>})"
+            exit 1
+          fi
+
+          echo "Azure App Service httpsOnly=true verified."
+
+          OK_WWW="$(normalize_root_url "https://www.electionpulse.org/")"
+          OK_APEX="$(normalize_root_url "https://electionpulse.org/")"
+
+          check_root_route() {
+            local label="$1"
+            local source_url="$2"
+            local final_url
+            local normalized_final
+
+            echo "Probing $label -> final URL"
+            final_url="$(probe_final_url "$source_url")"
+            normalized_final="$(normalize_root_url "$final_url")"
+
+            echo "Final ($source_url) -> $final_url"
+            echo "Normalized final -> $normalized_final"
+
+            if [[ "$normalized_final" != https://* ]]; then
+              echo "::error::$source_url did not resolve to HTTPS (got $final_url)"
+              exit 1
+            fi
+
+            if [[ "$normalized_final" != "$OK_WWW" ]] && \
+               [[ "$normalized_final" != "$OK_APEX" ]]; then
+              echo "::error::$source_url did not end at an approved secure root landing (got $final_url)"
+              exit 1
+            fi
+          }
+
+          check_root_route "apex (http)" "http://electionpulse.org/"
+          check_root_route "www (http)" "http://www.electionpulse.org/"
+          check_root_route "apex (https)" "https://electionpulse.org/"
+
+          echo "Redirect/transport probe OK: httpsOnly=true and root routing resolves securely."
 
   postdeploy-live-db-confirmation:
     name: "Post-Deploy Validation: Live app + data confirmation"
