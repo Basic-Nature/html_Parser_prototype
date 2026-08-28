@@ -10,6 +10,7 @@ from .session_orchestration_blueprint import create_session_orchestration_bluepr
 from .ui_navigation_blueprint import create_ui_navigation_blueprint
 from .url_library_blueprint import create_url_library_blueprint
 from .utility_admin_blueprint import create_utility_admin_blueprint
+from .workflow_contributor_blueprint import create_workflow_contributor_blueprint
 
 __all__ = [
     "create_data_framework_blueprint",
@@ -23,5 +24,6 @@ __all__ = [
     "create_session_orchestration_blueprint",
     "create_ui_navigation_blueprint",
     "create_utility_admin_blueprint",
+    "create_workflow_contributor_blueprint",
     "create_url_library_blueprint",
 ]

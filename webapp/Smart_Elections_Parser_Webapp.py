@@ -290,6 +290,7 @@ from webapp.parser.routes import (
     create_ui_navigation_blueprint,
     create_url_library_blueprint,
     create_utility_admin_blueprint,
+    create_workflow_contributor_blueprint,
 )
 from webapp.parser.routes.workflow_blueprint import create_workflow_v1_blueprint
 from webapp.parser.services.workflow_reader import (
@@ -300,11 +301,20 @@ from webapp.parser.services.workflow_reader import (
     read_workflow_items,
     read_workflow_stats,
 )
+from webapp.parser.services.workflow_actions import (
+    WorkflowActionError,
+    claim_first_workflow_pass,
+    read_approved_workflow_source,
+)
 from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socket_handler
 from webapp.parser.url_parser import (
     parse_url_simple,
 )
-from webapp.parser.auth.capability_policy import assert_public_read_surface
+from webapp.parser.auth.capability_policy import (
+    CapabilityPolicyError,
+    assert_public_read_surface,
+    assert_trusted_action,
+)
 from webapp.parser.utils.cert_utils import extract_client_principal
 from webapp.parser.utils.db_utils import SessionLocal, get_engine
 from webapp.parser.utils.misc_utils import extract_url_and_label, load_processed_urls
@@ -424,6 +434,13 @@ if ENABLE_HEALTH_TASKS and not HEALTH_TASK_TOKEN:
 
 # Certificate gating for mutation endpoints (always enforced)
 REQUIRE_CERT_FOR_MUTATIONS = True
+
+# W3 contributor claim source exists but production execution remains
+# fail-closed until a later explicit deployment/apply gate.
+WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED = (
+    os.environ.get("WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED", "false")
+    .strip().lower() in {"1", "true", "yes", "on"}
+)
 
 # Local, non-DB monitoring log for DB usage/events
 DB_MONITOR_FILE = LOG_DIR / "db_monitor.jsonl"
@@ -1328,6 +1345,24 @@ except Exception as e:
         "message": f"Failed to register Data Framework routes blueprint: {e}",
         "session_id": None
     })
+
+# Register protected Workflow contributor authority routes.
+try:
+    app.register_blueprint(create_workflow_contributor_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Workflow contributor routes blueprint registered",
+        "session_id": None,
+    })
+except Exception as exc:
+    logger.error({
+        "level": "ERROR",
+        "type": "status",
+        "message": f"Workflow contributor routes registration failed: {exc}",
+        "session_id": None,
+    })
+    raise
 
 # Register Workflow v1 read-only operational routes Blueprint
 try:
@@ -8159,6 +8194,151 @@ def api_workflow_v1_stats():
         request.args.to_dict(flat=True),
         public_surface="workflow_v1_stats",
     )
+
+
+def _workflow_contributor_authority():
+    from webapp.parser.auth.authority_model import classify_authority
+    from webapp.parser.utils.privilege_tiers import (
+        PrivilegeTier,
+        get_principal_tier,
+    )
+
+    principal, principal_source, _ = get_request_principal()
+    authority = classify_authority(principal, principal_source)
+    actual_tier = get_principal_tier(principal, principal_source)
+
+    try:
+        assert_trusted_action(
+            authority,
+            actual_tier,
+            minimum_tier=PrivilegeTier.STANDARD_USER,
+        )
+    except CapabilityPolicyError as exc:
+        status = 401 if not authority.get("authenticated") else 403
+        return None, (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "trusted_action_required",
+                    "detail": str(exc),
+                }
+            ),
+            status,
+        )
+
+    return principal, None
+
+
+def api_workflow_v1_contributor_source(item_id):
+    principal, denied = _workflow_contributor_authority()
+    if denied is not None:
+        return denied
+
+    db_session = SessionLocal()
+    try:
+        payload = read_approved_workflow_source(
+            db_session,
+            item_id,
+            principal=principal,
+            registry_path=URL_LIST_FILE,
+        )
+        db_session.rollback()
+        return jsonify(payload), 200
+    except WorkflowActionError as exc:
+        db_session.rollback()
+        return jsonify(
+            {
+                "success": False,
+                "error": exc.code,
+                "detail": str(exc),
+            }
+        ), exc.status_code
+    except Exception:
+        db_session.rollback()
+        logger.exception(
+            {
+                "level": "ERROR",
+                "type": "workflow",
+                "message": "Contributor source projection failed.",
+                "session_id": None,
+            }
+        )
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_contributor_source_unavailable",
+            }
+        ), 503
+    finally:
+        db_session.close()
+
+
+def api_workflow_v1_claim_first_pass(item_id):
+    principal, denied = _workflow_contributor_authority()
+    if denied is not None:
+        return denied
+
+    if not WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED:
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_contributor_mutations_disabled",
+            }
+        ), 503
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or "expected_row_version" not in body:
+        return jsonify(
+            {
+                "success": False,
+                "error": "expected_row_version_required",
+            }
+        ), 400
+
+    db_session = SessionLocal()
+    try:
+        payload = claim_first_workflow_pass(
+            db_session,
+            item_id,
+            principal=principal,
+            expected_row_version=body["expected_row_version"],
+        )
+        db_session.commit()
+        payload["committed"] = True
+        return jsonify(payload), 200
+    except WorkflowActionError as exc:
+        db_session.rollback()
+        return jsonify(
+            {
+                "success": False,
+                "error": exc.code,
+                "detail": str(exc),
+            }
+        ), exc.status_code
+    except Exception:
+        db_session.rollback()
+        logger.exception(
+            {
+                "level": "ERROR",
+                "type": "workflow",
+                "message": "First workflow pass claim failed.",
+                "session_id": None,
+            }
+        )
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_claim_unavailable",
+            }
+        ), 503
+    finally:
+        db_session.close()
+
+
+app.config["_WORKFLOW_CONTRIBUTOR_ROUTE_HANDLERS"] = {
+    "api_workflow_v1_contributor_source": api_workflow_v1_contributor_source,
+    "api_workflow_v1_claim_first_pass": api_workflow_v1_claim_first_pass,
+}
 
 
 app.config["_WORKFLOW_V1_ROUTE_HANDLERS"] = {

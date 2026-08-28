@@ -178,3 +178,70 @@ def is_parser_eligible_url(
         return False, "registry_not_parser_eligible"
 
     return False, "url_not_in_approved_registry"
+
+# ---------------------------------------------------------------------------
+# W3 contributor exact-source projection
+# ---------------------------------------------------------------------------
+# The parser-facing registry helpers above intentionally retain their existing
+# normalized matching semantics. Contributor source disclosure is stricter:
+# the workflow item's stored source_url must match the maintained registry row
+# byte-for-byte as text, and only the Curated section may be disclosed.
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class ContributorRegistryEntry:
+    year: str
+    contest: str
+    state: str
+    registry_scope: str
+    registry_format: str
+    notes: str
+    url: str
+    registry_category: str
+
+
+def _contributor_registry_category(entry: dict[str, Any]) -> str:
+    section = str(entry.get("section") or "").lower()
+    if "quarantine" in section:
+        return "quarantine"
+    if "backlog" in section or "legacy / unsorted backlog" in section:
+        return "backlog"
+    if "curated" in section:
+        return "curated"
+    return "unclassified"
+
+
+def lookup_exact_registry_entry(
+    url: str,
+    *,
+    path: str | Path,
+) -> ContributorRegistryEntry | None:
+    """Return the exact maintained-registry row for contributor disclosure.
+
+    This function deliberately does not call normalize_url_for_match().
+    Contributor disclosure must remain bound to the exact source_url already
+    frozen onto the governed workflow item.
+    """
+
+    wanted = str(url or "")
+    if not wanted:
+        return None
+
+    entries, _ = load_url_registry(path)
+    for entry in entries:
+        if str(entry.get("url") or "") != wanted:
+            continue
+        return ContributorRegistryEntry(
+            year=str(entry.get("year") or ""),
+            contest=str(entry.get("contest") or ""),
+            state=str(entry.get("state") or ""),
+            registry_scope=str(entry.get("scope") or ""),
+            registry_format=str(entry.get("format") or ""),
+            notes=str(entry.get("notes") or ""),
+            url=str(entry.get("url") or ""),
+            registry_category=_contributor_registry_category(entry),
+        )
+
+    return None
