@@ -112,3 +112,29 @@ def test_canonical_universe_precedes_record_load_and_events_refresh_availability
 
     assert events.count("fetchCanonicalRecordFacets();") == 2
     assert events.count("fetchCanonicalRecordData(true);") == 2
+
+def test_bounded_result_rows_never_replace_canonical_state_universe():
+    source = _read()
+    update_states = _block(
+        source,
+        "function updateVizStates()",
+        "function setVizState",
+    )
+
+    assert "Canonical facets own selector validity." in update_states
+    assert "canonicalFacetUniversePayload" in update_states
+    assert "universePayload.states" in update_states
+    assert "facetPayload.states" in update_states
+    assert "replaceCanonicalOptions(" in update_states
+
+    # The HTML State selector must never be repopulated from the bounded
+    # result rows. Those rows may be a 1,000-row subset spanning only a
+    # fraction of the valid canonical State universe.
+    assert "setSelectOptions(el.vizState" not in update_states
+
+
+def test_data_framework_missing_value_token_is_not_mojibake():
+    source = _read()
+
+    assert "â€”" not in source
+    assert r"\u2014" in source

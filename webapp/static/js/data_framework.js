@@ -1197,7 +1197,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const tbody = document.createElement('tbody');
     const renderValue = value => {
-      if (value == null || value === '') return 'â€”';
+      if (value == null || value === '') return '\u2014';
       if (typeof value === 'number') return value.toLocaleString();
       return String(value);
     };
@@ -1228,7 +1228,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.candidate || 'Unspecified Candidate',
             partyLabel,
             parseNumeric(row.votes),
-            getVizJurisdictionName(row) || 'â€”',
+            getVizJurisdictionName(row) || '\u2014',
             getVizJurisdictionType(row) || null,
           ];
           cells.forEach(value => {
@@ -1246,9 +1246,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const grouped = new Map();
     sorted.forEach(row => {
-      const jurisdictionLabel = String(getVizJurisdictionName(row) || 'â€”').trim() || 'â€”';
+      const jurisdictionLabel = String(getVizJurisdictionName(row) || '\u2014').trim() || '\u2014';
       const jurisdictionType = getVizJurisdictionType(row);
-      const jurisdictionKey = `${normalizeCountyKey(jurisdictionLabel) || 'â€”'}::${normalizeCountyKey(jurisdictionType)}`;
+      const jurisdictionKey = `${normalizeCountyKey(jurisdictionLabel) || '\u2014'}::${normalizeCountyKey(jurisdictionType)}`;
       const entry = grouped.get(jurisdictionKey) || {
         jurisdiction: jurisdictionLabel,
         jurisdiction_type: jurisdictionType,
@@ -1836,14 +1836,38 @@ function getCanonicalScopeFilters() {
   }
 
   function updateVizStates() {
-    const scopeRows = getRowsForYear(vizRows, vizYear);
-    const computedStates = getUniqueValues(scopeRows, row => row.state);
-    const states = computedStates;
-    if (el.vizState instanceof HTMLSelectElement) {
-      vizState = setSelectOptions(el.vizState, states, vizState);
-    } else if (!states.includes(vizState)) {
-      vizState = states[0] || '';
+    // Canonical facets own selector validity. The bounded result page is only
+    // rendering data and must never collapse the State universe.
+    const facetPayload = isCanonicalFacetPayload(canonicalFacetPayload)
+      ? canonicalFacetPayload
+      : canonicalFacetUniversePayload;
+    const universePayload = isCanonicalFacetPayload(canonicalFacetUniversePayload)
+      ? canonicalFacetUniversePayload
+      : facetPayload;
+
+    if (
+      el.vizState instanceof HTMLSelectElement
+      && isCanonicalFacetPayload(facetPayload)
+      && isCanonicalFacetPayload(universePayload)
+    ) {
+      vizState = replaceCanonicalOptions(
+        el.vizState,
+        universePayload.states,
+        facetPayload.states,
+        vizState,
+        'All states',
+        value => String(value),
+        value => String(value)
+      );
+    } else if (!(el.vizState instanceof HTMLSelectElement)) {
+      // Non-DOM fallback only. This does not mutate the browser selector.
+      const scopeRows = getRowsForYear(vizRows, vizYear);
+      const states = getUniqueValues(scopeRows, row => row.state);
+      if (!states.includes(vizState)) {
+        vizState = states[0] || '';
+      }
     }
+
     updateVizCounties();
   }
 
