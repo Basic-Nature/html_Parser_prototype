@@ -10448,11 +10448,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize pipeline phase system
   PipelineManager.init();
   
-  // Initialize manual upload file selection
-  ManualUploadManager.init();
-  
-  // Initialize URL list
-  UrlListManager.init();
+  const ballotLensConfig = document.getElementById('ballotLensConfig');
+  const ballotLensTrustedControls = Boolean(
+    ballotLensConfig &&
+    ballotLensConfig.dataset &&
+    ballotLensConfig.dataset.trustedControls === '1'
+  );
+
+  // Legacy raw-URL and upload controls are trusted-only.
+  if (ballotLensTrustedControls) {
+    ManualUploadManager.init();
+    UrlListManager.init();
+  }
 
   // Surface flashed server messages as toasts
   try {

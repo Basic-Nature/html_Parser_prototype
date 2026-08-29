@@ -6,6 +6,7 @@ from typing import Any, Mapping
 
 class Capability(str, Enum):
     PUBLIC_READ = "public_read"
+    BALLOT_LENS_PUBLIC_REGISTRY_PARSE = "ballot_lens_public_registry_parse"
     TRUSTED_ACTION = "trusted_action"
     FRESH_PROOF_REVIEW = "fresh_proof_review"
     SYSTEM_ONLY = "system_only"
@@ -144,3 +145,23 @@ def assert_fresh_proof_review(
 
     _require_minimum_tier(actual_tier, minimum_tier)
     return Capability.FRESH_PROOF_REVIEW
+
+def assert_ballot_lens_public_registry_parse(
+    *,
+    feature_enabled: bool,
+    payload_validated: bool,
+    registry_source_resolved: bool,
+) -> Capability:
+    if feature_enabled is not True:
+        raise CapabilityPolicyError(
+            "Public Ballot Lens registry parsing is disabled."
+        )
+    if payload_validated is not True:
+        raise CapabilityPolicyError(
+            "Public Ballot Lens payload validation is required."
+        )
+    if registry_source_resolved is not True:
+        raise CapabilityPolicyError(
+            "Public Ballot Lens source must resolve to an approved registry row."
+        )
+    return Capability.BALLOT_LENS_PUBLIC_REGISTRY_PARSE

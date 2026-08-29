@@ -208,6 +208,94 @@ def _collect_output_artifacts(entries) -> dict:
         "primary_download": primary_download,
     }
 
+def _process_public_registry_url_for_web(
+    prompt_queue,
+    session_id,
+    cancel_flag,
+    *,
+    max_workers,
+    emit_func,
+    output_bypass,
+    manual_source,
+    disable_internal_heartbeat,
+    force_parse_format,
+    force_parse_input_file,
+    principal,
+    principal_source,
+    dev_isolation_bypass,
+    kwargs,
+):
+    from .services.public_ballot_lens_runtime import (
+        require_public_runtime,
+    )
+
+    runtime = require_public_runtime()
+    if principal is not None or principal_source is not None:
+        raise RuntimeError(
+            "Public registry runtime cannot bind an authenticated principal."
+        )
+    if dev_isolation_bypass:
+        raise RuntimeError(
+            "Public registry runtime cannot use dev isolation bypass."
+        )
+    if manual_source == "uploads":
+        raise RuntimeError(
+            "Public registry runtime cannot use uploads."
+        )
+    if force_parse_format or force_parse_input_file:
+        raise RuntimeError(
+            "Public registry runtime cannot use forced file parsing."
+        )
+    if output_bypass is not True:
+        raise RuntimeError(
+            "Public registry runtime requires output_bypass=True."
+        )
+
+    local_kwargs = dict(kwargs or {})
+    urls = local_kwargs.pop("urls", None)
+    if (
+        not isinstance(urls, list)
+        or len(urls) != 1
+        or urls[0] != runtime.approved_target_url
+    ):
+        raise RuntimeError(
+            "Public registry runtime requires exactly the server-approved target."
+        )
+
+    for forbidden_key in (
+        "warehouse_override_url",
+        "url_reference_hints",
+        "manual_upload_name",
+        "manual_upload_path",
+        "direct_urls",
+        "inspection_emit_func",
+    ):
+        if local_kwargs.get(forbidden_key):
+            raise RuntimeError(
+                f"Public registry runtime forbids {forbidden_key}."
+            )
+
+    cancellation_manager.reset(session_id)
+    try:
+        main(
+            urls=[runtime.approved_target_url],
+            session_id=session_id,
+            cancel_flag=cancel_flag,
+            output_bypass=True,
+            manual_source="input",
+            continue_on_override_failure=False,
+            principal=None,
+            principal_source=None,
+            skip_url_prompt=True,
+            url_source_label="approved_public_registry",
+            skip_database_check=True,
+            force_reparse=True,
+            max_workers=1,
+        )
+        return runtime.result_payload()
+    finally:
+        cancellation_manager.remove(session_id)
+
 def process_urls_for_web(
     prompt_queue,
     session_id,
@@ -232,6 +320,32 @@ def process_urls_for_web(
       - No per-URL threading, batching, summary aggregation, or prompt queue loop here.
       Batch / parallel logic is delegated to main() internally.
     """
+    try:
+        from .services.public_ballot_lens_runtime import (
+            current_public_runtime,
+        )
+        public_runtime = current_public_runtime()
+    except Exception:
+        public_runtime = None
+
+    if public_runtime is not None:
+        return _process_public_registry_url_for_web(
+            prompt_queue,
+            session_id,
+            cancel_flag,
+            max_workers=max_workers,
+            emit_func=emit_func,
+            output_bypass=output_bypass,
+            manual_source=manual_source,
+            disable_internal_heartbeat=disable_internal_heartbeat,
+            force_parse_format=force_parse_format,
+            force_parse_input_file=force_parse_input_file,
+            principal=principal,
+            principal_source=principal_source,
+            dev_isolation_bypass=dev_isolation_bypass,
+            kwargs=kwargs,
+        )
+
     cancellation_manager.reset(session_id)
 
     logger.set_mode("webapp")

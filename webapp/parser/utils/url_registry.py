@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -211,6 +213,151 @@ def _contributor_registry_category(entry: dict[str, Any]) -> str:
     if "curated" in section:
         return "curated"
     return "unclassified"
+
+
+
+# ---------------------------------------------------------------------------
+# Ballot Lens public registry-source projection
+# ---------------------------------------------------------------------------
+# Public execution is narrower than existing trusted parser eligibility:
+# only reviewed Curated rows become anonymous execution authority.
+
+PUBLIC_REGISTRY_SOURCE_ID_PREFIX = "blsrc_v1_"
+PUBLIC_REGISTRY_CATEGORIES = frozenset({"curated"})
+_PUBLIC_REGISTRY_SOURCE_ID_RE = re.compile(
+    r"\Ablsrc_v1_[0-9a-f]{64}\Z"
+)
+
+
+class PublicRegistryResolutionError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class PublicRegistrySource:
+    registry_source_id: str
+    year: str
+    contest: str
+    state: str
+    registry_scope: str
+    registry_format: str
+    registry_category: str
+    url: str
+
+
+def _is_public_registry_entry(entry: dict[str, Any]) -> bool:
+    category = _contributor_registry_category(entry)
+    return bool(
+        entry.get("parser_eligible") is True
+        and str(entry.get("review_status") or "") == "approved"
+        and category in PUBLIC_REGISTRY_CATEGORIES
+    )
+
+
+def _public_registry_source_id_material(entry: dict[str, Any]) -> bytes:
+    category = _contributor_registry_category(entry)
+    values = ["blsrc_v1", category]
+    values.extend(
+        str(entry.get(field_name) or "")
+        for field_name in REGISTRY_FIELD_NAMES
+    )
+    return "\x1f".join(values).encode("utf-8")
+
+
+def public_registry_source_id_for_entry(
+    entry: dict[str, Any],
+) -> str | None:
+    if not _is_public_registry_entry(entry):
+        return None
+    digest = hashlib.sha256(
+        _public_registry_source_id_material(entry)
+    ).hexdigest()
+    return f"{PUBLIC_REGISTRY_SOURCE_ID_PREFIX}{digest}"
+
+
+def _public_registry_source_from_entry(
+    entry: dict[str, Any],
+) -> PublicRegistrySource:
+    registry_source_id = public_registry_source_id_for_entry(entry)
+    if not registry_source_id:
+        raise PublicRegistryResolutionError(
+            "Registry entry is not approved for public parser execution."
+        )
+    return PublicRegistrySource(
+        registry_source_id=registry_source_id,
+        year=str(entry.get("year") or ""),
+        contest=str(entry.get("contest") or ""),
+        state=str(entry.get("state") or ""),
+        registry_scope=str(entry.get("scope") or ""),
+        registry_format=str(entry.get("format") or ""),
+        registry_category=_contributor_registry_category(entry),
+        url=str(entry.get("url") or ""),
+    )
+
+
+def list_public_registry_sources(
+    path: str | Path,
+) -> list[PublicRegistrySource]:
+    entries, _ = load_url_registry(path)
+    sources: list[PublicRegistrySource] = []
+    seen_ids: set[str] = set()
+    for entry in entries:
+        if not _is_public_registry_entry(entry):
+            continue
+        source = _public_registry_source_from_entry(entry)
+        if source.registry_source_id in seen_ids:
+            raise PublicRegistryResolutionError(
+                "Duplicate exact public registry source ID detected."
+            )
+        seen_ids.add(source.registry_source_id)
+        sources.append(source)
+    sources.sort(
+        key=lambda item: (
+            item.year,
+            item.state,
+            item.contest,
+            item.registry_scope,
+            item.registry_format,
+            item.registry_source_id,
+        )
+    )
+    return sources
+
+
+def project_public_registry_sources(
+    path: str | Path,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "registry_source_id": source.registry_source_id,
+            "year": source.year,
+            "contest": source.contest,
+            "state": source.state,
+            "scope": source.registry_scope,
+            "format": source.registry_format,
+            "registry_category": source.registry_category,
+        }
+        for source in list_public_registry_sources(path)
+    ]
+
+
+def resolve_public_registry_source(
+    path: str | Path,
+    registry_source_id: str,
+) -> PublicRegistrySource | None:
+    wanted = str(registry_source_id or "").strip()
+    if not _PUBLIC_REGISTRY_SOURCE_ID_RE.fullmatch(wanted):
+        return None
+    matches = [
+        source
+        for source in list_public_registry_sources(path)
+        if source.registry_source_id == wanted
+    ]
+    if len(matches) > 1:
+        raise PublicRegistryResolutionError(
+            "Public registry source ID resolved ambiguously."
+        )
+    return matches[0] if matches else None
 
 
 def lookup_exact_registry_entry(

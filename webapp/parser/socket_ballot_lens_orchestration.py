@@ -750,8 +750,230 @@ def _start_pipeline_worker(
     h["session_manager"].set_thread(session_id, thread)
 
 
+PUBLIC_REGISTRY_INTENT_KEY = "registry_source_id"
+
+
+def _is_public_registry_intent(payload: dict[str, Any]) -> bool:
+    return (
+        isinstance(payload, dict)
+        and PUBLIC_REGISTRY_INTENT_KEY in payload
+    )
+
+
+def _public_registry_source_projection(source: Any) -> dict[str, str]:
+    return {
+        "registry_source_id": str(
+            getattr(source, "registry_source_id", "") or ""
+        ),
+        "year": str(getattr(source, "year", "") or ""),
+        "contest": str(getattr(source, "contest", "") or ""),
+        "state": str(getattr(source, "state", "") or ""),
+        "scope": str(
+            getattr(source, "registry_scope", "") or ""
+        ),
+        "format": str(
+            getattr(source, "registry_format", "") or ""
+        ),
+        "registry_category": str(
+            getattr(source, "registry_category", "") or ""
+        ),
+    }
+
+
+def _emit_public_registry_authority_status(
+    h: dict[str, Any],
+    *,
+    level: str,
+    reason_code: str,
+    message: str,
+    session_id: str | None = None,
+    source_projection: dict[str, str] | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "level": level,
+        "type": "public_registry_authority",
+        "message": message,
+        "reason_code": reason_code,
+        "session_id": session_id,
+    }
+    if source_projection is not None:
+        payload["source"] = dict(source_projection)
+
+    try:
+        normalized = h["normalize_log_obj"](payload)
+        if isinstance(session_id, str) and session_id:
+            h["emit"](
+                "parser_output",
+                normalized,
+                room=session_id,
+            )
+        else:
+            h["emit"](
+                "parser_output",
+                normalized,
+            )
+    except Exception:
+        pass
+
+
+def _initialize_public_registry_authority(
+    payload: dict[str, Any],
+    h: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Authorize exact public registry intent without touching legacy cert flow.
+
+    This milestone intentionally stops before parser/browser dispatch.
+    """
+    from webapp.parser.config import URL_LIST_FILE
+    from webapp.parser.services.public_ballot_lens_policy import (
+        PublicBallotLensPolicyError,
+        authorize_public_registry_parse,
+        validate_public_start_payload,
+    )
+    from webapp.parser.utils.url_registry import (
+        PublicRegistryResolutionError,
+        resolve_public_registry_source,
+    )
+
+    try:
+        registry_source_id = validate_public_start_payload(payload)
+        source = resolve_public_registry_source(
+            URL_LIST_FILE,
+            registry_source_id,
+        )
+        if source is None:
+            raise PublicBallotLensPolicyError(
+                "Public registry source did not resolve."
+            )
+
+        capability, authorized_source_id = (
+            authorize_public_registry_parse(
+                payload,
+                registry_source_resolved=True,
+            )
+        )
+        if authorized_source_id != registry_source_id:
+            raise PublicBallotLensPolicyError(
+                "Public registry authority changed during authorization."
+            )
+    except (
+        PublicBallotLensPolicyError,
+        PublicRegistryResolutionError,
+    ) as exc:
+        h["logger"].warning(
+            {
+                "level": "WARNING",
+                "type": "public_registry_authority",
+                "message": "Public registry parse authority denied.",
+                "reason_code": type(exc).__name__,
+                "raw_url_disclosed": False,
+            }
+        )
+        _emit_public_registry_authority_status(
+            h,
+            level="WARNING",
+            reason_code="public_registry_authority_denied",
+            message=(
+                "Public registry parsing is unavailable for this request."
+            ),
+        )
+        return None
+
+    # Caller payload is deliberately NOT passed to session resolution.
+    # A future public run must use server-issued session authority only.
+    session_id = h["resolve_session_id"](
+        {},
+        create_if_missing=True,
+    )
+    if not isinstance(session_id, str) or not session_id.strip():
+        _emit_public_registry_authority_status(
+            h,
+            level="ERROR",
+            reason_code="server_session_resolution_failed",
+            message=(
+                "Unable to establish a server session for public parsing."
+            ),
+        )
+        return None
+
+    source_projection = _public_registry_source_projection(source)
+    if (
+        source_projection.get("registry_source_id")
+        != registry_source_id
+        or source_projection.get("registry_category")
+        != "curated"
+    ):
+        _emit_public_registry_authority_status(
+            h,
+            level="WARNING",
+            reason_code="public_registry_projection_mismatch",
+            message=(
+                "Public registry source authority could not be confirmed."
+            ),
+        )
+        return None
+
+    return {
+        "mode": "public_registry",
+        "session_id": session_id,
+        "capability": capability,
+        "registry_source_id": registry_source_id,
+        # Internal-only, server-resolved execution authority. Never emitted.
+        "resolved_url": str(getattr(source, "url", "") or ""),
+        "source_projection": source_projection,
+        "runtime_dispatch_enabled": False,
+    }
+
+
+def _handle_public_registry_authority_split(
+    payload: dict[str, Any],
+    h: dict[str, Any],
+) -> None:
+    public_ctx = _initialize_public_registry_authority(
+        payload,
+        h,
+    )
+    if not public_ctx:
+        return
+
+    session_id = public_ctx["session_id"]
+    h["join_room"](session_id)
+    h["socketio"].sleep(0.05)
+    h["emit"](
+        "session_id",
+        {"session_id": session_id},
+    )
+
+    # BL-P2F establishes the authority split only. The accepted no-write
+    # execution and egress foundations are installed into the runtime in
+    # BL-P2F2 before any anonymous parser dispatch is possible.
+    _emit_public_registry_authority_status(
+        h,
+        level="INFO",
+        reason_code="public_registry_authority_accepted_runtime_pending",
+        message=(
+            "Approved public registry source accepted; "
+            "parser dispatch remains disabled."
+        ),
+        session_id=session_id,
+        source_projection=public_ctx["source_projection"],
+    )
+
 def run_ballot_lens_socket_handler(data=None, *, hooks: dict[str, Any]) -> None:
     payload = _normalize_payload(data)
+
+    # Presence of registry_source_id is an explicit public-intent marker.
+    # Mixed payloads do not fall back to the trusted legacy path; the exact
+    # public payload validator rejects any additional legacy fields.
+    if _is_public_registry_intent(payload):
+        _handle_public_registry_authority_split(
+            payload,
+            hooks,
+        )
+        return
+
+    # Legacy raw URL / upload / warehouse behavior remains certificate-gated
+    # and otherwise unchanged.
     init_ctx = _initialize_session_and_auth(payload, hooks)
     if not init_ctx:
         return

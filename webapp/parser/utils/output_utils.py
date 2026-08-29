@@ -394,6 +394,70 @@ def _compute_structure_hash(headers: List[str] | None, rows: List[Dict[str, Any]
     except Exception:
         return "raw"
 
+def _get_active_public_runtime():
+    try:
+        from ..services.public_ballot_lens_runtime import (
+            current_public_runtime,
+        )
+        return current_public_runtime()
+    except Exception:
+        return None
+
+
+def _finalize_public_memory_output(
+    *,
+    runtime,
+    headers,
+    data,
+    context,
+) -> Dict[str, str]:
+    # Public memory finalization is a packaging boundary.
+    # The parser/output caller already established election semantics and
+    # Smart Elections structure. A second normalization pass can rename or
+    # drop partial candidate-method groups and break NULL/zero preservation.
+    _ = context
+
+    headers_final = _coerce_headers(
+        headers or [],
+        data or [],
+    )
+    safe_rows: List[Dict[str, Any]] = []
+
+    for row in (data or []):
+        if not isinstance(row, dict):
+            safe_rows.append({"value": str(row)})
+            if "value" not in headers_final:
+                headers_final = ["value"] + headers_final
+            continue
+
+        safe: Dict[str, Any] = {}
+        for header in headers_final:
+            value = row.get(header, None)
+            if value is None or isinstance(
+                value,
+                (str, bool, int, float),
+            ):
+                cell = value
+            else:
+                try:
+                    cell = orjson.loads(orjson.dumps(value))
+                except Exception:
+                    cell = str(value)
+            safe[header] = cell
+
+        safe_rows.append(coerce_percent_strings(safe))
+
+    runtime.capture_finalized_output(
+        headers=headers_final,
+        rows=safe_rows,
+    )
+    return {
+        "csv_path": "",
+        "metadata_path": "",
+        "public_memory_preview": "true",
+        "public_row_count": str(len(safe_rows)),
+    }
+
 def finalize_election_output(
     *,
     headers: List[str],
@@ -410,6 +474,15 @@ def finalize_election_output(
     Centralized writer for CSV + metadata.
     Returns: {"csv_path": ..., "metadata_path": ...}
     """
+    public_runtime = _get_active_public_runtime()
+    if public_runtime is not None:
+        return _finalize_public_memory_output(
+            runtime=public_runtime,
+            headers=headers,
+            data=data,
+            context=context,
+        )
+
     context = context or {}
     if "fill_blanks_with_na" not in context:
         context["fill_blanks_with_na"] = True

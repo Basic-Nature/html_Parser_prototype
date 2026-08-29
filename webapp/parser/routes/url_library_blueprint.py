@@ -26,6 +26,14 @@ def _call_handler(handler_name: str, *args, **kwargs):
 def create_url_library_blueprint() -> Blueprint:
     bp = Blueprint("url_library_routes", __name__)
 
+    @bp.route(
+        "/api/public/ballot-lens/registry",
+        methods=["GET"],
+        endpoint="api_public_ballot_lens_registry",
+    )
+    def api_public_ballot_lens_registry_route():
+        return _call_handler("api_public_ballot_lens_registry")
+
     @bp.route("/api/urls", methods=["GET", "POST"], endpoint="api_urls")
     def api_urls_route():
         return _call_handler("api_urls")

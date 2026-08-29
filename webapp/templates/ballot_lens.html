@@ -9,7 +9,10 @@
   <!-- Title & description -->
   <title>Smart Elections Parser</title>
   <meta name="description" content="Election results parsing interface">
-  <meta id="ballotLensConfig" data-api-url="{{ data_api_url }}">
+  <meta id="ballotLensConfig"
+        data-api-url="{{ data_api_url }}"
+        data-trusted-controls="{{ '1' if ballot_lens_trusted_controls else '0' }}"
+        data-public-registry-api="/api/public/ballot-lens/registry">
 
   <!-- Color / display intents -->
   <meta name="color-scheme" content="dark light">
@@ -194,7 +197,38 @@
                 <section class="sidebar-section">
                   <h3 class="sidebar-header">🔗 URLs & Files</h3>
                   
-                  <div class="source-carousel" id="sourceCarousel" aria-label="Source chooser">
+                  <div
+                    class="source-card urls-card"
+                    id="publicRegistryCard"
+                    {% if ballot_lens_trusted_controls %}hidden aria-hidden="true"{% endif %}
+                  >
+                    <div class="source-card-header">
+                      <div class="source-title">Approved Public Sources</div>
+                    </div>
+                    <div class="source-body">
+                      <p class="source-instructions-note">
+                        Browse reviewed Curated registry sources. Public metadata never includes the executable source URL.
+                      </p>
+                      <label for="publicRegistrySearch" class="form-label">Search approved sources</label>
+                      <input type="search" id="publicRegistrySearch" class="url-search-box"
+                        placeholder="Search year, state, contest, scope, or format" autocomplete="off">
+                      <label for="publicRegistrySourceSelect" class="form-label mt-1em">Approved source</label>
+                      <select id="publicRegistrySourceSelect" class="form-control">
+                        <option value="">— Loading approved sources —</option>
+                      </select>
+                      <div id="publicRegistrySourceDetails" class="source-instructions mt-1em" aria-live="polite">
+                        Choose an approved registry source to review its public metadata.
+                      </div>
+                      <button type="button" class="btn-primary btn-large mt-1em"
+                        id="btnRunPublicRegistry" disabled>▶ Run Approved Source</button>
+                      <div id="publicRegistryStatus" class="form-text" role="status" aria-live="polite">
+                        Public execution remains disabled until production acceptance.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="source-carousel" id="sourceCarousel" aria-label="Source chooser"
+                    {% if not ballot_lens_trusted_controls %}hidden aria-hidden="true"{% endif %}>
                     <div class="source-carousel-dots" role="tablist" aria-label="Source options">
                       <button type="button" class="source-dot is-active" data-index="0" role="tab" aria-selected="true" aria-controls="sourceCarouselSlideUrls">
                         <span class="visually-hidden">URL Library</span>
@@ -758,6 +792,7 @@
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/pipeline_inspection_consumer.js') }}?v={{ static_version }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/pipeline_inspection_panel.js') }}?v={{ static_version }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot_lens_modern.js') }}?v={{ static_version }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/ballot_lens_public_registry.js') }}?v={{ static_version }}" defer></script>
     <!-- Quality Assurance Panel Integration -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/quality_assurance_panel.js') }}?v={{ static_version }}" defer></script>
     <!-- Quality Assurance Socket Integration (Phase 2b) -->

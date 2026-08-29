@@ -72,8 +72,8 @@ from .utils.shared_logic import (
     safe_strip,
 )
 from .utils.table_builder import build_table_noninteractive
-from .utils.telemetry import emit_telemetry_event
-from .utils.telemetry_agg import increment_counter
+from .utils.telemetry import emit_telemetry_event as _emit_telemetry_event
+from .utils.telemetry_agg import increment_counter as _increment_counter
 from .utils.url_trust_scorer import (
     compute_trust_score,
     should_quarantine,
@@ -91,6 +91,27 @@ _CAPTCHA_DETECTION_COUNTS: Dict[str, int] = defaultdict(int)
 _RISK_PREVIOUS_BY_SESSION: Dict[str, Any] = {}
 _PIPELINE_STATE_LOCK = threading.RLock()
 _MAX_TRACKED_SESSION_STATE = max(100, int(os.getenv("PARSER_MAX_TRACKED_SESSIONS", "2000")))
+
+def _get_active_public_runtime():
+    try:
+        from .services.public_ballot_lens_runtime import (
+            current_public_runtime,
+        )
+        return current_public_runtime()
+    except Exception:
+        return None
+
+
+def emit_telemetry_event(*args, **kwargs):
+    if _get_active_public_runtime() is not None:
+        return None
+    return _emit_telemetry_event(*args, **kwargs)
+
+
+def increment_counter(*args, **kwargs):
+    if _get_active_public_runtime() is not None:
+        return None
+    return _increment_counter(*args, **kwargs)
 
 
 def _prune_session_state_if_needed() -> None:
@@ -461,6 +482,8 @@ def _sanitize_error_metadata(metadata: dict) -> dict:
 
 
 def _log_session_exception_metadata(session_id: str | None, payload: dict) -> None:
+    if _get_active_public_runtime() is not None:
+        return
     if not session_id:
         return
     try:
@@ -564,6 +587,14 @@ def load_urls(*, allowlist_bypass: bool = False) -> List[str]:
     return lines
 
 def mark_url_processed(url, status="success", **metadata) -> None:
+    public_runtime = _get_active_public_runtime()
+    if public_runtime is not None:
+        public_runtime.record_processed_status(
+            status=status,
+            metadata=metadata,
+        )
+        return
+
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = {
         "url": url,
@@ -989,6 +1020,8 @@ def process_format_override(
     return None
 
 def ai_analyze_results(headers, data, contest, metadata, target_url=None, session_id=None, trust_factors=None, privilege_tier=None):
+    if _get_active_public_runtime() is not None:
+        return
     if ENABLE_AI_ANALYSIS:
         try:
             from .Context_Integration.Integrity_check import (  # noqa: E402
@@ -1089,6 +1122,8 @@ def ai_analyze_results(headers, data, contest, metadata, target_url=None, sessio
             logger.error(payload)
 
 def stream_results(headers, data, contest, metadata, target_url=None, session_id=None):
+    if _get_active_public_runtime() is not None:
+        return
     if ENABLE_REALTIME_STREAM:
         try:
             from .Context_Integration.Integrity_check import print_integrity_summary  # noqa: E402
@@ -1576,6 +1611,14 @@ def orchestrate_url(
     from .Context_Integration.context_coordinator import ContextCoordinator
     rejected_downloads = set()
     coordinator = ContextCoordinator()
+    public_runtime = _get_active_public_runtime()
+    if (
+        public_runtime is not None
+        and target_url != public_runtime.approved_target_url
+    ):
+        raise RuntimeError(
+            "Public runtime target differs from server-approved registry URL."
+        )
 
     msg = f"Navigating to: {target_url}"
     payload = {
@@ -1613,7 +1656,12 @@ def orchestrate_url(
     trust_factors: Dict[str, Any] = {}
     force_snapshot_mode = False
 
-    if trust_bypass:
+    if public_runtime is not None:
+        trust_score = 100
+        trust_factors = {
+            "approved_public_registry": True,
+        }
+    elif trust_bypass:
         trust_score = 100
         trust_factors = {"bypass": True}
         logger.info({
@@ -1956,7 +2004,7 @@ def orchestrate_url(
     strategies = [
         {"agent": "playwright", "timeout_ms": NAV_TIMEOUT_PLAYWRIGHT_MS},
     ]
-    if ENABLE_SELENIUM_FALLBACK:
+    if ENABLE_SELENIUM_FALLBACK and public_runtime is None:
         strategies.append({"agent": "selenium", "timeout_ms": NAV_TIMEOUT_SELENIUM_MS})
     max_attempts = min(len(strategies), NAV_MAX_ATTEMPTS)
     captcha_assist_requested = False
@@ -2006,6 +2054,37 @@ def orchestrate_url(
                             playwright_instance = None
                         continue
                     if nav_meta.get("cloudflare_detected") and ENABLE_SELENIUM_FALLBACK:
+                        if public_runtime is not None:
+                            logger.warning({
+                                "level": "WARNING",
+                                "type": "public_runtime",
+                                "message": (
+                                    "Public challenge assist and Selenium "
+                                    "fallback are disabled."
+                                ),
+                                "session_id": session_id,
+                                "reason_code":
+                                    "public_challenge_assist_disabled",
+                            })
+                            mark_url_processed(
+                                target_url,
+                                status="error",
+                                session_id=session_id,
+                                reason_code=
+                                    "public_challenge_assist_disabled",
+                            )
+                            _close_browser_quietly(
+                                browser,
+                                session_id,
+                            )
+                            browser = page = None
+                            if playwright_instance is not None:
+                                try:
+                                    playwright_instance.stop()
+                                except Exception:
+                                    pass
+                                playwright_instance = None
+                            return
                         detection_count = _register_cloudflare_detection(session_id, target_url, "playwright")
                         _observe_legacy_challenge_noncanonical(
                             session_id=session_id,
@@ -2303,6 +2382,22 @@ def orchestrate_url(
         dom_table_rows = _count_dom_table_rows(page)
         download_parse_tuple = None
         handled = False
+        if dom_table_rows <= 0 and public_runtime is not None:
+            logger.warning({
+                "level": "WARNING",
+                "type": "public_runtime",
+                "message": "Public download fallback disabled for initial runtime.",
+                "session_id": session_id,
+                "reason_code": "public_download_fallback_disabled",
+            })
+            mark_url_processed(
+                target_url,
+                status="error",
+                session_id=session_id,
+                reason_code="public_download_fallback_disabled",
+            )
+            return
+
         if dom_table_rows <= 0:
             download_parse_tuple, handled = prompt_and_handle_download(
                 page,
@@ -2488,6 +2583,11 @@ def orchestrate_url(
 
             batch_mode = context.get("batch_mode") if isinstance(context, dict) else None
             selected_races = context.get("selected_races") if isinstance(context, dict) else None
+            if public_runtime is not None and batch_mode and selected_races:
+                raise RuntimeError(
+                    "Public runtime cannot enter batch mode."
+                )
+
             if batch_mode and selected_races:
                 try:
                     coordinator.handle_batch(
@@ -2520,6 +2620,29 @@ def orchestrate_url(
                 ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id, trust_factors=trust_factors, privilege_tier=privilege_tier)
                 _apply_risk_assessment(headers, data, metadata, session_id=session_id, trust_score=trust_score)
                 stream_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
+                if public_runtime is not None:
+                    if not public_runtime.finalized_previews:
+                        logger.warning({
+                            "level": "WARNING",
+                            "type": "public_runtime",
+                            "message": "Parser returned no public memory preview.",
+                            "session_id": session_id,
+                            "reason_code": "public_memory_preview_missing",
+                        })
+                        mark_url_processed(
+                            target_url,
+                            status="partial",
+                            session_id=session_id,
+                            reason_code="public_memory_preview_missing",
+                        )
+                    else:
+                        mark_url_processed(
+                            target_url,
+                            status="success",
+                            session_id=session_id,
+                        )
+                    return
+
                 output_file = metadata.get("output_file") if isinstance(metadata, dict) else None
                 if output_file:
                     if os.path.exists(output_file):
@@ -2619,11 +2742,14 @@ def orchestrate_url(
         except Exception:
             pass
         try:
-            choice = prompt.prompt_input(
-                "[PROMPT] Error encountered. Retry (r) / Skip (s) ? ",
-                validator=lambda x: str(x).lower().strip() in ("r","s"),
-                session_id=session_id
-            ).strip().lower()
+            if public_runtime is not None:
+                choice = "s"
+            else:
+                choice = prompt.prompt_input(
+                    "[PROMPT] Error encountered. Retry (r) / Skip (s) ? ",
+                    validator=lambda x: str(x).lower().strip() in ("r","s"),
+                    session_id=session_id
+                ).strip().lower()
         except Exception:
             choice = "s"
         if choice == "r":
@@ -2690,8 +2816,30 @@ def main(
 
         skip_url_prompt = bool(kwargs.pop("skip_url_prompt", False))
         url_source_label = kwargs.pop("url_source_label", None)
+        public_runtime = _get_active_public_runtime()
+
+        if public_runtime is not None:
+            if urls is None:
+                raise RuntimeError(
+                    "Public runtime cannot use URL-list fallback."
+                )
+            normalized_urls = (
+                [urls]
+                if isinstance(urls, str)
+                else list(urls)
+            )
+            if normalized_urls != [public_runtime.approved_target_url]:
+                raise RuntimeError(
+                    "Public runtime requires exactly the approved registry URL."
+                )
+            urls = normalized_urls
+            skip_url_prompt = True
 
         # --- 1. Manual Upload Override Path ---
+        if public_runtime is not None and manual_source == "uploads":
+            raise RuntimeError(
+                "Public runtime cannot enter the upload pathway."
+            )
         if manual_source == 'uploads':
             override_result = process_format_override(
                 session_id=session_id,
@@ -2753,16 +2901,19 @@ def main(
                     return
 
         # --- 2. Ensure Directories ---
-        ensure_input_directory()
-        if not output_bypass:
-            ensure_output_directory()
+        if public_runtime is None:
+            ensure_input_directory()
+            if not output_bypass:
+                ensure_output_directory()
+            else:
+                logger.info({
+                    "level": "INFO",
+                    "type": "output",
+                    "message": "Output bypass enabled — not creating output directory.",
+                    "session_id": session_id
+                })
         else:
-            logger.info({
-                "level": "INFO",
-                "type": "output",
-                "message": "Output bypass enabled — not creating output directory.",
-                "session_id": session_id
-            })
+            output_bypass = True
 
         # --- 3. Load URLs ---
         if urls is None:
@@ -2797,13 +2948,16 @@ def main(
             return
 
         # --- 5. Load Processed Info ---
-        processed_info = load_processed_urls()
-        logger.warning({
-            "level": "WARNING",
-            "type": "status",
-            "message": f"{len(urls)} URLs remain after filtering .processed_urls",
-            "session_id": session_id
-        })
+        if public_runtime is not None:
+            processed_info = {}
+        else:
+            processed_info = load_processed_urls()
+            logger.warning({
+                "level": "WARNING",
+                "type": "status",
+                "message": f"{len(urls)} URLs remain after filtering .processed_urls",
+                "session_id": session_id
+            })
 
         # --- 6. Prompt for URL Selection ---
         if skip_url_prompt:
@@ -2832,8 +2986,16 @@ def main(
 
         # --- 6.5. Database Comparison Check (Skip URLs with Existing Finalized Data) ---
         urls_to_process = []
-        skip_database_check = bool(kwargs.get("skip_database_check", False))
-        force_reparse = bool(kwargs.get("force_reparse", False))
+        if public_runtime is not None:
+            skip_database_check = True
+            force_reparse = True
+        else:
+            skip_database_check = bool(
+                kwargs.get("skip_database_check", False)
+            )
+            force_reparse = bool(
+                kwargs.get("force_reparse", False)
+            )
         
         if not skip_database_check and not force_reparse:
             logger.info({
@@ -2914,7 +3076,7 @@ def main(
             return
         
         # --- 7. Process URLs (Parallel or Sequential) ---
-        if ENABLE_PARALLEL:
+        if ENABLE_PARALLEL and public_runtime is None:
             arg_list = [
                 (url, processed_info, session_id, output_bypass, kwargs)
                 for url in urls_to_process
@@ -2949,16 +3111,21 @@ def main(
             "flagged": 0,
             "skipped_data_exists": 0
         }
-        processed = load_processed_urls()
-        for url in selected_urls:
-            proc_entry = processed.get(url, {})
-            if not isinstance(proc_entry, dict):
-                proc_entry = {}
-            status = proc_entry.get("status", "unprocessed")
-            if status in summary:
-                summary[status] += 1
-            if proc_entry.get("flagged_for_review"):
-                summary["flagged"] += 1
+        if public_runtime is not None:
+            for key, value in public_runtime.summary_counts().items():
+                if key in summary:
+                    summary[key] = int(value)
+        else:
+            processed = load_processed_urls()
+            for url in selected_urls:
+                proc_entry = processed.get(url, {})
+                if not isinstance(proc_entry, dict):
+                    proc_entry = {}
+                status = proc_entry.get("status", "unprocessed")
+                if status in summary:
+                    summary[status] += 1
+                if proc_entry.get("flagged_for_review"):
+                    summary["flagged"] += 1
 
         logger.info({
             "level": "INFO",

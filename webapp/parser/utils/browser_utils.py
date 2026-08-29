@@ -291,6 +291,28 @@ def safe_click(element: Optional[ElementType], logger=logger) -> bool:
         return False
 
 
+def _get_active_public_runtime():
+    try:
+        from ..services.public_ballot_lens_runtime import (
+            current_public_runtime,
+        )
+        return current_public_runtime()
+    except Exception:
+        return None
+
+
+def _install_public_runtime_sync_guard(
+    page,
+    target_url: str,
+) -> None:
+    runtime = _get_active_public_runtime()
+    if runtime is None:
+        return
+    runtime.install_sync_page_guard(
+        page,
+        target_url,
+    )
+
 def safe_debug_stem(value: str, max_len: int = 80) -> str:
     value = re.sub(r"[^A-Za-z0-9._-]+", "_", value or "selector")
     return value.strip("_")[:max_len] or "selector"
@@ -301,6 +323,12 @@ def capture_page_diagnostics(page: Optional[PageType], session_id: Optional[str]
     Capture lightweight diagnostics on the page: HTML snapshot and a PNG screenshot.
     Returns a dict with paths (or error messages) for troubleshooting.
     """
+    if _get_active_public_runtime() is not None:
+        return {
+            "html": None,
+            "screenshot": None,
+            "error": "disabled_for_public_runtime",
+        }
     out = {"html": None, "screenshot": None, "error": None}
     if page is None:
         return out
@@ -349,6 +377,14 @@ def save_diagnostics(
     Appends a JSON line to an index file for ingestion into ML pipelines.
     Returns a dict with paths written and any OCR text/metadata.
     """
+    if _get_active_public_runtime() is not None:
+        return {
+            "html": None,
+            "screenshot": None,
+            "ocr_txt": None,
+            "index_entry": None,
+            "error": "disabled_for_public_runtime",
+        }
     out = {"html": None, "screenshot": None, "ocr_txt": None, "index_entry": None, "error": None}
     if page is None:
         return out
@@ -925,8 +961,21 @@ def sync_launch_browser(
         "cloudflare_detected": False,
     }
     browser = safe_launch(browser_type, headless=launch_headless, args=launch_args)
-    context = safe_new_context(browser, user_agent=user_agent, viewport={"width": 1280, "height": 800}, locale="en-US")
+    context_kwargs = {
+        "user_agent": user_agent,
+        "viewport": {"width": 1280, "height": 800},
+        "locale": "en-US",
+    }
+    public_runtime = _get_active_public_runtime()
+    if public_runtime is not None:
+        context_kwargs["service_workers"] = "block"
+        context_kwargs["accept_downloads"] = False
+    context = safe_new_context(browser, **context_kwargs)
     page = safe_new_page(context)
+    _install_public_runtime_sync_guard(
+        page,
+        target_url,
+    )
     if cancel_flag is not None and safe_is_set(cancel_flag):
         logger.info({"level": "INFO", "type": "cancel", "message": "Cancelled before navigation", "session_id": session_id})
         return browser, context, page, user_agent, nav_meta

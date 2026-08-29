@@ -3156,8 +3156,48 @@ def log_db_monitor_event(event: dict) -> None:
 def index() -> str:
     return render_template("index.html")
 
+@_rate_limit("60/minute")
+def api_public_ballot_lens_registry():
+    from webapp.parser.services.public_ballot_lens_policy import (
+        public_registry_parse_feature_enabled,
+    )
+    from webapp.parser.utils.url_registry import (
+        project_public_registry_sources,
+    )
+    try:
+        sources = project_public_registry_sources(URL_LIST_FILE)
+        return jsonify({
+            "contract": "ballot_lens_public_registry_v1",
+            "sources": sources,
+            "count": len(sources),
+            "execution_enabled": public_registry_parse_feature_enabled(),
+        })
+    except Exception:
+        logger.error({
+            "level": "ERROR",
+            "type": "public_registry_projection",
+            "message": "Public Ballot Lens registry projection failed.",
+            "session_id": None,
+        })
+        return jsonify({
+            "contract": "ballot_lens_public_registry_v1",
+            "sources": [],
+            "count": 0,
+            "execution_enabled": False,
+            "error": "public_registry_unavailable",
+        }), 500
+
+
 @_rate_limit("30/minute")
 def api_urls():
+    principal, _principal_source, _cert_meta = get_request_principal()
+    if not principal:
+        return jsonify({
+            "error": "trusted_principal_required",
+            "urls": [],
+            "entries": [],
+        }), 403
+
     # Read the reviewed URL registry. GET remains backward compatible through
     # ``urls`` while also returning structured metadata in ``entries``.
     # Direct HTTP registry writes are intentionally retired.
@@ -3975,6 +4015,7 @@ def api_warehouse_coverage():
 
 
 app.config["_URL_LIBRARY_ROUTE_HANDLERS"] = {
+    "api_public_ballot_lens_registry": api_public_ballot_lens_registry,
     "api_urls": api_urls,
     "api_urls_parse": api_urls_parse,
     "api_urls_training_data": api_urls_training_data,
@@ -6291,13 +6332,23 @@ def ballot_lens():
                 flash(f"File '{saved_name}' uploaded successfully.", "success")
             else:
                 flash(saved_name or "Invalid file type or no file selected.", "danger")
-        file_lists = get_all_file_lists()
+        principal, _principal_source, _cert_meta = get_request_principal()
+        ballot_lens_trusted_controls = bool(principal)
+        file_lists = {
+            "input_files": [],
+            "output_files": [],
+            "uploaded_files": [],
+        }
+        if ballot_lens_trusted_controls:
+            file_lists = get_all_file_lists()
+
         return render_template(
             "ballot_lens.html",
             input_files=file_lists["input_files"],
             output_files=file_lists["output_files"],
             uploaded_files=file_lists["uploaded_files"],
             manual_source=session.get('manual_source_pref', 'input'),
+            ballot_lens_trusted_controls=ballot_lens_trusted_controls,
             data_api_url=DATA_API_URL,
             allow_style_attr=os.environ.get("ALLOW_STYLE_ATTR", "0").lower() in ("1","true","yes"),
             static_version=os.environ.get("STATIC_VERSION", "v1"),
