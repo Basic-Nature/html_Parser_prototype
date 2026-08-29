@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from jinja2 import Environment
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 JS = REPO_ROOT / "webapp" / "static" / "js" / "data_framework.js"
@@ -149,3 +151,7 @@ def test_data_framework_js_cache_token_tracks_asset_sha256():
         "filename='js/data_framework.js', v='" + token + "'"
         in template
     )
+
+def test_data_framework_template_jinja_syntax_is_valid():
+    template_path = REPO_ROOT / "webapp" / "templates" / "data_framework.html"
+    Environment().parse(template_path.read_text(encoding="utf-8"))
