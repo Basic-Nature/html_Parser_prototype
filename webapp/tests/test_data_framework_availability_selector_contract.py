@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 
@@ -138,3 +139,13 @@ def test_data_framework_missing_value_token_is_not_mojibake():
 
     assert "â€”" not in source
     assert r"\u2014" in source
+
+def test_data_framework_js_cache_token_tracks_asset_sha256():
+    template_path = REPO_ROOT / "webapp" / "templates" / "data_framework.html"
+    template = template_path.read_text(encoding="utf-8")
+    token = hashlib.sha256(JS.read_bytes()).hexdigest()[:16]
+
+    assert (
+        "filename='js/data_framework.js', v='" + token + "'"
+        in template
+    )
