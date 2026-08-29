@@ -331,3 +331,39 @@ def test_mixed_public_payload_is_rejected_by_exact_public_payload_contract():
                 "direct_urls": [source.url],
             }
         )
+
+def test_feature_disabled_capability_error_emits_public_denial_without_session(
+    monkeypatch,
+):
+    source = curated_source()
+
+    monkeypatch.delenv(
+        public_policy.PUBLIC_REGISTRY_PARSE_ENV,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        url_registry,
+        "resolve_public_registry_source",
+        lambda path, source_id: source,
+    )
+
+    hooks, emitted, session_calls, rooms = make_public_hooks()
+
+    context = orchestration._initialize_public_registry_authority(
+        {
+            "registry_source_id": source.registry_source_id,
+        },
+        hooks,
+    )
+
+    assert context is None
+    assert session_calls == []
+    assert rooms == []
+
+    rendered = repr(emitted)
+    assert "public_registry_authority_denied" in rendered
+    assert (
+        "public_registry_authority_accepted_runtime_pending"
+        not in rendered
+    )
+    assert source.url not in rendered

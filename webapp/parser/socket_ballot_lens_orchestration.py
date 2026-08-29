@@ -824,6 +824,9 @@ def _initialize_public_registry_authority(
 
     This milestone intentionally stops before parser/browser dispatch.
     """
+    from webapp.parser.auth.capability_policy import (
+        CapabilityPolicyError,
+    )
     from webapp.parser.config import URL_LIST_FILE
     from webapp.parser.services.public_ballot_lens_policy import (
         PublicBallotLensPolicyError,
@@ -857,6 +860,7 @@ def _initialize_public_registry_authority(
                 "Public registry authority changed during authorization."
             )
     except (
+        CapabilityPolicyError,
         PublicBallotLensPolicyError,
         PublicRegistryResolutionError,
     ) as exc:
