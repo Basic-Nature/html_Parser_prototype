@@ -31,6 +31,20 @@ EXPECTED_TRANSPORT_KEYS = {
 }
 
 
+class _IterationOnlyCaseVariantHeaders:
+    """Headers whose get() cannot resolve the iterated case variant."""
+
+    def __init__(self, name: str, value: str):
+        self._name = name
+        self._value = value
+
+    def get(self, _name, default=None):
+        return default
+
+    def items(self):
+        return [(self._name, self._value)]
+
+
 def _build_der_certificate() -> bytes:
     key = rsa.generate_private_key(
         public_exponent=65537,
@@ -116,6 +130,47 @@ def test_transport_observation_valid_der_reports_only_safe_evidence():
     assert metadata["issued_date"]
     assert metadata["expiry_date"]
     assert metadata["is_expired"] is False
+
+
+def test_transport_and_authority_share_case_insensitive_azure_header_resolution(
+    monkeypatch,
+):
+    der = _build_der_certificate()
+    encoded = base64.b64encode(der).decode("ascii")
+    expected_fp = hashlib.sha256(der).hexdigest()
+    headers = _IterationOnlyCaseVariantHeaders(
+        "X-ARR-CLIENTCERT",
+        encoded,
+    )
+
+    observed = cert_utils.observe_client_certificate_transport(headers)
+    assert observed["header_present"] is True
+    assert observed["decode_ok"] is True
+    assert observed["x509_parse_ok"] is True
+    assert observed["der_sha256"] == expected_fp
+
+    fingerprint, source, metadata = (
+        cert_utils.extract_client_cert_fingerprint(headers)
+    )
+    assert fingerprint == expected_fp
+    assert source == "X-ARR-ClientCert"
+    assert isinstance(metadata, dict)
+    assert "error" not in metadata
+
+    monkeypatch.setenv("DEPLOY_ENV", "azure")
+    monkeypatch.setenv(
+        "TRUSTED_CLIENT_CERT_FINGERPRINTS",
+        expected_fp,
+    )
+
+    principal, principal_source, principal_metadata = (
+        cert_utils.extract_client_principal(headers)
+    )
+    assert principal == f"cert:{expected_fp}"
+    assert principal_source == "X-ARR-ClientCert"
+    assert principal_metadata["trust_required"] is True
+    assert principal_metadata["trust_valid"] is True
+    assert principal_metadata["trust_reason"] == "fingerprint_enrolled"
 
 
 def test_status_sanitizer_exposes_trust_decision_but_not_parser_error():

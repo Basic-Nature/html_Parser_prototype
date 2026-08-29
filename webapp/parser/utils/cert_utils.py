@@ -38,6 +38,43 @@ def _decode_base64(value: str) -> Optional[bytes]:
         return None
 
 
+def _get_header_value_case_insensitive(
+    headers: Mapping[str, str],
+    header_name: str,
+):
+    """Resolve a header without assuming Mapping.get() is case-insensitive.
+
+    Transport observability and certificate authority extraction share this
+    resolver so a certificate seen by one path cannot disappear in the other.
+    """
+    raw = None
+
+    try:
+        raw = headers.get(header_name)
+    except Exception:
+        raw = None
+
+    if raw is None:
+        try:
+            raw = headers.get(header_name.lower())
+        except Exception:
+            raw = None
+
+    if raw is not None:
+        return raw
+
+    target = header_name.lower()
+
+    try:
+        for key, candidate in headers.items():
+            if str(key).lower() == target:
+                return candidate
+    except Exception:
+        return None
+
+    return None
+
+
 def _extract_cert_metadata(der_bytes: bytes) -> Dict[str, Any]:
     """Parse X.509 certificate DER bytes and extract safe metadata.
 
@@ -169,27 +206,10 @@ def observe_client_certificate_transport(
     the certificate header value. Production authority remains owned by
     extract_client_principal() + auth.cert_trust.
     """
-    raw = None
-
-    try:
-        raw = headers.get("X-ARR-ClientCert")
-    except Exception:
-        raw = None
-
-    if raw is None:
-        try:
-            raw = headers.get("x-arr-clientcert")
-        except Exception:
-            raw = None
-
-    if raw is None:
-        try:
-            for key, candidate in headers.items():
-                if str(key).lower() == "x-arr-clientcert":
-                    raw = candidate
-                    break
-        except Exception:
-            raw = None
+    raw = _get_header_value_case_insensitive(
+        headers,
+        "X-ARR-ClientCert",
+    )
 
     observation: Dict[str, Any] = {
         "header_present": False,
@@ -247,7 +267,10 @@ def extract_client_cert_fingerprint(headers: Mapping[str, str]) -> Tuple[Optiona
     - Metadata is extracted from DER bytes if cryptography library is available.
     """
     for header in CERT_HEADER_CANDIDATES:
-        raw = headers.get(header) or headers.get(header.lower())
+        raw = _get_header_value_case_insensitive(
+            headers,
+            header,
+        )
         if not raw:
             continue
         value = raw.strip()
