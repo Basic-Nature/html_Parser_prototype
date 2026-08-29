@@ -92,6 +92,22 @@ def get_request_principal():
             _cache_certificate_session_authority(session, principal)
         return (principal, source, cert_meta)
 
+    # A certificate that is physically present on this request but rejected by
+    # the canonical production trust decision must remain authoritative as a
+    # rejection. Preserve its source/trust metadata, clear any older bounded
+    # certificate-session authority, and fail closed instead of silently
+    # falling through to cached session or lower-authority identity sources.
+    presented_certificate_rejected = bool(
+        source
+        and isinstance(cert_meta, dict)
+        and cert_meta.get("trust_required") is True
+        and cert_meta.get("trust_valid") is False
+    )
+
+    if presented_certificate_rejected:
+        _clear_certificate_session_authority(session)
+        return (None, source, cert_meta)
+
     cached_certificate_principal = _get_certificate_session_authority(
         session,
         ttl_seconds=CERT_SESSION_AUTH_TTL_SECONDS,

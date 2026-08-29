@@ -66,6 +66,46 @@ def test_later_request_uses_session_authority_without_claiming_current_cert(monk
     assert metadata is None
 
 
+def test_rejected_current_certificate_clears_cached_session_and_preserves_trust_metadata(
+    monkeypatch,
+):
+    browser_session = {
+        "certificate_session_principal": CERT_PRINCIPAL,
+        "certificate_session_established_at": 1000,
+    }
+
+    monkeypatch.setattr(auth_context.time, "time", lambda: 1100)
+
+    rejected_metadata = {
+        "trust_required": True,
+        "trust_valid": False,
+        "trust_reason": "fingerprint_not_enrolled",
+    }
+
+    _configure(
+        browser_session,
+        lambda _headers: (
+            None,
+            "X-ARR-ClientCert",
+            rejected_metadata,
+        ),
+    )
+
+    principal, source, metadata = auth_context.get_request_principal()
+
+    assert principal is None
+    assert source == "X-ARR-ClientCert"
+    assert metadata is rejected_metadata
+    assert metadata["trust_required"] is True
+    assert metadata["trust_valid"] is False
+    assert metadata["trust_reason"] == "fingerprint_not_enrolled"
+
+    # Fresh rejected certificate proof must invalidate the older bounded
+    # certificate-session authority instead of allowing it to win.
+    assert "certificate_session_principal" not in browser_session
+    assert "certificate_session_established_at" not in browser_session
+
+
 def test_expired_certificate_session_returns_to_anonymous(monkeypatch):
     browser_session = {
         "certificate_session_principal": CERT_PRINCIPAL,
