@@ -58,6 +58,13 @@ from .utils.format_router import prompt_and_handle_download, route_format_handle
 from .utils.logger_singleton import logger, prompt
 from .utils.misc_utils import extract_url_and_label, load_processed_urls
 from .utils.output_utils import finalize_election_output
+from .parse_trace import (
+    observe_terminal_outcome,
+    parse_run_scope,
+    record_parse_attempt,
+    record_parse_observation,
+    record_parse_transition,
+)
 from .utils.seleniumbase_launcher import (
     SELENIUMBASE_AVAILABLE,
     close_driver,
@@ -587,6 +594,16 @@ def load_urls(*, allowlist_bypass: bool = False) -> List[str]:
     return lines
 
 def mark_url_processed(url, status="success", **metadata) -> None:
+    # A1 tracing is observational only. Terminal bookkeeping remains authoritative.
+    try:
+        observe_terminal_outcome(
+            status=status,
+            reason_code=metadata.get("reason_code") if isinstance(metadata, dict) else None,
+            metadata=metadata if isinstance(metadata, dict) else None,
+        )
+    except Exception:
+        pass
+
     public_runtime = _get_active_public_runtime()
     if public_runtime is not None:
         public_runtime.record_processed_status(
@@ -1639,7 +1656,13 @@ def orchestrate_url(
     nav_meta: Dict[str, Any] = {}
     agent_used = None
     state, county = infer_state_county_from_url(target_url)
-    
+    record_parse_observation(
+        kind="jurisdiction_hint",
+        value_summary={"state": state, "county": county},
+        provenance="DETERMINISTIC",
+        source_location="orchestrate_url.infer_state_county_from_url",
+    )
+
     # Extract principal/tier info from kwargs
     principal = kwargs.get("principal")
     principal_source = kwargs.get("principal_source")
@@ -1851,6 +1874,12 @@ def orchestrate_url(
         # Log trust decision for allowed URLs
         use_snapshot = force_snapshot_mode or should_use_snapshot_mode(trust_score, target_url)
         if use_snapshot:
+            record_parse_attempt(
+                stage="acquisition_selection",
+                strategy="snapshot_replay",
+                selection_reason="trust_policy_snapshot_mode",
+                details={"force_snapshot_mode": bool(force_snapshot_mode)},
+            )
             logger.info({
                 "level": "INFO",
                 "type": "trust_scorer",
@@ -2012,6 +2041,16 @@ def orchestrate_url(
     try:
         for attempt_idx, strat in enumerate(strategies[:max_attempts], start=1):
             agent = strat.get("agent")
+            record_parse_attempt(
+                stage="acquisition_attempt",
+                strategy=str(agent or "unknown"),
+                selection_reason="navigation_strategy_order",
+                details={
+                    "attempt_index": attempt_idx,
+                    "max_attempts": max_attempts,
+                    "timeout_ms": strat.get("timeout_ms"),
+                },
+            )
             try:
                 increment_counter("nav_agent_attempt_total", 1)
             except Exception:
@@ -2399,6 +2438,12 @@ def orchestrate_url(
             return
 
         if dom_table_rows <= 0:
+            record_parse_attempt(
+                stage="download_discovery",
+                strategy="download_fallback",
+                selection_reason="no_dom_table_rows",
+                details={"dom_table_rows": dom_table_rows},
+            )
             download_parse_tuple, handled = prompt_and_handle_download(
                 page,
                 target_url,
@@ -2447,6 +2492,12 @@ def orchestrate_url(
         }
         if result is None:
             active_state = context.get("state") or state
+            record_parse_attempt(
+                stage="handler_routing",
+                strategy="jurisdiction_hint_router",
+                selection_reason="no_prior_result",
+                details={"state_hint": active_state},
+            )
             if active_state:
                 preload_handler_map(restrict_to_states=[active_state])
             else:
@@ -2482,6 +2533,11 @@ def orchestrate_url(
                     logger.info(payload)
 
             if handler and hasattr(handler, 'parse'):
+                record_parse_attempt(
+                    stage="handler_execution",
+                    strategy=type(handler).__name__,
+                    selection_reason="router_selected_handler",
+                )
                 result = safe_parse(
                     handler,
                     page,
@@ -2493,6 +2549,17 @@ def orchestrate_url(
                     **kwargs,
                 )
             else:
+                record_parse_transition(
+                    stage="handler_routing",
+                    from_strategy="jurisdiction_hint_router",
+                    to_strategy="generic_html_fallback",
+                    reason="no_suitable_handler",
+                )
+                record_parse_attempt(
+                    stage="structure_extraction",
+                    strategy="generic_html_fallback",
+                    selection_reason="no_suitable_handler",
+                )
                 msg = f"[Router] No suitable handler found for {target_url}, using generic HTML fallback."
                 payload = {
                     "level": "WARNING",
@@ -2753,6 +2820,12 @@ def orchestrate_url(
         except Exception:
             choice = "s"
         if choice == "r":
+            record_parse_transition(
+                stage="source_orchestration",
+                from_strategy="current_attempt",
+                to_strategy="retry_same_source",
+                reason="user_requested_retry",
+            )
             # simple one-shot retry
             return orchestrate_url(
                 target_url,
@@ -3093,14 +3166,20 @@ def main(
                         "session_id": session_id
                     })
                     break
-                orchestrate_url(
-                    url,
-                    processed_info,
-                    session_id,
-                    cancel_flag,
-                    output_bypass=output_bypass,
-                    **kwargs
-                )
+                with parse_run_scope(
+                    session_id=session_id,
+                    source_ref=url,
+                    source_scope=("public_registry" if public_runtime is not None else "selected_url"),
+                    public_runtime=public_runtime is not None,
+                ):
+                    orchestrate_url(
+                        url,
+                        processed_info,
+                        session_id,
+                        cancel_flag,
+                        output_bypass=output_bypass,
+                        **kwargs
+                    )
 
         # --- 8. Summarize Results ---
         summary = {
