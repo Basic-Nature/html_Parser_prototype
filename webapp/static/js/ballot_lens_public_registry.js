@@ -21,6 +21,7 @@
 
   let sources = [];
   let executionEnabled = false;
+  let executionSourceId = '';
 
   function setStatus(message, level) {
     if (!status) return;
@@ -111,7 +112,8 @@
       runButton.disabled = !(
         executionEnabled &&
         selected &&
-        selected.registry_source_id
+        selected.registry_source_id &&
+        selected.registry_source_id === executionSourceId
       );
     }
   }
@@ -158,7 +160,21 @@
         );
       });
 
-      executionEnabled = payload.execution_enabled === true;
+      const projectedExecutionSourceId = (
+        typeof payload.execution_source_id === 'string'
+          ? payload.execution_source_id
+          : ''
+      );
+      executionSourceId = sources.some(
+        (source) =>
+          source.registry_source_id === projectedExecutionSourceId
+      )
+        ? projectedExecutionSourceId
+        : '';
+      executionEnabled = (
+        payload.execution_enabled === true &&
+        Boolean(executionSourceId)
+      );
       renderOptions('');
 
       if (sources.length === 0) {
@@ -212,7 +228,8 @@
       if (
         !executionEnabled ||
         !source ||
-        !source.registry_source_id
+        !source.registry_source_id ||
+        source.registry_source_id !== executionSourceId
       ) {
         setStatus(
           'Public parser execution is not enabled for this source.',

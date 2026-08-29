@@ -28,6 +28,8 @@ def test_public_registry_endpoint_is_get_only_and_url_free():
     assert "project_public_registry_sources(URL_LIST_FILE)" in body
     assert '"ballot_lens_public_registry_v1"' in body
     assert '"execution_enabled"' in body
+    assert '"execution_source_id"' in body
+    assert "configured_public_registry_pilot_source_id" in body
     assert '"sources"' in body
     assert '"url"' not in body
     assert "load_url_registry" not in body
@@ -74,6 +76,10 @@ def test_public_client_emits_only_opaque_source_id():
     source = _read(PUBLIC_JS)
     assert "socket.emit('ballot_lens', {" in source
     assert "registry_source_id: source.registry_source_id" in source
+    assert "executionSourceId" in source
+    assert "selected.registry_source_id === executionSourceId" in source
+    assert "source.registry_source_id === projectedExecutionSourceId" in source
+    assert "source.registry_source_id !== executionSourceId" in source
     for forbidden in (
         "direct_urls",
         "file_source",
@@ -124,3 +130,11 @@ def test_public_projection_handler_has_no_request_supplied_url_authority():
     assert "request.get_json" not in segment
     assert 'request.args.get("url"' not in segment
     assert "resolve_public_registry_source" not in segment
+
+def test_public_runtime_legacy_log_sink_is_suppressed_before_store_log():
+    main = _read(MAIN)
+    start = main.index("def socketio_emit_func(line):")
+    end = main.index("def get_prompt_queue(", start)
+    body = main[start:end]
+    assert "current_public_runtime" in body
+    assert body.index("current_public_runtime") < body.index("store_log")

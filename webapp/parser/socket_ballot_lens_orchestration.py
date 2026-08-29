@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from typing import Any
 
 
@@ -816,6 +818,235 @@ def _emit_public_registry_authority_status(
         pass
 
 
+def _create_public_server_session(h: dict[str, Any]) -> str:
+    import secrets
+
+    manager = h["session_manager"]
+    socket_sid = getattr(h["request"], "sid", None)
+
+    if isinstance(socket_sid, str) and socket_sid:
+        existing = manager.resolve_socket(socket_sid)
+        if isinstance(existing, str) and existing.startswith("sess_"):
+            meta = manager.get_metadata(existing) or {}
+            if (
+                meta.get("public_registry_session") is True
+                and not meta.get("principal")
+            ):
+                manager.ensure_session(existing)
+                return existing
+
+    session_id = ""
+    for _ in range(5):
+        candidate = "sess_" + secrets.token_urlsafe(16)
+        if not manager.has_session(candidate):
+            session_id = candidate
+            break
+    if not session_id:
+        raise RuntimeError("Unable to allocate public server session.")
+
+    manager.ensure_session(session_id)
+    manager.update_metadata(
+        session_id,
+        username="anonymous",
+        auth_tier="anon",
+        auth_trusted=False,
+        principal=None,
+        principal_source=None,
+        public_registry_session=True,
+        output_bypass=True,
+    )
+    if isinstance(socket_sid, str) and socket_sid:
+        manager.bind_socket(socket_sid, session_id)
+    return session_id
+
+
+def _public_client_rate_key(h: dict[str, Any]) -> str:
+    from webapp.parser.services.public_ballot_lens_policy import (
+        derive_pseudonymous_client_rate_key,
+        public_registry_rate_hmac_secret,
+    )
+
+    trusted_address = str(
+        getattr(h["request"], "remote_addr", "") or ""
+    ).strip()
+    return derive_pseudonymous_client_rate_key(
+        trusted_address,
+        secret=public_registry_rate_hmac_secret(),
+    )
+
+
+def _public_runtime_status(
+    h: dict[str, Any],
+    *,
+    session_id: str,
+    level: str,
+    reason_code: str,
+    message: str,
+    source_projection: dict[str, str],
+) -> None:
+    payload = h["normalize_log_obj"]({
+        "level": level,
+        "type": "public_registry_runtime",
+        "message": message,
+        "reason_code": reason_code,
+        "session_id": session_id,
+        "source": dict(source_projection),
+    })
+    h["socketio"].emit(
+        "parser_output",
+        payload,
+        room=session_id,
+    )
+
+
+def _start_public_registry_runtime(
+    public_ctx: dict[str, Any],
+    h: dict[str, Any],
+) -> None:
+    from webapp.parser.services.public_ballot_lens_policy import (
+        DEFAULT_PUBLIC_RUN_POLICY,
+        PublicRunAdmissionError,
+    )
+    from webapp.parser.services.public_ballot_lens_runtime import (
+        PublicBallotLensRuntime,
+        activate_admitted_public_runtime,
+    )
+
+    session_id = public_ctx["session_id"]
+    source_projection = dict(public_ctx["source_projection"])
+    resolved_url = public_ctx["resolved_url"]
+    runtime = PublicBallotLensRuntime(
+        registry_source_id=public_ctx["registry_source_id"],
+        source_projection=source_projection,
+        approved_target_url=resolved_url,
+        safe_emit=lambda event: h["socketio"].emit(
+            "parser_output",
+            h["normalize_log_obj"]({
+                **dict(event),
+                "session_id": session_id,
+            }),
+            room=session_id,
+        ),
+    )
+
+    cancel_flag = h["cancellation_manager"].get_flag(session_id)
+    prompt_queue = h["get_prompt_queue"](session_id)
+
+    def worker_wrapper():
+        thread_id = h["threading"].get_ident()
+        h["session_manager"].bind_thread_id(
+            thread_id,
+            session_id,
+        )
+        timer = h["threading"].Timer(
+            int(DEFAULT_PUBLIC_RUN_POLICY.hard_wall_clock_seconds),
+            cancel_flag.set,
+        )
+        timer.daemon = True
+        timer.start()
+        try:
+            with activate_admitted_public_runtime(
+                runtime,
+                client_key=public_ctx["client_key"],
+                server_session_id=session_id,
+            ):
+                _public_runtime_status(
+                    h,
+                    session_id=session_id,
+                    level="INFO",
+                    reason_code="public_registry_runtime_started",
+                    message="Approved public registry parse started.",
+                    source_projection=source_projection,
+                )
+                result = h["process_urls_for_web"](
+                    prompt_queue,
+                    session_id,
+                    cancel_flag,
+                    emit_func=None,
+                    output_bypass=True,
+                    manual_source="input",
+                    disable_internal_heartbeat=True,
+                    force_parse_input_file=None,
+                    force_parse_format=None,
+                    urls=[resolved_url],
+                    url_reference_hints=None,
+                    warehouse_override_url=None,
+                    principal=None,
+                    principal_source=None,
+                    dev_isolation_bypass=False,
+                    inspection_emit_func=None,
+                )
+                if (
+                    not isinstance(result, dict)
+                    or result.get("contract")
+                    != "ballot_lens_public_runtime_result_v1"
+                ):
+                    raise RuntimeError(
+                        "Unexpected public runtime result contract."
+                    )
+
+                encoded = json.dumps(
+                    result,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                if (
+                    len(encoded)
+                    <= int(DEFAULT_PUBLIC_RUN_POLICY.socket_event_max_bytes)
+                ):
+                    h["socketio"].emit(
+                        "public_registry_result",
+                        result,
+                        room=session_id,
+                    )
+                else:
+                    _public_runtime_status(
+                        h,
+                        session_id=session_id,
+                        level="INFO",
+                        reason_code="public_registry_result_memory_only",
+                        message=(
+                            "Public parse completed; preview exceeds "
+                            "the bounded socket event size."
+                        ),
+                        source_projection=source_projection,
+                    )
+
+                _public_runtime_status(
+                    h,
+                    session_id=session_id,
+                    level="INFO",
+                    reason_code="public_registry_runtime_completed",
+                    message="Approved public registry parse completed.",
+                    source_projection=source_projection,
+                )
+        except PublicRunAdmissionError:
+            _public_runtime_status(
+                h,
+                session_id=session_id,
+                level="WARNING",
+                reason_code="public_registry_admission_denied",
+                message="Public parser admission is temporarily unavailable.",
+                source_projection=source_projection,
+            )
+        except Exception:
+            _public_runtime_status(
+                h,
+                session_id=session_id,
+                level="ERROR",
+                reason_code="public_registry_runtime_failed",
+                message="The approved public registry parse did not complete.",
+                source_projection=source_projection,
+            )
+        finally:
+            timer.cancel()
+            h["session_manager"].unbind_thread_id(thread_id)
+
+    thread = h["socketio"].start_background_task(worker_wrapper)
+    h["session_manager"].set_thread(session_id, thread)
+
+
 def _initialize_public_registry_authority(
     payload: dict[str, Any],
     h: dict[str, Any],
@@ -883,12 +1114,26 @@ def _initialize_public_registry_authority(
         )
         return None
 
-    # Caller payload is deliberately NOT passed to session resolution.
-    # A future public run must use server-issued session authority only.
-    session_id = h["resolve_session_id"](
-        {},
-        create_if_missing=True,
-    )
+    try:
+        client_key = _public_client_rate_key(h)
+        session_id = _create_public_server_session(h)
+    except Exception as exc:
+        h["logger"].warning({
+            "level": "WARNING",
+            "type": "public_registry_authority",
+            "message": "Public registry admission prerequisites denied.",
+            "reason_code": type(exc).__name__,
+            "raw_url_disclosed": False,
+        })
+        _emit_public_registry_authority_status(
+            h,
+            level="WARNING",
+            reason_code="public_registry_authority_denied",
+            message=(
+                "Public registry parsing is unavailable for this request."
+            ),
+        )
+        return None
     if not isinstance(session_id, str) or not session_id.strip():
         _emit_public_registry_authority_status(
             h,
@@ -925,7 +1170,8 @@ def _initialize_public_registry_authority(
         # Internal-only, server-resolved execution authority. Never emitted.
         "resolved_url": str(getattr(source, "url", "") or ""),
         "source_projection": source_projection,
-        "runtime_dispatch_enabled": False,
+        "client_key": client_key,
+        "runtime_dispatch_enabled": True,
     }
 
 
@@ -948,20 +1194,21 @@ def _handle_public_registry_authority_split(
         {"session_id": session_id},
     )
 
-    # BL-P2F establishes the authority split only. The accepted no-write
-    # execution and egress foundations are installed into the runtime in
-    # BL-P2F2 before any anonymous parser dispatch is possible.
-    _emit_public_registry_authority_status(
-        h,
-        level="INFO",
-        reason_code="public_registry_authority_accepted_runtime_pending",
-        message=(
-            "Approved public registry source accepted; "
-            "parser dispatch remains disabled."
-        ),
-        session_id=session_id,
-        source_projection=public_ctx["source_projection"],
-    )
+    if public_ctx.get("runtime_dispatch_enabled") is not True:
+        _emit_public_registry_authority_status(
+            h,
+            level="INFO",
+            reason_code="public_registry_authority_accepted_runtime_pending",
+            message=(
+                "Approved public registry source accepted; "
+                "parser dispatch remains disabled."
+            ),
+            session_id=session_id,
+            source_projection=public_ctx["source_projection"],
+        )
+        return
+
+    _start_public_registry_runtime(public_ctx, h)
 
 def run_ballot_lens_socket_handler(data=None, *, hooks: dict[str, Any]) -> None:
     payload = _normalize_payload(data)

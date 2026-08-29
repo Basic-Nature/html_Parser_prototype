@@ -2394,6 +2394,15 @@ def socketio_emit_func(line):
     Used as the SocketIO emit function for SharedLogger.
     """
     try:
+        try:
+            from webapp.parser.services.public_ballot_lens_runtime import (
+                current_public_runtime,
+            )
+            if current_public_runtime() is not None:
+                return
+        except Exception:
+            pass
+
         if isinstance(line, (bytes, bytearray)) and len(line) > MAX_SOCKET_LOG_BYTES:
             line = line[:MAX_SOCKET_LOG_BYTES]
         elif isinstance(line, str) and len(line.encode("utf-8", "ignore")) > MAX_SOCKET_LOG_BYTES:
@@ -3159,6 +3168,7 @@ def index() -> str:
 @_rate_limit("60/minute")
 def api_public_ballot_lens_registry():
     from webapp.parser.services.public_ballot_lens_policy import (
+        configured_public_registry_pilot_source_id,
         public_registry_parse_feature_enabled,
     )
     from webapp.parser.utils.url_registry import (
@@ -3166,11 +3176,26 @@ def api_public_ballot_lens_registry():
     )
     try:
         sources = project_public_registry_sources(URL_LIST_FILE)
+        configured_pilot = configured_public_registry_pilot_source_id()
+        projected_ids = {
+            source.get("registry_source_id")
+            for source in sources
+            if isinstance(source, dict)
+        }
+        execution_source_id = (
+            configured_pilot
+            if (
+                public_registry_parse_feature_enabled()
+                and configured_pilot in projected_ids
+            )
+            else None
+        )
         return jsonify({
             "contract": "ballot_lens_public_registry_v1",
             "sources": sources,
             "count": len(sources),
-            "execution_enabled": public_registry_parse_feature_enabled(),
+            "execution_enabled": bool(execution_source_id),
+            "execution_source_id": execution_source_id,
         })
     except Exception:
         logger.error({

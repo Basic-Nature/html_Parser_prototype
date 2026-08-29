@@ -24,6 +24,8 @@ from webapp.parser.auth.capability_policy import (
 )
 
 PUBLIC_REGISTRY_PARSE_ENV = "BALLOT_LENS_PUBLIC_REGISTRY_PARSE_ENABLED"
+PUBLIC_REGISTRY_PILOT_SOURCE_ENV = "BALLOT_LENS_PUBLIC_REGISTRY_PILOT_SOURCE_ID"
+PUBLIC_REGISTRY_RATE_HMAC_SECRET_ENV = "BALLOT_LENS_PUBLIC_RATE_HMAC_SECRET"
 PUBLIC_REGISTRY_SOURCE_ID_PATTERN = re.compile(r"\Ablsrc_v1_[0-9a-f]{64}\Z")
 PSEUDONYMOUS_CLIENT_KEY_PATTERN = re.compile(r"\Aclient:[0-9a-f]{64}\Z")
 
@@ -88,6 +90,33 @@ def public_registry_parse_feature_enabled(
     source = os.environ if environ is None else environ
     value = str(source.get(PUBLIC_REGISTRY_PARSE_ENV, "false") or "")
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def configured_public_registry_pilot_source_id(
+    environ: Mapping[str, str] | None = None,
+) -> str | None:
+    source = os.environ if environ is None else environ
+    value = str(
+        source.get(PUBLIC_REGISTRY_PILOT_SOURCE_ENV, "") or ""
+    ).strip()
+    if not PUBLIC_REGISTRY_SOURCE_ID_PATTERN.fullmatch(value):
+        return None
+    return value
+
+
+def public_registry_rate_hmac_secret(
+    environ: Mapping[str, str] | None = None,
+) -> bytes:
+    source = os.environ if environ is None else environ
+    value = str(
+        source.get(PUBLIC_REGISTRY_RATE_HMAC_SECRET_ENV, "") or ""
+    )
+    encoded = value.encode("utf-8")
+    if len(encoded) < 32:
+        raise PublicRunAdmissionError(
+            "Public admission HMAC secret must contain at least 32 bytes."
+        )
+    return encoded
 
 
 def _serialized_payload_size(payload: Mapping[str, object]) -> int:
@@ -156,6 +185,17 @@ def authorize_public_registry_parse(
         payload_validated=True,
         registry_source_resolved=registry_source_resolved is True,
     )
+    pilot_source_id = configured_public_registry_pilot_source_id(
+        environ
+    )
+    if pilot_source_id is None:
+        raise PublicBallotLensPolicyError(
+            "Public registry pilot source is not configured."
+        )
+    if registry_source_id != pilot_source_id:
+        raise PublicBallotLensPolicyError(
+            "Public registry source is outside bounded pilot authority."
+        )
     return capability, registry_source_id
 
 

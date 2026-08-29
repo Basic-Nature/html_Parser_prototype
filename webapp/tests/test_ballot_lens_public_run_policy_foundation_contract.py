@@ -14,8 +14,10 @@ from webapp.parser.services.public_ballot_lens_policy import (
     PublicRunAdmissionController,
     PublicRunAdmissionError,
     authorize_public_registry_parse,
+    configured_public_registry_pilot_source_id,
     derive_pseudonymous_client_rate_key,
     public_registry_parse_feature_enabled,
+    public_registry_rate_hmac_secret,
     validate_public_start_payload,
 )
 
@@ -101,13 +103,39 @@ def test_authorization_remains_disabled_by_default():
             registry_source_resolved=True,
             environ={},
         )
+    with pytest.raises(PublicBallotLensPolicyError):
+        authorize_public_registry_parse(
+            payload,
+            registry_source_resolved=True,
+            environ={
+                "BALLOT_LENS_PUBLIC_REGISTRY_PARSE_ENABLED": "true",
+            },
+        )
+
+    with pytest.raises(PublicBallotLensPolicyError):
+        authorize_public_registry_parse(
+            payload,
+            registry_source_resolved=True,
+            environ={
+                "BALLOT_LENS_PUBLIC_REGISTRY_PARSE_ENABLED": "true",
+                "BALLOT_LENS_PUBLIC_REGISTRY_PILOT_SOURCE_ID":
+                    "blsrc_v1_" + ("b" * 64),
+            },
+        )
+
+    enabled = {
+        "BALLOT_LENS_PUBLIC_REGISTRY_PARSE_ENABLED": "true",
+        "BALLOT_LENS_PUBLIC_REGISTRY_PILOT_SOURCE_ID":
+            VALID_SOURCE_ID,
+    }
     capability, source_id = authorize_public_registry_parse(
         payload,
         registry_source_resolved=True,
-        environ={"BALLOT_LENS_PUBLIC_REGISTRY_PARSE_ENABLED": "true"},
+        environ=enabled,
     )
     assert capability is Capability.BALLOT_LENS_PUBLIC_REGISTRY_PARSE
     assert source_id == VALID_SOURCE_ID
+    assert configured_public_registry_pilot_source_id(enabled) == VALID_SOURCE_ID
 
 
 def test_client_rate_key_is_pseudonymous_and_secret_bound():
@@ -195,3 +223,14 @@ def test_admission_rejects_raw_client_or_non_server_session_keys():
             server_session_id="caller-selected",
             now=1000.0,
         )
+
+def test_public_rate_hmac_secret_requires_explicit_32_byte_value():
+    with pytest.raises(PublicRunAdmissionError):
+        public_registry_rate_hmac_secret({})
+    with pytest.raises(PublicRunAdmissionError):
+        public_registry_rate_hmac_secret({
+            "BALLOT_LENS_PUBLIC_RATE_HMAC_SECRET": "short",
+        })
+    assert public_registry_rate_hmac_secret({
+        "BALLOT_LENS_PUBLIC_RATE_HMAC_SECRET": "x" * 32,
+    }) == b"x" * 32

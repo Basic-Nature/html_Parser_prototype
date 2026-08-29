@@ -32,6 +32,41 @@ class FakeSocketIO:
         self.sleeps.append(seconds)
 
 
+class FakePublicSessionManager:
+    def __init__(self):
+        self.sessions = {}
+        self.socket_map = {}
+
+    def resolve_socket(self, sid):
+        return self.socket_map.get(sid)
+
+    def has_session(self, sid):
+        return sid in self.sessions
+
+    def ensure_session(self, sid):
+        self.sessions.setdefault(
+            sid,
+            {"session_id": sid, "principal": None},
+        )
+        return dict(self.sessions[sid])
+
+    def update_metadata(self, sid, **updates):
+        self.sessions.setdefault(sid, {"session_id": sid}).update(updates)
+        return dict(self.sessions[sid])
+
+    def get_metadata(self, sid):
+        value = self.sessions.get(sid)
+        return dict(value) if value else None
+
+    def bind_socket(self, socket_sid, session_id):
+        self.socket_map[socket_sid] = session_id
+
+
+class FakePublicRequest:
+    sid = "socket_public_test"
+    remote_addr = "203.0.113.10"
+
+
 def make_public_hooks():
     emitted = []
     session_calls = []
@@ -51,6 +86,8 @@ def make_public_hooks():
         ),
         "join_room": lambda room: rooms.append(room),
         "socketio": FakeSocketIO(),
+        "session_manager": FakePublicSessionManager(),
+        "request": FakePublicRequest(),
     }
     return hooks, emitted, session_calls, rooms
 
@@ -191,6 +228,10 @@ def test_public_authority_uses_server_session_not_caller_payload(
         ),
     )
 
+    monkeypatch.setenv(
+        public_policy.PUBLIC_REGISTRY_RATE_HMAC_SECRET_ENV,
+        "s" * 32,
+    )
     hooks, emitted, session_calls, rooms = make_public_hooks()
 
     context = orchestration._initialize_public_registry_authority(
@@ -201,9 +242,11 @@ def test_public_authority_uses_server_session_not_caller_payload(
     )
 
     assert context is not None
-    assert context["runtime_dispatch_enabled"] is False
+    assert context["runtime_dispatch_enabled"] is True
     assert context["resolved_url"] == source.url
-    assert session_calls == [({}, True)]
+    assert context["client_key"].startswith("client:")
+    assert session_calls == []
+    assert hooks["session_manager"].sessions
     assert context["source_projection"] == {
         "registry_source_id": source.registry_source_id,
         "year": "2024",
@@ -306,11 +349,8 @@ def test_public_split_source_contains_no_cert_gate_or_worker_dispatch():
 
     assert "require_cert_for_socket_action" not in helper_text
     assert "_start_pipeline_worker" not in helper_text
-    assert 'resolve_session_id"](' in helper_text
-    assert "payload," not in (
-        helper_text.split('resolve_session_id"](', 1)[1]
-        .split(")", 1)[0]
-    )
+    assert 'resolve_session_id"](' not in helper_text
+    assert "_create_public_server_session" in helper_text
 
     public_branch = handler_text.index(
         "if _is_public_registry_intent(payload):"
@@ -367,3 +407,29 @@ def test_feature_disabled_capability_error_emits_public_denial_without_session(
         not in rendered
     )
     assert source.url not in rendered
+
+def test_public_runtime_dispatch_source_is_isolated_from_trusted_worker():
+    source = SOURCE_PATH.read_text(encoding="utf-8-sig")
+    tree = ast.parse(source, filename=str(SOURCE_PATH))
+    worker = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_start_public_registry_runtime"
+    )
+    worker_text = ast.get_source_segment(source, worker) or ""
+
+    for token in (
+        "activate_admitted_public_runtime",
+        "output_bypass=True",
+        "emit_func=None",
+        "urls=[resolved_url]",
+        "principal=None",
+        "principal_source=None",
+        "inspection_emit_func=None",
+    ):
+        assert token in worker_text
+
+    assert "_start_pipeline_worker" not in worker_text
+    assert "log_run_event" not in worker_text
+    assert "_snapshot_output_artifacts" not in worker_text
