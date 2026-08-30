@@ -1288,6 +1288,65 @@ def _record_contest_hint_structure_observation(
     except Exception:
         return False
 
+def _record_columnar_structure_observation(
+    *,
+    attempted: bool,
+    attempt_count_if_already_present: int | None,
+    failure_present: bool,
+    result_present: bool,
+    segment_count_if_already_present: int | None,
+) -> bool:
+    """Emit bounded columnar-structure evidence without affecting parsing."""
+    try:
+        if (
+            not callable(_record_parse_observation)
+            or _StructureObservationPhase is None
+        ):
+            return False
+
+        safe_attempt_count = (
+            attempt_count_if_already_present
+            if isinstance(attempt_count_if_already_present, int)
+            and not isinstance(attempt_count_if_already_present, bool)
+            and attempt_count_if_already_present >= 0
+            else None
+        )
+        safe_segment_count = (
+            segment_count_if_already_present
+            if isinstance(segment_count_if_already_present, int)
+            and not isinstance(segment_count_if_already_present, bool)
+            and segment_count_if_already_present >= 0
+            else None
+        )
+
+        return bool(
+            _record_parse_observation(
+                kind="pdf_structure_phase_observed",
+                value_summary={
+                    "phase": (
+                        _StructureObservationPhase
+                        .COLUMNAR_STRUCTURE
+                        .value
+                    ),
+                    "attempted": bool(attempted),
+                    "attempt_count_if_already_present":
+                        safe_attempt_count,
+                    "failure_present": bool(failure_present),
+                    "result_present": bool(result_present),
+                    "segment_count_if_already_present":
+                        safe_segment_count,
+                },
+                provenance="OBSERVED",
+                source_location=(
+                    "pdf_handler.parse_pdf_election_results:"
+                    "columnar_structure"
+                ),
+            )
+        )
+    except Exception:
+        return False
+
+
 
 
 
@@ -6044,6 +6103,44 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
                 coordinator,
                 session_id,
             )
+            _record_columnar_structure_observation(
+                attempted=True,
+                attempt_count_if_already_present=(
+                    len(metadata.get("columnar_reconstruction_attempts"))
+                    if isinstance(
+                        metadata.get("columnar_reconstruction_attempts"),
+                        list,
+                    )
+                    else None
+                ),
+                failure_present=isinstance(
+                    metadata.get("columnar_reconstruction_failure"),
+                    dict,
+                ),
+                result_present=bool(recon_result),
+                segment_count_if_already_present=(
+                    len(
+                        (
+                            metadata.get("columnar_reconstruction")
+                            or {}
+                        ).get("bundle_outputs")
+                    )
+                    if (
+                        isinstance(
+                            metadata.get("columnar_reconstruction"),
+                            dict,
+                        )
+                        and isinstance(
+                            (
+                                metadata.get("columnar_reconstruction")
+                                or {}
+                            ).get("bundle_outputs"),
+                            list,
+                        )
+                    )
+                    else None
+                ),
+            )
             if recon_result:
                 return recon_result
 
@@ -6226,6 +6323,44 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
         metadata,
         coordinator,
         session_id,
+    )
+    _record_columnar_structure_observation(
+        attempted=True,
+        attempt_count_if_already_present=(
+            len(metadata.get("columnar_reconstruction_attempts"))
+            if isinstance(
+                metadata.get("columnar_reconstruction_attempts"),
+                list,
+            )
+            else None
+        ),
+        failure_present=isinstance(
+            metadata.get("columnar_reconstruction_failure"),
+            dict,
+        ),
+        result_present=bool(recon_result),
+        segment_count_if_already_present=(
+            len(
+                (
+                    metadata.get("columnar_reconstruction")
+                    or {}
+                ).get("bundle_outputs")
+            )
+            if (
+                isinstance(
+                    metadata.get("columnar_reconstruction"),
+                    dict,
+                )
+                and isinstance(
+                    (
+                        metadata.get("columnar_reconstruction")
+                        or {}
+                    ).get("bundle_outputs"),
+                    list,
+                )
+            )
+            else None
+        ),
     )
     if recon_result:
         return recon_result
