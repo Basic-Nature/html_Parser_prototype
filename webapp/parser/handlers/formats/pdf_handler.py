@@ -150,6 +150,14 @@ from ...utils.shared_logic import (
 from ...utils.pivot import expand_single_rawjson_row, transform_wide_to_smart_standard
 from ...Context_Integration.context_coordinator import dynamic_state_county_detection
 from ...utils.header_utils import normalize_table_headers
+try:
+    from ...parse_trace import record_parse_observation as _record_parse_observation
+    from ...profiling.pdf_structure_profiler import (
+        StructureObservationPhase as _StructureObservationPhase,
+    )
+except Exception:
+    _record_parse_observation = None
+    _StructureObservationPhase = None
 
 # Added optional tuning flags (safe defaults if not in config)
 try:
@@ -1156,6 +1164,61 @@ def _build_ocr_evidence(
         evidence["contest_probe_autopick"] = metadata.get("contest_probe_autopick")
 
     return evidence
+
+def _record_page_text_structure_observation(
+    *,
+    pdf_page_total: int | None,
+    line_records: list[dict] | None,
+    page_summaries: list[dict] | None,
+    page_lines_fallback: bool,
+    page_text_map: list[dict] | None,
+    fitz_mode: str | None,
+) -> bool:
+    # Emit bounded page-text structure evidence without affecting parsing.
+    try:
+        if (
+            not callable(_record_parse_observation)
+            or _StructureObservationPhase is None
+        ):
+            return False
+        return bool(
+            _record_parse_observation(
+                kind="pdf_structure_phase_observed",
+                value_summary={
+                    "phase": _StructureObservationPhase.PAGE_TEXT_STRUCTURE.value,
+                    "page_count": (
+                        pdf_page_total
+                        if isinstance(pdf_page_total, int)
+                        and not isinstance(pdf_page_total, bool)
+                        and pdf_page_total >= 0
+                        else None
+                    ),
+                    "page_line_total": len(line_records or []),
+                    "page_line_pages": len(page_summaries or []),
+                    "page_line_source": (
+                        "fallback"
+                        if page_lines_fallback
+                        else "page_map"
+                    ),
+                    "page_line_index_available": bool(line_records),
+                    "page_lines_fallback": bool(page_lines_fallback),
+                    "page_text_map_entries": len(page_text_map or []),
+                    "fitz_mode": (
+                        str(fitz_mode)[:80]
+                        if fitz_mode is not None
+                        else None
+                    ),
+                },
+                provenance="OBSERVED",
+                source_location=(
+                    "pdf_handler.parse_pdf_election_results:"
+                    "page_text_structure"
+                ),
+            )
+        )
+    except Exception:
+        return False
+
 
 
 def _table_looks_bad(headers: list[str], rows: list[dict]) -> bool:
@@ -5014,6 +5077,14 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
     metadata["page_lines_fallback"] = bool(page_lines_fallback)
     if page_summaries:
         metadata["page_line_summary"] = page_summaries[:25]
+    _record_page_text_structure_observation(
+        pdf_page_total=pdf_page_total,
+        line_records=line_records,
+        page_summaries=page_summaries,
+        page_lines_fallback=page_lines_fallback,
+        page_text_map=page_text_map,
+        fitz_mode=metadata.get("fitz_mode_used"),
+    )
 
     metadata["ocr_evidence"] = _build_ocr_evidence(
         pdf_path=pdf_path,
