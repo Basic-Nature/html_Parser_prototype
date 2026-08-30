@@ -1219,6 +1219,76 @@ def _record_page_text_structure_observation(
     except Exception:
         return False
 
+def _record_contest_hint_structure_observation(
+    *,
+    contest_detection_available: bool,
+    detected_title_count: int,
+    selection_mode_if_already_present: str | None,
+    contest_segment_hint_count_if_already_present: int | None,
+) -> bool:
+    """Emit bounded contest-hint structure evidence without affecting parsing."""
+    try:
+        if (
+            not callable(_record_parse_observation)
+            or _StructureObservationPhase is None
+        ):
+            return False
+
+        safe_title_count = (
+            detected_title_count
+            if isinstance(detected_title_count, int)
+            and not isinstance(detected_title_count, bool)
+            and detected_title_count >= 0
+            else 0
+        )
+        safe_segment_count = (
+            contest_segment_hint_count_if_already_present
+            if isinstance(
+                contest_segment_hint_count_if_already_present,
+                int,
+            )
+            and not isinstance(
+                contest_segment_hint_count_if_already_present,
+                bool,
+            )
+            and contest_segment_hint_count_if_already_present >= 0
+            else None
+        )
+        safe_selection_mode = (
+            str(selection_mode_if_already_present)[:80]
+            if selection_mode_if_already_present is not None
+            else None
+        )
+
+        return bool(
+            _record_parse_observation(
+                kind="pdf_structure_phase_observed",
+                value_summary={
+                    "phase": (
+                        _StructureObservationPhase
+                        .CONTEST_HINT_STRUCTURE
+                        .value
+                    ),
+                    "contest_detection_available": bool(
+                        contest_detection_available
+                    ),
+                    "detected_title_count": safe_title_count,
+                    "selection_mode_if_already_present":
+                        safe_selection_mode,
+                    "contest_segment_hint_count_if_already_present":
+                        safe_segment_count,
+                },
+                provenance="OBSERVED",
+                source_location=(
+                    "pdf_handler.parse_pdf_election_results:"
+                    "contest_hint_structure"
+                ),
+            )
+        )
+    except Exception:
+        return False
+
+
 
 
 def _table_looks_bad(headers: list[str], rows: list[dict]) -> bool:
@@ -5274,6 +5344,21 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
         contest_detection_diag["dedup_titles"] = detected_titles[:25]
         contest_detection_diag["dedup_count"] = len(detected_titles)
         metadata["contest_detection"] = contest_detection_diag
+        _record_contest_hint_structure_observation(
+            contest_detection_available=True,
+            detected_title_count=len(detected_titles),
+            selection_mode_if_already_present=metadata.get(
+                "contest_selection_mode"
+            ),
+            contest_segment_hint_count_if_already_present=(
+                len(metadata.get("contest_segments") or [])
+                if isinstance(
+                    metadata.get("contest_segments"),
+                    (list, tuple),
+                )
+                else None
+            ),
+        )
     probe_titles = contest_probe_info.get("titles") if contest_probe_info else []
     if probe_titles:
         for title in probe_titles:
