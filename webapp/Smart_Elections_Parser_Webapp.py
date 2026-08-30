@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import hmac
 import logging
 import os
@@ -336,6 +337,7 @@ from webapp.parser.web_pipeline import (
     cancellation_manager,
     process_urls_for_web,
 )
+from webapp.parser.health.alert_monitor_service import AlertMonitorService
 
 _DOWNLOAD_READY_SESSIONS: set[str] = set()
 _DOWNLOAD_READY_LOCK = threading.Lock()
@@ -674,6 +676,47 @@ def log_flagged_url(event: dict) -> None:
 # 2. Flask App & SocketIO Initialization
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+
+# Alert-table polling is process infrastructure, not parser-session
+# infrastructure. Importing this module never starts the background poller.
+_ALERT_MONITOR_ENABLED = (
+    os.environ.get(
+        "ALERT_MONITOR_ENABLED",
+        "true" if DEPLOY_ENV == "azure" else "false",
+    )
+    .strip()
+    .lower()
+    in {"1", "true", "yes", "on"}
+)
+
+_ALERT_MONITOR_SERVICE = None
+_ALERT_MONITOR_ATEXIT_REGISTERED = False
+
+
+def start_alert_monitor_service():
+    global _ALERT_MONITOR_SERVICE
+    global _ALERT_MONITOR_ATEXIT_REGISTERED
+
+    if not _ALERT_MONITOR_ENABLED:
+        return None
+
+    if _ALERT_MONITOR_SERVICE is None:
+        _ALERT_MONITOR_SERVICE = AlertMonitorService()
+
+    thread = _ALERT_MONITOR_SERVICE.start()
+
+    if not _ALERT_MONITOR_ATEXIT_REGISTERED:
+        atexit.register(stop_alert_monitor_service)
+        _ALERT_MONITOR_ATEXIT_REGISTERED = True
+
+    return thread
+
+
+def stop_alert_monitor_service(timeout: float = 2.0) -> bool:
+    service = _ALERT_MONITOR_SERVICE
+    if service is None:
+        return True
+    return service.stop(timeout=timeout)
 
 limiter = None
 if Limiter is not None:
@@ -10614,6 +10657,7 @@ except Exception:
 # 7. Main Entrypoint
 if __name__ == "__main__":
     try:
+        start_alert_monitor_service()
         port = int(os.environ.get("PORT", 5000))
         allow_unsafe = os.environ.get("SMART_ELECTIONS_ALLOW_UNSAFE_WERKZEUG", "").lower() in {"1", "true", "yes"}
         socketio.run(

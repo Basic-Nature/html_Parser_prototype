@@ -46,3 +46,13 @@ loglevel = os.environ.get("GUNICORN_LOGLEVEL", "info")
 max_requests = int(os.environ.get("GUNICORN_MAX_REQUESTS", "0"))
 max_requests_jitter = int(os.environ.get("GUNICORN_MAX_REQUESTS_JITTER", "0"))
 graceful_timeout = int(os.environ.get("GUNICORN_GRACEFUL_TIMEOUT", "90"))
+
+
+def post_worker_init(worker):
+    """Start process-local alert monitoring after Gunicorn worker init."""
+    del worker
+    from webapp.Smart_Elections_Parser_Webapp import (
+        start_alert_monitor_service,
+    )
+
+    start_alert_monitor_service()

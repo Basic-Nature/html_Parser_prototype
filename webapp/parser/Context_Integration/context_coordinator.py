@@ -881,7 +881,7 @@ class ContextCoordinator(object):
         "max_dict": 120,
         "max_string": 2000,
     }
-    def __init__(self, use_library=True, enable_ml=True, alert_monitor=True, debug=False) -> None:
+    def __init__(self, use_library=True, enable_ml=True, alert_monitor=False, debug=False) -> None:
         self.enable_ml = enable_ml
         self.alert_monitor = alert_monitor
         self.debug = debug
