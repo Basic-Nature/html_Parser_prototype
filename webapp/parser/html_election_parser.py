@@ -87,6 +87,7 @@ from .utils.url_trust_scorer import (
     should_reject,
     should_use_snapshot_mode,
 )
+from .utils.path_safety import is_path_within_root
 
 if CACHE_RESET and PROCESSED_URLS_FILE.exists():
     logger.warning("Deleting .processed_urls cache for fresh start...")
@@ -878,7 +879,7 @@ def process_format_override(
     if force_parse_input_file:
         forced_rel = str(force_parse_input_file).replace("\\", "/").strip("/")
         forced_path = os.path.normpath(os.path.join(input_folder, forced_rel))
-        if forced_path.startswith(input_folder) and os.path.isfile(forced_path):
+        if is_path_within_root(forced_path, input_folder, path_module=os.path) and os.path.isfile(forced_path):
             fmt = (force_parse_format or os.path.splitext(forced_path)[1].lstrip(".")).lower()
             if not fmt:
                 logger.error({

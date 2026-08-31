@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from typing import Any
+from .utils.path_safety import is_path_within_root
 
 
 def _normalize_payload(data) -> dict[str, Any]:
@@ -145,7 +146,7 @@ def _prepare_run_inputs(payload: dict[str, Any], session_id: str, dev_isolation_
     if raw_manual_upload_path:
         normalized_rel = raw_manual_upload_path.replace("\\", "/").strip("/")
         candidate_path = h["os"].path.normpath(h["os"].path.join(abs_uploads_dir, normalized_rel))
-        if candidate_path.startswith(abs_uploads_dir) and h["os"].path.isfile(candidate_path):
+        if is_path_within_root(candidate_path, abs_uploads_dir, path_module=h['os'].path) and h["os"].path.isfile(candidate_path):
             manual_upload_rel = normalized_rel
             if not manual_upload_name:
                 manual_upload_name = h["os"].path.basename(candidate_path)
