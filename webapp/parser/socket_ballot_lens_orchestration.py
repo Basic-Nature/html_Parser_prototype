@@ -679,6 +679,41 @@ def _start_pipeline_worker(
         status = "error"
         err = None
         try:
+            artifact_identity = None
+            if requested_source == "uploads" and force_parse_input_file:
+                from .contracts.artifact_identity import ArtifactIdentityHandoff
+                from .utils.misc_utils import file_hash
+
+                artifact_uploads_dir = h["os"].path.abspath(h["uploads_dir"])
+                artifact_rel = str(force_parse_input_file).replace("\\", "/").strip("/")
+                artifact_path = h["os"].path.normpath(
+                    h["os"].path.join(artifact_uploads_dir, artifact_rel)
+                )
+                if not is_path_within_root(
+                    artifact_path,
+                    artifact_uploads_dir,
+                    path_module=h["os"].path,
+                ):
+                    raise RuntimeError(
+                        "Manual upload escaped uploads root during worker revalidation."
+                    )
+                if not h["os"].path.isfile(artifact_path):
+                    raise RuntimeError(
+                        "Manual upload is no longer a file during worker revalidation."
+                    )
+
+                document_sha256 = file_hash(
+                    artifact_path,
+                    algo="sha256",
+                )
+                if not document_sha256:
+                    raise RuntimeError(
+                        "Manual upload SHA-256 identity computation failed."
+                    )
+
+                artifact_identity = ArtifactIdentityHandoff(
+                    document_sha256=document_sha256,
+                )
             h["process_urls_for_web"](
                 prompt_queue,
                 session_id,
@@ -700,6 +735,7 @@ def _start_pipeline_worker(
                     principal,
                     h,
                 ),
+                artifact_identity=artifact_identity,
 )
             h["logger"].info(
                 {

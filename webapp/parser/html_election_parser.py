@@ -2922,6 +2922,7 @@ def main(
                 force_parse_input_file=kwargs.get("force_parse_input_file"),
                 force_parse_format=kwargs.get("force_parse_format"),
                 cancel_flag=cancel_flag,
+                artifact_identity=kwargs.get("artifact_identity"),
             )
             if override_result is True:
                 logger.info({
