@@ -1829,8 +1829,10 @@ def _save_uploaded_file(file_obj, dest_dir: str, session_id: str | None = None) 
     original_name = file_obj.filename or "upload"
     filename = _generate_upload_filename(original_name)
     save_path = os.path.join(dest_dir, filename)
+    created_upload_path = False
     try:
         with open(save_path, "xb") as destination:
+            created_upload_path = True
             file_obj.save(destination)
     except FileExistsError:
         return (
@@ -1839,6 +1841,11 @@ def _save_uploaded_file(file_obj, dest_dir: str, session_id: str | None = None) 
             None,
         )
     except Exception as exc:
+        if created_upload_path:
+            try:
+                os.remove(save_path)
+            except OSError:
+                pass
         return False, f"Failed to save upload: {exc}", None
     ext = os.path.splitext(filename)[1].lower()
     valid, reason = _validate_uploaded_file(save_path, ext, session_id=session_id)
