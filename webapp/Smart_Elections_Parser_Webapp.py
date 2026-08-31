@@ -1830,7 +1830,14 @@ def _save_uploaded_file(file_obj, dest_dir: str, session_id: str | None = None) 
     filename = _generate_upload_filename(original_name)
     save_path = os.path.join(dest_dir, filename)
     try:
-        file_obj.save(save_path)
+        with open(save_path, "xb") as destination:
+            file_obj.save(destination)
+    except FileExistsError:
+        return (
+            False,
+            "Unable to allocate a unique upload filename; please retry.",
+            None,
+        )
     except Exception as exc:
         return False, f"Failed to save upload: {exc}", None
     ext = os.path.splitext(filename)[1].lower()
