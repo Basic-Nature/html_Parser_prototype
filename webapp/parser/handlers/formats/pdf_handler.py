@@ -4858,7 +4858,8 @@ def _pick_representative_title(titles: list[str]) -> str:
 def _dedupe_contest_titles(titles):
     return list(dict.fromkeys(titles))
    
-def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, cancel_flag=None) -> tuple[list[str], list[dict], str, dict]:
+from ...contracts.artifact_identity import ArtifactIdentityHandoff
+def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, cancel_flag=None, *, artifact_identity: ArtifactIdentityHandoff | None = None) -> tuple[list[str], list[dict], str, dict]:
     """ Main PDF handler function."""
     # Log active OCR tuning config at parse start for diagnostics
     from ...config import log_ocr_config_summary, get_ocr_config_dict, log_extraction_quality  # type: ignore[attr-defined]
@@ -6446,7 +6447,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
     })
     return _finalize_with_quality(["text"], [{"text": clean_text}], selected_contest_title, metadata)
 
-def parse(page=None, coordinator=None, html_context=None, manual_file=None, session_id=None, **kwargs):
+def parse(page=None, coordinator=None, html_context=None, manual_file=None, session_id=None, *, artifact_identity: ArtifactIdentityHandoff | None = None, **kwargs):
     """
     Universal pipeline entry: Accepts a PDF file path (manual_file) from the format router.
     Returns: headers, data, contest, metadata
@@ -6564,6 +6565,7 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
             session_id=session_id,
             coordinator=coordinator,
             cancel_flag=cancel_flag,
+            artifact_identity=artifact_identity,
         )
     except PDFParseCancelled as exc:
         meta_seed = {
