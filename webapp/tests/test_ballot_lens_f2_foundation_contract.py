@@ -72,6 +72,21 @@ def test_f2_isolated_package_does_not_modify_root_tooling_contract():
     assert f2["devDependencies"]["@vitejs/plugin-react"] == "6.1.1"
     assert f2["devDependencies"]["vite"] == "8.2.2"
     assert f2["devDependencies"]["typescript"] == "5.9.3"
+    assert f2["devDependencies"]["@types/node"] == "24.10.0"
+
+
+def test_f2_package_owns_node_types_for_vite_config():
+    package = json.loads(_read(F2_PACKAGE))
+    tsconfig = json.loads(
+        _read(ROOT / "webapp/frontend/ballot-lens/tsconfig.json")
+    )
+    lock = json.loads(
+        _read(ROOT / "webapp/frontend/ballot-lens/package-lock.json")
+    )
+    assert package["devDependencies"]["@types/node"] == "24.10.0"
+    assert tsconfig["compilerOptions"]["types"] == ["vite/client", "node"]
+    assert lock["packages"][""]["devDependencies"]["@types/node"] == "24.10.0"
+    assert lock["packages"]["node_modules/@types/node"]["version"] == "24.10.0"
 
 
 def test_f2_asset_loader_accepts_entry_css_list(tmp_path: Path):
