@@ -224,6 +224,17 @@
                       <div id="publicRegistryStatus" class="form-text" role="status" aria-live="polite">
                         Public execution remains disabled until production acceptance.
                       </div>
+                      <section id="publicRegistryRunActivity" class="source-instructions mt-1em" aria-label="Public parser run activity" aria-live="polite" hidden>
+                        <div class="source-card-header"><div class="source-title">Run Activity</div><span id="publicRegistryRunState" class="badge badge-soft">idle</span></div>
+                        <dl class="info-list">
+                          <dt>Session</dt><dd><span id="publicRegistryRunSession" class="mono">waiting</span></dd>
+                          <dt>Stage</dt><dd><span id="publicRegistryRunStage">Ready</span></dd>
+                          <dt>Result</dt><dd><span id="publicRegistryRunResult">—</span></dd>
+                          <dt>Reason</dt><dd><span id="publicRegistryRunReason" class="mono">—</span></dd>
+                        </dl>
+                        <div id="publicRegistryRunCounts" class="form-text">No terminal status counts yet.</div>
+                        <p id="publicRegistryRunHint" class="source-instructions-note">Start an approved source to follow its bounded public runtime.</p>
+                      </section>
                     </div>
                   </div>
 

@@ -2539,6 +2539,30 @@ async function ensureSocketForMutation(targetUrl) {
 }
 
 let currentSessionId = null;
+const publicRunSessionOwner = { awaitingSession: false, activeSessionId: null, registrySourceId: null };
+function isForeignOwnedSessionEvent(data) {
+  if (!data || typeof data.session_id !== 'string' || !data.session_id) return false;
+  if (publicRunSessionOwner.awaitingSession && !publicRunSessionOwner.activeSessionId) return true;
+  if (!publicRunSessionOwner.activeSessionId) return false;
+  return data.session_id !== publicRunSessionOwner.activeSessionId;
+}
+document.addEventListener('ballotlens:public-run-awaiting-session', (event) => {
+  const detail = /** @type {CustomEvent} */ (event).detail || {}; publicRunSessionOwner.awaitingSession = true; publicRunSessionOwner.activeSessionId = null;
+  publicRunSessionOwner.registrySourceId = typeof detail.registry_source_id === 'string' ? detail.registry_source_id : null;
+});
+document.addEventListener('ballotlens:public-run-session', (event) => {
+  const detail = /** @type {CustomEvent} */ (event).detail || {};
+  const sessionId = typeof detail.session_id === 'string' ? detail.session_id.trim() : '';
+  if (!publicRunSessionOwner.awaitingSession || !sessionId) return;
+  publicRunSessionOwner.activeSessionId = sessionId; publicRunSessionOwner.awaitingSession = false; currentSessionId = sessionId;
+  console.log('[Session Ownership] Public run owns workspace:', currentSessionId);
+  updateSessionsList();
+});
+document.addEventListener('ballotlens:public-run-finished', (event) => {
+  const detail = /** @type {CustomEvent} */ (event).detail || {};
+  if (publicRunSessionOwner.activeSessionId && detail.session_id && detail.session_id !== publicRunSessionOwner.activeSessionId) return;
+  publicRunSessionOwner.awaitingSession = false;
+});
 const PipelineInspectionFrontend = (() => {
   const consumer = (
     typeof window !== 'undefined'
@@ -2591,15 +2615,11 @@ socket.onevent = function(packet) {
   const eventName = packet.data[0];
   const eventData = packet.data[1];
   
-  // Log to console for debugging
-  console.debug(`[Socket.IO:${eventName}]`, eventData);
-  
-  // Store in array for inspection
-  allEventsReceivedBySocket.push({
-    timestamp: new Date().toISOString(),
-    event: eventName,
-    data: JSON.parse(JSON.stringify(eventData)) // deep clone for safety
-  });
+  const foreignOwnedHeartbeat = (eventName === 'session_heartbeat' && isForeignOwnedSessionEvent(eventData));
+  if (!foreignOwnedHeartbeat) {
+    console.debug(`[Socket.IO:${eventName}]`, eventData);
+    allEventsReceivedBySocket.push({ timestamp: new Date().toISOString(), event: eventName, data: JSON.parse(JSON.stringify(eventData)) });
+  }
   
   // Keep only last 100 events to avoid memory leak
   if (allEventsReceivedBySocket.length > 100) {
@@ -2658,8 +2678,12 @@ async function waitForJoinAck(timeoutMs = 3000) {
  */
 
 socket.on('session_id', /** @param {SessionIdPayload} data */ (data) => {
+  const incomingSessionId = (data && typeof data.session_id === 'string') ? data.session_id.trim() : '';
+  if (!incomingSessionId) return;
+  if (publicRunSessionOwner.awaitingSession) { console.debug('[Session Ownership] Deferring generic session_id while public run awaits correlated start:', incomingSessionId); return; }
+  if (publicRunSessionOwner.activeSessionId && incomingSessionId !== publicRunSessionOwner.activeSessionId) { console.debug('[Session Ownership] Ignoring foreign session_id while public run owns workspace:', incomingSessionId); return; }
   /** @type {string} */
-  currentSessionId = data.session_id;
+  currentSessionId = incomingSessionId;
   console.log('[Session] ID:', currentSessionId);
   updateSessionsList();
   
@@ -2679,6 +2703,7 @@ socket.on('session_id', /** @param {SessionIdPayload} data */ (data) => {
 
 socket.on('parser_output', /** @param {ParserOutputEvent} data */ (data) => {
   ErrorBoundary.safeAsync(async () => {
+    if (isForeignOwnedSessionEvent(data)) return;
     // DEBUG: Log all incoming parser_output events
     console.debug('[Socket.IO parser_output]', {
       type: data?.type,
@@ -2711,6 +2736,7 @@ socket.on('parser_output', /** @param {ParserOutputEvent} data */ (data) => {
 socket.on('contest_options', /** @param {ContestOptionsPayload} data */ (data) => {
   ErrorBoundary.safeExecute(
     /** @type {() => void} */ (() => {
+      if (isForeignOwnedSessionEvent(data)) return;
       console.debug('[Socket.IO contest_options]', {
         optionsCount: data?.options?.length,
         optionsSample: data?.options?.slice(0, 3),
@@ -2736,6 +2762,7 @@ socket.on('contest_options', /** @param {ContestOptionsPayload} data */ (data) =
 socket.on('session_state', /** @param {SessionStatePayload} data */ (data) => {
   ErrorBoundary.safeExecute(
     /** @type {() => void} */ (() => {
+      if (isForeignOwnedSessionEvent(data)) return;
       console.log('[Session State]', data);
       updateProgressCard(data);
       updateOverviewStrip(data);

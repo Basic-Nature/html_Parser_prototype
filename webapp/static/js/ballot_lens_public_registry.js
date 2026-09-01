@@ -18,15 +18,61 @@
   const details = document.getElementById('publicRegistrySourceDetails');
   const status = document.getElementById('publicRegistryStatus');
   const runButton = document.getElementById('btnRunPublicRegistry');
+  const runActivity = document.getElementById('publicRegistryRunActivity');
+  const runStateBadge = document.getElementById('publicRegistryRunState');
+  const runSession = document.getElementById('publicRegistryRunSession');
+  const runStage = document.getElementById('publicRegistryRunStage');
+  const runResult = document.getElementById('publicRegistryRunResult');
+  const runReason = document.getElementById('publicRegistryRunReason');
+  const runCounts = document.getElementById('publicRegistryRunCounts');
+  const runHint = document.getElementById('publicRegistryRunHint');
 
   let sources = [];
   let executionEnabled = false;
   let executionSourceId = '';
+  const runState = { awaitingSession: false, activeSessionId: '', activeSourceId: '', inFlight: false };
 
   function setStatus(message, level) {
     if (!status) return;
     status.textContent = String(message || '');
     status.dataset.level = String(level || 'info');
+  }
+
+  function dispatchRunEvent(name, detail) {
+    document.dispatchEvent(new CustomEvent(name, { detail: detail && typeof detail === 'object' ? detail : {} }));
+  }
+  function setActivityField(el, value) { if (el) el.textContent = String(value || '—'); }
+  function friendlyReason(code) {
+    const map = {
+      public_download_fallback_disabled: 'The public runtime reached a path that requires a download fallback, which is intentionally disabled.',
+      public_memory_preview_missing: 'The parser ended without producing a bounded in-memory public preview.',
+      public_challenge_assist_disabled: 'The source required challenge assistance that is intentionally unavailable to the public runtime.'
+    };
+    const key = String(code || '').trim();
+    return map[key] || (key ? 'A bounded terminal reason was reported.' : 'No allowlisted terminal reason was reported.');
+  }
+  function formatStatusCounts(counts) {
+    if (!counts || typeof counts !== 'object') return 'No terminal status counts yet.';
+    const rows = Object.entries(counts).filter(([, value]) => Number.isFinite(Number(value))).map(([key, value]) => `${key}: ${Number(value)}`);
+    return rows.length ? rows.join(' • ') : 'No terminal status counts yet.';
+  }
+  function syncRunButton() {
+    if (!(runButton instanceof HTMLButtonElement)) return;
+    const selected = sources.find((source) => source.registry_source_id === (select instanceof HTMLSelectElement ? select.value : ''));
+    runButton.disabled = !(!runState.inFlight && executionEnabled && selected && selected.registry_source_id === executionSourceId);
+  }
+  function showRunActivity() { if (runActivity instanceof HTMLElement) runActivity.hidden = false; }
+  function renderTerminalResult(payload) {
+    showRunActivity();
+    const terminalStatus = String(payload?.terminal_status || '').trim();
+    const terminalReason = String(payload?.terminal_reason_code || '').trim();
+    const outputs = Array.isArray(payload?.outputs) ? payload.outputs.length : 0;
+    setActivityField(runStateBadge, terminalStatus || 'completed');
+    setActivityField(runStage, 'Terminal result received');
+    setActivityField(runResult, terminalStatus || 'completed');
+    setActivityField(runReason, terminalReason || 'none reported');
+    if (runCounts) runCounts.textContent = formatStatusCounts(payload?.status_counts);
+    if (runHint) runHint.textContent = `${friendlyReason(terminalReason)} Public preview outputs: ${outputs}.`;
   }
 
   function safeLabel(source) {
@@ -90,7 +136,7 @@
     visible.forEach((source) => {
       const option = document.createElement('option');
       option.value = String(source.registry_source_id || '');
-      option.textContent = safeLabel(source);
+      option.textContent = safeLabel(source) + (source.registry_source_id === executionSourceId ? ' • Runnable' : ' • Browse-only');
       select.appendChild(option);
     });
 
@@ -108,14 +154,7 @@
     );
     renderDetails(selected || null);
 
-    if (runButton instanceof HTMLButtonElement) {
-      runButton.disabled = !(
-        executionEnabled &&
-        selected &&
-        selected.registry_source_id &&
-        selected.registry_source_id === executionSourceId
-      );
-    }
+    syncRunButton();
   }
 
   async function loadRegistry() {
@@ -184,7 +223,7 @@
         );
       } else if (executionEnabled) {
         setStatus(
-          `${sources.length} approved source(s) available for bounded public parsing.`,
+          `${sources.length} approved source(s) available to browse • 1 source currently enabled for bounded public parsing.`,
           'success'
         );
       } else {
@@ -215,6 +254,39 @@
       renderOptions(
         search instanceof HTMLInputElement ? search.value : ''
       );
+    });
+  }
+
+  if (typeof socket !== 'undefined' && socket) {
+    socket.on('parser_output', (data) => {
+      if (!runState.inFlight || !data || typeof data !== 'object') return;
+      if (data.reason_code === 'public_registry_runtime_started') {
+        if (typeof data.session_id !== 'string' || !data.session_id.trim()) return;
+        const startedSessionId = data.session_id.trim();
+        if (runState.activeSessionId && startedSessionId !== runState.activeSessionId) return;
+        runState.activeSessionId = startedSessionId; runState.awaitingSession = false;
+        showRunActivity(); setActivityField(runSession, runState.activeSessionId); setActivityField(runStateBadge, 'running'); setActivityField(runStage, 'Parser runtime started');
+        dispatchRunEvent('ballotlens:public-run-session', { session_id: runState.activeSessionId, registry_source_id: runState.activeSourceId });
+        return;
+      }
+      if (!runState.activeSessionId) return;
+      if (typeof data.session_id === 'string' && data.session_id !== runState.activeSessionId) return;
+      if (data.reason_code === 'public_registry_runtime_completed') setActivityField(runStage, 'Parser runtime completed');
+      else if (data.status_counts && runCounts) { runCounts.textContent = formatStatusCounts(data.status_counts); setActivityField(runStage, 'Processing source'); }
+    });
+    socket.on('public_registry_result', (payload) => {
+      if (!runState.inFlight || !payload || typeof payload !== 'object' || payload.contract !== 'ballot_lens_public_runtime_result_v1' || payload.registry_source_id !== runState.activeSourceId) return;
+      renderTerminalResult(payload); runState.inFlight = false; runState.awaitingSession = false; syncRunButton();
+      const terminalStatus = String(payload.terminal_status || '').trim();
+      const terminalReason = String(payload.terminal_reason_code || '').trim();
+      const hasError = terminalStatus === 'error' || terminalStatus === 'fail' || Number(payload?.status_counts?.error || 0) > 0;
+      setStatus(hasError ? 'Approved source completed with an error. Review Run Activity for the terminal reason.' : 'Approved source completed. Review Run Activity for the terminal result.', hasError ? 'error' : 'success');
+      dispatchRunEvent('ballotlens:public-run-finished', { session_id: runState.activeSessionId, registry_source_id: runState.activeSourceId, terminal_status: terminalStatus, terminal_reason_code: terminalReason, output_count: Array.isArray(payload.outputs) ? payload.outputs.length : 0 });
+    });
+    socket.on('disconnect', () => {
+      if (!runState.inFlight) return;
+      showRunActivity(); setActivityField(runStateBadge, 'disconnected'); setActivityField(runStage, 'Parser connection interrupted');
+      if (runHint) runHint.textContent = 'The browser connection was interrupted. The server run may still be active.';
     });
   }
 
@@ -250,14 +322,14 @@
         return;
       }
 
-      socket.emit('ballot_lens', {
-        registry_source_id: source.registry_source_id,
-      });
-      runButton.disabled = true;
-      setStatus(
-        'Approved source authority submitted. Waiting for server status…',
-        'info'
-      );
+      runState.awaitingSession = true; runState.activeSessionId = ''; runState.activeSourceId = source.registry_source_id; runState.inFlight = true;
+      showRunActivity(); setActivityField(runStateBadge, 'starting'); setActivityField(runSession, 'waiting'); setActivityField(runStage, 'Submitting approved source authority'); setActivityField(runResult, '—'); setActivityField(runReason, '—');
+      if (runCounts) runCounts.textContent = 'No terminal status counts yet.';
+      if (runHint) runHint.textContent = 'Waiting for the server to create the bounded public runtime session.';
+      dispatchRunEvent('ballotlens:public-run-awaiting-session', { registry_source_id: source.registry_source_id });
+      socket.emit('ballot_lens', { registry_source_id: source.registry_source_id });
+      syncRunButton();
+      setStatus('Approved source authority submitted. Waiting for server status…', 'info');
     });
   }
 
