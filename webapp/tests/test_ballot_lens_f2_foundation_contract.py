@@ -21,6 +21,14 @@ F2_RUNTIME = ROOT / "webapp/frontend/ballot-lens/contracts/runtime.ts"
 F2_RUN_MACHINE = ROOT / "webapp/frontend/ballot-lens/state/runMachine.ts"
 F2_SELECTORS = ROOT / "webapp/frontend/ballot-lens/state/selectors.ts"
 F2_RUN_TEST = ROOT / "webapp/frontend/ballot-lens/tests/runMachine.test.ts"
+F2_APP_SHELL = ROOT / "webapp/frontend/ballot-lens/app/AppShell.tsx"
+F2_HEADER = ROOT / "webapp/frontend/ballot-lens/components/common/HeaderBar.tsx"
+F2_SOURCE_PANEL = ROOT / "webapp/frontend/ballot-lens/components/source/SourcePanel.tsx"
+F2_WORKSPACE = ROOT / "webapp/frontend/ballot-lens/components/workspace/WorkspaceShell.tsx"
+F2_CHECKPOINT_RAIL = ROOT / "webapp/frontend/ballot-lens/components/checkpoints/CheckpointRail.tsx"
+F2_DIAGNOSTICS = ROOT / "webapp/frontend/ballot-lens/components/diagnostics/DiagnosticsDrawer.tsx"
+F2_TOKENS = ROOT / "webapp/frontend/ballot-lens/styles/tokens.css"
+F2_SHELL_CSS = ROOT / "webapp/frontend/ballot-lens/styles/shell.css"
 ROOT_PACKAGE = ROOT / "package.json"
 DOCKERFILE = ROOT / "Dockerfile"
 WORKFLOW = ROOT / ".github/workflows/main_ballotlens.yml"
@@ -57,12 +65,25 @@ def test_legacy_ballot_lens_template_remains_separate():
 
 
 def test_f2_foundation_has_no_parser_or_socket_execution():
-    source = (_read(F2_MAIN) + "\n" + _read(F2_APP)).lower()
+    source = "\n".join(
+        _read(path)
+        for path in (
+            F2_MAIN,
+            F2_APP,
+            F2_APP_SHELL,
+            F2_HEADER,
+            F2_SOURCE_PANEL,
+            F2_WORKSPACE,
+            F2_CHECKPOINT_RAIL,
+            F2_DIAGNOSTICS,
+        )
+    ).lower()
     assert "socket.emit" not in source
     assert "socket.on" not in source
     assert "fetch(" not in source
     assert "registry_source_id" not in source
     assert "direct_urls" not in source
+    assert "style={{" not in source
 
 
 def test_f2_isolated_package_does_not_modify_root_tooling_contract():
@@ -114,10 +135,10 @@ def test_f2b_phase_and_run_state_contracts_are_dormant_but_present():
     selectors = _read(F2_SELECTORS)
     run_test = _read(F2_RUN_TEST)
 
-    assert 'data-f2-phase="F2-B"' in template
-    assert "readonly phase: 'F2-B'" in bootstrap
-    assert "phase !== 'F2-B'" in bootstrap
-    assert "Typed run-state contracts ready" in app
+    assert 'data-f2-phase="F2-C"' in template
+    assert "readonly phase: 'F2-C'" in bootstrap
+    assert "phase !== 'F2-C'" in bootstrap
+    assert "AppShell" in app
 
     assert "CHECKPOINT_DEFINITIONS" in checkpoints
     assert "source.resolve" in checkpoints
@@ -159,6 +180,61 @@ def test_f2b_contract_layer_has_no_raw_socket_or_parser_command_authority():
     assert "direct_urls" not in source
     assert "http://" not in source
     assert "https://" not in source
+
+
+def test_f2c_app_shell_is_componentized_presentation_only_and_honest():
+    app = _read(F2_APP)
+    shell = _read(F2_APP_SHELL)
+    header = _read(F2_HEADER)
+    source = _read(F2_SOURCE_PANEL)
+    workspace = _read(F2_WORKSPACE)
+    checkpoints = _read(F2_CHECKPOINT_RAIL)
+    diagnostics = _read(F2_DIAGNOSTICS)
+    tokens = _read(F2_TOKENS)
+    css = _read(F2_SHELL_CSS)
+    template = _read(F2_TEMPLATE)
+
+    assert "AppShell" in app
+    assert "HeaderBar" in shell
+    assert "SourcePanel" in shell
+    assert "WorkspaceShell" in shell
+    assert "CheckpointRail" in shell
+    assert "DiagnosticsDrawer" in shell
+
+    assert "F2-C preview" in header
+    assert "Runtime dormant" in header
+    assert "Approved public sources" in source
+    assert "Registry boundary preserved" in source
+    assert "No parser result yet" in workspace
+    assert "does not fabricate preview rows or vote totals" in workspace
+    assert "NULL preserved" in workspace
+    assert "No precinct inference" in workspace
+    assert "Provenance retained" in workspace
+    assert "0 / 9" in checkpoints
+    assert "Awaiting run" in checkpoints
+    assert "Diagnostics &amp; audit trail" in diagnostics
+    assert "No runtime events in F2-C preview" in diagnostics
+
+    assert "--blf2-accent-soft" in tokens
+    assert "--blf2-focus" in tokens
+    assert "grid-template-columns:" in css
+    assert "@media (max-width: 940px)" in css
+    assert "@media (max-width: 640px)" in css
+    assert ":focus-visible" in css
+    assert "!important" not in css
+    assert 'data-f2-phase="F2-C"' in template
+    assert "Ballot Lens — F2 App Shell" in template
+
+
+def test_f2c_visual_shell_preserves_f2b_run_state_contracts():
+    assert "SESSION_CORRELATED" in _read(F2_RUN_MACHINE)
+    assert "incoming.sequence <= current.sequence" in _read(F2_RUN_MACHINE)
+    assert "output.persistence === 'memory_only'" in _read(F2_RUN_MACHINE)
+    assert "registrySourceId?: string" in _read(F2_RUNTIME)
+    assert "downloadAvailable: false" in _read(F2_RUNTIME)
+    assert "ownsActiveSession" in _read(F2_SELECTORS)
+    assert "foreign session events" in _read(F2_RUN_TEST)
+    assert "source.resolve" in _read(F2_CHECKPOINTS)
 
 def test_f2_asset_loader_accepts_entry_css_list(tmp_path: Path):
     dist = tmp_path / "dist/ballot-lens-f2"
