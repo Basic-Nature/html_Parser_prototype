@@ -5,7 +5,7 @@ export interface BallotLensBootstrap {
   readonly trustedControls: boolean;
   readonly publicRegistryApi: string;
   readonly dataApiUrl: string;
-  readonly phase: 'F2-A';
+  readonly phase: 'F2-B';
 }
 
 function requireDatasetValue(
@@ -35,7 +35,7 @@ export function readBallotLensBootstrap(
   }
 
   const phase = requireDatasetValue(root, 'f2Phase');
-  if (phase !== 'F2-A') {
+  if (phase !== 'F2-B') {
     throw new Error('Unexpected Ballot Lens F2 phase');
   }
 
@@ -44,6 +44,6 @@ export function readBallotLensBootstrap(
     trustedControls,
     publicRegistryApi: requireDatasetValue(root, 'publicRegistryApi'),
     dataApiUrl: root.dataset.dataApiUrl ?? '',
-    phase: 'F2-A',
+    phase: 'F2-B',
   });
 }

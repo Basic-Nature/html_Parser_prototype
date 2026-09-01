@@ -1,16 +1,5 @@
 import type { BallotLensBootstrap } from '../contracts/bootstrap';
-
-const checkpoints = [
-  ['source.resolve', 'Resolve Source'],
-  ['provider.detect', 'Provider Detection'],
-  ['source.acquire', 'Acquire'],
-  ['structure.detect', 'Detect Structure'],
-  ['contest.select', 'Contest Selection'],
-  ['vote_methods.detect', 'Vote Method Selection'],
-  ['normalize.rows', 'Normalize'],
-  ['validate.results', 'Validate'],
-  ['preview.publish', 'Preview'],
-] as const;
+import { CHECKPOINT_DEFINITIONS } from '../contracts/checkpoints';
 
 interface AppProps {
   readonly bootstrap: BallotLensBootstrap;
@@ -22,11 +11,11 @@ export function App({ bootstrap }: AppProps) {
       <header className="blf2-header">
         <div className="blf2-brand">
           <strong>Ballot Lens</strong>
-          <span className="blf2-foundation-badge">F2 foundation</span>
+          <span className="blf2-foundation-badge">F2 contracts</span>
         </div>
         <div className="blf2-header-status" aria-label="Ballot Lens status">
           <span className="blf2-mode">{bootstrap.mode.toUpperCase()}</span>
-          <span>Realtime: F2-B</span>
+          <span>Run state: idle</span>
           <span>Session: —</span>
           <a href="/quick_reference">Help</a>
         </div>
@@ -51,8 +40,8 @@ export function App({ bootstrap }: AppProps) {
             <span>Selected</span>
             <strong>No source selected</strong>
             <p>
-              Source discovery is intentionally not wired until the F2-D parity
-              tranche.
+              Source discovery remains intentionally unwired until the F2-D
+              parity tranche.
             </p>
           </div>
         </aside>
@@ -61,7 +50,7 @@ export function App({ bootstrap }: AppProps) {
           <div className="blf2-workspace-header">
             <div>
               <span className="blf2-eyebrow">Parser workspace</span>
-              <h1>Frontend foundation loaded</h1>
+              <h1>Typed run-state contracts ready</h1>
             </div>
             <span className="blf2-safe-state">Legacy remains default</span>
           </div>
@@ -69,8 +58,9 @@ export function App({ bootstrap }: AppProps) {
           <div className="blf2-result-placeholder" role="status">
             <strong>Live Result / Table</strong>
             <p>
-              F2-A proves the build, mount, capability bootstrap, and application
-              shell only. It does not execute or observe parser runs.
+              F2-B establishes normalized runtime contracts, checkpoint order,
+              and session-owned run state. Raw Socket.IO events and parser
+              commands are still intentionally disconnected from this app.
             </p>
           </div>
 
@@ -85,7 +75,7 @@ export function App({ bootstrap }: AppProps) {
         <aside className="blf2-checkpoints" aria-label="Parser checkpoints">
           <h2>Checkpoints</h2>
           <ol>
-            {checkpoints.map(([id, label]) => (
+            {CHECKPOINT_DEFINITIONS.map(({ id, label }) => (
               <li key={id}>
                 <span className="blf2-checkpoint-dot" aria-hidden="true">○</span>
                 <span>
@@ -101,8 +91,9 @@ export function App({ bootstrap }: AppProps) {
       <details className="blf2-diagnostics">
         <summary>Diagnostics / raw parser events / audit trail</summary>
         <p>
-          Diagnostics wiring is deferred to F2-I. F2-A intentionally has no
-          Socket.IO listeners, parser commands, or runtime event ownership.
+          Diagnostics wiring remains deferred to F2-I. F2-B defines internal
+          normalized event authority only; it still has no Socket.IO listeners,
+          parser commands, or runtime event router.
         </p>
       </details>
     </div>

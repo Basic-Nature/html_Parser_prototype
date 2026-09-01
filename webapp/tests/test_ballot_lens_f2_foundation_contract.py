@@ -15,6 +15,12 @@ F2_TEMPLATE = ROOT / "webapp/templates/ballot_lens_f2.html"
 F2_MAIN = ROOT / "webapp/frontend/ballot-lens/main.tsx"
 F2_APP = ROOT / "webapp/frontend/ballot-lens/app/App.tsx"
 F2_PACKAGE = ROOT / "webapp/frontend/ballot-lens/package.json"
+F2_BOOTSTRAP = ROOT / "webapp/frontend/ballot-lens/contracts/bootstrap.ts"
+F2_CHECKPOINTS = ROOT / "webapp/frontend/ballot-lens/contracts/checkpoints.ts"
+F2_RUNTIME = ROOT / "webapp/frontend/ballot-lens/contracts/runtime.ts"
+F2_RUN_MACHINE = ROOT / "webapp/frontend/ballot-lens/state/runMachine.ts"
+F2_SELECTORS = ROOT / "webapp/frontend/ballot-lens/state/selectors.ts"
+F2_RUN_TEST = ROOT / "webapp/frontend/ballot-lens/tests/runMachine.test.ts"
 ROOT_PACKAGE = ROOT / "package.json"
 DOCKERFILE = ROOT / "Dockerfile"
 WORKFLOW = ROOT / ".github/workflows/main_ballotlens.yml"
@@ -73,6 +79,14 @@ def test_f2_isolated_package_does_not_modify_root_tooling_contract():
     assert f2["devDependencies"]["vite"] == "8.2.2"
     assert f2["devDependencies"]["typescript"] == "5.9.3"
     assert f2["devDependencies"]["@types/node"] == "24.10.0"
+    assert f2["dependencies"]["xstate"] == "5.32.6"
+    assert f2["devDependencies"]["vitest"] == "4.1.11"
+    assert f2["scripts"]["test:contracts"] == (
+        "vitest run tests/runMachine.test.ts --environment node"
+    )
+    assert f2["scripts"]["verify"] == (
+        "npm run typecheck && npm run test:contracts && npm run build"
+    )
 
 
 def test_f2_package_owns_node_types_for_vite_config():
@@ -88,6 +102,63 @@ def test_f2_package_owns_node_types_for_vite_config():
     assert lock["packages"][""]["devDependencies"]["@types/node"] == "24.10.0"
     assert lock["packages"]["node_modules/@types/node"]["version"] == "24.10.0"
 
+
+
+def test_f2b_phase_and_run_state_contracts_are_dormant_but_present():
+    template = _read(F2_TEMPLATE)
+    app = _read(F2_APP)
+    bootstrap = _read(F2_BOOTSTRAP)
+    checkpoints = _read(F2_CHECKPOINTS)
+    runtime = _read(F2_RUNTIME)
+    run_machine = _read(F2_RUN_MACHINE)
+    selectors = _read(F2_SELECTORS)
+    run_test = _read(F2_RUN_TEST)
+
+    assert 'data-f2-phase="F2-B"' in template
+    assert "readonly phase: 'F2-B'" in bootstrap
+    assert "phase !== 'F2-B'" in bootstrap
+    assert "Typed run-state contracts ready" in app
+
+    assert "CHECKPOINT_DEFINITIONS" in checkpoints
+    assert "source.resolve" in checkpoints
+    assert "preview.publish" in checkpoints
+
+    assert "registrySourceId?: string" in runtime
+    assert "targetUrl" not in runtime
+    assert "executableUrl" not in runtime
+    assert "downloadAvailable: false" in runtime
+
+    assert "SESSION_CORRELATED" in run_machine
+    assert "ownsSession" in run_machine
+    assert "incoming.sequence <= current.sequence" in run_machine
+    assert "output.persistence === 'memory_only'" in run_machine
+    assert "fromTransition" in run_machine
+
+    assert "ownsActiveSession" in selectors
+    assert "hasUnresolvedAction" in selectors
+
+    assert "foreign session events" in run_test
+    assert "memory-only output" in run_test
+    assert "disconnect and reconnect" in run_test
+
+
+def test_f2b_contract_layer_has_no_raw_socket_or_parser_command_authority():
+    source = "\n".join(
+        _read(path)
+        for path in (
+            F2_RUNTIME,
+            F2_RUN_MACHINE,
+            F2_SELECTORS,
+            F2_RUN_TEST,
+        )
+    ).lower()
+
+    assert "socket.emit" not in source
+    assert "socket.on" not in source
+    assert "fetch(" not in source
+    assert "direct_urls" not in source
+    assert "http://" not in source
+    assert "https://" not in source
 
 def test_f2_asset_loader_accepts_entry_css_list(tmp_path: Path):
     dist = tmp_path / "dist/ballot-lens-f2"
