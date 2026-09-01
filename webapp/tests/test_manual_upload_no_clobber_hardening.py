@@ -63,9 +63,31 @@ def test_validation_preserved_once():
     xs = [n for n in ast.walk(_helper()) if isinstance(n, ast.Call) and _name(n.func) == "_validate_uploaded_file"]
     assert len(xs) == 1
 
-def test_failure_cleanup_preserved_once():
-    xs = [n for n in ast.walk(_helper()) if isinstance(n, ast.Call) and _name(n.func) == "os.remove"]
-    assert len(xs) == 1
+def test_validation_failure_cleanup_preserved_once():
+    helper = _helper()
+    validation_if = [
+        node
+        for node in ast.walk(helper)
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.UnaryOp)
+        and isinstance(node.test.op, ast.Not)
+        and isinstance(node.test.operand, ast.Name)
+        and node.test.operand.id == "valid"
+    ]
+    assert len(validation_if) == 1
+
+    removals = [
+        node
+        for node in ast.walk(validation_if[0])
+        if isinstance(node, ast.Call)
+        and _name(node.func) == "os.remove"
+    ]
+    assert len(removals) == 1
+
+    cleanup = removals[0]
+    assert len(cleanup.args) == 1
+    assert isinstance(cleanup.args[0], ast.Name)
+    assert cleanup.args[0].id == "save_path"
 
 def test_filename_generator_preserved_once():
     xs = [n for n in ast.walk(_helper()) if isinstance(n, ast.Call) and _name(n.func) == "_generate_upload_filename"]
