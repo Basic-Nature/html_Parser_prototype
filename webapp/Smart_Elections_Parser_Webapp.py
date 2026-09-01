@@ -278,6 +278,7 @@ from webapp.parser.config import (
     URL_LIST_FILE,
 )
 from webapp.parser.filename_parser import parse_filename_simple
+from webapp.parser.frontend_assets import load_ballot_lens_f2_assets
 from webapp.parser.routes import (
     create_data_framework_blueprint,
     create_election_data_blueprint,
@@ -6424,13 +6425,47 @@ def ballot_lens():
         if ballot_lens_trusted_controls:
             file_lists = get_all_file_lists()
 
+        ballot_lens_ui_variant = (
+            os.environ.get("BALLOT_LENS_UI_VARIANT", "legacy")
+            .strip()
+            .lower()
+        )
+        if ballot_lens_ui_variant not in {"legacy", "f2"}:
+            logger.warning(
+                {
+                    "type": "ballot_lens_ui",
+                    "message": "Invalid BALLOT_LENS_UI_VARIANT; using legacy.",
+                    "session_id": None,
+                }
+            )
+            ballot_lens_ui_variant = "legacy"
+
+        ballot_lens_template = "ballot_lens.html"
+        ballot_lens_f2_assets = None
+        if ballot_lens_ui_variant == "f2":
+            try:
+                ballot_lens_f2_assets = load_ballot_lens_f2_assets()
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                logger.error(
+                    {
+                        "type": "ballot_lens_ui",
+                        "message": "Ballot Lens F2 assets unavailable.",
+                        "session_id": None,
+                        "error_type": type(exc).__name__,
+                    }
+                )
+                return "Ballot Lens F2 assets unavailable", 503
+            ballot_lens_template = "ballot_lens_f2.html"
+
         return render_template(
-            "ballot_lens.html",
+            ballot_lens_template,
             input_files=file_lists["input_files"],
             output_files=file_lists["output_files"],
             uploaded_files=file_lists["uploaded_files"],
             manual_source=session.get('manual_source_pref', 'input'),
             ballot_lens_trusted_controls=ballot_lens_trusted_controls,
+            ballot_lens_ui_variant=ballot_lens_ui_variant,
+            ballot_lens_f2_assets=ballot_lens_f2_assets,
             data_api_url=DATA_API_URL,
             allow_style_attr=os.environ.get("ALLOW_STYLE_ATTR", "0").lower() in ("1","true","yes"),
             static_version=os.environ.get("STATIC_VERSION", "v1"),

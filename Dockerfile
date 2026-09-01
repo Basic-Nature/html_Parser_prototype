@@ -14,6 +14,24 @@
 #      offline Azure runtime use.
 # ============================================================
 
+FROM node:24.20.0-bookworm-slim AS frontend-builder
+
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+
+WORKDIR /build/webapp/frontend/ballot-lens
+
+COPY webapp/frontend/ballot-lens/package.json webapp/frontend/ballot-lens/package-lock.json ./
+
+RUN npm ci --no-audit --no-fund
+
+COPY webapp/frontend/ballot-lens ./
+
+RUN npm run verify
+
+# ============================================================
+# Python dependency builder
+# ============================================================
+
 FROM python:3.12-slim-bookworm AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -146,6 +164,8 @@ RUN apt-get update && \
 WORKDIR /app
 
 COPY . .
+
+COPY --from=frontend-builder /build/webapp/static/dist/ballot-lens-f2 /app/webapp/static/dist/ballot-lens-f2
 
 EXPOSE 8000
 

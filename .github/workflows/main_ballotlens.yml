@@ -243,11 +243,39 @@ jobs:
             echo "- Next phase: tighten to blocking once stability and pass-rate are sustained"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  f2-frontend-foundation:
+    name: "Pre-Deploy QA: Ballot Lens F2 frontend (blocking)"
+    needs: qa-dl-compare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          lfs: true
+
+      - name: Set up Node.js 24 for Ballot Lens F2
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: npm
+          cache-dependency-path: webapp/frontend/ballot-lens/package-lock.json
+
+      - name: Install Ballot Lens F2 dependencies
+        working-directory: webapp/frontend/ballot-lens
+        run: npm ci --no-audit --no-fund
+
+      - name: Run Ballot Lens F2 frontend foundation gates
+        working-directory: webapp/frontend/ballot-lens
+        run: npm run verify
+
   build-and-deploy:
     name: Azure Deploy (dynamic webapp)
     needs:
       - qa-dl-compare
       - contract-checks-nonblocking
+      - f2-frontend-foundation
     runs-on: ubuntu-latest
     permissions:
       id-token: write
