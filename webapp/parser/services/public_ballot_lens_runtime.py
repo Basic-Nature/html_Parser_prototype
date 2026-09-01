@@ -39,6 +39,15 @@ class PublicBallotLensRuntimeError(RuntimeError):
 
 
 SafeEmit = Callable[[dict[str, object]], None]
+
+PUBLIC_TERMINAL_REASON_CODES = frozenset(
+    {
+        "public_download_fallback_disabled",
+        "public_memory_preview_missing",
+        "public_challenge_assist_disabled",
+    }
+)
+
 _PUBLIC_ADMISSION_CONTROLLER = PublicRunAdmissionController(
     DEFAULT_PUBLIC_RUN_POLICY
 )
@@ -63,6 +72,8 @@ class PublicBallotLensRuntime:
         init=False,
     )
     _last_status: str | None = field(default=None, init=False)
+    _terminal_status: str | None = field(default=None, init=False)
+    _terminal_reason_code: str | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         assert_public_execution_context(
@@ -183,6 +194,16 @@ class PublicBallotLensRuntime:
             "skipped_data_exists",
             "cancelled",
         }
+        if normalized in completed:
+            self._terminal_status = normalized
+            self._terminal_reason_code = None
+            if isinstance(metadata, Mapping):
+                reason_value = metadata.get("reason_code")
+                if isinstance(reason_value, str):
+                    candidate = reason_value.strip().lower()
+                    if candidate in PUBLIC_TERMINAL_REASON_CODES:
+                        self._terminal_reason_code = candidate
+
         processed = 1 if normalized in completed else 0
         try:
             event = self.memory_state.record_progress(
@@ -213,6 +234,8 @@ class PublicBallotLensRuntime:
             "source": dict(self.source_projection),
             "outputs": list(self.finalized_previews),
             "status_counts": self.summary_counts(),
+            "terminal_status": self._terminal_status,
+            "terminal_reason_code": self._terminal_reason_code,
             "download_available": False,
             "persistent_output": False,
         }
