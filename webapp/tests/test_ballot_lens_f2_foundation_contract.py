@@ -29,6 +29,10 @@ F2_CHECKPOINT_RAIL = ROOT / "webapp/frontend/ballot-lens/components/checkpoints/
 F2_DIAGNOSTICS = ROOT / "webapp/frontend/ballot-lens/components/diagnostics/DiagnosticsDrawer.tsx"
 F2_TOKENS = ROOT / "webapp/frontend/ballot-lens/styles/tokens.css"
 F2_SHELL_CSS = ROOT / "webapp/frontend/ballot-lens/styles/shell.css"
+F2_REGISTRY = ROOT / "webapp/frontend/ballot-lens/contracts/registry.ts"
+F2_REGISTRY_API = ROOT / "webapp/frontend/ballot-lens/services/registryApi.ts"
+F2_REGISTRY_BROWSER = ROOT / "webapp/frontend/ballot-lens/components/source/PublicRegistryBrowser.tsx"
+F2_REGISTRY_TEST = ROOT / "webapp/frontend/ballot-lens/tests/registry.test.ts"
 ROOT_PACKAGE = ROOT / "package.json"
 DOCKERFILE = ROOT / "Dockerfile"
 WORKFLOW = ROOT / ".github/workflows/main_ballotlens.yml"
@@ -73,6 +77,8 @@ def test_f2_foundation_has_no_parser_or_socket_execution():
             F2_APP_SHELL,
             F2_HEADER,
             F2_SOURCE_PANEL,
+            F2_REGISTRY,
+            F2_REGISTRY_BROWSER,
             F2_WORKSPACE,
             F2_CHECKPOINT_RAIL,
             F2_DIAGNOSTICS,
@@ -80,10 +86,16 @@ def test_f2_foundation_has_no_parser_or_socket_execution():
     ).lower()
     assert "socket.emit" not in source
     assert "socket.on" not in source
-    assert "fetch(" not in source
-    assert "registry_source_id" not in source
     assert "direct_urls" not in source
+    assert "target_url" not in source
+    assert "executable_url" not in source
     assert "style={{" not in source
+
+    registry_api = _read(F2_REGISTRY_API).lower()
+    assert registry_api.count("fetch(") == 1
+    assert "method: 'get'" in registry_api
+    assert "credentials: 'same-origin'" in registry_api
+    assert "socket." not in registry_api
 
 
 def test_f2_isolated_package_does_not_modify_root_tooling_contract():
@@ -103,7 +115,8 @@ def test_f2_isolated_package_does_not_modify_root_tooling_contract():
     assert f2["dependencies"]["xstate"] == "5.32.6"
     assert f2["devDependencies"]["vitest"] == "4.1.11"
     assert f2["scripts"]["test:contracts"] == (
-        "vitest run tests/runMachine.test.ts --environment node"
+        "vitest run tests/runMachine.test.ts tests/registry.test.ts "
+        "--environment node"
     )
     assert f2["scripts"]["verify"] == (
         "npm run typecheck && npm run test:contracts && npm run build"
@@ -135,9 +148,9 @@ def test_f2b_phase_and_run_state_contracts_are_dormant_but_present():
     selectors = _read(F2_SELECTORS)
     run_test = _read(F2_RUN_TEST)
 
-    assert 'data-f2-phase="F2-C"' in template
-    assert "readonly phase: 'F2-C'" in bootstrap
-    assert "phase !== 'F2-C'" in bootstrap
+    assert 'data-f2-phase="F2-D"' in template
+    assert "readonly phase: 'F2-D'" in bootstrap
+    assert "phase !== 'F2-D'" in bootstrap
     assert "AppShell" in app
 
     assert "CHECKPOINT_DEFINITIONS" in checkpoints
@@ -201,10 +214,10 @@ def test_f2c_app_shell_is_componentized_presentation_only_and_honest():
     assert "CheckpointRail" in shell
     assert "DiagnosticsDrawer" in shell
 
-    assert "F2-C preview" in header
+    assert "F2-D discovery" in header
     assert "Runtime dormant" in header
     assert "Approved public sources" in source
-    assert "Registry boundary preserved" in source
+    assert "PublicRegistryBrowser" in source
     assert "No parser result yet" in workspace
     assert "does not fabricate preview rows or vote totals" in workspace
     assert "NULL preserved" in workspace
@@ -213,7 +226,7 @@ def test_f2c_app_shell_is_componentized_presentation_only_and_honest():
     assert "0 / 9" in checkpoints
     assert "Awaiting run" in checkpoints
     assert "Diagnostics &amp; audit trail" in diagnostics
-    assert "No runtime events in F2-C preview" in diagnostics
+    assert "No runtime events in F2-D discovery" in diagnostics
 
     assert "--blf2-accent-soft" in tokens
     assert "--blf2-focus" in tokens
@@ -222,8 +235,8 @@ def test_f2c_app_shell_is_componentized_presentation_only_and_honest():
     assert "@media (max-width: 640px)" in css
     assert ":focus-visible" in css
     assert "!important" not in css
-    assert 'data-f2-phase="F2-C"' in template
-    assert "Ballot Lens — F2 App Shell" in template
+    assert 'data-f2-phase="F2-D"' in template
+    assert "Ballot Lens — F2 Source Discovery" in template
 
 
 def test_f2c_visual_shell_preserves_f2b_run_state_contracts():
@@ -235,6 +248,83 @@ def test_f2c_visual_shell_preserves_f2b_run_state_contracts():
     assert "ownsActiveSession" in _read(F2_SELECTORS)
     assert "foreign session events" in _read(F2_RUN_TEST)
     assert "source.resolve" in _read(F2_CHECKPOINTS)
+
+
+def test_f2d1_registry_discovery_preserves_public_registry_security_boundary():
+    registry = _read(F2_REGISTRY)
+    api = _read(F2_REGISTRY_API)
+    browser = _read(F2_REGISTRY_BROWSER)
+    source_panel = _read(F2_SOURCE_PANEL)
+    package = json.loads(_read(F2_PACKAGE))
+
+    for field in (
+        "contest",
+        "format",
+        "registry_category",
+        "registry_source_id",
+        "scope",
+        "state",
+        "year",
+    ):
+        assert f"'{field}'" in registry
+
+    assert "PUBLIC_REGISTRY_SOURCE_KEYS" in registry
+    assert "hasExactSafeSourceKeys" in registry
+    assert "Unsafe public registry source projection" in registry
+    assert "registry_category: 'curated'" in registry
+    assert "target_url" not in registry.lower()
+    assert "executable_url" not in registry.lower()
+    assert "direct_urls" not in registry.lower()
+
+    assert "same-origin relative" in api
+    assert "method: 'GET'" in api
+    assert "credentials: 'same-origin'" in api
+    assert "fetch(" in api
+    assert "socket." not in api.lower()
+
+    assert "getRegistryFacetOptions" in browser
+    assert "Search approved sources" in browser
+    assert "Scope / county" in browser
+    assert "Browse-only discovery is active" in browser
+    assert "No parser command is emitted from F2-D1" in browser
+    assert "PublicRegistryBrowser" in source_panel
+
+    assert package["scripts"]["test:contracts"] == (
+        "vitest run tests/runMachine.test.ts tests/registry.test.ts "
+        "--environment node"
+    )
+
+
+def test_f2d1_registry_discovery_has_no_parser_execution_authority():
+    source = "\\n".join(
+        _read(path)
+        for path in (
+            F2_REGISTRY,
+            F2_REGISTRY_API,
+            F2_REGISTRY_BROWSER,
+            F2_SOURCE_PANEL,
+        )
+    ).lower()
+
+    assert "socket.emit" not in source
+    assert "socket.on" not in source
+    assert "public_registry_result" not in source
+    assert "public_registry_runtime_started" not in source
+    assert "direct_urls" not in source
+    assert "target_url" not in source
+    assert "executable_url" not in source
+    assert "execution_source_id" not in source
+    assert "execution_enabled" not in source
+
+
+def test_f2d1_registry_facets_are_availability_aware():
+    registry = _read(F2_REGISTRY)
+    browser = _read(F2_REGISTRY_BROWSER)
+    tests = _read(F2_REGISTRY_TEST)
+
+    assert "available: count > 0" in registry
+    assert "disabled={!option.available" in browser
+    assert "keeps unavailable facet values visible with zero counts" in tests
 
 def test_f2_asset_loader_accepts_entry_css_list(tmp_path: Path):
     dist = tmp_path / "dist/ballot-lens-f2"

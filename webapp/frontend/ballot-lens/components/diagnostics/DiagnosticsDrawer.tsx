@@ -13,7 +13,7 @@ export function DiagnosticsDrawer() {
       </summary>
 
       <div className="blf2-diagnostics-body">
-        <strong>No runtime events in F2-C preview.</strong>
+        <strong>No runtime events in F2-D discovery.</strong>
         <p>
           Structured diagnostics wiring remains deferred to F2-I. This drawer
           reserves the correct visual location without claiming live telemetry.

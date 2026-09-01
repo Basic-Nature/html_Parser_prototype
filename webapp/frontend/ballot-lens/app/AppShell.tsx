@@ -14,7 +14,10 @@ export function AppShell({ bootstrap }: AppShellProps) {
     <div className="blf2-app" data-phase={bootstrap.phase}>
       <HeaderBar bootstrap={bootstrap} />
       <main className="blf2-shell">
-        <SourcePanel trustedControls={bootstrap.trustedControls} />
+        <SourcePanel
+          trustedControls={bootstrap.trustedControls}
+          publicRegistryApi={bootstrap.publicRegistryApi}
+        />
         <WorkspaceShell />
         <CheckpointRail />
       </main>

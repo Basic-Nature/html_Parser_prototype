@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Ballot Lens — F2 App Shell</title>
+  <title>Ballot Lens — F2 Source Discovery</title>
   <meta name="description" content="ElectionPulse Ballot Lens F2 parser workspace">
   <meta name="color-scheme" content="dark light">
   {% for stylesheet in ballot_lens_f2_assets.styles %}
@@ -17,7 +17,7 @@
     data-trusted-controls="{{ '1' if ballot_lens_trusted_controls else '0' }}"
     data-public-registry-api="/api/public/ballot-lens/registry"
     data-data-api-url="{{ data_api_url|e }}"
-    data-f2-phase="F2-C"
+    data-f2-phase="F2-D"
   >
     <noscript>Ballot Lens F2 requires JavaScript.</noscript>
   </div>

@@ -1,5 +1,8 @@
+import { PublicRegistryBrowser } from './PublicRegistryBrowser';
+
 interface SourcePanelProps {
   readonly trustedControls: boolean;
+  readonly publicRegistryApi: string;
 }
 
 const sourceModes = [
@@ -9,12 +12,15 @@ const sourceModes = [
   ['Worklist', 'Governed queue handoff', true],
 ] as const;
 
-export function SourcePanel({ trustedControls }: SourcePanelProps) {
+export function SourcePanel({
+  trustedControls,
+  publicRegistryApi,
+}: SourcePanelProps) {
   return (
     <aside className="blf2-source" aria-label="Source">
       <div className="blf2-panel-heading">
         <div><span className="blf2-kicker">Input</span><h2>Source</h2></div>
-        <span className="blf2-panel-state">Not selected</span>
+        <span className="blf2-panel-state">Discovery</span>
       </div>
 
       <nav className="blf2-source-nav" aria-label="Source modes">
@@ -41,18 +47,7 @@ export function SourcePanel({ trustedControls }: SourcePanelProps) {
         })}
       </nav>
 
-      <section className="blf2-selection-card" aria-label="Selected source">
-        <span className="blf2-kicker">Selected source</span>
-        <strong>No source selected</strong>
-        <p>
-          F2-C is presentation-only. Registry discovery is wired in F2-D,
-          after this shell is accepted.
-        </p>
-        <dl>
-          <div><dt>Authority</dt><dd>Registry boundary preserved</dd></div>
-          <div><dt>Execution</dt><dd>Not connected</dd></div>
-        </dl>
-      </section>
+      <PublicRegistryBrowser endpoint={publicRegistryApi} />
     </aside>
   );
 }

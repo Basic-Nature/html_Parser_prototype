@@ -527,3 +527,163 @@ summary:focus-visible {
   .blf2-checkpoint-list { grid-template-columns: 1fr; }
   .blf2-diagnostics summary { align-items: flex-start; flex-direction: column; }
 }
+
+/* F2-D1 — approved public registry discovery */
+.blf2-registry-browser {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--blf2-border);
+}
+
+.blf2-registry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.blf2-registry-head > div { display: grid; gap: 3px; }
+.blf2-registry-head strong { color: var(--blf2-text-secondary); font-size: 0.88rem; }
+
+.blf2-registry-count {
+  padding: 5px 8px;
+  border: 1px solid var(--blf2-border);
+  border-radius: 999px;
+  color: var(--blf2-muted);
+  font-family: var(--blf2-mono);
+  font-size: 0.66rem;
+}
+
+.blf2-registry-search,
+.blf2-registry-facets label {
+  display: grid;
+  gap: 5px;
+  color: var(--blf2-muted);
+  font-size: 0.68rem;
+}
+
+.blf2-registry-search input,
+.blf2-registry-facets select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--blf2-border);
+  border-radius: 8px;
+  background: var(--blf2-surface-soft);
+  color: var(--blf2-text-secondary);
+  padding: 0 9px;
+}
+
+.blf2-registry-facets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.blf2-registry-facets label:nth-child(3),
+.blf2-registry-facets label:nth-child(4),
+.blf2-registry-facets label:nth-child(5) {
+  grid-column: 1 / -1;
+}
+
+.blf2-registry-status {
+  min-height: 34px;
+  padding: 9px 10px;
+  border: 1px solid var(--blf2-border);
+  border-radius: 8px;
+  background: var(--blf2-surface-soft);
+  color: var(--blf2-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.blf2-registry-list {
+  max-height: 280px;
+  display: grid;
+  gap: 6px;
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.blf2-registry-source {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid var(--blf2-border);
+  border-radius: 8px;
+  background: var(--blf2-surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.blf2-registry-source:hover,
+.blf2-registry-source[data-selected="true"] {
+  border-color: var(--blf2-border-strong);
+  background: var(--blf2-accent-soft);
+}
+
+.blf2-registry-source strong {
+  color: var(--blf2-text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.blf2-registry-source small {
+  color: var(--blf2-subtle);
+  font-size: 0.63rem;
+}
+
+.blf2-registry-selection {
+  padding: 11px;
+  border: 1px solid var(--blf2-border);
+  border-radius: 10px;
+  background: var(--blf2-surface-soft);
+}
+
+.blf2-registry-selection > strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--blf2-text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.blf2-registry-selection p {
+  margin: 7px 0 0;
+  color: var(--blf2-muted);
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.blf2-registry-selection dl { display: grid; gap: 5px; margin: 10px 0 0; }
+.blf2-registry-selection dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.blf2-registry-selection dt,
+.blf2-registry-selection dd { margin: 0; font-size: 0.67rem; }
+.blf2-registry-selection dt { color: var(--blf2-subtle); }
+.blf2-registry-selection dd {
+  color: var(--blf2-text-secondary);
+  text-align: right;
+}
+
+@media (max-width: 940px) {
+  .blf2-registry-facets {
+    grid-template-columns: repeat(5, minmax(120px, 1fr));
+    overflow-x: auto;
+  }
+  .blf2-registry-facets label:nth-child(n) { grid-column: auto; }
+  .blf2-registry-list { max-height: 220px; }
+}
+
+@media (max-width: 640px) {
+  .blf2-registry-facets {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+  .blf2-registry-list { max-height: 260px; }
+}

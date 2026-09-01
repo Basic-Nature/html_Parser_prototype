@@ -13,7 +13,7 @@ export function HeaderBar({ bootstrap }: HeaderBarProps) {
           <span>ElectionPulse workspace</span>
           <strong>Ballot Lens</strong>
         </div>
-        <span className="blf2-phase-badge">F2-C preview</span>
+        <span className="blf2-phase-badge">F2-D discovery</span>
       </div>
 
       <div className="blf2-header-status" aria-label="Ballot Lens status">
@@ -22,7 +22,7 @@ export function HeaderBar({ bootstrap }: HeaderBarProps) {
           <span className="blf2-status-dot" data-state="dormant" aria-hidden="true" />
           Runtime dormant
         </span>
-        <span className="blf2-status-item">Run idle</span>
+        <span className="blf2-status-item">Discovery active</span>
         <span className="blf2-session">Session <strong>—</strong></span>
         <a className="blf2-help-link" href="/quick_reference">Help</a>
       </div>
