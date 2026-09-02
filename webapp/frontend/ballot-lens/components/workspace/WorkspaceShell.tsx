@@ -1,11 +1,17 @@
+import { useState } from 'react';
+
 import {
   registrySourceLabel,
   type PublicRegistrySource,
 } from '../../contracts/registry';
 import type { PublicRuntimeResult } from '../../contracts/publicRuntime';
 import type { RunState } from '../../contracts/runtime';
+import {
+  WorkspaceViews,
+  type WorkspaceTab,
+} from './WorkspaceViews';
 
-const workspaceTabs = [
+const workspaceTabs: readonly WorkspaceTab[] = [
   'Results',
   'Validation',
   'Metadata',
@@ -16,6 +22,7 @@ interface WorkspaceShellProps {
   readonly selectedSource: PublicRegistrySource | null;
   readonly runState: RunState;
   readonly runtimeResult: PublicRuntimeResult | null;
+  readonly dataApiUrl: string;
   readonly canRun: boolean;
   readonly submitError: string | null;
   readonly onRun: () => void;
@@ -44,10 +51,12 @@ export function WorkspaceShell({
   selectedSource,
   runState,
   runtimeResult,
+  dataApiUrl,
   canRun,
   submitError,
   onRun,
 }: WorkspaceShellProps) {
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('Results');
   const selectedLabel = selectedSource
     ? registrySourceLabel(selectedSource)
     : null;
@@ -100,7 +109,7 @@ export function WorkspaceShell({
         </div>
 
         {runtimeResult ? (
-          <div className="blf2-empty-result" role="status">
+          <div className="blf2-empty-result blf2-result-ready" role="status">
             <span className="blf2-empty-orbit" aria-hidden="true"><span /></span>
             <strong>Safe parser result is ready</strong>
             <p>
@@ -108,8 +117,8 @@ export function WorkspaceShell({
                 (total, output) => total + output.row_count,
                 0,
               )} rows across {runtimeResult.outputs.length} memory-only preview
-              outputs. Detailed Results, Validation, Metadata, and Provenance
-              rendering begins in F2-F.
+              outputs. Use the workspace views below to inspect the real result,
+              validation signals, safe metadata, and retained provenance.
             </p>
           </div>
         ) : (
@@ -132,29 +141,25 @@ export function WorkspaceShell({
       </section>
 
       <div className="blf2-workspace-tabs" role="tablist" aria-label="Workspace views">
-        {workspaceTabs.map((tab, index) => (
+        {workspaceTabs.map((tab) => (
           <button
             key={tab}
             type="button"
             role="tab"
-            aria-selected={index === 0}
-            disabled
+            aria-selected={tab === activeTab}
+            onClick={() => setActiveTab(tab)}
           >
             {tab}
           </button>
         ))}
       </div>
 
-      <section className="blf2-tab-panel" role="tabpanel" aria-label="Results">
-        <div>
-          <span className="blf2-kicker">Results</span>
-          <strong>Owned-run output will render here.</strong>
-        </div>
-        <p>
-          Validation, metadata, and provenance stay adjacent to the result
-          instead of being scattered across unrelated cards.
-        </p>
-      </section>
+      <WorkspaceViews
+        activeTab={activeTab}
+        selectedSource={selectedSource}
+        runtimeResult={runtimeResult}
+        dataApiUrl={dataApiUrl}
+      />
     </section>
   );
 }

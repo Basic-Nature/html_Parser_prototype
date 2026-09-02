@@ -713,3 +713,237 @@ summary:focus-visible {
   }
   .blf2-registry-list { max-height: 260px; }
 }
+/* F2-F: owned memory results + validation/metadata/provenance workspace. */
+.blf2-result-ready {
+  min-height: 180px;
+}
+
+.blf2-workspace-tabs button {
+  cursor: pointer;
+}
+
+.blf2-tab-panel-active {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+.blf2-results-view,
+.blf2-provenance-stack {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+.blf2-view-toolbar,
+.blf2-output-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.blf2-view-toolbar {
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--blf2-border);
+  background: var(--blf2-surface-soft);
+}
+
+.blf2-view-toolbar > div,
+.blf2-output-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.blf2-result-search {
+  min-width: min(340px, 100%);
+  display: grid;
+  gap: 5px;
+  color: var(--blf2-muted);
+  font-size: 0.7rem;
+}
+
+.blf2-result-search input {
+  min-height: 34px;
+  width: 100%;
+  border: 1px solid var(--blf2-border);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--blf2-surface-raised);
+  color: var(--blf2-text-secondary);
+}
+
+.blf2-output-block {
+  min-width: 0;
+  border-top: 1px solid var(--blf2-border);
+}
+
+.blf2-output-block:first-of-type {
+  border-top: 0;
+}
+
+.blf2-output-heading {
+  padding: 9px 14px;
+  color: var(--blf2-muted);
+  font-size: 0.72rem;
+}
+
+.blf2-output-heading strong {
+  color: var(--blf2-text-secondary);
+}
+
+.blf2-result-table-wrap {
+  max-height: 58vh;
+  overflow: auto;
+  border-top: 1px solid var(--blf2-border);
+}
+
+.blf2-result-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.blf2-result-table th,
+.blf2-result-table td {
+  max-width: 360px;
+  padding: 8px 10px;
+  border-right: 1px solid var(--blf2-border);
+  border-bottom: 1px solid var(--blf2-border);
+  overflow-wrap: anywhere;
+  text-align: left;
+  vertical-align: top;
+}
+
+.blf2-result-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--blf2-surface-raised);
+  color: var(--blf2-text-secondary);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.blf2-result-table td {
+  color: var(--blf2-text-secondary);
+}
+
+.blf2-result-table td[data-null="true"] {
+  color: var(--blf2-accent);
+  font-family: var(--blf2-mono);
+}
+
+.blf2-result-table td[data-missing="true"] {
+  color: var(--blf2-warning);
+  font-family: var(--blf2-mono);
+}
+
+.blf2-view-empty {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  padding: 30px;
+  text-align: center;
+}
+
+.blf2-view-empty p,
+.blf2-detail-card p {
+  margin: 7px 0 0;
+  color: var(--blf2-muted);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.blf2-validation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+}
+
+.blf2-detail-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--blf2-border);
+  border-radius: var(--blf2-radius-sm);
+  background: var(--blf2-surface-soft);
+}
+
+.blf2-detail-card-wide {
+  grid-column: 1 / -1;
+}
+
+.blf2-detail-card h3 {
+  margin: 5px 0 0;
+  color: var(--blf2-text-secondary);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.blf2-detail-list {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0 0;
+}
+
+.blf2-detail-list > div {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.7fr) minmax(0, 1.3fr);
+  gap: 10px;
+  padding-top: 7px;
+  border-top: 1px solid var(--blf2-border);
+}
+
+.blf2-detail-list dt,
+.blf2-detail-list dd {
+  margin: 0;
+  font-size: 0.7rem;
+}
+
+.blf2-detail-list dt {
+  color: var(--blf2-subtle);
+}
+
+.blf2-detail-list dd {
+  color: var(--blf2-text-secondary);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.blf2-provenance-stack {
+  padding: 12px;
+}
+
+@media (max-width: 720px) {
+  .blf2-view-toolbar,
+  .blf2-output-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .blf2-result-search {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .blf2-validation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .blf2-detail-card-wide {
+    grid-column: auto;
+  }
+
+  .blf2-detail-list > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .blf2-detail-list dd {
+    text-align: left;
+  }
+}

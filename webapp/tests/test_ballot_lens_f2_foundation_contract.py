@@ -25,6 +25,9 @@ F2_APP_SHELL = ROOT / "webapp/frontend/ballot-lens/app/AppShell.tsx"
 F2_HEADER = ROOT / "webapp/frontend/ballot-lens/components/common/HeaderBar.tsx"
 F2_SOURCE_PANEL = ROOT / "webapp/frontend/ballot-lens/components/source/SourcePanel.tsx"
 F2_WORKSPACE = ROOT / "webapp/frontend/ballot-lens/components/workspace/WorkspaceShell.tsx"
+F2_WORKSPACE_VIEWS = ROOT / "webapp/frontend/ballot-lens/components/workspace/WorkspaceViews.tsx"
+F2_CANONICAL_COMPARISON = ROOT / "webapp/frontend/ballot-lens/services/canonicalComparison.ts"
+F2_F2F_TEST = ROOT / "webapp/frontend/ballot-lens/tests/f2fWorkspace.test.ts"
 F2_CHECKPOINT_RAIL = ROOT / "webapp/frontend/ballot-lens/components/checkpoints/CheckpointRail.tsx"
 F2_DIAGNOSTICS = ROOT / "webapp/frontend/ballot-lens/components/diagnostics/DiagnosticsDrawer.tsx"
 F2_TOKENS = ROOT / "webapp/frontend/ballot-lens/styles/tokens.css"
@@ -119,7 +122,7 @@ def test_f2_isolated_package_does_not_modify_root_tooling_contract():
     assert f2["scripts"]["test:contracts"] == (
         "vitest run tests/runMachine.test.ts tests/registry.test.ts "
         "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
-        "tests/publicRuntimeLifecycle.test.ts "
+        "tests/publicRuntimeLifecycle.test.ts tests/f2fWorkspace.test.ts "
         "--environment node"
     )
     assert f2["scripts"]["verify"] == (
@@ -300,7 +303,7 @@ def test_f2d1_registry_discovery_preserves_public_registry_security_boundary():
     assert package["scripts"]["test:contracts"] == (
         "vitest run tests/runMachine.test.ts tests/registry.test.ts "
         "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
-        "tests/publicRuntimeLifecycle.test.ts "
+        "tests/publicRuntimeLifecycle.test.ts tests/f2fWorkspace.test.ts "
         "--environment node"
     )
 
@@ -464,3 +467,65 @@ def test_f2_ci_is_separate_blocking_job():
     # Existing legacy contract job remains explicitly non-blocking.
     assert "contract-checks-nonblocking:" in source
     assert "continue-on-error: true" in source
+
+def test_f2f_results_validation_metadata_provenance_workspace_contract():
+    app_shell = _read(F2_APP_SHELL)
+    workspace = _read(F2_WORKSPACE)
+    views = _read(F2_WORKSPACE_VIEWS)
+    canonical = _read(F2_CANONICAL_COMPARISON)
+    tests = _read(F2_F2F_TEST)
+    css = _read(F2_SHELL_CSS)
+    package = json.loads(_read(F2_PACKAGE))
+
+    assert "dataApiUrl={bootstrap.dataApiUrl}" in app_shell
+    assert "useState<WorkspaceTab>('Results')" in workspace
+    assert "aria-selected={tab === activeTab}" in workspace
+    assert "onClick={() => setActiveTab(tab)}" in workspace
+    assert "<WorkspaceViews" in workspace
+    assert "disabled\n" not in workspace.split("blf2-workspace-tabs", 1)[1]
+
+    for tab in ("Results", "Validation", "Metadata", "Provenance"):
+        assert f"activeTab === '{tab}'" in views
+
+    assert "formatResultCell" in views
+    assert "if (value === null) return 'NULL'" in views
+    assert "if (value === undefined) return 'MISSING'" in views
+    assert "filterPreviewRows" in views
+    assert "Search current result" in views
+    assert "No sample rows or vote totals are fabricated" in views
+    assert "noncanonical_parser_evidence" in views
+    assert "Raw executable URL" in views
+    assert "Not projected" in views
+    assert "No precinct inference" in workspace
+
+    assert "canonical_results_v1" in canonical
+    assert "canonical_production" in canonical
+    assert "same-origin relative path" in canonical
+    assert "method: 'GET'" in canonical
+    assert "credentials: 'same-origin'" in canonical
+    assert "EXACT_MATCH" in canonical
+    assert "UNRESOLVED" in canonical
+    assert "MISMATCH" not in canonical
+    assert "canonical_result_limit_reached" in canonical
+    assert "parser_shape_not_deterministically_comparable" in canonical
+    assert "row_values_not_exact" in canonical
+    for forbidden in ("method: 'POST'", "method: 'PUT'", "method: 'PATCH'", "method: 'DELETE'"):
+        assert forbidden not in canonical
+
+    assert "renders NULL, numeric zero, and missing cells distinctly" in tests
+    assert "same-origin GET read path" in tests
+    assert "keeps non-comparable parser evidence unresolved" in tests
+    assert "credentials).toBe('same-origin')" in tests
+
+    assert ".blf2-result-table" in css
+    assert ".blf2-validation-grid" in css
+    assert ".blf2-detail-list" in css
+    assert "!important" not in css
+
+    expected_contract_command = (
+        "vitest run tests/runMachine.test.ts tests/registry.test.ts "
+        "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
+        "tests/publicRuntimeLifecycle.test.ts tests/f2fWorkspace.test.ts "
+        "--environment node"
+    )
+    assert package["scripts"]["test:contracts"] == expected_contract_command

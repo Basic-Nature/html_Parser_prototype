@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "vite build --config vite.config.mts",
     "verify": "npm run typecheck && npm run test:contracts && npm run build",
-    "test:contracts": "vitest run tests/runMachine.test.ts tests/registry.test.ts tests/publicRuntime.test.ts tests/socketAdapter.test.ts tests/publicRuntimeLifecycle.test.ts --environment node"
+    "test:contracts": "vitest run tests/runMachine.test.ts tests/registry.test.ts tests/publicRuntime.test.ts tests/socketAdapter.test.ts tests/publicRuntimeLifecycle.test.ts tests/f2fWorkspace.test.ts --environment node"
   },
   "dependencies": {
     "react": "19.2.8",

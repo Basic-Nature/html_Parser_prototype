@@ -190,6 +190,7 @@ export function AppShell({ bootstrap }: AppShellProps) {
           selectedSource={selectedSource}
           runState={runState}
           runtimeResult={publicRuntimeResult}
+          dataApiUrl={bootstrap.dataApiUrl}
           canRun={runEligible}
           submitError={submitError}
           onRun={handleRun}
