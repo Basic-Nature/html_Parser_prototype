@@ -50,3 +50,57 @@
     --blf2-shadow: 0 18px 50px rgba(35, 55, 75, 0.09);
   }
 }
+/* F2-T1 cosmic-observatory visual tokens.
+ * Political/status colors above remain semantically independent.
+ */
+:root {
+  --blf2-cosmic-sky-top: rgba(3, 9, 20, 0.92);
+  --blf2-cosmic-cyan: #40d8e8;
+  --blf2-cosmic-cyan-soft: rgba(64, 216, 232, 0.08);
+  --blf2-cosmic-blue-soft: rgba(65, 104, 246, 0.09);
+  --blf2-cosmic-aurora-soft: rgba(56, 210, 218, 0.06);
+  --blf2-cosmic-fractal-line: rgba(80, 172, 211, 0.035);
+  --blf2-cosmic-star: rgba(226, 246, 255, 0.88);
+  --blf2-cosmic-star-soft: rgba(157, 205, 229, 0.7);
+  --blf2-cosmic-horizon-line: rgba(64, 216, 232, 0.22);
+  --blf2-cosmic-horizon-glow: rgba(28, 144, 190, 0.11);
+  --blf2-cosmic-horizon-fill: rgba(6, 24, 42, 0.34);
+  --blf2-cosmic-sun: #f2a65d;
+  --blf2-cosmic-sun-hot: #ffd899;
+  --blf2-cosmic-sun-edge: #a44826;
+  --blf2-cosmic-sun-glow: rgba(255, 170, 90, 0.36);
+  --blf2-cosmic-sun-glow-soft: rgba(255, 130, 70, 0.16);
+  --blf2-cosmic-earth-water: #1d5e93;
+  --blf2-cosmic-earth-water-light: #398fc3;
+  --blf2-cosmic-earth-night: #071426;
+  --blf2-cosmic-earth-rim: rgba(106, 205, 238, 0.48);
+  --blf2-cosmic-earth-atmosphere: rgba(84, 203, 242, 0.58);
+  --blf2-cosmic-earth-atmosphere-soft: rgba(55, 171, 231, 0.18);
+  --blf2-cosmic-orbit-line: rgba(132, 199, 220, 0.14);
+  --blf2-cosmic-moon: #aeb7c3;
+  --blf2-cosmic-moon-light: #e4e8ec;
+  --blf2-cosmic-moon-glow: rgba(213, 232, 244, 0.24);
+  --blf2-signal-trace: #40d8e8;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --blf2-cosmic-sky-top: rgba(160, 198, 222, 0.2);
+    --blf2-cosmic-cyan: #267e96;
+    --blf2-cosmic-cyan-soft: rgba(38, 126, 150, 0.045);
+    --blf2-cosmic-blue-soft: rgba(52, 92, 178, 0.045);
+    --blf2-cosmic-aurora-soft: rgba(33, 130, 145, 0.035);
+    --blf2-cosmic-fractal-line: rgba(47, 92, 126, 0.028);
+    --blf2-cosmic-star: rgba(42, 74, 98, 0.42);
+    --blf2-cosmic-star-soft: rgba(59, 99, 128, 0.3);
+    --blf2-cosmic-horizon-line: rgba(35, 112, 137, 0.1);
+    --blf2-cosmic-horizon-glow: rgba(55, 128, 160, 0.055);
+    --blf2-cosmic-horizon-fill: rgba(124, 168, 191, 0.075);
+    --blf2-cosmic-sun-glow: rgba(202, 120, 55, 0.11);
+    --blf2-cosmic-sun-glow-soft: rgba(202, 120, 55, 0.05);
+    --blf2-cosmic-earth-atmosphere-soft: rgba(31, 119, 158, 0.07);
+    --blf2-cosmic-orbit-line: rgba(50, 103, 127, 0.075);
+    --blf2-cosmic-moon-glow: rgba(66, 90, 105, 0.08);
+    --blf2-signal-trace: #267e96;
+  }
+}

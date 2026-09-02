@@ -3,6 +3,7 @@ import { HeaderBar } from '../components/common/HeaderBar';
 import { CheckpointRail } from '../components/checkpoints/CheckpointRail';
 import { DiagnosticsDrawer } from '../components/diagnostics/DiagnosticsDrawer';
 import { SourcePanel } from '../components/source/SourcePanel';
+import { CosmicBackdrop } from '../components/theme/CosmicBackdrop';
 import { WorkspaceShell } from '../components/workspace/WorkspaceShell';
 
 interface AppShellProps {
@@ -12,6 +13,7 @@ interface AppShellProps {
 export function AppShell({ bootstrap }: AppShellProps) {
   return (
     <div className="blf2-app" data-phase={bootstrap.phase}>
+      <CosmicBackdrop />
       <HeaderBar bootstrap={bootstrap} />
       <main className="blf2-shell">
         <SourcePanel

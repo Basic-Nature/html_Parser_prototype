@@ -5,6 +5,7 @@ import { App } from './app/App';
 import { readBallotLensBootstrap } from './contracts/bootstrap';
 import './styles/tokens.css';
 import './styles/shell.css';
+import './styles/cosmic.css';
 
 const rootElement = document.getElementById('ballotLensF2Root');
 
