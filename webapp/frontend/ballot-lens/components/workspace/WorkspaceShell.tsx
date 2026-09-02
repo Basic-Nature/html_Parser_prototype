@@ -2,6 +2,7 @@ import {
   registrySourceLabel,
   type PublicRegistrySource,
 } from '../../contracts/registry';
+import type { PublicRuntimeResult } from '../../contracts/publicRuntime';
 import type { RunState } from '../../contracts/runtime';
 
 const workspaceTabs = [
@@ -14,6 +15,7 @@ const workspaceTabs = [
 interface WorkspaceShellProps {
   readonly selectedSource: PublicRegistrySource | null;
   readonly runState: RunState;
+  readonly runtimeResult: PublicRuntimeResult | null;
   readonly canRun: boolean;
   readonly submitError: string | null;
   readonly onRun: () => void;
@@ -27,6 +29,12 @@ function runStatusLabel(runState: RunState): string {
       return 'Submitting command';
     case 'awaiting_session':
       return 'Awaiting owned session';
+    case 'running':
+      return 'Parser running';
+    case 'disconnected':
+      return 'Connection interrupted';
+    case 'terminal':
+      return 'Terminal result received';
     default:
       return 'No active run';
   }
@@ -35,6 +43,7 @@ function runStatusLabel(runState: RunState): string {
 export function WorkspaceShell({
   selectedSource,
   runState,
+  runtimeResult,
   canRun,
   submitError,
   onRun,
@@ -51,21 +60,29 @@ export function WorkspaceShell({
           <h1>{selectedLabel ?? 'Select an approved source to begin'}</h1>
           <p>
             Approved-source submission sends only the selected registry ID.
-            Session correlation and parser results remain deferred.
+            The server owns the session; terminal output remains memory-only.
           </p>
         </div>
         <div className="blf2-workspace-state" aria-label="Workspace state">
           <span>{runStatusLabel(runState)}</span>
-          <span>No owned session</span>
+          <span>
+            {runState.context.sessionId
+              ? `Session ${runState.context.sessionId}`
+              : 'Awaiting server session'}
+          </span>
           <button
             type="button"
             className="blf2-run-action"
             disabled={!canRun}
             onClick={onRun}
           >
-            {runState.status === 'awaiting_session'
-              ? 'Submission accepted'
-              : 'Run approved source'}
+            {runState.status === 'terminal'
+              ? 'Run complete'
+              : runState.status === 'running'
+                ? 'Parser running'
+                : runState.status === 'awaiting_session'
+                  ? 'Submission accepted'
+                  : 'Run approved source'}
           </button>
         </div>
       </header>
@@ -77,17 +94,35 @@ export function WorkspaceShell({
       <section className="blf2-result-frame" aria-label="Live result workspace">
         <div className="blf2-result-toolbar">
           <div><span className="blf2-kicker">Live result</span><strong>Result table</strong></div>
-          <span className="blf2-result-state">Awaiting parser output</span>
+          <span className="blf2-result-state">
+            {runtimeResult ? 'Terminal result received' : 'Awaiting parser output'}
+          </span>
         </div>
 
-        <div className="blf2-empty-result" role="status">
-          <span className="blf2-empty-orbit" aria-hidden="true"><span /></span>
-          <strong>No parser result yet</strong>
-          <p>
-            Results appear here only after an owned parser run publishes real
-            extracted data. F2-C does not fabricate preview rows or vote totals.
-          </p>
-        </div>
+        {runtimeResult ? (
+          <div className="blf2-empty-result" role="status">
+            <span className="blf2-empty-orbit" aria-hidden="true"><span /></span>
+            <strong>Safe parser result is ready</strong>
+            <p>
+              {runtimeResult.outputs.reduce(
+                (total, output) => total + output.row_count,
+                0,
+              )} rows across {runtimeResult.outputs.length} memory-only preview
+              outputs. Detailed Results, Validation, Metadata, and Provenance
+              rendering begins in F2-F.
+            </p>
+          </div>
+        ) : (
+          <div className="blf2-empty-result" role="status">
+            <span className="blf2-empty-orbit" aria-hidden="true"><span /></span>
+            <strong>No parser result yet</strong>
+            <p>
+              Results appear here only after an owned parser run publishes real
+              extracted data. The shell does not fabricate preview rows or vote
+              totals.
+            </p>
+          </div>
+        )}
 
         <div className="blf2-data-guardrails" aria-label="Result guardrails">
           <span>NULL preserved</span>

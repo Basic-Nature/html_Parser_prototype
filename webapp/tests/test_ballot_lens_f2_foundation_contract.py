@@ -119,6 +119,7 @@ def test_f2_isolated_package_does_not_modify_root_tooling_contract():
     assert f2["scripts"]["test:contracts"] == (
         "vitest run tests/runMachine.test.ts tests/registry.test.ts "
         "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
+        "tests/publicRuntimeLifecycle.test.ts "
         "--environment node"
     )
     assert f2["scripts"]["verify"] == (
@@ -151,9 +152,9 @@ def test_f2b_phase_and_run_state_contracts_are_dormant_but_present():
     selectors = _read(F2_SELECTORS)
     run_test = _read(F2_RUN_TEST)
 
-    assert 'data-f2-phase="F2-E2"' in template
-    assert "readonly phase: 'F2-E2'" in bootstrap
-    assert "phase !== 'F2-E2'" in bootstrap
+    assert 'data-f2-phase="F2-E4"' in template
+    assert "readonly phase: 'F2-E4'" in bootstrap
+    assert "phase !== 'F2-E4'" in bootstrap
     assert "AppShell" in app
 
     assert "CHECKPOINT_DEFINITIONS" in checkpoints
@@ -217,12 +218,12 @@ def test_f2c_app_shell_is_componentized_presentation_only_and_honest():
     assert "CheckpointRail" in shell
     assert "DiagnosticsDrawer" in shell
 
-    assert "F2-E2 submit" in header
+    assert "F2-E3/E4 runtime" in header
     assert "Submit ready" in header
     assert "Approved public sources" in source
     assert "PublicRegistryBrowser" in source
     assert "No parser result yet" in workspace
-    assert "does not fabricate preview rows or vote totals" in workspace
+    assert "does not fabricate preview rows or vote" in workspace
     assert "NULL preserved" in workspace
     assert "No precinct inference" in workspace
     assert "Provenance retained" in workspace
@@ -238,8 +239,8 @@ def test_f2c_app_shell_is_componentized_presentation_only_and_honest():
     assert "@media (max-width: 640px)" in css
     assert ":focus-visible" in css
     assert "!important" not in css
-    assert 'data-f2-phase="F2-E2"' in template
-    assert "Ballot Lens — F2 Approved Source Submit" in template
+    assert 'data-f2-phase="F2-E4"' in template
+    assert "Ballot Lens — F2 Public Runtime Lifecycle" in template
 
 
 def test_f2c_visual_shell_preserves_f2b_run_state_contracts():
@@ -299,6 +300,7 @@ def test_f2d1_registry_discovery_preserves_public_registry_security_boundary():
     assert package["scripts"]["test:contracts"] == (
         "vitest run tests/runMachine.test.ts tests/registry.test.ts "
         "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
+        "tests/publicRuntimeLifecycle.test.ts "
         "--environment node"
     )
 

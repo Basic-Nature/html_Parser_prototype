@@ -14,7 +14,7 @@ export interface BallotLensBootstrap {
   readonly publicRegistryApi: string;
   readonly dataApiUrl: string;
   readonly socketIo: SocketIoClientBootstrap;
-  readonly phase: 'F2-E2';
+  readonly phase: 'F2-E4';
 }
 
 function requireDatasetValue(
@@ -112,7 +112,7 @@ export function readBallotLensBootstrap(
   }
 
   const phase = requireDatasetValue(root, 'f2Phase');
-  if (phase !== 'F2-E2') {
+  if (phase !== 'F2-E4') {
     throw new Error('Unexpected Ballot Lens F2 phase');
   }
 
@@ -124,6 +124,6 @@ export function readBallotLensBootstrap(
     socketIo: parseSocketIoClientBootstrap(
       requireDatasetValue(root, 'socketioConfig'),
     ),
-    phase: 'F2-E2',
+    phase: 'F2-E4',
   });
 }

@@ -64,7 +64,7 @@ def test_f2e2_emits_one_registry_id_only_command():
         assert forbidden not in outbound.lower()
 
 
-def test_f2e2_reuses_run_machine_through_submission_accepted_only():
+def test_f2e2_submit_path_feeds_the_owned_runtime_lifecycle():
     app = _read(APP_SHELL)
     run_machine = _read(RUN_MACHINE)
     workspace = _read(WORKSPACE)
@@ -73,12 +73,12 @@ def test_f2e2_reuses_run_machine_through_submission_accepted_only():
     assert "reduceRunState" in app
     assert app.index("SOURCE_SELECTED") < app.index("SUBMIT_REQUESTED")
     assert app.index("SUBMIT_REQUESTED") < app.index("SUBMISSION_ACCEPTED")
-    assert "SESSION_CORRELATED" not in app
+    assert "installPublicRuntimeLifecycle" in app
     assert "CHECKPOINT_UPDATED" not in app
     assert "public_registry_result" not in app
     assert "fromTransition" in run_machine
     assert "Submission accepted" in workspace
-    assert "Session correlation and parser results remain deferred" in workspace
+    assert "The server owns the session" in workspace
 
 
 def test_f2e2_phase_and_ui_are_honest_about_the_boundary():
@@ -86,9 +86,9 @@ def test_f2e2_phase_and_ui_are_honest_about_the_boundary():
     browser = _read(REGISTRY_BROWSER)
     workspace = _read(WORKSPACE)
 
-    assert 'data-f2-phase="F2-E2"' in template
-    assert "F2 Approved Source Submit" in template
+    assert 'data-f2-phase="F2-E4"' in template
+    assert "F2 Public Runtime Lifecycle" in template
     assert "execution-authorized source" in browser
-    assert "No owned session" in workspace
+    assert "Awaiting server session" in workspace
     assert "No parser result yet" in workspace
-    assert "does not fabricate preview rows or vote totals" in workspace
+    assert "does not fabricate preview rows or vote" in workspace

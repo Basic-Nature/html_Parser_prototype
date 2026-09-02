@@ -7,11 +7,22 @@ interface HeaderBarProps {
 }
 
 export function HeaderBar({ bootstrap, runState }: HeaderBarProps) {
-  const commandState = runState.status === 'awaiting_session'
-    ? 'Command accepted'
-    : runState.status === 'submitting'
-      ? 'Submitting'
-      : 'Submit ready';
+  const commandState = (() => {
+    switch (runState.status) {
+      case 'submitting':
+        return 'Submitting';
+      case 'awaiting_session':
+        return 'Command accepted';
+      case 'running':
+        return 'Parser running';
+      case 'disconnected':
+        return 'Connection interrupted';
+      case 'terminal':
+        return 'Run complete';
+      default:
+        return 'Submit ready';
+    }
+  })();
 
   return (
     <header className="blf2-header">
@@ -21,17 +32,23 @@ export function HeaderBar({ bootstrap, runState }: HeaderBarProps) {
           <span>ElectionPulse workspace</span>
           <strong>Ballot Lens</strong>
         </div>
-        <span className="blf2-phase-badge">F2-E2 submit</span>
+        <span className="blf2-phase-badge">F2-E3/E4 runtime</span>
       </div>
 
       <div className="blf2-header-status" aria-label="Ballot Lens status">
         <span className="blf2-mode-badge">{bootstrap.mode.toUpperCase()}</span>
         <span className="blf2-status-item">
-          <span className="blf2-status-dot" data-state="dormant" aria-hidden="true" />
+          <span
+            className="blf2-status-dot"
+            data-state={runState.context.connectionState}
+            aria-hidden="true"
+          />
           {commandState}
         </span>
         <span className="blf2-status-item">Approved source only</span>
-        <span className="blf2-session">Session <strong>—</strong></span>
+        <span className="blf2-session">
+          Session <strong>{runState.context.sessionId ?? '—'}</strong>
+        </span>
         <a className="blf2-help-link" href="/quick_reference">Help</a>
       </div>
     </header>

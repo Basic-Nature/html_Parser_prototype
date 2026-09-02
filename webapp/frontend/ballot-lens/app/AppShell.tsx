@@ -1,7 +1,9 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
 } from 'react';
 
@@ -11,6 +13,8 @@ import {
   type PublicRegistryEnvelope,
   type PublicRegistrySource,
 } from '../contracts/registry';
+import type { PublicRuntimeResult } from '../contracts/publicRuntime';
+import type { RunEvent } from '../contracts/runtime';
 import { HeaderBar } from '../components/common/HeaderBar';
 import { CheckpointRail } from '../components/checkpoints/CheckpointRail';
 import { DiagnosticsDrawer } from '../components/diagnostics/DiagnosticsDrawer';
@@ -18,6 +22,7 @@ import { SourcePanel } from '../components/source/SourcePanel';
 import { CosmicBackdrop } from '../components/theme/CosmicBackdrop';
 import { WorkspaceShell } from '../components/workspace/WorkspaceShell';
 import { submitApprovedRegistrySource } from '../services/publicSubmit';
+import { installPublicRuntimeLifecycle } from '../services/publicRuntimeLifecycle';
 import { createDormantBallotLensSocket } from '../services/socketClient';
 import {
   createInitialRunState,
@@ -38,6 +43,8 @@ export function AppShell({ bootstrap }: AppShellProps) {
   const [selectedSource, setSelectedSource] =
     useState<PublicRegistrySource | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [publicRuntimeResult, setPublicRuntimeResult] =
+    useState<PublicRuntimeResult | null>(null);
   const [runState, dispatchRunEvent] = useReducer(
     reduceRunState,
     undefined,
@@ -47,32 +54,44 @@ export function AppShell({ bootstrap }: AppShellProps) {
     () => createDormantBallotLensSocket(bootstrap.socketIo),
     [bootstrap.socketIo],
   );
+  const runStateRef = useRef(runState);
+  const selectedSourceRef = useRef(selectedSource);
+
+  const dispatchOwnedRunEvent = useCallback((event: RunEvent) => {
+    runStateRef.current = reduceRunState(runStateRef.current, event);
+    dispatchRunEvent(event);
+  }, []);
 
   const selectionLocked = ![
     'idle',
     'source_selected',
+    'terminal',
   ].includes(runState.status);
 
   const handleRegistryEnvelopeChange = useCallback((
     envelope: PublicRegistryEnvelope | null,
   ) => {
     setRegistryEnvelope(envelope);
+    setPublicRuntimeResult(null);
     if (!envelope) {
       setSelectedSource(null);
-      dispatchRunEvent({ type: 'RESET' });
+      selectedSourceRef.current = null;
+      dispatchOwnedRunEvent({ type: 'RESET' });
     }
-  }, []);
+  }, [dispatchOwnedRunEvent]);
 
   const handleSelectionChange = useCallback((
     source: PublicRegistrySource | null,
   ) => {
     setSubmitError(null);
+    setPublicRuntimeResult(null);
     setSelectedSource(source);
+    selectedSourceRef.current = source;
     if (!source) {
-      dispatchRunEvent({ type: 'RESET' });
+      dispatchOwnedRunEvent({ type: 'RESET' });
       return;
     }
-    dispatchRunEvent({
+    dispatchOwnedRunEvent({
       type: 'SOURCE_SELECTED',
       runMode: 'public_registry',
       sourceSummary: {
@@ -81,7 +100,7 @@ export function AppShell({ bootstrap }: AppShellProps) {
         registrySourceId: source.registry_source_id,
       },
     });
-  }, []);
+  }, [dispatchOwnedRunEvent]);
 
   const runEligible = canSubmitApprovedRegistrySource(
     registryEnvelope,
@@ -98,16 +117,17 @@ export function AppShell({ bootstrap }: AppShellProps) {
     }
 
     setSubmitError(null);
-    dispatchRunEvent({ type: 'SUBMIT_REQUESTED' });
+    setPublicRuntimeResult(null);
+    dispatchOwnedRunEvent({ type: 'SUBMIT_REQUESTED' });
     try {
       submitApprovedRegistrySource(
         socket,
         selectedSource.registry_source_id,
       );
-      dispatchRunEvent({ type: 'SUBMISSION_ACCEPTED' });
+      dispatchOwnedRunEvent({ type: 'SUBMISSION_ACCEPTED' });
     } catch (error: unknown) {
-      dispatchRunEvent({ type: 'RESET' });
-      dispatchRunEvent({
+      dispatchOwnedRunEvent({ type: 'RESET' });
+      dispatchOwnedRunEvent({
         type: 'SOURCE_SELECTED',
         runMode: 'public_registry',
         sourceSummary: {
@@ -122,10 +142,39 @@ export function AppShell({ bootstrap }: AppShellProps) {
           : 'Approved source submission could not be dispatched.',
       );
     }
-  }, [registryEnvelope, runState, selectedSource, socket]);
+  }, [
+    dispatchOwnedRunEvent,
+    registryEnvelope,
+    runState,
+    selectedSource,
+    socket,
+  ]);
+
+  useEffect(() => {
+    const detachLifecycle = installPublicRuntimeLifecycle(socket, {
+      getRunState: () => runStateRef.current,
+      getSelectedRegistrySourceId: () => (
+        selectedSourceRef.current?.registry_source_id ?? null
+      ),
+      dispatch: dispatchOwnedRunEvent,
+      onRuntimeResult: setPublicRuntimeResult,
+      onProtocolError: () => setSubmitError(
+        'The public runtime returned an invalid lifecycle result.',
+      ),
+    });
+
+    return () => {
+      detachLifecycle();
+      if (socket.connected) socket.disconnect();
+    };
+  }, [dispatchOwnedRunEvent, socket]);
 
   return (
-    <div className="blf2-app" data-phase={bootstrap.phase}>
+    <div
+      className="blf2-app"
+      data-phase={bootstrap.phase}
+      data-runtime-result-ready={publicRuntimeResult !== null}
+    >
       <CosmicBackdrop />
       <HeaderBar bootstrap={bootstrap} runState={runState} />
       <main className="blf2-shell">
@@ -140,6 +189,7 @@ export function AppShell({ bootstrap }: AppShellProps) {
         <WorkspaceShell
           selectedSource={selectedSource}
           runState={runState}
+          runtimeResult={publicRuntimeResult}
           canRun={runEligible}
           submitError={submitError}
           onRun={handleRun}
