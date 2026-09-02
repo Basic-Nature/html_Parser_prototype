@@ -1,5 +1,6 @@
 import {
   parsePublicRegistryPayload,
+  type PublicRegistryEnvelope,
   type PublicRegistrySource,
 } from '../contracts/registry';
 
@@ -11,10 +12,10 @@ function requireSameOriginRelativeEndpoint(endpoint: string): string {
   return normalized;
 }
 
-export async function loadPublicRegistry(
+export async function loadPublicRegistryEnvelope(
   endpoint: string,
   signal?: AbortSignal,
-): Promise<readonly PublicRegistrySource[]> {
+): Promise<PublicRegistryEnvelope> {
   const safeEndpoint = requireSameOriginRelativeEndpoint(endpoint);
   const response = await fetch(safeEndpoint, {
     method: 'GET',
@@ -31,4 +32,12 @@ export async function loadPublicRegistry(
 
   const payload: unknown = await response.json();
   return parsePublicRegistryPayload(payload);
+}
+
+export async function loadPublicRegistry(
+  endpoint: string,
+  signal?: AbortSignal,
+): Promise<readonly PublicRegistrySource[]> {
+  const envelope = await loadPublicRegistryEnvelope(endpoint, signal);
+  return envelope.sources;
 }

@@ -17,6 +17,7 @@
     data-trusted-controls="{{ '1' if ballot_lens_trusted_controls else '0' }}"
     data-public-registry-api="/api/public/ballot-lens/registry"
     data-data-api-url="{{ data_api_url|e }}"
+    data-socketio-config='{{ socketio_client_config | tojson | forceescape }}'
     data-f2-phase="F2-D"
   >
     <noscript>Ballot Lens F2 requires JavaScript.</noscript>

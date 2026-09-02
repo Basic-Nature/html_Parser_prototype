@@ -11,6 +11,14 @@ export const PUBLIC_REGISTRY_SOURCE_KEYS = [
   'year',
 ] as const;
 
+export const PUBLIC_REGISTRY_ROOT_KEYS = [
+  'contract',
+  'count',
+  'execution_enabled',
+  'execution_source_id',
+  'sources',
+] as const;
+
 export interface PublicRegistrySource {
   readonly contest: string;
   readonly format: string;
@@ -19,6 +27,14 @@ export interface PublicRegistrySource {
   readonly scope: string;
   readonly state: string;
   readonly year: string;
+}
+
+export interface PublicRegistryEnvelope {
+  readonly contract: typeof PUBLIC_REGISTRY_CONTRACT;
+  readonly count: number;
+  readonly execution_enabled: boolean;
+  readonly execution_source_id: string | null;
+  readonly sources: readonly PublicRegistrySource[];
 }
 
 export interface RegistryFilters {
@@ -60,24 +76,72 @@ function normalizeText(value: unknown): string {
   return '';
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function normalizeNullableText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized || null;
+}
+
+export function isRecord(
+  value: unknown,
+): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function hasExactSafeSourceKeys(source: Record<string, unknown>): boolean {
+function hasExactKeys(
+  source: Record<string, unknown>,
+  allowedKeys: readonly string[],
+): boolean {
   const keys = Object.keys(source).sort();
-  const allowed = [...PUBLIC_REGISTRY_SOURCE_KEYS].sort();
+  const allowed = [...allowedKeys].sort();
   return (
     keys.length === allowed.length
     && keys.every((key, index) => key === allowed[index])
   );
 }
 
+export function hasExactSafeSourceKeys(
+  source: Record<string, unknown>,
+): boolean {
+  return hasExactKeys(source, PUBLIC_REGISTRY_SOURCE_KEYS);
+}
+
+export function parsePublicRegistrySource(
+  entry: unknown,
+  indexLabel = 'source',
+): PublicRegistrySource {
+  if (!isRecord(entry) || !hasExactSafeSourceKeys(entry)) {
+    throw new Error(`Unsafe public registry source projection at ${indexLabel}`);
+  }
+
+  const registrySourceId = normalizeText(entry.registry_source_id);
+  if (!registrySourceId) {
+    throw new Error(`Missing registry source id at ${indexLabel}`);
+  }
+  if (entry.registry_category !== 'curated') {
+    throw new Error(`Non-curated registry source at ${indexLabel}`);
+  }
+
+  return Object.freeze({
+    contest: normalizeText(entry.contest),
+    format: normalizeText(entry.format),
+    registry_category: 'curated' as const,
+    registry_source_id: registrySourceId,
+    scope: normalizeText(entry.scope),
+    state: normalizeText(entry.state),
+    year: normalizeText(entry.year),
+  });
+}
+
 export function parsePublicRegistryPayload(
   payload: unknown,
-): readonly PublicRegistrySource[] {
+): PublicRegistryEnvelope {
   if (!isRecord(payload)) {
     throw new Error('Public registry payload must be an object');
+  }
+  if (!hasExactKeys(payload, PUBLIC_REGISTRY_ROOT_KEYS)) {
+    throw new Error('Unsafe public registry root projection');
   }
   if (payload.contract !== PUBLIC_REGISTRY_CONTRACT) {
     throw new Error('Unexpected public registry contract');
@@ -86,33 +150,48 @@ export function parsePublicRegistryPayload(
     throw new Error('Public registry sources must be an array');
   }
 
-  return Object.freeze(
-    payload.sources.map((entry, index) => {
-      if (!isRecord(entry) || !hasExactSafeSourceKeys(entry)) {
-        throw new Error(
-          `Unsafe public registry source projection at index ${index}`,
-        );
-      }
-
-      const registrySourceId = normalizeText(entry.registry_source_id);
-      if (!registrySourceId) {
-        throw new Error(`Missing registry source id at index ${index}`);
-      }
-      if (entry.registry_category !== 'curated') {
-        throw new Error(`Non-curated registry source at index ${index}`);
-      }
-
-      return Object.freeze({
-        contest: normalizeText(entry.contest),
-        format: normalizeText(entry.format),
-        registry_category: 'curated' as const,
-        registry_source_id: registrySourceId,
-        scope: normalizeText(entry.scope),
-        state: normalizeText(entry.state),
-        year: normalizeText(entry.year),
-      });
-    }),
+  const sources = Object.freeze(
+    payload.sources.map((entry, index) => (
+      parsePublicRegistrySource(entry, `index ${index}`)
+    )),
   );
+
+  if (
+    typeof payload.count !== 'number'
+    || !Number.isSafeInteger(payload.count)
+    || payload.count < 0
+    || payload.count !== sources.length
+  ) {
+    throw new Error('Public registry count mismatch');
+  }
+  if (typeof payload.execution_enabled !== 'boolean') {
+    throw new Error('Public registry execution flag must be boolean');
+  }
+
+  const executionSourceId = normalizeNullableText(
+    payload.execution_source_id,
+  );
+
+  if (payload.execution_enabled) {
+    if (!executionSourceId) {
+      throw new Error('Enabled public execution requires a source id');
+    }
+    if (!sources.some(
+      (source) => source.registry_source_id === executionSourceId,
+    )) {
+      throw new Error('Execution source id is absent from safe registry sources');
+    }
+  } else if (executionSourceId !== null) {
+    throw new Error('Disabled public execution cannot project an execution id');
+  }
+
+  return Object.freeze({
+    contract: PUBLIC_REGISTRY_CONTRACT,
+    count: payload.count,
+    execution_enabled: payload.execution_enabled,
+    execution_source_id: executionSourceId,
+    sources,
+  });
 }
 
 export function registrySourceLabel(source: PublicRegistrySource): string {

@@ -9,6 +9,9 @@ import {
 
 const payload = {
   contract: 'ballot_lens_public_registry_v1',
+  count: 3,
+  execution_enabled: true,
+  execution_source_id: 'source-ut',
   sources: [
     {
       contest: 'President',
@@ -41,11 +44,14 @@ const payload = {
 };
 
 describe('public registry discovery contract', () => {
-  it('normalizes the exact safe public projection', () => {
-    const sources = parsePublicRegistryPayload(payload);
-    expect(sources).toHaveLength(3);
-    expect(sources[0]?.year).toBe('2024');
-    expect(Object.keys(sources[0] ?? {}).sort()).toEqual([
+  it('normalizes root execution authority without changing source shape', () => {
+    const envelope = parsePublicRegistryPayload(payload);
+    expect(envelope.execution_enabled).toBe(true);
+    expect(envelope.execution_source_id).toBe('source-ut');
+    expect(envelope.count).toBe(3);
+    expect(envelope.sources).toHaveLength(3);
+    expect(envelope.sources[0]?.year).toBe('2024');
+    expect(Object.keys(envelope.sources[0] ?? {}).sort()).toEqual([
       'contest',
       'format',
       'registry_category',
@@ -65,15 +71,48 @@ describe('public registry discovery contract', () => {
           url: 'https://example.invalid/results',
         },
       ],
+      count: 1,
     };
     expect(() => parsePublicRegistryPayload(unsafe)).toThrow(
       /Unsafe public registry source projection/,
     );
   });
 
+  it('rejects unexpected root fields instead of inheriting authority', () => {
+    const unsafe = {
+      ...payload,
+      executable_url: 'https://example.invalid/results',
+    };
+    expect(() => parsePublicRegistryPayload(unsafe)).toThrow(
+      /Unsafe public registry root projection/,
+    );
+  });
+
+  it('rejects execution ids absent from safe projected sources', () => {
+    const invalid = {
+      ...payload,
+      execution_source_id: 'source-missing',
+    };
+    expect(() => parsePublicRegistryPayload(invalid)).toThrow(
+      /absent from safe registry sources/,
+    );
+  });
+
+  it('requires disabled execution to project no execution id', () => {
+    const disabled = {
+      ...payload,
+      execution_enabled: false,
+      execution_source_id: null,
+    };
+    const envelope = parsePublicRegistryPayload(disabled);
+    expect(envelope.execution_enabled).toBe(false);
+    expect(envelope.execution_source_id).toBeNull();
+  });
+
   it('rejects non-curated public entries', () => {
     const invalid = {
       ...payload,
+      count: 1,
       sources: [
         {
           ...payload.sources[0],
@@ -87,7 +126,7 @@ describe('public registry discovery contract', () => {
   });
 
   it('filters by search and structured facets without URLs', () => {
-    const sources = parsePublicRegistryPayload(payload);
+    const sources = parsePublicRegistryPayload(payload).sources;
     const filtered = filterRegistrySources(sources, {
       ...EMPTY_REGISTRY_FILTERS,
       query: 'President',
@@ -99,7 +138,7 @@ describe('public registry discovery contract', () => {
   });
 
   it('keeps unavailable facet values visible with zero counts', () => {
-    const sources = parsePublicRegistryPayload(payload);
+    const sources = parsePublicRegistryPayload(payload).sources;
     const options = getRegistryFacetOptions(
       sources,
       {

@@ -98,6 +98,7 @@ def test_f2_foundation_has_no_parser_or_socket_execution():
     assert "socket." not in registry_api
 
 
+
 def test_f2_isolated_package_does_not_modify_root_tooling_contract():
     root = json.loads(_read(ROOT_PACKAGE))
     f2 = json.loads(_read(F2_PACKAGE))
@@ -108,14 +109,16 @@ def test_f2_isolated_package_does_not_modify_root_tooling_contract():
     assert f2["engines"]["node"] == ">=24.0.0"
     assert f2["dependencies"]["react"] == "19.2.8"
     assert f2["dependencies"]["react-dom"] == "19.2.8"
+    assert f2["dependencies"]["xstate"] == "5.32.6"
+    assert f2["dependencies"]["socket.io-client"] == "4.7.5"
     assert f2["devDependencies"]["@vitejs/plugin-react"] == "6.1.1"
     assert f2["devDependencies"]["vite"] == "8.2.2"
     assert f2["devDependencies"]["typescript"] == "5.9.3"
     assert f2["devDependencies"]["@types/node"] == "24.10.0"
-    assert f2["dependencies"]["xstate"] == "5.32.6"
     assert f2["devDependencies"]["vitest"] == "4.1.11"
     assert f2["scripts"]["test:contracts"] == (
         "vitest run tests/runMachine.test.ts tests/registry.test.ts "
+        "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
         "--environment node"
     )
     assert f2["scripts"]["verify"] == (
@@ -250,6 +253,7 @@ def test_f2c_visual_shell_preserves_f2b_run_state_contracts():
     assert "source.resolve" in _read(F2_CHECKPOINTS)
 
 
+
 def test_f2d1_registry_discovery_preserves_public_registry_security_boundary():
     registry = _read(F2_REGISTRY)
     api = _read(F2_REGISTRY_API)
@@ -270,6 +274,7 @@ def test_f2d1_registry_discovery_preserves_public_registry_security_boundary():
 
     assert "PUBLIC_REGISTRY_SOURCE_KEYS" in registry
     assert "hasExactSafeSourceKeys" in registry
+    assert "hasExactSafeSourceKeys(entry)" in registry
     assert "Unsafe public registry source projection" in registry
     assert "registry_category: 'curated'" in registry
     assert "target_url" not in registry.lower()
@@ -281,6 +286,8 @@ def test_f2d1_registry_discovery_preserves_public_registry_security_boundary():
     assert "credentials: 'same-origin'" in api
     assert "fetch(" in api
     assert "socket." not in api.lower()
+    assert "execution_source_id" not in api
+    assert "execution_enabled" not in api
 
     assert "getRegistryFacetOptions" in browser
     assert "Search approved sources" in browser
@@ -291,30 +298,51 @@ def test_f2d1_registry_discovery_preserves_public_registry_security_boundary():
 
     assert package["scripts"]["test:contracts"] == (
         "vitest run tests/runMachine.test.ts tests/registry.test.ts "
+        "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
         "--environment node"
     )
 
 
-def test_f2d1_registry_discovery_has_no_parser_execution_authority():
-    source = "\\n".join(
+
+def test_f2e1_registry_execution_metadata_adds_no_parser_command_authority():
+    registry = _read(F2_REGISTRY)
+    non_registry_command_surfaces = "\n".join(
         _read(path)
         for path in (
-            F2_REGISTRY,
             F2_REGISTRY_API,
             F2_REGISTRY_BROWSER,
             F2_SOURCE_PANEL,
         )
-    ).lower()
+    )
 
-    assert "socket.emit" not in source
-    assert "socket.on" not in source
-    assert "public_registry_result" not in source
-    assert "public_registry_runtime_started" not in source
-    assert "direct_urls" not in source
-    assert "target_url" not in source
-    assert "executable_url" not in source
-    assert "execution_source_id" not in source
-    assert "execution_enabled" not in source
+    # E1 deliberately types only SAFE ROOT registry execution authority.
+    assert "PUBLIC_REGISTRY_ROOT_KEYS" in registry
+    assert "execution_enabled" in registry
+    assert "execution_source_id" in registry
+
+    # Individual source records remain exact seven-field projections.
+    assert "PUBLIC_REGISTRY_SOURCE_KEYS" in registry
+    assert "hasExactSafeSourceKeys" in registry
+    assert "hasExactSafeSourceKeys(entry)" in registry
+
+    # Root execution metadata is not a parser-command surface.
+    assert "execution_enabled" not in non_registry_command_surfaces
+    assert "execution_source_id" not in non_registry_command_surfaces
+
+    combined = registry + "\n" + non_registry_command_surfaces
+    assert "public_registry_runtime_started" not in combined
+    assert "public_registry_result" not in combined
+    assert "socket.emit" not in combined
+    assert "btnRunParser" not in combined
+    assert "btnRunParser2" not in combined
+
+    for forbidden in (
+        "direct_urls",
+        "file_source",
+        "warehouse_override",
+        "executable_url",
+    ):
+        assert forbidden not in non_registry_command_surfaces
 
 
 def test_f2d1_registry_facets_are_availability_aware():
