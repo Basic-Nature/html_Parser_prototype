@@ -1,8 +1,18 @@
 import { PublicRegistryBrowser } from './PublicRegistryBrowser';
+import type {
+  PublicRegistryEnvelope,
+  PublicRegistrySource,
+} from '../../contracts/registry';
 
 interface SourcePanelProps {
   readonly trustedControls: boolean;
   readonly publicRegistryApi: string;
+  readonly selectedSourceId: string;
+  readonly selectionLocked: boolean;
+  readonly onRegistryEnvelopeChange: (
+    envelope: PublicRegistryEnvelope | null,
+  ) => void;
+  readonly onSelectionChange: (source: PublicRegistrySource | null) => void;
 }
 
 const sourceModes = [
@@ -15,6 +25,10 @@ const sourceModes = [
 export function SourcePanel({
   trustedControls,
   publicRegistryApi,
+  selectedSourceId,
+  selectionLocked,
+  onRegistryEnvelopeChange,
+  onSelectionChange,
 }: SourcePanelProps) {
   return (
     <aside className="blf2-source" aria-label="Source">
@@ -47,7 +61,13 @@ export function SourcePanel({
         })}
       </nav>
 
-      <PublicRegistryBrowser endpoint={publicRegistryApi} />
+      <PublicRegistryBrowser
+        endpoint={publicRegistryApi}
+        selectedSourceId={selectedSourceId}
+        selectionLocked={selectionLocked}
+        onRegistryEnvelopeChange={onRegistryEnvelopeChange}
+        onSelectionChange={onSelectionChange}
+      />
     </aside>
   );
 }

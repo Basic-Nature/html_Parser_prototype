@@ -294,6 +294,32 @@ summary:focus-visible {
 .blf2-workspace-header p { max-width: 650px; font-size: 0.82rem; }
 .blf2-workspace-state { justify-content: flex-end; gap: 7px; flex-wrap: wrap; }
 
+.blf2-run-action {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--blf2-border-strong);
+  border-radius: 999px;
+  background: var(--blf2-accent-soft);
+  color: var(--blf2-accent);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.blf2-run-action:disabled {
+  border-color: var(--blf2-border);
+  background: var(--blf2-surface-soft);
+  color: var(--blf2-subtle);
+  cursor: not-allowed;
+}
+
+.blf2-submit-error {
+  max-width: 1180px;
+  margin: 12px auto 0;
+  color: var(--blf2-danger);
+  font-size: 0.78rem;
+}
+
 .blf2-result-frame {
   max-width: 1180px;
   margin: 20px auto 0;

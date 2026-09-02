@@ -9,14 +9,21 @@ import {
   filterRegistrySources,
   getRegistryFacetOptions,
   registrySourceLabel,
+  type PublicRegistryEnvelope,
   type PublicRegistrySource,
   type RegistryFacetKey,
   type RegistryFilters,
 } from '../../contracts/registry';
-import { loadPublicRegistry } from '../../services/registryApi';
+import { loadPublicRegistryEnvelope } from '../../services/registryApi';
 
 interface PublicRegistryBrowserProps {
   readonly endpoint: string;
+  readonly selectedSourceId: string;
+  readonly selectionLocked: boolean;
+  readonly onRegistryEnvelopeChange: (
+    envelope: PublicRegistryEnvelope | null,
+  ) => void;
+  readonly onSelectionChange: (source: PublicRegistrySource | null) => void;
 }
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error';
@@ -34,21 +41,25 @@ const FACETS: readonly {
 
 export function PublicRegistryBrowser({
   endpoint,
+  selectedSourceId,
+  selectionLocked,
+  onRegistryEnvelopeChange,
+  onSelectionChange,
 }: PublicRegistryBrowserProps) {
   const [sources, setSources] = useState<readonly PublicRegistrySource[]>([]);
   const [filters, setFilters] =
     useState<RegistryFilters>(EMPTY_REGISTRY_FILTERS);
-  const [selectedId, setSelectedId] = useState('');
   const [loadState, setLoadState] = useState<LoadState>('loading');
 
   useEffect(() => {
     const controller = new AbortController();
     setLoadState('loading');
 
-    loadPublicRegistry(endpoint, controller.signal)
-      .then((loaded) => {
-        setSources(loaded);
-        setLoadState(loaded.length ? 'ready' : 'empty');
+    loadPublicRegistryEnvelope(endpoint, controller.signal)
+      .then((envelope) => {
+        setSources(envelope.sources);
+        onRegistryEnvelopeChange(envelope);
+        setLoadState(envelope.sources.length ? 'ready' : 'empty');
       })
       .catch((error: unknown) => {
         if (
@@ -58,12 +69,13 @@ export function PublicRegistryBrowser({
           return;
         }
         setSources([]);
-        setSelectedId('');
+        onRegistryEnvelopeChange(null);
+        onSelectionChange(null);
         setLoadState('error');
       });
 
     return () => controller.abort();
-  }, [endpoint]);
+  }, [endpoint, onRegistryEnvelopeChange, onSelectionChange]);
 
   const visibleSources = useMemo(
     () => filterRegistrySources(sources, filters),
@@ -71,19 +83,8 @@ export function PublicRegistryBrowser({
   );
 
   const selected = sources.find(
-    (source) => source.registry_source_id === selectedId,
+    (source) => source.registry_source_id === selectedSourceId,
   ) ?? null;
-
-  useEffect(() => {
-    if (
-      selectedId
-      && !visibleSources.some(
-        (source) => source.registry_source_id === selectedId,
-      )
-    ) {
-      setSelectedId('');
-    }
-  }, [selectedId, visibleSources]);
 
   const updateFilter = (
     key: keyof RegistryFilters,
@@ -154,7 +155,7 @@ export function PublicRegistryBrowser({
         {loadState === 'ready' && visibleSources.length === 0
           && 'No approved sources match the current filters.'}
         {loadState === 'ready' && visibleSources.length > 0
-          && 'Browse-only discovery is active. Parser execution remains deferred to F2-E.'}
+          && 'Select the one execution-authorized source to enable submission.'}
       </div>
 
       {loadState === 'ready' && visibleSources.length > 0 && (
@@ -165,9 +166,10 @@ export function PublicRegistryBrowser({
               type="button"
               className="blf2-registry-source"
               data-selected={
-                source.registry_source_id === selectedId ? 'true' : 'false'
+                source.registry_source_id === selectedSourceId ? 'true' : 'false'
               }
-              onClick={() => setSelectedId(source.registry_source_id)}
+              disabled={selectionLocked}
+              onClick={() => onSelectionChange(source)}
             >
               <strong>{registrySourceLabel(source)}</strong>
               <small>
@@ -197,7 +199,8 @@ export function PublicRegistryBrowser({
               <div><dt>Registry</dt><dd>Curated</dd></div>
             </dl>
             <p>
-              Source discovery only. No parser command is emitted from F2-D1.
+              Selection is app-owned. Execution remains limited to the exact
+              registry authority projected by the server.
             </p>
           </>
         )}

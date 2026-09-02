@@ -1,7 +1,29 @@
 import type {
   ParserCheckpoint,
 } from '../contracts/checkpoints';
+import type {
+  PublicRegistryEnvelope,
+  PublicRegistrySource,
+} from '../contracts/registry';
 import type { RunState } from '../contracts/runtime';
+
+export function canSubmitApprovedRegistrySource(
+  envelope: PublicRegistryEnvelope | null,
+  selectedSource: PublicRegistrySource | null,
+): boolean {
+  if (
+    !envelope?.execution_enabled
+    || !envelope.execution_source_id
+    || !selectedSource
+    || selectedSource.registry_source_id !== envelope.execution_source_id
+  ) {
+    return false;
+  }
+
+  return envelope.sources.some(
+    (source) => source.registry_source_id === selectedSource.registry_source_id,
+  );
+}
 
 export function ownsActiveSession(
   state: RunState,

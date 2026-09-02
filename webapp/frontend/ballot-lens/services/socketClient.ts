@@ -7,6 +7,9 @@ import {
 import type {
   SocketIoClientBootstrap,
 } from '../contracts/bootstrap';
+import type {
+  PublicRegistrySubmitPayload,
+} from './publicSubmit';
 
 export interface DormantBallotLensSocket {
   readonly connected: boolean;
@@ -19,6 +22,10 @@ export interface DormantBallotLensSocket {
   off(
     event: string,
     listener?: (payload?: unknown) => void,
+  ): DormantBallotLensSocket;
+  emit(
+    event: 'ballot_lens',
+    payload: PublicRegistrySubmitPayload,
   ): DormantBallotLensSocket;
 }
 

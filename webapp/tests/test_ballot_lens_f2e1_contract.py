@@ -12,6 +12,7 @@ REGISTRY_API = F2 / "services/registryApi.ts"
 PUBLIC_RUNTIME = F2 / "contracts/publicRuntime.ts"
 SOCKET_CLIENT = F2 / "services/socketClient.ts"
 SOCKET_ADAPTER = F2 / "services/socketAdapter.ts"
+PUBLIC_SUBMIT = F2 / "services/publicSubmit.ts"
 TEMPLATE = ROOT / "webapp/templates/ballot_lens_f2.html"
 
 
@@ -70,16 +71,20 @@ def test_f2e1_public_runtime_contract_preserves_no_write_semantics():
     assert "JsonValue" in source
 
 
-def test_f2e1_socket_transport_is_dormant_and_has_no_emit_authority():
+def test_f2e1_transport_remains_dormant_until_the_bounded_e2_submit():
     client = _read(SOCKET_CLIENT)
     adapter = _read(SOCKET_ADAPTER)
+    submit = _read(PUBLIC_SUBMIT)
     assert "socket.io-client" in client
     assert "autoConnect: false" in client
     assert "DormantBallotLensSocket" in client
-    assert "emit(" not in client
-    assert ".emit" not in client
+    assert "event: 'ballot_lens'" in client
+    assert "payload: PublicRegistrySubmitPayload" in client
     assert "emit(" not in adapter
     assert ".emit" not in adapter
+    assert submit.count("socket.emit(") == 1
+    assert "PUBLIC_BALLOT_LENS_COMMAND_EVENT = 'ballot_lens'" in submit
+    assert "Object.freeze({ registry_source_id: normalizedSourceId })" in submit
     for forbidden in (
         "direct_urls",
         "file_source",
@@ -88,6 +93,7 @@ def test_f2e1_socket_transport_is_dormant_and_has_no_emit_authority():
     ):
         assert forbidden not in client
         assert forbidden not in adapter
+        assert forbidden not in submit
 
 
 def test_f2e1_template_reuses_server_owned_socket_config_without_legacy_global():
@@ -98,7 +104,7 @@ def test_f2e1_template_reuses_server_owned_socket_config_without_legacy_global()
     assert "ballot_lens_init.js" not in template
 
 
-def test_f2e1_has_no_public_run_submit_wiring():
+def test_f2e1_observation_surfaces_do_not_gain_submit_authority():
     combined = "\n".join(
         _read(path)
         for path in (
@@ -132,4 +138,3 @@ def test_f2e1_root_execution_metadata_does_not_create_command_authority():
         "executable_url",
     ):
         assert forbidden not in api
-

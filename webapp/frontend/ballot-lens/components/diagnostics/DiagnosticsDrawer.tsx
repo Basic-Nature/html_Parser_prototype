@@ -1,4 +1,10 @@
-export function DiagnosticsDrawer() {
+import type { RunState } from '../../contracts/runtime';
+
+interface DiagnosticsDrawerProps {
+  readonly runState: RunState;
+}
+
+export function DiagnosticsDrawer({ runState }: DiagnosticsDrawerProps) {
   return (
     <details className="blf2-diagnostics">
       <summary>
@@ -8,15 +14,15 @@ export function DiagnosticsDrawer() {
         </span>
         <span className="blf2-diagnostics-meta">
           <span>0 events</span>
-          <span>Dormant</span>
+          <span>{runState.status}</span>
         </span>
       </summary>
 
       <div className="blf2-diagnostics-body">
-        <strong>No runtime events in F2-D discovery.</strong>
+        <strong>No correlated runtime events yet.</strong>
         <p>
-          Structured diagnostics wiring remains deferred to F2-I. This drawer
-          reserves the correct visual location without claiming live telemetry.
+          F2-E2 records only app-owned selection and submission state. Session
+          correlation, checkpoints, and result handoff remain deferred.
         </p>
       </div>
     </details>

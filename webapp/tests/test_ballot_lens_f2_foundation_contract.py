@@ -151,9 +151,9 @@ def test_f2b_phase_and_run_state_contracts_are_dormant_but_present():
     selectors = _read(F2_SELECTORS)
     run_test = _read(F2_RUN_TEST)
 
-    assert 'data-f2-phase="F2-D"' in template
-    assert "readonly phase: 'F2-D'" in bootstrap
-    assert "phase !== 'F2-D'" in bootstrap
+    assert 'data-f2-phase="F2-E2"' in template
+    assert "readonly phase: 'F2-E2'" in bootstrap
+    assert "phase !== 'F2-E2'" in bootstrap
     assert "AppShell" in app
 
     assert "CHECKPOINT_DEFINITIONS" in checkpoints
@@ -217,8 +217,8 @@ def test_f2c_app_shell_is_componentized_presentation_only_and_honest():
     assert "CheckpointRail" in shell
     assert "DiagnosticsDrawer" in shell
 
-    assert "F2-D discovery" in header
-    assert "Runtime dormant" in header
+    assert "F2-E2 submit" in header
+    assert "Submit ready" in header
     assert "Approved public sources" in source
     assert "PublicRegistryBrowser" in source
     assert "No parser result yet" in workspace
@@ -229,7 +229,7 @@ def test_f2c_app_shell_is_componentized_presentation_only_and_honest():
     assert "0 / 9" in checkpoints
     assert "Awaiting run" in checkpoints
     assert "Diagnostics &amp; audit trail" in diagnostics
-    assert "No runtime events in F2-D discovery" in diagnostics
+    assert "No correlated runtime events yet" in diagnostics
 
     assert "--blf2-accent-soft" in tokens
     assert "--blf2-focus" in tokens
@@ -238,8 +238,8 @@ def test_f2c_app_shell_is_componentized_presentation_only_and_honest():
     assert "@media (max-width: 640px)" in css
     assert ":focus-visible" in css
     assert "!important" not in css
-    assert 'data-f2-phase="F2-D"' in template
-    assert "Ballot Lens — F2 Source Discovery" in template
+    assert 'data-f2-phase="F2-E2"' in template
+    assert "Ballot Lens — F2 Approved Source Submit" in template
 
 
 def test_f2c_visual_shell_preserves_f2b_run_state_contracts():
@@ -292,8 +292,8 @@ def test_f2d1_registry_discovery_preserves_public_registry_security_boundary():
     assert "getRegistryFacetOptions" in browser
     assert "Search approved sources" in browser
     assert "Scope / county" in browser
-    assert "Browse-only discovery is active" in browser
-    assert "No parser command is emitted from F2-D1" in browser
+    assert "Select the one execution-authorized source" in browser
+    assert "Selection is app-owned" in browser
     assert "PublicRegistryBrowser" in source_panel
 
     assert package["scripts"]["test:contracts"] == (

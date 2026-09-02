@@ -1,3 +1,9 @@
+import {
+  registrySourceLabel,
+  type PublicRegistrySource,
+} from '../../contracts/registry';
+import type { RunState } from '../../contracts/runtime';
+
 const workspaceTabs = [
   'Results',
   'Validation',
@@ -5,23 +11,68 @@ const workspaceTabs = [
   'Provenance',
 ] as const;
 
-export function WorkspaceShell() {
+interface WorkspaceShellProps {
+  readonly selectedSource: PublicRegistrySource | null;
+  readonly runState: RunState;
+  readonly canRun: boolean;
+  readonly submitError: string | null;
+  readonly onRun: () => void;
+}
+
+function runStatusLabel(runState: RunState): string {
+  switch (runState.status) {
+    case 'source_selected':
+      return 'Source selected';
+    case 'submitting':
+      return 'Submitting command';
+    case 'awaiting_session':
+      return 'Awaiting owned session';
+    default:
+      return 'No active run';
+  }
+}
+
+export function WorkspaceShell({
+  selectedSource,
+  runState,
+  canRun,
+  submitError,
+  onRun,
+}: WorkspaceShellProps) {
+  const selectedLabel = selectedSource
+    ? registrySourceLabel(selectedSource)
+    : null;
+
   return (
     <section className="blf2-workspace" aria-label="Parser workspace">
       <header className="blf2-workspace-header">
         <div>
           <span className="blf2-kicker">Parser workspace</span>
-          <h1>Select an approved source to begin</h1>
+          <h1>{selectedLabel ?? 'Select an approved source to begin'}</h1>
           <p>
-            The workspace is ready for F2-D source discovery and F2-E
-            execution wiring.
+            Approved-source submission sends only the selected registry ID.
+            Session correlation and parser results remain deferred.
           </p>
         </div>
         <div className="blf2-workspace-state" aria-label="Workspace state">
-          <span>No active run</span>
+          <span>{runStatusLabel(runState)}</span>
           <span>No owned session</span>
+          <button
+            type="button"
+            className="blf2-run-action"
+            disabled={!canRun}
+            onClick={onRun}
+          >
+            {runState.status === 'awaiting_session'
+              ? 'Submission accepted'
+              : 'Run approved source'}
+          </button>
         </div>
       </header>
+
+      {submitError && (
+        <p className="blf2-submit-error" role="alert">{submitError}</p>
+      )}
 
       <section className="blf2-result-frame" aria-label="Live result workspace">
         <div className="blf2-result-toolbar">
