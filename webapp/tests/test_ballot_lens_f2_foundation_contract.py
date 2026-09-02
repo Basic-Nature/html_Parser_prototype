@@ -42,13 +42,13 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8-sig")
 
 
-def test_f2_variant_is_server_controlled_and_legacy_default():
+def test_f2_variant_is_server_controlled_f2_default_and_legacy_override():
     source = _read(MAIN)
     start = source.index("def ballot_lens():")
     end = source.index("def ballot_lens_modern():", start)
     body = source[start:end]
 
-    assert 'os.environ.get("BALLOT_LENS_UI_VARIANT", "legacy")' in body
+    assert 'os.environ.get("BALLOT_LENS_UI_VARIANT", "f2")' in body
     assert '{"legacy", "f2"}' in body
     assert '"ballot_lens.html"' in body
     assert '"ballot_lens_f2.html"' in body

@@ -6426,7 +6426,7 @@ def ballot_lens():
             file_lists = get_all_file_lists()
 
         ballot_lens_ui_variant = (
-            os.environ.get("BALLOT_LENS_UI_VARIANT", "legacy")
+            os.environ.get("BALLOT_LENS_UI_VARIANT", "f2")
             .strip()
             .lower()
         )
