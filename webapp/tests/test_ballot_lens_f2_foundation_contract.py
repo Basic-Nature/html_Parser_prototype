@@ -123,7 +123,8 @@ def test_f2_isolated_package_does_not_modify_root_tooling_contract():
         "vitest run tests/runMachine.test.ts tests/registry.test.ts "
         "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
         "tests/publicRuntimeLifecycle.test.ts tests/f2fWorkspace.test.ts "
-        "tests/trustedExecution.test.ts --environment node"
+        "tests/trustedExecution.test.ts tests/sessionHistory.test.ts "
+        "--environment node"
     )
     assert f2["scripts"]["verify"] == (
         "npm run typecheck && npm run test:contracts && npm run build"
@@ -304,7 +305,8 @@ def test_f2d1_registry_discovery_preserves_public_registry_security_boundary():
         "vitest run tests/runMachine.test.ts tests/registry.test.ts "
         "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
         "tests/publicRuntimeLifecycle.test.ts tests/f2fWorkspace.test.ts "
-        "tests/trustedExecution.test.ts --environment node"
+        "tests/trustedExecution.test.ts tests/sessionHistory.test.ts "
+        "--environment node"
     )
 
 
@@ -526,7 +528,8 @@ def test_f2f_results_validation_metadata_provenance_workspace_contract():
         "vitest run tests/runMachine.test.ts tests/registry.test.ts "
         "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
         "tests/publicRuntimeLifecycle.test.ts tests/f2fWorkspace.test.ts "
-        "tests/trustedExecution.test.ts --environment node"
+        "tests/trustedExecution.test.ts tests/sessionHistory.test.ts "
+        "--environment node"
     )
     assert package["scripts"]["test:contracts"] == expected_contract_command
 

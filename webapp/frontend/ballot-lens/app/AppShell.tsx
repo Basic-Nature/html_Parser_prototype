@@ -34,6 +34,11 @@ import {
   reduceRunState,
 } from '../state/runMachine';
 import {
+  EMPTY_SESSION_HISTORY,
+  captureOwnedSession,
+  type SessionHistory,
+} from '../state/sessionHistory';
+import {
   canSubmit,
   canSubmitApprovedRegistrySource,
 } from '../state/selectors';
@@ -55,6 +60,10 @@ export function AppShell({
     useState<string | null>(null);
   const [publicRuntimeResult, setPublicRuntimeResult] =
     useState<PublicRuntimeResult | null>(null);
+  const [sessionHistory, setSessionHistory] =
+    useState<SessionHistory>(EMPTY_SESSION_HISTORY);
+  const [diagnosticSessionId, setDiagnosticSessionId] =
+    useState<string | null>(null);
   const [runState, dispatchRunEvent] = useReducer(
     reduceRunState,
     undefined,
@@ -70,7 +79,20 @@ export function AppShell({
   const trustedSelectionRef = useRef(trustedSelection);
 
   const dispatch = useCallback((event: RunEvent) => {
-    runStateRef.current = reduceRunState(runStateRef.current, event);
+    const nextState = reduceRunState(runStateRef.current, event);
+    runStateRef.current = nextState;
+
+    if (nextState.context.sessionId) {
+      setSessionHistory((current) => (
+        captureOwnedSession(current, nextState, event)
+      ));
+      setDiagnosticSessionId((current) => (
+        event.type === 'SESSION_CORRELATED'
+          ? nextState.context.sessionId
+          : current ?? nextState.context.sessionId
+      ));
+    }
+
     dispatchRunEvent(event);
   }, []);
 
@@ -285,7 +307,12 @@ export function AppShell({
         />
         <CheckpointRail runState={runState} />
       </main>
-      <DiagnosticsDrawer runState={runState} />
+      <DiagnosticsDrawer
+        runState={runState}
+        sessionHistory={sessionHistory}
+        selectedSessionId={diagnosticSessionId}
+        onSelectSession={setDiagnosticSessionId}
+      />
     </div>
   );
 }
