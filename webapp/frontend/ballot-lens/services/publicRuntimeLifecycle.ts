@@ -98,6 +98,21 @@ function ownsSelectedPublicRun(
   );
 }
 
+
+function ownsStructuredObservation(
+  state: RunState,
+  selectedRegistrySourceId: string | null,
+  sessionId: string,
+  registrySourceId: string,
+): boolean {
+  return (
+    state.status === 'running'
+    && state.context.sessionId === sessionId
+    && ownsSelectedPublicRun(state, selectedRegistrySourceId)
+    && registrySourceId === selectedRegistrySourceId
+  );
+}
+
 export function routePublicSocketObservation(
   eventName: PublicSocketEventName,
   payload: unknown,
@@ -133,6 +148,20 @@ export function routePublicSocketObservation(
       sessionId: observation.sessionId,
       startedAt: observedAt,
     }) });
+  }
+
+
+  if (observation.kind === 'checkpoint') {
+    if (!ownsStructuredObservation(state, selectedRegistrySourceId, observation.sessionId, observation.registrySourceId)) return null;
+    return Object.freeze({ event: Object.freeze({ type: 'CHECKPOINT_UPDATED' as const, sessionId: observation.sessionId, checkpoint: observation.checkpoint }) });
+  }
+  if (observation.kind === 'action_required') {
+    if (!ownsStructuredObservation(state, selectedRegistrySourceId, observation.sessionId, observation.registrySourceId)) return null;
+    return Object.freeze({ event: Object.freeze({ type: 'ACTION_REQUIRED' as const, sessionId: observation.sessionId, action: observation.action }) });
+  }
+  if (observation.kind === 'action_resolved') {
+    if (!ownsStructuredObservation(state, selectedRegistrySourceId, observation.sessionId, observation.registrySourceId)) return null;
+    return Object.freeze({ event: Object.freeze({ type: 'ACTION_RESOLVED' as const, sessionId: observation.sessionId, promptId: observation.promptId }) });
   }
 
   if (observation.kind !== 'runtime_result') return null;

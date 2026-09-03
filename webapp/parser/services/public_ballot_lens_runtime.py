@@ -10,6 +10,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import json
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any
@@ -48,6 +49,20 @@ PUBLIC_TERMINAL_REASON_CODES = frozenset(
     }
 )
 
+PUBLIC_CHECKPOINT_DEFINITIONS: dict[str, str] = {
+    "source.resolve": "Resolve Source",
+    "provider.detect": "Provider Detection",
+    "source.acquire": "Acquire",
+    "structure.detect": "Detect Structure",
+    "contest.select": "Contest Selection",
+    "vote_methods.detect": "Vote Method Selection",
+    "normalize.rows": "Normalize",
+    "validate.results": "Validate",
+    "preview.publish": "Preview",
+}
+PUBLIC_CHECKPOINT_STATES = frozenset({"pending", "active", "complete", "warning", "error"})
+PUBLIC_ACTION_TYPES = frozenset({"contest_selection", "vote_method_selection", "challenge", "other"})
+
 _PUBLIC_ADMISSION_CONTROLLER = PublicRunAdmissionController(
     DEFAULT_PUBLIC_RUN_POLICY
 )
@@ -74,6 +89,8 @@ class PublicBallotLensRuntime:
     _last_status: str | None = field(default=None, init=False)
     _terminal_status: str | None = field(default=None, init=False)
     _terminal_reason_code: str | None = field(default=None, init=False)
+
+    _checkpoint_sequence: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
         assert_public_execution_context(
@@ -132,6 +149,107 @@ class PublicBallotLensRuntime:
             )
         route("**/*", self.egress_guard.handle_sync_route)
 
+    def _safe_checkpoint_text(self, value: object | None, *, field: str, max_length: int, required: bool = False) -> str | None:
+        if value is None:
+            if required:
+                raise PublicBallotLensRuntimeError(f"Public runtime {field} is required.")
+            return None
+        text = str(value).strip()
+        if not text:
+            if required:
+                raise PublicBallotLensRuntimeError(f"Public runtime {field} is required.")
+            return None
+        if self.approved_target_url and self.approved_target_url in text:
+            raise PublicBallotLensRuntimeError(f"Public runtime {field} cannot disclose the approved target.")
+        return text[:max_length]
+
+    def record_checkpoint(self, *, checkpoint_id: str, state: str, reason_code: str | None = None, summary: str | None = None, evidence_count: int = 0, requires_action: bool = False, action_type: str | None = None) -> dict[str, object]:
+        checkpoint_key = str(checkpoint_id or "").strip()
+        label = PUBLIC_CHECKPOINT_DEFINITIONS.get(checkpoint_key)
+        if label is None:
+            raise PublicBallotLensRuntimeError("Unknown public runtime checkpoint.")
+        state_key = str(state or "").strip().lower()
+        if state_key not in PUBLIC_CHECKPOINT_STATES:
+            raise PublicBallotLensRuntimeError("Unknown public runtime checkpoint state.")
+        if isinstance(evidence_count, bool) or not isinstance(evidence_count, int) or evidence_count < 0:
+            raise PublicBallotLensRuntimeError("Public runtime checkpoint evidence count must be non-negative.")
+        if not isinstance(requires_action, bool):
+            raise PublicBallotLensRuntimeError("Public runtime checkpoint requires_action must be boolean.")
+        action_key = None
+        if action_type is not None:
+            action_key = str(action_type or "").strip().lower()
+            if action_key not in PUBLIC_ACTION_TYPES:
+                raise PublicBallotLensRuntimeError("Unknown public runtime checkpoint action type.")
+        if requires_action != (action_key is not None):
+            raise PublicBallotLensRuntimeError("Public runtime checkpoint action fields disagree.")
+        self._checkpoint_sequence += 1
+        checkpoint: dict[str, object] = {
+            "checkpoint_id": checkpoint_key,
+            "sequence": self._checkpoint_sequence,
+            "state": state_key,
+            "label": label,
+            "reason_code": self._safe_checkpoint_text(reason_code, field="checkpoint reason code", max_length=128),
+            "summary": self._safe_checkpoint_text(summary, field="checkpoint summary", max_length=360),
+            "evidence_count": evidence_count,
+            "requires_action": requires_action,
+            "action_type": action_key,
+            "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        if self.safe_emit is not None:
+            level = "ERROR" if state_key == "error" else "WARNING" if state_key == "warning" else "INFO"
+            self.safe_emit({
+                "level": level,
+                "type": "public_registry_checkpoint",
+                "message": "Structured public parser checkpoint updated.",
+                "reason_code": "public_registry_checkpoint_updated",
+                "registry_source_id": self.registry_source_id,
+                "checkpoint": dict(checkpoint),
+            })
+        return checkpoint
+
+    def record_action_required(self, *, prompt_id: str, checkpoint_id: str, action_type: str, summary: str) -> dict[str, object]:
+        prompt_key = self._safe_checkpoint_text(prompt_id, field="action prompt ID", max_length=128, required=True)
+        checkpoint_key = str(checkpoint_id or "").strip()
+        if checkpoint_key not in PUBLIC_CHECKPOINT_DEFINITIONS:
+            raise PublicBallotLensRuntimeError("Unknown public runtime action checkpoint.")
+        action_key = str(action_type or "").strip().lower()
+        if action_key not in PUBLIC_ACTION_TYPES:
+            raise PublicBallotLensRuntimeError("Unknown public runtime action type.")
+        safe_summary = self._safe_checkpoint_text(summary, field="action summary", max_length=360, required=True)
+        action: dict[str, object] = {"prompt_id": prompt_key, "checkpoint_id": checkpoint_key, "action_type": action_key, "summary": safe_summary}
+        if self.safe_emit is not None:
+            self.safe_emit({
+                "level": "WARNING",
+                "type": "public_registry_action_required",
+                "message": "Structured public parser action is required.",
+                "reason_code": "public_registry_action_required",
+                "registry_source_id": self.registry_source_id,
+                "action": dict(action),
+            })
+        return action
+
+    def record_result_checkpoints(self, *, headers: Sequence[str], contest: object | None) -> None:
+        contest_present = bool(str(contest or "").strip())
+        self.record_checkpoint(
+            checkpoint_id="contest.select",
+            state="complete" if contest_present else "warning",
+            reason_code="public_contest_context_present" if contest_present else "public_contest_context_missing",
+            summary="Parser result returned contest context." if contest_present else "Parser result did not expose contest context.",
+            evidence_count=1 if contest_present else 0,
+        )
+        method_headers = [
+            header for header in headers
+            if isinstance(header, str) and " - " in header
+            and not header.endswith(" - Total Votes") and not header.endswith(" - Total")
+        ]
+        self.record_checkpoint(
+            checkpoint_id="vote_methods.detect",
+            state="complete" if method_headers else "warning",
+            reason_code="public_vote_method_columns_present" if method_headers else "public_vote_method_columns_not_observed",
+            summary="Method-specific result columns were observed." if method_headers else "No method-specific result columns were observed.",
+            evidence_count=len(method_headers),
+        )
+
     def capture_finalized_output(
         self,
         *,
@@ -163,7 +281,28 @@ class PublicBallotLensRuntime:
             raise PublicBallotLensRuntimeError(
                 "Combined public previews exceed the output byte limit."
             )
+        self.record_checkpoint(
+            checkpoint_id="normalize.rows",
+            state="complete",
+            reason_code="public_finalized_row_shape_reached",
+            summary="Finalized Smart Elections row shape reached the public memory boundary.",
+            evidence_count=len(rows),
+        )
+        self.record_checkpoint(
+            checkpoint_id="validate.results",
+            state="complete",
+            reason_code="public_memory_preview_contract_validated",
+            summary="Public memory row/header contract validated; no canonical truth claim is implied.",
+            evidence_count=len(rows),
+        )
         self.finalized_previews.append(preview)
+        self.record_checkpoint(
+            checkpoint_id="preview.publish",
+            state="complete",
+            reason_code="public_memory_preview_retained",
+            summary="Validated result retained in app-owned memory preview.",
+            evidence_count=len(rows),
+        )
         return preview
 
     def record_processed_status(

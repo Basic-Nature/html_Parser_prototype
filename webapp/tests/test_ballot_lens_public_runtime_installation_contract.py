@@ -429,3 +429,50 @@ def test_public_challenge_guard_preserves_legacy_first_call_site_contract():
         < observation_index
         < threshold_index
     )
+
+def test_public_runtime_structured_checkpoint_and_action_payloads_are_url_safe():
+    events = []
+    rt = PublicBallotLensRuntime(registry_source_id=SOURCE_ID, source_projection=projection(), approved_target_url=SOURCE_URL, resolver=resolver, safe_emit=events.append)
+    checkpoint = rt.record_checkpoint(checkpoint_id="source.resolve", state="complete", reason_code="approved_public_registry_source_resolved", summary="Approved registry source authority confirmed.", evidence_count=1)
+    assert checkpoint["checkpoint_id"] == "source.resolve"
+    assert checkpoint["sequence"] == 1
+    assert events[-1]["reason_code"] == "public_registry_checkpoint_updated"
+    action = rt.record_action_required(prompt_id="public-challenge-assist", checkpoint_id="source.acquire", action_type="challenge", summary="Browser challenge requires interaction unavailable in public mode.")
+    assert action["action_type"] == "challenge"
+    assert events[-1]["reason_code"] == "public_registry_action_required"
+    assert SOURCE_URL not in repr(events)
+
+
+def test_public_runtime_checkpoint_authority_fails_closed():
+    rt = runtime()
+    with pytest.raises(Exception):
+        rt.record_checkpoint(checkpoint_id="unknown.checkpoint", state="complete")
+    with pytest.raises(Exception):
+        rt.record_checkpoint(checkpoint_id="source.resolve", state="mystery")
+    with pytest.raises(Exception):
+        rt.record_action_required(prompt_id="", checkpoint_id="source.acquire", action_type="challenge", summary="Malformed.")
+    with pytest.raises(Exception):
+        rt.record_action_required(prompt_id="public-challenge-assist", checkpoint_id="source.acquire", action_type="challenge", summary=SOURCE_URL)
+
+
+def test_public_runtime_result_checkpoint_evidence_does_not_invent_vote_methods():
+    events = []
+    rt = PublicBallotLensRuntime(registry_source_id=SOURCE_ID, source_projection=projection(), approved_target_url=SOURCE_URL, resolver=resolver, safe_emit=events.append)
+    rt.record_result_checkpoints(headers=["Precinct", "Candidate - Total Votes"], contest="President")
+    checkpoints = [e["checkpoint"] for e in events if e.get("reason_code") == "public_registry_checkpoint_updated"]
+    assert checkpoints[0]["checkpoint_id"] == "contest.select" and checkpoints[0]["state"] == "complete"
+    assert checkpoints[1]["checkpoint_id"] == "vote_methods.detect" and checkpoints[1]["state"] == "warning" and checkpoints[1]["evidence_count"] == 0
+    events.clear()
+    rt.record_result_checkpoints(headers=["Precinct", "Candidate - Election Day", "Candidate - Total Votes"], contest="President")
+    method_checkpoint = [e["checkpoint"] for e in events if e.get("checkpoint", {}).get("checkpoint_id") == "vote_methods.detect"][0]
+    assert method_checkpoint["state"] == "complete" and method_checkpoint["evidence_count"] == 1
+
+
+def test_public_memory_capture_authors_normalize_validate_preview_checkpoints():
+    events = []
+    rt = PublicBallotLensRuntime(registry_source_id=SOURCE_ID, source_projection=projection(), approved_target_url=SOURCE_URL, resolver=resolver, safe_emit=events.append)
+    rt.capture_finalized_output(headers=["Precinct", "Candidate - Total Votes"], rows=[{"Precinct": None, "Candidate - Total Votes": 0}])
+    ids = [e["checkpoint"]["checkpoint_id"] for e in events if e.get("reason_code") == "public_registry_checkpoint_updated"]
+    assert ids == ["normalize.rows", "validate.results", "preview.publish"]
+    assert SOURCE_URL not in repr(events)
+

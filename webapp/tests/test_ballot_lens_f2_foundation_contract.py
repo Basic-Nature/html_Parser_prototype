@@ -230,7 +230,7 @@ def test_f2c_app_shell_is_componentized_presentation_only_and_honest():
     assert "NULL preserved" in workspace
     assert "No precinct inference" in workspace
     assert "Provenance retained" in workspace
-    assert "0 / 9" in checkpoints
+    assert "completeCount" in checkpoints
     assert "Awaiting run" in checkpoints
     assert "Diagnostics &amp; audit trail" in diagnostics
     assert "No correlated runtime events yet" in diagnostics
@@ -529,3 +529,31 @@ def test_f2f_results_validation_metadata_provenance_workspace_contract():
         "--environment node"
     )
     assert package["scripts"]["test:contracts"] == expected_contract_command
+
+def test_f2g_checkpoint_action_required_is_server_evidence_only_and_display_only():
+    shell = _read(F2_APP_SHELL)
+    rail = _read(F2_CHECKPOINT_RAIL)
+    adapter = _read(ROOT / "webapp/frontend/ballot-lens/services/socketAdapter.ts")
+    lifecycle = _read(ROOT / "webapp/frontend/ballot-lens/services/publicRuntimeLifecycle.ts")
+    socket_client = _read(ROOT / "webapp/frontend/ballot-lens/services/socketClient.ts")
+    parser = _read(ROOT / "webapp/parser/html_election_parser.py")
+    public_runtime = _read(ROOT / "webapp/parser/services/public_ballot_lens_runtime.py")
+    lifecycle_test = _read(ROOT / "webapp/frontend/ballot-lens/tests/publicRuntimeLifecycle.test.ts")
+
+    assert "<CheckpointRail runState={runState} />" in shell
+    assert "completeCount" in rail and "data-state={state}" in rail
+    assert "Action required" in rail and "Display only" in rail and "<button" not in rail
+    assert "public_registry_checkpoint_updated" in adapter
+    assert "public_registry_action_required" in adapter
+    assert "CHECKPOINT_UPDATED" in lifecycle and "ACTION_REQUIRED" in lifecycle
+    assert "pretend checkpoint complete" in lifecycle_test
+    assert "event: 'ballot_lens'" in socket_client
+    assert "public_registry_action_required" not in socket_client
+    assert "record_checkpoint(" in public_runtime and "record_action_required(" in public_runtime
+    assert "record_result_checkpoints(" in public_runtime and "record_result_checkpoints(" in parser
+    assert "public-challenge-assist" in parser
+    combined = rail + "\n" + adapter + "\n" + lifecycle + "\n" + public_runtime
+    assert "direct_urls" not in combined
+    assert "target_url" not in adapter and "approved_target_url" not in adapter
+    assert "socket.emit('public_registry_action" not in combined
+

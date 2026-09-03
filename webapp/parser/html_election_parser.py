@@ -1638,6 +1638,15 @@ def orchestrate_url(
             "Public runtime target differs from server-approved registry URL."
         )
 
+    if public_runtime is not None:
+        public_runtime.record_checkpoint(
+            checkpoint_id="source.resolve",
+            state="complete",
+            reason_code="approved_public_registry_source_resolved",
+            summary="Approved registry source resolved to the exact server-authorized target.",
+            evidence_count=1,
+        )
+
     msg = f"Navigating to: {target_url}"
     payload = {
         "level": "INFO",
@@ -2031,6 +2040,15 @@ def orchestrate_url(
                 "trust_score": trust_score
             })
     
+    if public_runtime is not None:
+        public_runtime.record_checkpoint(
+            checkpoint_id="source.acquire",
+            state="active",
+            reason_code="public_source_acquisition_started",
+            summary="Approved public source acquisition started.",
+            evidence_count=0,
+        )
+
     strategies = [
         {"agent": "playwright", "timeout_ms": NAV_TIMEOUT_PLAYWRIGHT_MS},
     ]
@@ -2093,8 +2111,31 @@ def orchestrate_url(
                                 pass
                             playwright_instance = None
                         continue
+                    if public_runtime is not None:
+                        public_runtime.record_checkpoint(
+                            checkpoint_id="source.acquire",
+                            state="complete",
+                            reason_code="public_source_acquired",
+                            summary="Approved public source navigation completed.",
+                            evidence_count=1,
+                        )
                     if nav_meta.get("cloudflare_detected") and ENABLE_SELENIUM_FALLBACK:
                         if public_runtime is not None:
+                            public_runtime.record_checkpoint(
+                                checkpoint_id="source.acquire",
+                                state="warning",
+                                reason_code="public_challenge_assist_disabled",
+                                summary="Browser challenge requires interaction unavailable in public mode.",
+                                evidence_count=1,
+                                requires_action=True,
+                                action_type="challenge",
+                            )
+                            public_runtime.record_action_required(
+                                prompt_id="public-challenge-assist",
+                                checkpoint_id="source.acquire",
+                                action_type="challenge",
+                                summary="Browser challenge requires interaction unavailable in public mode.",
+                            )
                             logger.warning({
                                 "level": "WARNING",
                                 "type": "public_runtime",
@@ -2420,6 +2461,14 @@ def orchestrate_url(
                 pass
 
         dom_table_rows = _count_dom_table_rows(page)
+        if public_runtime is not None:
+            public_runtime.record_checkpoint(
+                checkpoint_id="structure.detect",
+                state="complete" if dom_table_rows > 0 else "warning",
+                reason_code="public_dom_table_structure_observed" if dom_table_rows > 0 else "public_dom_table_structure_not_observed",
+                summary="Tabular DOM structure observed." if dom_table_rows > 0 else "No tabular DOM structure was observed.",
+                evidence_count=max(0, int(dom_table_rows or 0)),
+            )
         download_parse_tuple = None
         handled = False
         if dom_table_rows <= 0 and public_runtime is not None:
@@ -2521,6 +2570,15 @@ def orchestrate_url(
                 pass
             handler = handler_result.get("handler") if isinstance(handler_result, dict) else None
             summary = handler_result.get("summary") if isinstance(handler_result, dict) else None
+
+            if public_runtime is not None:
+                public_runtime.record_checkpoint(
+                    checkpoint_id="provider.detect",
+                    state="complete",
+                    reason_code="public_jurisdiction_handler_resolved" if handler is not None else "public_generic_html_fallback_resolved",
+                    summary="Parser route resolved to a jurisdiction handler." if handler is not None else "Parser route resolved to generic HTML fallback.",
+                    evidence_count=1,
+                )
 
             if summary and isinstance(summary, dict) and summary.get("log"):
                 log_entries = summary.get("log")
@@ -2629,6 +2687,9 @@ def orchestrate_url(
                 pass
 
             headers, data, contest, metadata = result
+
+            if public_runtime is not None:
+                public_runtime.record_result_checkpoints(headers=headers, contest=contest)
 
             if isinstance(metadata, dict) and metadata.get("error"):
                 msg = f"Handler reported error: {metadata.get('error')} (Session: {session_id})"

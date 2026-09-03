@@ -261,4 +261,66 @@ describe('F2-E3/E4 public runtime lifecycle', () => {
     expect(state.context.checkpoints.every(({ sequence }) => sequence === 0))
       .toBe(true);
   });
+
+  it('accepts only owned structured checkpoint and action evidence', () => {
+    const harness = socketHarness();
+    let state = awaitingSession();
+    const dispatched: RunEvent[] = [];
+    let protocolErrorCount = 0;
+    const dispatch = (event: RunEvent) => { dispatched.push(event); state = reduceRunState(state, event); };
+    installPublicRuntimeLifecycle(harness.socket, {
+      getRunState: () => state,
+      getSelectedRegistrySourceId: () => 'source-ut', dispatch,
+      onRuntimeResult: () => undefined,
+      onProtocolError: () => { protocolErrorCount += 1; },
+      now: () => '2026-09-02T08:30:00Z',
+    });
+    harness.trigger('parser_output', { reason_code: 'public_registry_runtime_started', session_id: 'owned-session' });
+    harness.trigger('parser_output', {
+      reason_code: 'public_registry_checkpoint_updated', session_id: 'owned-session', registry_source_id: 'source-ut',
+      checkpoint: { checkpoint_id: 'source.resolve', sequence: 1, state: 'complete', label: 'Resolve Source', reason_code: 'approved_public_registry_source_resolved', summary: 'Approved registry source authority confirmed.', evidence_count: 1, requires_action: false, action_type: null, updated_at: '2026-09-02T08:30:01Z' },
+    });
+    expect(state.context.checkpoints[0]).toMatchObject({ checkpointId: 'source.resolve', sequence: 1, state: 'complete' });
+    harness.trigger('parser_output', { level: 'INFO', type: 'status', message: 'pretend checkpoint complete', session_id: 'owned-session' });
+    expect(state.context.checkpoints.filter(({ sequence }) => sequence > 0)).toHaveLength(1);
+    harness.trigger('parser_output', {
+      reason_code: 'public_registry_checkpoint_updated', session_id: 'foreign-session', registry_source_id: 'source-ut',
+      checkpoint: { checkpoint_id: 'source.acquire', sequence: 2, state: 'complete', label: 'Acquire', reason_code: null, summary: 'Foreign event.', evidence_count: 1, requires_action: false, action_type: null, updated_at: '2026-09-02T08:30:02Z' },
+    });
+    expect(state.context.currentCheckpoint).toBe('source.resolve');
+    harness.trigger('parser_output', {
+      reason_code: 'public_registry_action_required', session_id: 'owned-session', registry_source_id: 'source-ut',
+      action: { prompt_id: 'public-challenge-assist', checkpoint_id: 'source.acquire', action_type: 'challenge', summary: 'Browser challenge requires interaction unavailable in public mode.' },
+    });
+    expect(state.context.actionRequired).toEqual({ promptId: 'public-challenge-assist', checkpointId: 'source.acquire', actionType: 'challenge', summary: 'Browser challenge requires interaction unavailable in public mode.' });
+    expect(protocolErrorCount).toBe(0);
+    expect(dispatched.map(({ type }) => type)).toContain('CHECKPOINT_UPDATED');
+    expect(dispatched.map(({ type }) => type)).toContain('ACTION_REQUIRED');
+  });
+
+  it('rejects malformed or unknown structured checkpoint evidence', () => {
+    const harness = socketHarness();
+    let state = awaitingSession();
+    let protocolErrorCount = 0;
+    const dispatch = (event: RunEvent) => { state = reduceRunState(state, event); };
+    installPublicRuntimeLifecycle(harness.socket, {
+      getRunState: () => state,
+      getSelectedRegistrySourceId: () => 'source-ut', dispatch,
+      onRuntimeResult: () => undefined,
+      onProtocolError: () => { protocolErrorCount += 1; },
+    });
+    harness.trigger('parser_output', { reason_code: 'public_registry_runtime_started', session_id: 'owned-session' });
+    harness.trigger('parser_output', {
+      reason_code: 'public_registry_checkpoint_updated', session_id: 'owned-session', registry_source_id: 'source-ut',
+      checkpoint: { checkpoint_id: 'not-a-checkpoint', sequence: 1, state: 'complete', label: 'Nope', reason_code: null, summary: null, evidence_count: 1, requires_action: false, action_type: null, updated_at: null },
+    });
+    harness.trigger('parser_output', {
+      reason_code: 'public_registry_action_required', session_id: 'owned-session', registry_source_id: 'source-ut',
+      action: { prompt_id: '', checkpoint_id: 'source.acquire', action_type: 'challenge', summary: 'Malformed.' },
+    });
+    expect(protocolErrorCount).toBe(2);
+    expect(state.context.checkpoints.every(({ sequence }) => sequence === 0)).toBe(true);
+    expect(state.context.actionRequired).toBeNull();
+  });
+
 });

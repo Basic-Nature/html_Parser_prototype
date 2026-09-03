@@ -195,7 +195,7 @@ export function AppShell({ bootstrap }: AppShellProps) {
           submitError={submitError}
           onRun={handleRun}
         />
-        <CheckpointRail />
+        <CheckpointRail runState={runState} />
       </main>
       <DiagnosticsDrawer runState={runState} />
     </div>
