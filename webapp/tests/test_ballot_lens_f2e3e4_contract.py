@@ -40,7 +40,7 @@ def test_f2e3e4_routes_exact_events_through_existing_authorities():
     assert "observation.result.registry_source_id !== selectedRegistrySourceId" in lifecycle
 
 
-def test_f2e3e4_handoff_is_typed_memory_only_and_stops_before_workspace():
+def test_f2e3e4_handoff_remains_typed_and_memory_only():
     app = _read(APP_SHELL)
     lifecycle = _read(LIFECYCLE)
     package = _read(PACKAGE)
@@ -50,8 +50,6 @@ def test_f2e3e4_handoff_is_typed_memory_only_and_stops_before_workspace():
     assert "runtimeResult={publicRuntimeResult}" in app
     assert "persistence: 'memory_only'" in lifecycle
     assert "downloadAvailable: false" in lifecycle
-    assert "CHECKPOINT_UPDATED" not in lifecycle
-    assert "ACTION_REQUIRED" not in lifecycle
     assert "publicRuntimeLifecycle.test.ts" in package
 
 
