@@ -404,6 +404,14 @@ def _get_active_public_runtime():
         return None
 
 
+def _get_active_checkpoint_runtime():
+    try:
+        from ..services.ballot_lens_checkpoint_runtime import current_ballot_lens_checkpoint_runtime
+        return current_ballot_lens_checkpoint_runtime()
+    except Exception:
+        return None
+
+
 def _finalize_public_memory_output(
     *,
     runtime,
@@ -475,6 +483,7 @@ def finalize_election_output(
     Returns: {"csv_path": ..., "metadata_path": ...}
     """
     public_runtime = _get_active_public_runtime()
+    checkpoint_runtime = _get_active_checkpoint_runtime()
     if public_runtime is not None:
         return _finalize_public_memory_output(
             runtime=public_runtime,
@@ -584,6 +593,9 @@ def finalize_election_output(
         safe = coerce_percent_strings(safe)
         safe_rows.append(safe)
 
+    if checkpoint_runtime is not None and public_runtime is None:
+        checkpoint_runtime.record_checkpoint(checkpoint_id='normalize.rows',state='complete',reason_code='trusted_normalized_rows_ready',summary='Trusted output reached finalized Smart Elections row shape.',evidence_count=len(safe_rows))
+
     # Optional passive database cross-check against existing reference metadata.
     # This does not block output writes unless fail-on-mismatch gate is enabled.
     fail_cross_check = False
@@ -662,6 +674,8 @@ def finalize_election_output(
         )
 
     if fail_cross_check:
+        if checkpoint_runtime is not None and public_runtime is None:
+            checkpoint_runtime.record_checkpoint(checkpoint_id='validate.results',state='error',reason_code='trusted_validation_blocked_output',summary='Trusted output was blocked by existing validation.',evidence_count=len(safe_rows))
         logger.error(
             {
                 "level": "ERROR",
@@ -673,6 +687,9 @@ def finalize_election_output(
             }
         )
         return {"csv_path": "", "metadata_path": ""}
+
+    if checkpoint_runtime is not None and public_runtime is None:
+        checkpoint_runtime.record_checkpoint(checkpoint_id='validate.results',state='complete',reason_code='trusted_validation_completed',summary='Trusted output passed active validation gates.',evidence_count=len(safe_rows))
 
     # Write CSV
     def _write_csv(path: str, fieldnames: list[str], rows: list[dict]) -> bool:
@@ -693,7 +710,12 @@ def finalize_election_output(
             })
             return False
     if not _write_csv(csv_path, headers_final, safe_rows):
+        if checkpoint_runtime is not None and public_runtime is None:
+            checkpoint_runtime.record_checkpoint(checkpoint_id='preview.publish',state='error',reason_code='trusted_persisted_output_write_failed',summary='Trusted persisted output write failed.',evidence_count=0)
         return {"csv_path": "", "metadata_path": ""}
+
+    if checkpoint_runtime is not None and public_runtime is None:
+        checkpoint_runtime.record_checkpoint(checkpoint_id='preview.publish',state='complete',reason_code='trusted_persisted_output_written',summary='Trusted validated output was persisted by the existing writer.',evidence_count=len(safe_rows))
 
     # Build a simple row->byte-offset index for the CSV to support jump-to-row.
     def _build_csv_index(csv_path: str, max_rows: int = 200000) -> Optional[str]:

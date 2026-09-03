@@ -59,7 +59,9 @@ export function WorkspaceShell({
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('Results');
   const selectedLabel = selectedSource
     ? registrySourceLabel(selectedSource)
-    : null;
+    : runState.context.sourceSummary?.displayLabel ?? null;
+  const trustedTerminalReady = runState.status === 'terminal' && runState.context.runMode !== null && runState.context.runMode !== 'public_registry';
+  const trustedPersistedOutputs = trustedTerminalReady ? runState.context.outputs.filter((output) => output.persistence === 'persisted') : [];
 
   return (
     <section className="blf2-workspace" aria-label="Parser workspace">
@@ -68,8 +70,8 @@ export function WorkspaceShell({
           <span className="blf2-kicker">Parser workspace</span>
           <h1>{selectedLabel ?? 'Select an approved source to begin'}</h1>
           <p>
-            Approved-source submission sends only the selected registry ID.
-            The server owns the session; terminal output remains memory-only.
+            {runState.context.runMode === 'public_registry' ? 'Approved-source submission sends only the selected registry ID. ' : 'Trusted submission uses the existing certificate-gated URL/upload path. '}
+            The server owns the session and structured checkpoint evidence.
           </p>
         </div>
         <div className="blf2-workspace-state" aria-label="Workspace state">
@@ -121,6 +123,8 @@ export function WorkspaceShell({
               validation signals, safe metadata, and retained provenance.
             </p>
           </div>
+        ) : trustedTerminalReady ? (
+          <div className="blf2-empty-result blf2-result-ready" role="status"><strong>Trusted parser run is complete</strong><p>{trustedPersistedOutputs.length} persisted output artifact(s) reported by the existing trusted writer. No preview rows or vote totals are synthesized.</p></div>
         ) : (
           <div className="blf2-empty-result" role="status">
             <span className="blf2-empty-orbit" aria-hidden="true"><span /></span>

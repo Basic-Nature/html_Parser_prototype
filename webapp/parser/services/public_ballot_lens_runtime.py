@@ -15,6 +15,8 @@ import json
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any
 
+from .ballot_lens_checkpoint_runtime import activate_ballot_lens_checkpoint_runtime
+
 from .public_ballot_lens_egress import (
     DnsResolver,
     PublicBrowserEgressGuard,
@@ -428,7 +430,8 @@ def activate_public_runtime(
         _ACTIVE_PUBLIC_RUNTIME.set(runtime)
     )
     try:
-        yield runtime
+        with activate_ballot_lens_checkpoint_runtime(runtime):
+            yield runtime
     finally:
         _ACTIVE_PUBLIC_RUNTIME.reset(token)
 

@@ -110,6 +110,14 @@ def _get_active_public_runtime():
         return None
 
 
+def _get_active_checkpoint_runtime():
+    try:
+        from .services.ballot_lens_checkpoint_runtime import current_ballot_lens_checkpoint_runtime
+        return current_ballot_lens_checkpoint_runtime()
+    except Exception:
+        return None
+
+
 def emit_telemetry_event(*args, **kwargs):
     if _get_active_public_runtime() is not None:
         return None
@@ -1630,6 +1638,8 @@ def orchestrate_url(
     rejected_downloads = set()
     coordinator = ContextCoordinator()
     public_runtime = _get_active_public_runtime()
+    checkpoint_runtime = _get_active_checkpoint_runtime()
+    checkpoint_is_public = checkpoint_runtime is not None and checkpoint_runtime is public_runtime
     if (
         public_runtime is not None
         and target_url != public_runtime.approved_target_url
@@ -1638,11 +1648,11 @@ def orchestrate_url(
             "Public runtime target differs from server-approved registry URL."
         )
 
-    if public_runtime is not None:
-        public_runtime.record_checkpoint(
+    if checkpoint_runtime is not None:
+        checkpoint_runtime.record_checkpoint(
             checkpoint_id="source.resolve",
             state="complete",
-            reason_code="approved_public_registry_source_resolved",
+            reason_code=("approved_public_registry_source_resolved" if checkpoint_is_public else "trusted_source_resolved"),
             summary="Approved registry source resolved to the exact server-authorized target.",
             evidence_count=1,
         )
@@ -2040,11 +2050,11 @@ def orchestrate_url(
                 "trust_score": trust_score
             })
     
-    if public_runtime is not None:
-        public_runtime.record_checkpoint(
+    if checkpoint_runtime is not None:
+        checkpoint_runtime.record_checkpoint(
             checkpoint_id="source.acquire",
             state="active",
-            reason_code="public_source_acquisition_started",
+            reason_code=("public_source_acquisition_started" if checkpoint_is_public else "trusted_source_acquisition_started"),
             summary="Approved public source acquisition started.",
             evidence_count=0,
         )
@@ -2111,15 +2121,18 @@ def orchestrate_url(
                                 pass
                             playwright_instance = None
                         continue
-                    if public_runtime is not None:
-                        public_runtime.record_checkpoint(
+                    if checkpoint_runtime is not None:
+                        checkpoint_runtime.record_checkpoint(
                             checkpoint_id="source.acquire",
                             state="complete",
-                            reason_code="public_source_acquired",
+                            reason_code=("public_source_acquired" if checkpoint_is_public else "trusted_source_acquired"),
                             summary="Approved public source navigation completed.",
                             evidence_count=1,
                         )
                     if nav_meta.get("cloudflare_detected") and ENABLE_SELENIUM_FALLBACK:
+                        if checkpoint_runtime is not None and public_runtime is None and hasattr(checkpoint_runtime, 'record_action_resolved'):
+                            checkpoint_runtime.record_checkpoint(checkpoint_id='source.acquire',state='warning',reason_code='trusted_challenge_observed',summary='Trusted challenge requires owned interaction.',evidence_count=1,requires_action=True,action_type='challenge')
+                            checkpoint_runtime.record_action_required(prompt_id='trusted-challenge-assist',checkpoint_id='source.acquire',action_type='challenge',summary='Trusted challenge requires owned interaction.')
                         if public_runtime is not None:
                             public_runtime.record_checkpoint(
                                 checkpoint_id="source.acquire",
@@ -2461,11 +2474,11 @@ def orchestrate_url(
                 pass
 
         dom_table_rows = _count_dom_table_rows(page)
-        if public_runtime is not None:
-            public_runtime.record_checkpoint(
+        if checkpoint_runtime is not None:
+            checkpoint_runtime.record_checkpoint(
                 checkpoint_id="structure.detect",
                 state="complete" if dom_table_rows > 0 else "warning",
-                reason_code="public_dom_table_structure_observed" if dom_table_rows > 0 else "public_dom_table_structure_not_observed",
+                reason_code=(("public_dom_table_structure_observed" if dom_table_rows > 0 else "public_dom_table_structure_not_observed") if checkpoint_is_public else ("trusted_dom_table_structure_observed" if dom_table_rows > 0 else "trusted_dom_table_structure_not_observed")),
                 summary="Tabular DOM structure observed." if dom_table_rows > 0 else "No tabular DOM structure was observed.",
                 evidence_count=max(0, int(dom_table_rows or 0)),
             )
@@ -2571,11 +2584,11 @@ def orchestrate_url(
             handler = handler_result.get("handler") if isinstance(handler_result, dict) else None
             summary = handler_result.get("summary") if isinstance(handler_result, dict) else None
 
-            if public_runtime is not None:
-                public_runtime.record_checkpoint(
+            if checkpoint_runtime is not None:
+                checkpoint_runtime.record_checkpoint(
                     checkpoint_id="provider.detect",
                     state="complete",
-                    reason_code="public_jurisdiction_handler_resolved" if handler is not None else "public_generic_html_fallback_resolved",
+                    reason_code=(("public_jurisdiction_handler_resolved" if handler is not None else "public_generic_html_fallback_resolved") if checkpoint_is_public else ("trusted_jurisdiction_handler_resolved" if handler is not None else "trusted_generic_html_fallback_resolved")),
                     summary="Parser route resolved to a jurisdiction handler." if handler is not None else "Parser route resolved to generic HTML fallback.",
                     evidence_count=1,
                 )
@@ -2688,8 +2701,8 @@ def orchestrate_url(
 
             headers, data, contest, metadata = result
 
-            if public_runtime is not None:
-                public_runtime.record_result_checkpoints(headers=headers, contest=contest)
+            if checkpoint_runtime is not None:
+                checkpoint_runtime.record_result_checkpoints(headers=headers, contest=contest)
 
             if isinstance(metadata, dict) and metadata.get("error"):
                 msg = f"Handler reported error: {metadata.get('error')} (Session: {session_id})"

@@ -13,6 +13,7 @@ export interface BallotLensBootstrap {
   readonly trustedControls: boolean;
   readonly publicRegistryApi: string;
   readonly dataApiUrl: string;
+  readonly uploadedFiles: readonly string[];
   readonly socketIo: SocketIoClientBootstrap;
   readonly phase: 'F2-E4';
 }
@@ -96,6 +97,48 @@ export function parseSocketIoClientBootstrap(
   });
 }
 
+function parseUploadedFiles(
+  raw: string | undefined,
+): readonly string[] {
+  if (!raw) {
+    return Object.freeze([]);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('Invalid uploaded-files bootstrap');
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error('uploaded-files must be array');
+  }
+
+  const output: string[] = [];
+  for (const entry of parsed) {
+    const candidate = typeof entry === 'string'
+      ? entry
+      : isRecord(entry) && typeof entry.path === 'string'
+        ? entry.path
+        : isRecord(entry) && typeof entry.name === 'string'
+          ? entry.name
+          : '';
+    const normalized = candidate
+      .replace(/\\/g, '/')
+      .replace(/^\/+/, '')
+      .trim();
+    if (
+      normalized
+      && !normalized.includes('../')
+      && !normalized.startsWith('..')
+      && !output.includes(normalized)
+    ) {
+      output.push(normalized);
+    }
+  }
+  return Object.freeze(output);
+}
+
 export function readBallotLensBootstrap(
   root: HTMLElement,
 ): BallotLensBootstrap {
@@ -121,6 +164,7 @@ export function readBallotLensBootstrap(
     trustedControls,
     publicRegistryApi: requireDatasetValue(root, 'publicRegistryApi'),
     dataApiUrl: root.dataset.dataApiUrl ?? '',
+    uploadedFiles: parseUploadedFiles(root.dataset.uploadedFiles),
     socketIo: parseSocketIoClientBootstrap(
       requireDatasetValue(root, 'socketioConfig'),
     ),

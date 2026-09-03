@@ -14,7 +14,7 @@ import {
   type PublicRegistrySource,
 } from '../contracts/registry';
 import type { PublicRuntimeResult } from '../contracts/publicRuntime';
-import type { RunEvent } from '../contracts/runtime';
+import type { RunEvent, RunMode } from '../contracts/runtime';
 import { HeaderBar } from '../components/common/HeaderBar';
 import { CheckpointRail } from '../components/checkpoints/CheckpointRail';
 import { DiagnosticsDrawer } from '../components/diagnostics/DiagnosticsDrawer';
@@ -25,6 +25,11 @@ import { submitApprovedRegistrySource } from '../services/publicSubmit';
 import { installPublicRuntimeLifecycle } from '../services/publicRuntimeLifecycle';
 import { createDormantBallotLensSocket } from '../services/socketClient';
 import {
+  installTrustedRuntimeLifecycle,
+  submitTrustedSource,
+  type TrustedSourceSelection,
+} from '../services/trustedExecution';
+import {
   createInitialRunState,
   reduceRunState,
 } from '../state/runMachine';
@@ -33,16 +38,21 @@ import {
   canSubmitApprovedRegistrySource,
 } from '../state/selectors';
 
-interface AppShellProps {
+export function AppShell({
+  bootstrap,
+}: {
   readonly bootstrap: BallotLensBootstrap;
-}
-
-export function AppShell({ bootstrap }: AppShellProps) {
+}) {
   const [registryEnvelope, setRegistryEnvelope] =
     useState<PublicRegistryEnvelope | null>(null);
   const [selectedSource, setSelectedSource] =
     useState<PublicRegistrySource | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [activeMode, setActiveMode] =
+    useState<RunMode>('public_registry');
+  const [trustedSelection, setTrustedSelection] =
+    useState<TrustedSourceSelection | null>(null);
+  const [submitError, setSubmitError] =
+    useState<string | null>(null);
   const [publicRuntimeResult, setPublicRuntimeResult] =
     useState<PublicRuntimeResult | null>(null);
   const [runState, dispatchRunEvent] = useReducer(
@@ -50,14 +60,16 @@ export function AppShell({ bootstrap }: AppShellProps) {
     undefined,
     () => createInitialRunState(),
   );
+
   const socket = useMemo(
     () => createDormantBallotLensSocket(bootstrap.socketIo),
     [bootstrap.socketIo],
   );
   const runStateRef = useRef(runState);
   const selectedSourceRef = useRef(selectedSource);
+  const trustedSelectionRef = useRef(trustedSelection);
 
-  const dispatchOwnedRunEvent = useCallback((event: RunEvent) => {
+  const dispatch = useCallback((event: RunEvent) => {
     runStateRef.current = reduceRunState(runStateRef.current, event);
     dispatchRunEvent(event);
   }, []);
@@ -76,11 +88,34 @@ export function AppShell({ bootstrap }: AppShellProps) {
     if (!envelope) {
       setSelectedSource(null);
       selectedSourceRef.current = null;
-      dispatchOwnedRunEvent({ type: 'RESET' });
+      dispatch({ type: 'RESET' });
     }
-  }, [dispatchOwnedRunEvent]);
+  }, [dispatch]);
 
-  const handleSelectionChange = useCallback((
+  const handleModeChange = useCallback((mode: RunMode) => {
+    if (
+      selectionLocked
+      || mode === activeMode
+      || (mode !== 'public_registry' && !bootstrap.trustedControls)
+    ) {
+      return;
+    }
+    setActiveMode(mode);
+    setSubmitError(null);
+    setPublicRuntimeResult(null);
+    setSelectedSource(null);
+    selectedSourceRef.current = null;
+    setTrustedSelection(null);
+    trustedSelectionRef.current = null;
+    dispatch({ type: 'RESET' });
+  }, [
+    activeMode,
+    bootstrap.trustedControls,
+    dispatch,
+    selectionLocked,
+  ]);
+
+  const handlePublicSelection = useCallback((
     source: PublicRegistrySource | null,
   ) => {
     setSubmitError(null);
@@ -88,10 +123,10 @@ export function AppShell({ bootstrap }: AppShellProps) {
     setSelectedSource(source);
     selectedSourceRef.current = source;
     if (!source) {
-      dispatchOwnedRunEvent({ type: 'RESET' });
+      dispatch({ type: 'RESET' });
       return;
     }
-    dispatchOwnedRunEvent({
+    dispatch({
       type: 'SOURCE_SELECTED',
       runMode: 'public_registry',
       sourceSummary: {
@@ -100,54 +135,93 @@ export function AppShell({ bootstrap }: AppShellProps) {
         registrySourceId: source.registry_source_id,
       },
     });
-  }, [dispatchOwnedRunEvent]);
+  }, [dispatch]);
 
-  const runEligible = canSubmitApprovedRegistrySource(
-    registryEnvelope,
-    selectedSource,
-  ) && canSubmit(runState);
-
-  const handleRun = useCallback(() => {
-    if (
-      !selectedSource
-      || !canSubmitApprovedRegistrySource(registryEnvelope, selectedSource)
-      || !canSubmit(runState)
-    ) {
-      return;
-    }
-
+  const handleTrustedSelection = useCallback((
+    selection: TrustedSourceSelection | null,
+  ) => {
     setSubmitError(null);
     setPublicRuntimeResult(null);
-    dispatchOwnedRunEvent({ type: 'SUBMIT_REQUESTED' });
+    setTrustedSelection(selection);
+    trustedSelectionRef.current = selection;
+    if (!selection) {
+      dispatch({ type: 'RESET' });
+      return;
+    }
+    dispatch({
+      type: 'SOURCE_SELECTED',
+      runMode: selection.runMode,
+      sourceSummary: {
+        runMode: selection.runMode,
+        displayLabel: selection.displayLabel,
+      },
+    });
+  }, [dispatch]);
+
+  const runEligible = (
+    activeMode === 'public_registry'
+    && canSubmitApprovedRegistrySource(registryEnvelope, selectedSource)
+    && canSubmit(runState)
+  ) || (
+    activeMode !== 'public_registry'
+    && bootstrap.trustedControls
+    && trustedSelection?.runMode === activeMode
+    && runState.context.runMode === activeMode
+    && canSubmit(runState)
+  );
+
+  const handleRun = useCallback(() => {
+    if (!canSubmit(runState)) {
+      return;
+    }
+    setSubmitError(null);
+    setPublicRuntimeResult(null);
+    dispatch({ type: 'SUBMIT_REQUESTED' });
     try {
-      submitApprovedRegistrySource(
-        socket,
-        selectedSource.registry_source_id,
-      );
-      dispatchOwnedRunEvent({ type: 'SUBMISSION_ACCEPTED' });
+      if (activeMode === 'public_registry') {
+        if (
+          !selectedSource
+          || !canSubmitApprovedRegistrySource(
+            registryEnvelope,
+            selectedSource,
+          )
+        ) {
+          dispatch({ type: 'RESET' });
+          return;
+        }
+        submitApprovedRegistrySource(
+          socket,
+          selectedSource.registry_source_id,
+        );
+      } else {
+        if (
+          !bootstrap.trustedControls
+          || !trustedSelection
+          || trustedSelection.runMode !== activeMode
+        ) {
+          dispatch({ type: 'RESET' });
+          return;
+        }
+        submitTrustedSource(socket, trustedSelection);
+      }
+      dispatch({ type: 'SUBMISSION_ACCEPTED' });
     } catch (error: unknown) {
-      dispatchOwnedRunEvent({ type: 'RESET' });
-      dispatchOwnedRunEvent({
-        type: 'SOURCE_SELECTED',
-        runMode: 'public_registry',
-        sourceSummary: {
-          runMode: 'public_registry',
-          displayLabel: registrySourceLabel(selectedSource),
-          registrySourceId: selectedSource.registry_source_id,
-        },
-      });
+      dispatch({ type: 'RESET' });
       setSubmitError(
         error instanceof Error
           ? error.message
-          : 'Approved source submission could not be dispatched.',
+          : 'Selected source submission could not be dispatched.',
       );
     }
   }, [
-    dispatchOwnedRunEvent,
+    activeMode,
+    bootstrap.trustedControls,
+    dispatch,
     registryEnvelope,
     runState,
     selectedSource,
     socket,
+    trustedSelection,
   ]);
 
   useEffect(() => {
@@ -156,18 +230,27 @@ export function AppShell({ bootstrap }: AppShellProps) {
       getSelectedRegistrySourceId: () => (
         selectedSourceRef.current?.registry_source_id ?? null
       ),
-      dispatch: dispatchOwnedRunEvent,
+      dispatch,
       onRuntimeResult: setPublicRuntimeResult,
       onProtocolError: () => setSubmitError(
-        'The public runtime returned an invalid lifecycle result.',
+        'Invalid public runtime lifecycle result.',
+      ),
+    });
+    const detachTrustedLifecycle = installTrustedRuntimeLifecycle(socket, {
+      getRunState: () => runStateRef.current,
+      getSelection: () => trustedSelectionRef.current,
+      dispatch,
+      onProtocolError: () => setSubmitError(
+        'Invalid trusted runtime lifecycle evidence.',
       ),
     });
 
     return () => {
       detachLifecycle();
+      detachTrustedLifecycle();
       if (socket.connected) socket.disconnect();
     };
-  }, [dispatchOwnedRunEvent, socket]);
+  }, [dispatch, socket]);
 
   return (
     <div
@@ -181,10 +264,15 @@ export function AppShell({ bootstrap }: AppShellProps) {
         <SourcePanel
           trustedControls={bootstrap.trustedControls}
           publicRegistryApi={bootstrap.publicRegistryApi}
+          uploadedFiles={bootstrap.uploadedFiles}
+          activeMode={activeMode}
           selectedSourceId={selectedSource?.registry_source_id ?? ''}
+          trustedSelection={trustedSelection}
           selectionLocked={selectionLocked}
+          onModeChange={handleModeChange}
           onRegistryEnvelopeChange={handleRegistryEnvelopeChange}
-          onSelectionChange={handleSelectionChange}
+          onSelectionChange={handlePublicSelection}
+          onTrustedSelectionChange={handleTrustedSelection}
         />
         <WorkspaceShell
           selectedSource={selectedSource}

@@ -141,6 +141,8 @@ def _prepare_run_inputs(payload: dict[str, Any], session_id: str, dev_isolation_
     manual_upload_name = h["safe_strip"](h["safe_get"](payload, "manual_upload_name", ""))
     raw_manual_upload_path = h["safe_strip"](h["safe_get"](payload, "manual_upload_path", ""))
     warehouse_override_url = h["safe_strip"](h["safe_get"](payload, "warehouse_override_url", ""))
+    requested_run_mode = h["safe_lower"](h["safe_get"](payload, "trusted_run_mode", ""))
+    if requested_run_mode not in {"trusted_url", "manual_upload", "worklist"}: requested_run_mode = ""
 
     abs_uploads_dir = h["os"].path.abspath(h["uploads_dir"])
     if raw_manual_upload_path:
@@ -374,6 +376,7 @@ def _prepare_run_inputs(payload: dict[str, Any], session_id: str, dev_isolation_
             "warehouse_override_url": warehouse_override_url,
         })
 
+    trusted_run_mode = "manual_upload" if requested_source == "uploads" else "worklist" if requested_run_mode == "worklist" and direct_urls else "trusted_url"
     return {
         "requested_source": requested_source,
         "requested_origin": requested_origin,
@@ -383,6 +386,7 @@ def _prepare_run_inputs(payload: dict[str, Any], session_id: str, dev_isolation_
         "warehouse_override_url": warehouse_override_url,
         "direct_urls": direct_urls,
         "url_reference_hints": url_reference_hints,
+        "trusted_run_mode": trusted_run_mode,
     }
 
 
@@ -611,6 +615,7 @@ def _start_pipeline_worker(
     warehouse_override_url = run_cfg["warehouse_override_url"]
     direct_urls = run_cfg["direct_urls"]
     url_reference_hints = run_cfg["url_reference_hints"]
+    trusted_run_mode = run_cfg["trusted_run_mode"]
 
     output_bypass_flag = h["is_output_bypassed"](session_id)
     h["lock_session"](session_id)
@@ -678,6 +683,9 @@ def _start_pipeline_worker(
         h["session_manager"].bind_thread_id(h["threading"].get_ident(), session_id)
         status = "error"
         err = None
+        from webapp.parser.services.ballot_lens_checkpoint_runtime import activate_ballot_lens_checkpoint_runtime
+        from webapp.parser.services.trusted_ballot_lens_runtime import TrustedBallotLensRuntime
+        trusted_runtime = TrustedBallotLensRuntime(trusted_run_mode, session_id, lambda event: h["socketio"].emit("parser_output", h["normalize_log_obj"](dict(event)), room=session_id))
         try:
             artifact_identity = None
             if requested_source == "uploads" and force_parse_input_file:
@@ -714,29 +722,32 @@ def _start_pipeline_worker(
                 artifact_identity = ArtifactIdentityHandoff(
                     document_sha256=document_sha256,
                 )
-            h["process_urls_for_web"](
-                prompt_queue,
-                session_id,
-                cancel_flag,
-                emit_func=h["socketio_emit_func"],
-                output_bypass=output_bypass_flag,
-                manual_source=requested_source,
-                disable_internal_heartbeat=True,
-                force_parse_input_file=force_parse_input_file,
-                force_parse_format=force_parse_format,
-                urls=direct_urls if direct_urls else None,
-                url_reference_hints=url_reference_hints if direct_urls else None,
-                warehouse_override_url=warehouse_override_url or None,
-                principal=principal,
-                principal_source=principal_source,
-                dev_isolation_bypass=dev_isolation_bypass,
-                            inspection_emit_func=_make_pipeline_inspection_emitter(
+            trusted_runtime.record_checkpoint(checkpoint_id='source.resolve',state='complete',reason_code='trusted_input_authority_resolved',summary='Existing trusted input passed server preparation.',evidence_count=1)
+            trusted_runtime.emit_started()
+            with activate_ballot_lens_checkpoint_runtime(trusted_runtime):
+                h["process_urls_for_web"](
+                        prompt_queue,
                     session_id,
-                    principal,
-                    h,
-                ),
-                artifact_identity=artifact_identity,
-)
+                    cancel_flag,
+                    emit_func=h["socketio_emit_func"],
+                    output_bypass=output_bypass_flag,
+                    manual_source=requested_source,
+                    disable_internal_heartbeat=True,
+                    force_parse_input_file=force_parse_input_file,
+                    force_parse_format=force_parse_format,
+                    urls=direct_urls if direct_urls else None,
+                    url_reference_hints=url_reference_hints if direct_urls else None,
+                    warehouse_override_url=warehouse_override_url or None,
+                    principal=principal,
+                    principal_source=principal_source,
+                    dev_isolation_bypass=dev_isolation_bypass,
+                                inspection_emit_func=_make_pipeline_inspection_emitter(
+                        session_id,
+                        principal,
+                        h,
+                    ),
+                    artifact_identity=artifact_identity,
+    )
             h["logger"].info(
                 {
                     "level": "INFO",
@@ -756,6 +767,10 @@ def _start_pipeline_worker(
                 pass
             status = "ok"
             err = None
+            trusted_after = _snapshot_output_artifacts(output_dir)
+            trusted_new = _detect_new_artifacts(artifacts_before, trusted_after, start_time)
+            trusted_terminal = "cancelled" if h["safe_is_set"](cancel_flag) else "success"
+            h["socketio"].emit("trusted_ballot_lens_result", trusted_runtime.result_payload(terminal_status=trusted_terminal,terminal_reason_code=None,outputs=trusted_runtime.persisted_outputs(sorted(trusted_new))), room=session_id)
         except Exception as exc:
             h["logger"].error(
                 {
@@ -767,6 +782,8 @@ def _start_pipeline_worker(
             )
             status = "error"
             err = str(exc)
+            try: h["socketio"].emit("trusted_ballot_lens_result", trusted_runtime.result_payload(terminal_status="failed",terminal_reason_code="trusted_parser_failed",outputs=[]), room=session_id)
+            except Exception: pass
         finally:
             watcher_stop.set()
             _finalize_worker_session(

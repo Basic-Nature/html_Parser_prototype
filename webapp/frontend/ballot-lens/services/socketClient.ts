@@ -10,6 +10,9 @@ import type {
 import type {
   PublicRegistrySubmitPayload,
 } from './publicSubmit';
+import type {
+  TrustedBallotLensSubmitPayload,
+} from './trustedExecution';
 
 export interface DormantBallotLensSocket {
   readonly connected: boolean;
@@ -25,7 +28,7 @@ export interface DormantBallotLensSocket {
   ): DormantBallotLensSocket;
   emit(
     event: 'ballot_lens',
-    payload: PublicRegistrySubmitPayload,
+    payload: PublicRegistrySubmitPayload | TrustedBallotLensSubmitPayload,
   ): DormantBallotLensSocket;
 }
 

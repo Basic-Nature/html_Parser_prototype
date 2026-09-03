@@ -123,7 +123,7 @@ def test_f2_isolated_package_does_not_modify_root_tooling_contract():
         "vitest run tests/runMachine.test.ts tests/registry.test.ts "
         "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
         "tests/publicRuntimeLifecycle.test.ts tests/f2fWorkspace.test.ts "
-        "--environment node"
+        "tests/trustedExecution.test.ts --environment node"
     )
     assert f2["scripts"]["verify"] == (
         "npm run typecheck && npm run test:contracts && npm run build"
@@ -156,8 +156,8 @@ def test_f2b_phase_and_run_state_contracts_are_dormant_but_present():
     run_test = _read(F2_RUN_TEST)
 
     assert 'data-f2-phase="F2-E4"' in template
-    assert "readonly phase: 'F2-E4'" in bootstrap
-    assert "phase !== 'F2-E4'" in bootstrap
+    assert "readonlyphase:'F2-E4'" in "".join(bootstrap.split())
+    assert "!=='F2-E4'" in "".join(bootstrap.split())
     assert "AppShell" in app
 
     assert "CHECKPOINT_DEFINITIONS" in checkpoints
@@ -304,7 +304,7 @@ def test_f2d1_registry_discovery_preserves_public_registry_security_boundary():
         "vitest run tests/runMachine.test.ts tests/registry.test.ts "
         "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
         "tests/publicRuntimeLifecycle.test.ts tests/f2fWorkspace.test.ts "
-        "--environment node"
+        "tests/trustedExecution.test.ts --environment node"
     )
 
 
@@ -526,7 +526,7 @@ def test_f2f_results_validation_metadata_provenance_workspace_contract():
         "vitest run tests/runMachine.test.ts tests/registry.test.ts "
         "tests/publicRuntime.test.ts tests/socketAdapter.test.ts "
         "tests/publicRuntimeLifecycle.test.ts tests/f2fWorkspace.test.ts "
-        "--environment node"
+        "tests/trustedExecution.test.ts --environment node"
     )
     assert package["scripts"]["test:contracts"] == expected_contract_command
 
@@ -540,14 +540,14 @@ def test_f2g_checkpoint_action_required_is_server_evidence_only_and_display_only
     public_runtime = _read(ROOT / "webapp/parser/services/public_ballot_lens_runtime.py")
     lifecycle_test = _read(ROOT / "webapp/frontend/ballot-lens/tests/publicRuntimeLifecycle.test.ts")
 
-    assert "<CheckpointRail runState={runState} />" in shell
+    assert "<CheckpointRailrunState={runState}/>" in "".join(shell.split())
     assert "completeCount" in rail and "data-state={state}" in rail
     assert "Action required" in rail and "Display only" in rail and "<button" not in rail
     assert "public_registry_checkpoint_updated" in adapter
     assert "public_registry_action_required" in adapter
     assert "CHECKPOINT_UPDATED" in lifecycle and "ACTION_REQUIRED" in lifecycle
     assert "pretend checkpoint complete" in lifecycle_test
-    assert "event: 'ballot_lens'" in socket_client
+    assert "event:'ballot_lens'" in "".join(socket_client.split())
     assert "public_registry_action_required" not in socket_client
     assert "record_checkpoint(" in public_runtime and "record_action_required(" in public_runtime
     assert "record_result_checkpoints(" in public_runtime and "record_result_checkpoints(" in parser
