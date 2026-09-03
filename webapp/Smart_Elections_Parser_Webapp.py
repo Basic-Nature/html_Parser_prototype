@@ -6425,40 +6425,25 @@ def ballot_lens():
         if ballot_lens_trusted_controls:
             file_lists = get_all_file_lists()
 
-        ballot_lens_ui_variant = (
-            os.environ.get("BALLOT_LENS_UI_VARIANT", "f2")
-            .strip()
-            .lower()
-        )
-        if ballot_lens_ui_variant not in {"legacy", "f2"}:
-            logger.warning(
+        # F2-J J1 cutover: Ballot Lens has one production UI authority.
+        # Legacy assets remain tracked temporarily for J2/J3 reference
+        # extinction, but they are no longer selectable by environment.
+        ballot_lens_ui_variant = "f2"
+        try:
+            ballot_lens_f2_assets = load_ballot_lens_f2_assets()
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            logger.error(
                 {
                     "type": "ballot_lens_ui",
-                    "message": "Invalid BALLOT_LENS_UI_VARIANT; using legacy.",
+                    "message": "Ballot Lens F2 assets unavailable.",
                     "session_id": None,
+                    "error_type": type(exc).__name__,
                 }
             )
-            ballot_lens_ui_variant = "legacy"
-
-        ballot_lens_template = "ballot_lens.html"
-        ballot_lens_f2_assets = None
-        if ballot_lens_ui_variant == "f2":
-            try:
-                ballot_lens_f2_assets = load_ballot_lens_f2_assets()
-            except (OSError, ValueError, json.JSONDecodeError) as exc:
-                logger.error(
-                    {
-                        "type": "ballot_lens_ui",
-                        "message": "Ballot Lens F2 assets unavailable.",
-                        "session_id": None,
-                        "error_type": type(exc).__name__,
-                    }
-                )
-                return "Ballot Lens F2 assets unavailable", 503
-            ballot_lens_template = "ballot_lens_f2.html"
+            return "Ballot Lens F2 assets unavailable", 503
 
         return render_template(
-            ballot_lens_template,
+            "ballot_lens_f2.html",
             input_files=file_lists["input_files"],
             output_files=file_lists["output_files"],
             uploaded_files=file_lists["uploaded_files"],

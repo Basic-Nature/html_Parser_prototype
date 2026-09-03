@@ -45,18 +45,19 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8-sig")
 
 
-def test_f2_variant_is_server_controlled_f2_default_and_legacy_override():
+def test_f2_primary_route_is_unconditional_and_legacy_override_is_extinct():
     source = _read(MAIN)
     start = source.index("def ballot_lens():")
     end = source.index("def ballot_lens_modern():", start)
     body = source[start:end]
 
-    assert 'os.environ.get("BALLOT_LENS_UI_VARIANT", "f2")' in body
-    assert '{"legacy", "f2"}' in body
-    assert '"ballot_lens.html"' in body
+    assert "BALLOT_LENS_UI_VARIANT" not in body
+    assert '{"legacy", "f2"}' not in body
+    assert '"ballot_lens.html"' not in body
     assert '"ballot_lens_f2.html"' in body
-    assert 'ballot_lens_ui_variant == "f2"' in body
-    assert "load_ballot_lens_f2_assets()" in body
+    assert 'ballot_lens_ui_variant = "f2"' in body
+    assert body.count("load_ballot_lens_f2_assets()") == 1
+    assert '"Ballot Lens F2 assets unavailable"' in body
 
 
 def test_legacy_ballot_lens_template_remains_separate():
