@@ -54,9 +54,14 @@ def test_j2a_preserves_legacy_assets_for_later_consumer_extinction():
     assert "ballot_lens_public_registry.js" not in f2
     assert "ballot_lens_modern.css" not in f2
 
-def test_j2a_explicitly_defers_dashboard_css_consumer_migration_to_j2b():
-    assert "ballot_lens_modern.css" in _read(QUALITY_DASHBOARD)
-    assert "ballot_lens_modern.css" in _read(URL_STATUS_DASHBOARD)
+def test_j2a_handoff_allows_j2b_to_remove_dashboard_legacy_css_consumers():
+    quality = _read(QUALITY_DASHBOARD)
+    status = _read(URL_STATUS_DASHBOARD)
+
+    assert "ballot_lens_modern.css" not in quality
+    assert "ballot_lens_modern.css" not in status
+    assert "quality_dashboard.css" in quality
+    assert "quality_dashboard.css" in status
 
 def test_j2a_does_not_claim_legacy_asset_delete_gate():
     assert LEGACY_TEMPLATE.is_file()

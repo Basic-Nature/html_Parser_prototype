@@ -1,3 +1,108 @@
+/* ============================================
+   Shared operator dashboard foundation
+   Independent of legacy Ballot Lens assets.
+   J2B preserves the existing dashboard palette/base behavior while removing
+   runtime dependency on ballot_lens_modern.css.
+   ============================================ */
+
+:root {
+    --brand-blue: #45818e;
+    --brand-red: #eb4f43;
+    --brand-bg: #1a232a;
+
+    --surface-0: #0f1419;
+    --surface-1: var(--brand-bg);
+    --surface-2: #2a3642;
+    --surface-3: #334155;
+    --text-strong: #e2e8f0;
+    --text-subtle: #cbd5e1;
+    --text-muted-base: #6b7280;
+    --border-weak: #334155;
+    --accent-1: var(--brand-blue);
+    --accent-2: #6ba5b0;
+    --accent-success-strong: #10b981;
+    --accent-warning-strong: #f59e0b;
+    --accent-danger-strong: var(--brand-red);
+
+    --bg-primary: var(--surface-0);
+    --bg-secondary: var(--surface-1);
+    --bg-tertiary: var(--surface-2);
+    --text-primary: var(--text-strong);
+    --text-muted: var(--text-muted-base);
+    --text-muted-strong: var(--text-subtle);
+    --border-color: var(--border-weak);
+    --accent-primary: var(--accent-1);
+    --accent-secondary: var(--accent-2);
+    --accent-success: var(--accent-success-strong);
+    --accent-warning: var(--accent-warning-strong);
+    --accent-danger: var(--accent-danger-strong);
+
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --transition-fast: 150ms ease;
+    --transition-normal: 300ms ease;
+}
+
+:root[data-theme="light"] {
+    --surface-0: #dfe6e8;
+    --surface-1: #e9eef0;
+    --surface-2: #cfe0e4;
+    --surface-3: #b8d3d8;
+    --text-strong: #0f172a;
+    --text-subtle: #1f2937;
+    --text-muted-base: #4b5563;
+    --border-weak: #a8c5cb;
+    --text-muted-strong: #94a3b8;
+    --accent-1: var(--brand-blue);
+    --accent-2: #6ba5b0;
+    --accent-success-strong: #059669;
+    --accent-warning-strong: #d97706;
+    --accent-danger-strong: #f08981;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body {
+    height: 100%;
+    width: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+th {
+    text-align: match-parent;
+    text-align: -webkit-match-parent;
+    text-align: inherit;
+}
+
 .dashboard-container {
     max-width: 1400px;
     margin: 2rem auto;
