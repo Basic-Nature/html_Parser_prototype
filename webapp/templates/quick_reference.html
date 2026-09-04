@@ -1,226 +1,113 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Elections Parser - Quick Reference</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/quick_reference.css') }}">
-</head>
-<body>
-  <div class="container">
-    <h1>🗳️ Smart Elections Parser</h1>
-    <p>Quick Reference Guide - Modern UI</p>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ElectionPulse — Ballot Lens Quick Reference</title><link rel="stylesheet" href="{{ url_for('static', filename='css/quick_reference.css') }}"></head><body><div class="page-header"><button class="home-btn" id="homeBtn" type="button" aria-label="Back to ElectionPulse home">⌂</button></div>
 
-    <h2>🎯 Core Features</h2>
-    <div class="grid">
-      <div class="card">
-        <div class="card-title">📁 File Sources</div>
-        <div class="card-content">
-          <strong>Input Folder:</strong> Process files in /input<br>
-          <strong>Manual Upload:</strong> Browse and upload files<br>
-          <strong>Direct URLs:</strong> <span class="badge badge-new">NEW</span> Paste URLs for batch processing
-        </div>
+  <main class="container" id="quickRefContent">
+    <section class="hero">
+      <p class="eyebrow">ElectionPulse • F2 user guide</p>
+      <h1>🗳️ Ballot Lens — Quick Reference</h1>
+      <h2>Public &amp; Trusted Parsing • Sessions • Validation • Diagnostics</h2>
+      <p class="hero-copy">Ballot Lens has one primary F2 interface. Choose a governed source, let the server create the active session, follow the checkpoint trail, and review results with validation evidence.</p>
+      <div class="status-row">
+        <span class="status-pill">F2 primary route</span>
+        <span class="status-pill">Server-owned sessions</span>
+        <span class="status-pill">Governed sources</span>
+        <span class="status-pill">Evidence-first results</span>
       </div>
-      <div class="card">
-        <div class="card-title">⚡ Processing Modes</div>
-        <div class="card-content">
-          <strong>Normal:</strong> Interactive contest selection<br>
-          <strong>Batch Mode:</strong> <span class="badge badge-new">NEW</span> Auto-process all contests<br>
-          <strong>Output Bypass:</strong> Preview without saving CSV
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">🔍 Filters</div>
-        <div class="card-content">
-          <strong>Confidence:</strong> 0-100% quality threshold<br>
-          <strong>State:</strong> Filter by jurisdiction<br>
-          <strong>Log Level:</strong> ERROR/WARNING/INFO<br>
-          <strong>Presets:</strong> <span class="badge badge-new">NEW</span> Save filter combinations
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">📊 Session Actions</div>
-        <div class="card-content">
-          <strong>Clone:</strong> <span class="badge badge-new">NEW</span> Duplicate current session<br>
-          <strong>Export:</strong> <span class="badge badge-new">NEW</span> Download results as JSON<br>
-          <strong>Clear:</strong> <span class="badge badge-new">NEW</span> Reset logs
-        </div>
-      </div>
+    </section>
+
+    <h2>🧭 How Ballot Lens works</h2>
+    <div class="flow">
+      <div class="flow-step"><strong>1</strong>Choose Source</div>
+      <div class="flow-step"><strong>2</strong>Review Eligibility</div>
+      <div class="flow-step"><strong>3</strong>Run</div>
+      <div class="flow-step"><strong>4</strong>Server Creates Session</div>
+      <div class="flow-step"><strong>5</strong>Follow Checkpoints</div>
+      <div class="flow-step"><strong>6</strong>Action Required, if needed</div>
+      <div class="flow-step"><strong>7</strong>Results &amp; Validation</div>
+      <div class="flow-step"><strong>8</strong>Diagnostics / Session History</div>
     </div>
 
-    <h2>⌨️ Keyboard Shortcuts <span class="badge badge-advanced">ADVANCED</span></h2>
+    <h2>📥 Choose the right source mode</h2>
+    <div class="authority-grid">
+      <article class="authority-card"><span class="source-badge public">Public</span><h3>Registry</h3><p><strong>Approved public sources.</strong> Browse reviewed ElectionPulse registry entries.</p><p class="muted">Selecting a source does not grant execution authority.</p></article>
+      <article class="authority-card"><span class="source-badge trusted">Trusted</span><h3>Upload</h3><p><strong>Local election artifact.</strong> Use trusted upload controls for an allowed local file.</p></article>
+      <article class="authority-card"><span class="source-badge trusted">Trusted</span><h3>URL Library</h3><p><strong>Approved trusted targets.</strong> Choose from the governed URL library.</p><p class="muted">Ballot Lens does not turn arbitrary pasted URLs into execution authority.</p></article>
+      <article class="authority-card"><span class="source-badge trusted">Trusted</span><h3>Worklist</h3><p><strong>Governed queue handoff.</strong> Start from an authorized Worklist selection.</p><p class="muted">Worklist selection does not bypass target validation.</p></article>
+    </div>
+
+    <div class="callout">
+      <strong>Why is “Run approved source” disabled?</strong>
+      <p>The selected registry source must exactly match the server-provided execution-eligible source for the current envelope. Approval metadata alone does not enable a run.</p>
+    </div>
+
+    <h2>🔐 Sessions and ownership</h2>
+    <div class="grid">
+      <div class="card"><div class="card-title">Active session</div><div class="card-content">The server creates the active session for a run. The browser does not invent or rebind session authority.</div></div>
+      <div class="card"><div class="card-title">Selection lock</div><div class="card-content">Source selection stays locked while an active run owns the workspace.</div></div>
+      <div class="card"><div class="card-title">Foreign or stale events</div><div class="card-content">Events outside the active server-owned session are rejected rather than merged.</div></div>
+      <div class="card"><div class="card-title">Session History</div><div class="card-content">Session History is <strong>view-only</strong>. Inspecting an older session does not resume it, rebind parser authority, or replace the active session.</div></div>
+    </div>
+
+    <h2>🧩 Run checkpoints</h2>
+    <p class="section-intro">Nine server-authored checkpoints move forward monotonically; warning is not completion.</p>
+    <div class="checkpoint-grid">
+      <div class="checkpoint"><span>1</span>Resolve Source</div>
+      <div class="checkpoint"><span>2</span>Provider Detection</div>
+      <div class="checkpoint"><span>3</span>Acquire</div>
+      <div class="checkpoint"><span>4</span>Detect Structure</div>
+      <div class="checkpoint"><span>5</span>Contest Selection</div>
+      <div class="checkpoint"><span>6</span>Vote Method Selection</div>
+      <div class="checkpoint"><span>7</span>Normalize</div>
+      <div class="checkpoint"><span>8</span>Validate</div>
+      <div class="checkpoint"><span>9</span>Preview</div>
+    </div>
+
+    <h2>🛎️ Action Required</h2>
+    <div class="callout warning"><strong>Action Required is server-authored.</strong><p>Some runs need a contest choice, vote-method choice, challenge response, or another bounded input. Respond only for the active session.</p></div>
+
+    <h2>📊 Results &amp; Validation</h2>
+    <div class="grid">
+      <div class="card"><div class="card-title">Canonical comparison</div><div class="card-content">Comparison is <code>EXACT_MATCH</code> or <code>UNRESOLVED</code>. <code>UNRESOLVED</code> is not automatically a mismatch.</div></div>
+      <div class="card"><div class="card-title">Unknown values</div><div class="card-content">Unknown or unavailable values stay distinct from numeric zero.</div></div>
+      <div class="card"><div class="card-title">Diagnostics</div><div class="card-content">Inspect connection, provider, checkpoint, output, and terminal state without changing parser authority.</div></div>
+    </div>
+
+    <h2 id="feature-finder">📌 Feature Finder</h2>
+    <p class="section-intro">Press <span class="kbd">/</span> to focus search.</p>
     <table>
-      <thead>
-        <tr>
-          <th>Shortcut</th>
-          <th>Action</th>
-        </tr>
-      </thead>
+      <thead><tr><th>Need</th><th>Where</th><th>Expect</th></tr></thead>
       <tbody>
-        <tr>
-          <td><kbd>Ctrl</kbd> + <kbd>E</kbd></td>
-          <td>Export session data (JSON)</td>
-        </tr>
-        <tr>
-          <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd></td>
-          <td>Export as CSV</td>
-        </tr>
-        <tr>
-          <td><kbd>Ctrl</kbd> + <kbd>L</kbd></td>
-          <td>Clear logs</td>
-        </tr>
-        <tr>
-          <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd></td>
-          <td>Clone current session</td>
-        </tr>
-        <tr>
-          <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd></td>
-          <td>Open command palette</td>
-        </tr>
-        <tr>
-          <td><kbd>Ctrl</kbd> + <kbd>/</kbd></td>
-          <td>Show this keyboard shortcuts help</td>
-        </tr>
-        <tr>
-          <td><kbd>Escape</kbd></td>
-          <td>Close modals</td>
-        </tr>
+        <tr><td>Choose public source</td><td>Source → Registry</td><td>Approved source and execution eligibility</td></tr>
+        <tr><td>Trusted local file</td><td>Source → Upload</td><td>Trusted artifact controls</td></tr>
+        <tr><td>Approved trusted target</td><td>Source → URL Library</td><td>Governed target</td></tr>
+        <tr><td>Queued work</td><td>Source → Worklist</td><td>Governed queue handoff</td></tr>
+        <tr><td>Run progress</td><td>Checkpoints</td><td>Nine ordered states</td></tr>
+        <tr><td>Parser decision</td><td>Action Required</td><td>Active-session prompt</td></tr>
+        <tr><td>Validation</td><td>Results &amp; Validation</td><td>Evidence and canonical comparison</td></tr>
+        <tr><td>Older run</td><td>Session History</td><td>View-only snapshot</td></tr>
       </tbody>
     </table>
 
-    <h2>🔗 Direct URL Processing <span class="badge badge-new">NEW</span></h2>
-    
-    <h3>How to Use:</h3>
-    <ul>
-      <li>Select "Direct URLs" radio button in Controls</li>
-      <li>Paste URLs in textarea (one per line)</li>
-      <li>Maximum 20 URLs per batch</li>
-      <li>Real-time validation with color-coded feedback</li>
-      <li>Enable "Batch Mode" for automatic contest processing</li>
-    </ul>
-
-    <div class="tip">
-      <strong>💡 Tip:</strong> Direct URL drafts are saved per session. Switch sessions to work on different URL sets without losing your work!
+    <h2 id="keyboard-shortcuts">⌨️ Quick Reference shortcuts</h2>
+    <p class="section-intro">These shortcuts belong to this help page, not to Ballot Lens execution.</p>
+    <div class="grid">
+      <div class="card"><div class="card-title"><span class="kbd">/</span></div><div class="card-content">Focus Feature Finder search.</div></div>
+      <div class="card"><div class="card-title"><span class="kbd">?</span></div><div class="card-content">Jump to shortcuts.</div></div>
+      <div class="card"><div class="card-title"><span class="kbd">f</span></div><div class="card-content">Jump to Feature Finder.</div></div>
+      <div class="card"><div class="card-title"><span class="kbd">Escape</span></div><div class="card-content">Blur focused help input.</div></div>
+      <div class="card"><div class="card-title"><span class="kbd">Ctrl + Home</span></div><div class="card-content">Return to ElectionPulse home in the webapp.</div></div>
     </div>
 
-    <h3>URL Validation Rules:</h3>
-    <ul>
-      <li>Only <code>http://</code> and <code>https://</code> protocols allowed</li>
-      <li>URLs with usernames/passwords are rejected (security)</li>
-      <li>Invalid URLs are highlighted in red</li>
-      <li>Valid URLs show green checkmark with count</li>
-    </ul>
-
-    <div class="warning">
-      <strong>⚠️ Warning:</strong> URLs exceeding the 20-item limit will be truncated. Split large batches into multiple sessions.
+    <h2 id="help">🛠️ Troubleshooting</h2>
+    <div class="status-list">
+      <article class="section-nav"><h3>Trusted modes are locked</h3><p>Trusted controls require the trusted principal/certificate path.</p></article>
+      <article class="section-nav"><h3>The run button is disabled</h3><p>Confirm the selected source is the exact source currently authorized for execution.</p></article>
+      <article class="section-nav"><h3>A historical session will not resume</h3><p>Expected: Session History is inspect-only and does not restore or rebind parser sessions.</p></article>
+      <article class="section-nav"><h3>Canonical comparison says UNRESOLVED</h3><p>UNRESOLVED is not a mismatch claim.</p></article>
     </div>
 
-    <h2>💾 Filter Presets <span class="badge badge-new">NEW</span></h2>
-    
-    <h3>Save Your Favorite Filters:</h3>
-    <ul>
-      <li>Adjust Confidence, State, and Log Level filters</li>
-      <li>Click "Save" button</li>
-      <li>Enter a descriptive name</li>
-      <li>Preset appears in dropdown</li>
-      <li>Select preset to instantly restore filters</li>
-      <li>Delete unwanted presets anytime</li>
-    </ul>
-
-    <div class="tip">
-      <strong>💡 Tip:</strong> Create presets for common workflows like "High-Confidence Only" (90%+, All states, ERROR only) or "California Full" (0%+, CA, INFO).
-    </div>
-
-    <h2>🔄 Session Management <span class="badge badge-new">NEW</span></h2>
-    
-    <h3>Clone Session:</h3>
-    <p>Creates an exact copy of your current session including all settings, filters, and URL drafts. Perfect for testing different configurations side-by-side.</p>
-
-    <h3>Export Data:</h3>
-    <p>Downloads all session results as a JSON file with timestamp. Useful for archiving, sharing, or post-processing in external tools.</p>
-
-    <h3>Clear Logs:</h3>
-    <p>Removes all log entries for the current session. Helpful when starting a new parse run or debugging specific issues.</p>
-
-    <h2>🎨 UI Tips</h2>
-    <ul>
-      <li><strong>Log Drawer:</strong> Click handle at bottom to expand/minimize</li>
-      <li><strong>Auto-scroll:</strong> Logs automatically scroll during parsing</li>
-      <li><strong>Search:</strong> Filter results by name in top search box</li>
-      <li><strong>File Browser:</strong> Click folder names to expand contents</li>
-      <li><strong>Preview:</strong> Click files to preview in modal</li>
-      <li><strong>Accessibility:</strong> Full keyboard navigation + screen reader support</li>
-    </ul>
-
-    <h2>📚 Common Workflows</h2>
-
-    <h3>Scenario 1: Process Multiple URLs Automatically</h3>
-    <ol class="ol-steps">
-      <li>Select "Direct URLs" radio button</li>
-      <li>Paste 5-10 election results URLs</li>
-      <li>Check "Batch Mode" checkbox</li>
-      <li>Click "Run Parser"</li>
-      <li>Parser processes all URLs and contests without prompts</li>
-    </ol>
-
-    <h3>Scenario 2: Filter and Export High-Quality Results</h3>
-    <ol class="ol-steps">
-      <li>Set Confidence slider to 85%+</li>
-      <li>Select specific State from dropdown</li>
-      <li>Set Log Level to "Errors" only</li>
-      <li>Click "Save" in Filter Presets → name "High Quality"</li>
-      <li>Click "Export Data" to download JSON</li>
-    </ol>
-
-    <h3>Scenario 3: Compare Different Processing Settings</h3>
-    <ol class="ol-steps">
-      <li>Run parser with normal settings</li>
-      <li>Click "Clone Session" (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>)</li>
-      <li>Switch to cloned session in sidebar</li>
-      <li>Change settings (e.g., enable Output Bypass)</li>
-      <li>Run parser again and compare results</li>
-    </ol>
-
-    <h2>🛠️ Troubleshooting</h2>
-
-    <div class="card mt-1">
-      <div class="card-title">Direct URLs not validating?</div>
-      <div class="card-content">
-        <ul>
-          <li>Ensure URLs start with http:// or https://</li>
-          <li>Remove any trailing spaces or special characters</li>
-          <li>Check that URLs don't contain @ symbols (credentials)</li>
-          <li>Verify total count doesn't exceed 20</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="card mt-1">
-      <div class="card-title">Filter presets not saving?</div>
-      <div class="card-content">
-        <ul>
-          <li>Check browser localStorage is enabled</li>
-          <li>Try a different preset name (avoid special characters)</li>
-          <li>Refresh page and try again</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="card mt-1">
-      <div class="card-title">Keyboard shortcuts not working?</div>
-      <div class="card-content">
-        <ul>
-          <li>Ensure no modal is open (press <kbd>Escape</kbd> first)</li>
-          <li>Check that no input field has focus</li>
-          <li>Try refreshing the page</li>
-        </ul>
-      </div>
-    </div>
-
+    <div class="callout success"><strong>Security boundary:</strong><p>Browsing, selecting, or inspecting a source does not create new execution authority.</p></div>
     <hr class="divider">
-    <p class="footnote">
-      Smart Elections Parser v3.0 | Modern UI with Advanced Features | Press <kbd>Ctrl</kbd> + <kbd>/</kbd> for shortcuts
-    </p>
-  </div>
-</body>
-</html>
+    <p class="footnote">ElectionPulse — Ballot Lens Quick Reference • Public &amp; Trusted Parsing • Sessions • Validation • Diagnostics</p>
+  </main>
+<script src="{{ url_for('static', filename='js/quick_reference.js') }}" defer></script></body></html>

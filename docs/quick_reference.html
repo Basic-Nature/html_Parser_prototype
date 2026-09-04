@@ -1,391 +1,113 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ballot Lens - Quick Reference</title>
-  <link rel="stylesheet" href="../webapp/static/css/quick_reference.css">
-</head>
-<body>
-  <div class="page-header">
-    <button class="home-btn" id="homeBtn" aria-label="Back to Ballot Lens" title="Back to Ballot Lens (Ctrl+Home)">
-      ⌂
-    </button>
-    <h1 class="page-title">🗳️ Ballot Lens — Quick Reference</h1>
-  </div>
-  
-  <div class="container">
-    <p class="breadcrumb">Reference for Ballot Lens Interface → <strong>Election results parsing & review</strong></p>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ElectionPulse — Ballot Lens Quick Reference</title><link rel="stylesheet" href="../webapp/static/css/quick_reference.css"></head><body><div class="page-header"><a class="home-btn" id="homeBtn" href="./" aria-label="Back to documentation home">⌂</a></div>
 
-    <!-- INTERFACE LAYOUT -->
-    <h2>🎨 Interface Layout</h2>
-    <pre style="background: #0f172a; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; color: #93c5fd;">
-┌─ Navigation Bar ─────────────────────────────────────────────────────────┐
-│ 🗳️ Ballot Lens │ Home │ Quality │ Health │ Data Framework │ History │ ⚙️  │
-├────────────────────────────────────────────────────────────────────────────┤
-│┌─ Left Sidebar ──────────────────┐   ┌─ Main Content ────────────────────┐│
-││ 🔗 URLs & Files                 │   │ Results Preview Bar (collapsible) ││
-││                                  │   │ - Pipeline Stages                  ││
-││ • URL Library        [toggle]    │   │ - Search Results Box               ││
-││ • Manual Uploads     [toggle]    │   │ - Refresh Button                   ││
-││                                  │   │                                    ││
-││ 📊 Run Overview                  │   │ ┌─ Results Grid ─────────────────┐││
-││ - Session ID                     │   │ │ Contest 1 Card                  │││
-││ - Source Type                    │   │ │ Contest 2 Card                  │││
-││ - Mode (live/batch/bypass)       │   │ │ ...                             │││
-││                                  │   │ └────────────────────────────────┘││
-││ 🎯 Expected Artifacts            │   │                                    ││
-││ - CSV Output                     │   │ 📝 Pipeline Hints (info bar)       ││
-││ - Quality Metrics                │   │                                    ││
-││                                  │   │ 🔄 Refresh / Search / Export       ││
-│└─────────────────────────────────┘   └────────────────────────────────────┘│
-│                                         [Right Sidebar: Tools & Settings]   │
-└────────────────────────────────────────────────────────────────────────────┘
-    </pre>
-
-    <!-- MAIN SECTIONS -->
-    <h2>📍 Main Content Areas</h2>
-    <div class="nav-grid">
-      <div class="nav-card">
-        <h3>🔗 Left Sidebar: URLs & Files</h3>
-        <p><strong>Purpose:</strong> Manage data sources<br>
-        <strong>Contains:</strong> URL library, upload manager, run overview<br>
-        <strong>Actions:</strong> Toggle sources, track session info</p>
+  <main class="container" id="quickRefContent">
+    <section class="hero">
+      <p class="eyebrow">ElectionPulse • F2 user guide</p>
+      <h1>🗳️ Ballot Lens — Quick Reference</h1>
+      <h2>Public &amp; Trusted Parsing • Sessions • Validation • Diagnostics</h2>
+      <p class="hero-copy">Ballot Lens has one primary F2 interface. Choose a governed source, let the server create the active session, follow the checkpoint trail, and review results with validation evidence.</p>
+      <div class="status-row">
+        <span class="status-pill">F2 primary route</span>
+        <span class="status-pill">Server-owned sessions</span>
+        <span class="status-pill">Governed sources</span>
+        <span class="status-pill">Evidence-first results</span>
       </div>
-      
-      <div class="nav-card">
-        <h3>📊 Results Preview Bar</h3>
-        <p><strong>Status:</strong> Collapsible bar at top<br>
-        <strong>Shows:</strong> Pipeline progress (PREPARE → SOURCE → RUN → REVIEW)<br>
-        <strong>Actions:</strong> Search results, refresh, expand/collapse</p>
-      </div>
-      
-      <div class="nav-card">
-        <h3>🎯 Results Grid</h3>
-        <p><strong>Content:</strong> Contest cards with parsed data<br>
-        <strong>Shows:</strong> Ballot measure, contests, results<br>
-        <strong>Actions:</strong> Click cards to preview, export individual contests</p>
-      </div>
-      
-      <div class="nav-card">
-        <h3>⚙️ Right Sidebar</h3>
-        <p><strong>Location:</strong> Collapsible tools panel (right edge)<br>
-        <strong>Contains:</strong> Export options, settings, advanced controls<br>
-        <strong>Access:</strong> Click ⚙️ button in navbar</p>
-      </div>
+    </section>
 
-      <div class="nav-card">
-        <h3>📡 Source Carousel</h3>
-        <p><strong>Where:</strong> Left sidebar under "URLs & Files"<br>
-        <strong>Options:</strong> URL Library, Manual Uploads<br>
-        <strong>Use:</strong> Switch between data sources (swipe or dot click)</p>
-      </div>
-
-      <div class="nav-card">
-        <h3>🔍 Search & Filter</h3>
-        <p><strong>Location:</strong> Results preview bar<br>
-        <strong>Action:</strong> Type to filter contests by name/state/type<br>
-        <strong>Result:</strong> Real-time filtering of grid below</p>
-      </div>
+    <h2>🧭 How Ballot Lens works</h2>
+    <div class="flow">
+      <div class="flow-step"><strong>1</strong>Choose Source</div>
+      <div class="flow-step"><strong>2</strong>Review Eligibility</div>
+      <div class="flow-step"><strong>3</strong>Run</div>
+      <div class="flow-step"><strong>4</strong>Server Creates Session</div>
+      <div class="flow-step"><strong>5</strong>Follow Checkpoints</div>
+      <div class="flow-step"><strong>6</strong>Action Required, if needed</div>
+      <div class="flow-step"><strong>7</strong>Results &amp; Validation</div>
+      <div class="flow-step"><strong>8</strong>Diagnostics / Session History</div>
     </div>
 
-    <!-- HOW TO TASKS -->
-    <h2>🎯 How To...</h2>
-    <div class="section-nav">
-      <h3>Switch Between URL Source & Uploads</h3>
-      <ol>
-        <li>Look at <strong>Left Sidebar → URLs & Files</strong></li>
-        <li>Click the dot indicators or swipe carousel cards</li>
-        <li>Current source highlighted (active dot)</li>
-        <li>Available URLs or upload list appears in carousel</li>
-      </ol>
+    <h2>📥 Choose the right source mode</h2>
+    <div class="authority-grid">
+      <article class="authority-card"><span class="source-badge public">Public</span><h3>Registry</h3><p><strong>Approved public sources.</strong> Browse reviewed ElectionPulse registry entries.</p><p class="muted">Selecting a source does not grant execution authority.</p></article>
+      <article class="authority-card"><span class="source-badge trusted">Trusted</span><h3>Upload</h3><p><strong>Local election artifact.</strong> Use trusted upload controls for an allowed local file.</p></article>
+      <article class="authority-card"><span class="source-badge trusted">Trusted</span><h3>URL Library</h3><p><strong>Approved trusted targets.</strong> Choose from the governed URL library.</p><p class="muted">Ballot Lens does not turn arbitrary pasted URLs into execution authority.</p></article>
+      <article class="authority-card"><span class="source-badge trusted">Trusted</span><h3>Worklist</h3><p><strong>Governed queue handoff.</strong> Start from an authorized Worklist selection.</p><p class="muted">Worklist selection does not bypass target validation.</p></article>
     </div>
 
-    <div class="section-nav">
-      <h3>View Parsed Results</h3>
-      <ol>
-        <li>After parser run completes, <strong>Results Preview Bar</strong> opens</li>
-        <li>View pipeline stages: PREPARE → SOURCE → RUN → REVIEW</li>
-        <li><strong>Results Grid</strong> shows contest cards below</li>
-        <li>Click any card to expand/preview details</li>
-        <li>Scroll to see all contests</li>
-      </ol>
+    <div class="callout">
+      <strong>Why is “Run approved source” disabled?</strong>
+      <p>The selected registry source must exactly match the server-provided execution-eligible source for the current envelope. Approval metadata alone does not enable a run.</p>
     </div>
 
-    <div class="section-nav">
-      <h3>Search Results</h3>
-      <ol>
-        <li>Open <strong>Results Preview Bar</strong> if collapsed (click header)</li>
-        <li>Find search box: <span class="kbd">🔍 Search results...</span></li>
-        <li>Type contest name, state, or ballot type</li>
-        <li>Grid updates in real-time to show matches</li>
-        <li>Clear search to reset grid</li>
-      </ol>
+    <h2>🔐 Sessions and ownership</h2>
+    <div class="grid">
+      <div class="card"><div class="card-title">Active session</div><div class="card-content">The server creates the active session for a run. The browser does not invent or rebind session authority.</div></div>
+      <div class="card"><div class="card-title">Selection lock</div><div class="card-content">Source selection stays locked while an active run owns the workspace.</div></div>
+      <div class="card"><div class="card-title">Foreign or stale events</div><div class="card-content">Events outside the active server-owned session are rejected rather than merged.</div></div>
+      <div class="card"><div class="card-title">Session History</div><div class="card-content">Session History is <strong>view-only</strong>. Inspecting an older session does not resume it, rebind parser authority, or replace the active session.</div></div>
     </div>
 
-    <div class="section-nav">
-      <h3>Refresh Results</h3>
-      <ol>
-        <li>In <strong>Results Preview Bar</strong>, click <span class="kbd">🔄 Refresh</span></li>
-        <li>Grid reloads latest parsed data</li>
-        <li>Use if data seems stale or after editing source</li>
-      </ol>
+    <h2>🧩 Run checkpoints</h2>
+    <p class="section-intro">Nine server-authored checkpoints move forward monotonically; warning is not completion.</p>
+    <div class="checkpoint-grid">
+      <div class="checkpoint"><span>1</span>Resolve Source</div>
+      <div class="checkpoint"><span>2</span>Provider Detection</div>
+      <div class="checkpoint"><span>3</span>Acquire</div>
+      <div class="checkpoint"><span>4</span>Detect Structure</div>
+      <div class="checkpoint"><span>5</span>Contest Selection</div>
+      <div class="checkpoint"><span>6</span>Vote Method Selection</div>
+      <div class="checkpoint"><span>7</span>Normalize</div>
+      <div class="checkpoint"><span>8</span>Validate</div>
+      <div class="checkpoint"><span>9</span>Preview</div>
     </div>
 
-    <div class="section-nav">
-      <h3>Check Pipeline Status</h3>
-      <ol>
-        <li>View <strong>Results Preview Bar</strong> progress track</li>
-        <li>Stages: PREPARE (setup) → SOURCE (load data) → RUN (parse) → REVIEW (validate)</li>
-        <li>Current stage highlighted; click to expand details</li>
-        <li>Check <strong>Pipeline Hints</strong> bar below for messages</li>
-      </ol>
+    <h2>🛎️ Action Required</h2>
+    <div class="callout warning"><strong>Action Required is server-authored.</strong><p>Some runs need a contest choice, vote-method choice, challenge response, or another bounded input. Respond only for the active session.</p></div>
+
+    <h2>📊 Results &amp; Validation</h2>
+    <div class="grid">
+      <div class="card"><div class="card-title">Canonical comparison</div><div class="card-content">Comparison is <code>EXACT_MATCH</code> or <code>UNRESOLVED</code>. <code>UNRESOLVED</code> is not automatically a mismatch.</div></div>
+      <div class="card"><div class="card-title">Unknown values</div><div class="card-content">Unknown or unavailable values stay distinct from numeric zero.</div></div>
+      <div class="card"><div class="card-title">Diagnostics</div><div class="card-content">Inspect connection, provider, checkpoint, output, and terminal state without changing parser authority.</div></div>
     </div>
 
-    <div class="section-nav">
-      <h3>Export Data</h3>
-      <ol>
-        <li>Click right-sidebar toggle: <span class="kbd">⚙️</span> in navbar</li>
-        <li>Navigate to <strong>Export</strong> section</li>
-        <li>Choose format: CSV, JSON, or filtered view</li>
-        <li>Select contests to include (or export all)</li>
-        <li>Click <span class="kbd">Download</span></li>
-      </ol>
-    </div>
-
-    <!-- KEYBOARD SHORTCUTS -->
-    <h2>⌨️ Keyboard Shortcuts</h2>
+    <h2 id="feature-finder">📌 Feature Finder</h2>
+    <p class="section-intro">Press <span class="kbd">/</span> to focus search.</p>
     <table>
-      <thead>
-        <tr>
-          <th>Shortcut</th>
-          <th>Action</th>
-          <th>Context</th>
-        </tr>
-      </thead>
+      <thead><tr><th>Need</th><th>Where</th><th>Expect</th></tr></thead>
       <tbody>
-        <tr>
-          <td><span class="kbd">Escape</span></td>
-          <td>Close Modal / Deselect</td>
-          <td>Any modal or form is open</td>
-        </tr>
-        <tr>
-          <td><span class="kbd">Ctrl</span> + <span class="kbd">Home</span></td>
-          <td>Back to Dashboard</td>
-          <td>From Ballot Lens page</td>
-        </tr>
-        <tr>
-          <td><span class="kbd">Ctrl</span> + <span class="kbd">Enter</span></td>
-          <td>Confirm / Submit Prompt</td>
-          <td>Single option prompt is active</td>
-        </tr>
-        <tr>
-          <td><span class="kbd">Tab</span></td>
-          <td>Navigate Between Controls</td>
-          <td>Anywhere (native browser behavior)</td>
-        </tr>
-        <tr>
-          <td><span class="kbd">Enter / Space</span></td>
-          <td>Activate Button/Toggle</td>
-          <td>Button is focused</td>
-        </tr>
-        <tr>
-          <td>Swipe Left/Right</td>
-          <td>Carousel between URL / Upload</td>
-          <td>Left sidebar carousel (mobile)</td>
-        </tr>
-        <tr>
-          <td>Click Dots</td>
-          <td>Jump to Source</td>
-          <td>Left sidebar carousel</td>
-        </tr>
+        <tr><td>Choose public source</td><td>Source → Registry</td><td>Approved source and execution eligibility</td></tr>
+        <tr><td>Trusted local file</td><td>Source → Upload</td><td>Trusted artifact controls</td></tr>
+        <tr><td>Approved trusted target</td><td>Source → URL Library</td><td>Governed target</td></tr>
+        <tr><td>Queued work</td><td>Source → Worklist</td><td>Governed queue handoff</td></tr>
+        <tr><td>Run progress</td><td>Checkpoints</td><td>Nine ordered states</td></tr>
+        <tr><td>Parser decision</td><td>Action Required</td><td>Active-session prompt</td></tr>
+        <tr><td>Validation</td><td>Results &amp; Validation</td><td>Evidence and canonical comparison</td></tr>
+        <tr><td>Older run</td><td>Session History</td><td>View-only snapshot</td></tr>
       </tbody>
     </table>
 
-    <!-- FEATURE FINDER -->
-    <h2>📌 Feature Finder</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Need...</th>
-          <th>Go To...</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>View parsed contests</td>
-          <td><strong>Main Content → Results Grid</strong></td>
-          <td>Scroll cards, click to expand</td>
-        </tr>
-        <tr>
-          <td>Search for specific contest</td>
-          <td><strong>Results Preview Bar → Search Box</strong></td>
-          <td>Type name, state, or ballot type</td>
-        </tr>
-        <tr>
-          <td>Track parsing progress</td>
-          <td><strong>Results Preview Bar → Stages</strong></td>
-          <td>Watch PREPARE → SOURCE → RUN → REVIEW</td>
-        </tr>
-        <tr>
-          <td>Manage URL sources</td>
-          <td><strong>Left Sidebar → Source Carousel</strong></td>
-          <td>Toggle URL Library / Manual Uploads</td>
-        </tr>
-        <tr>
-          <td>See session overview</td>
-          <td><strong>Left Sidebar → Run Overview</strong></td>
-          <td>View session ID, source type, mode</td>
-        </tr>
-        <tr>
-          <td>Check expected outputs</td>
-          <td><strong>Left Sidebar → Expected Artifacts</strong></td>
-          <td>Review CSV, metadata, quality checks</td>
-        </tr>
-        <tr>
-          <td>Download results</td>
-          <td><strong>Right Sidebar → Export</strong></td>
-          <td>Choose format (CSV/JSON) & download</td>
-        </tr>
-        <tr>
-          <td>Access tools & settings</td>
-          <td><strong>Top Navbar → ⚙️ Tools</strong></td>
-          <td>Open right sidebar panel</td>
-        </tr>
-        <tr>
-          <td>Navigate to dashboards</td>
-          <td><strong>Top Navbar Links</strong></td>
-          <td>Quality | Health | Data Framework | History</td>
-        </tr>
-        <tr>
-          <td>Return to home</td>
-          <td><strong>Top Navbar → Home</strong></td>
-          <td>Or press Ctrl+Home</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <!-- TIPS & TRICKS -->
-    <h2>💡 Navigation Tips</h2>
-    <ul>
-      <li><strong>Collapse/expand sections:</strong> Click section headers to toggle content visibility</li>
-      <li><strong>Sticky navbar:</strong> Navigation bar stays at top while scrolling results</li>
-      <li><strong>Live stage updates:</strong> Pipeline stages update in real-time as parsing progresses</li>
-      <li><strong>Touch-friendly carousel:</strong> Swipe left/right on mobile to switch URL/upload sources</li>
-      <li><strong>Search persistence:</strong> Search results filter grid dynamically (no page reload)</li>
-      <li><strong>Keyboard accessible:</strong> Use Tab to navigate, Enter/Space to activate buttons</li>
-      <li><strong>Modal focus trap:</strong> When modal opens, focus stays within the modal until closed (Escape or close button)</li>
-      <li><strong>Empty state:</strong> If no results show, check pipeline status and refresh</li>
-      <li><strong>Responsive sidebar:</strong> Left/right sidebars auto-collapse on mobile for more space</li>
-      <li><strong>Hint messages:</strong> Watch pipeline hint bar below main content for helpful guidance</li>
-    </ul>
-
-    <!-- COMMON ACTIONS -->
-    <h2>🔧 Common Actions</h2>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-      <div style="padding: 1rem; border: 1px solid #334155; border-radius: 6px;">
-        <h4>📥 View Parse Results</h4>
-        <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9rem;">
-          <li>Run parser (check Left Sidebar)</li>
-          <li>Wait for REVIEW stage</li>
-          <li>Results appear in grid</li>
-          <li>Click cards to expand</li>
-        </ol>
-      </div>
-      <div style="padding: 1rem; border: 1px solid #334155; border-radius: 6px;">
-        <h4>🔍 Filter by Contest Type</h4>
-        <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9rem;">
-          <li>Open Results Preview</li>
-          <li>Type in search: "president", "measure", etc.</li>
-          <li>Grid filters automatically</li>
-          <li>Clear to see all</li>
-        </ol>
-      </div>
-      <div style="padding: 1rem; border: 1px solid #334155; border-radius: 6px;">
-        <h4>📋 Switch Data Source</h4>
-        <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9rem;">
-          <li>Left Sidebar carousel</li>
-          <li>Click dot or swipe</li>
-          <li>New source appears</li>
-          <li>Ready to reparse</li>
-        </ol>
-      </div>
-      <div style="padding: 1rem; border: 1px solid #334155; border-radius: 6px;">
-        <h4>💾 Export Results</h4>
-        <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9rem;">
-          <li>Right Sidebar: ⚙️ button</li>
-          <li>Find Export section</li>
-          <li>Choose CSV or JSON</li>
-          <li>Download file</li>
-        </ol>
-      </div>
+    <h2 id="keyboard-shortcuts">⌨️ Quick Reference shortcuts</h2>
+    <p class="section-intro">These shortcuts belong to this help page, not to Ballot Lens execution.</p>
+    <div class="grid">
+      <div class="card"><div class="card-title"><span class="kbd">/</span></div><div class="card-content">Focus Feature Finder search.</div></div>
+      <div class="card"><div class="card-title"><span class="kbd">?</span></div><div class="card-content">Jump to shortcuts.</div></div>
+      <div class="card"><div class="card-title"><span class="kbd">f</span></div><div class="card-content">Jump to Feature Finder.</div></div>
+      <div class="card"><div class="card-title"><span class="kbd">Escape</span></div><div class="card-content">Blur focused help input.</div></div>
+      <div class="card"><div class="card-title"><span class="kbd">Ctrl + Home</span></div><div class="card-content">Return to ElectionPulse home in the webapp.</div></div>
     </div>
 
-    <!-- INTERFACE ELEMENTS -->
-    <h2>🎛️ Key Controls & Buttons</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Button/Control</th>
-          <th>Location</th>
-          <th>Function</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><span class="kbd">☰</span> (Menu)</td>
-          <td>Navbar (mobile)</td>
-          <td>Toggle left sidebar</td>
-        </tr>
-        <tr>
-          <td><span class="kbd">⚙️</span> (Tools)</td>
-          <td>Navbar (top-right)</td>
-          <td>Open right sidebar (settings/export)</td>
-        </tr>
-        <tr>
-          <td><span class="kbd">🔄</span> (Refresh)</td>
-          <td>Results Preview Bar</td>
-          <td>Reload results grid</td>
-        </tr>
-        <tr>
-          <td><span class="kbd">🔍</span> (Search)</td>
-          <td>Results Preview Bar</td>
-          <td>Filter results by keyword</td>
-        </tr>
-        <tr>
-          <td>Carousel Dots</td>
-          <td>Left Sidebar</td>
-          <td>Switch between URL Library and Uploads</td>
-        </tr>
-        <tr>
-          <td>Contest Cards</td>
-          <td>Results Grid</td>
-          <td>Click to expand/collapse details</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <!-- STATUS INDICATORS -->
-    <h2>📊 Understanding Pipeline Status</h2>
-    <div style="padding: 1rem; background: #0f172a; border-radius: 6px; margin: 1rem 0;">
-      <p style="margin: 0 0 1rem 0; color: #93c5fd;"><strong>Pipeline Stages:</strong></p>
-      <ul style="margin: 0; padding-left: 1.5rem;">
-        <li><span class="kbd">PREPARE</span> — Setting up session, validating inputs</li>
-        <li><span class="kbd">SOURCE</span> — Loading URLs or uploaded files</li>
-        <li><span class="kbd">RUN</span> — Active parsing of election data</li>
-        <li><span class="kbd">REVIEW</span> — Quality validation and results finalization</li>
-      </ul>
-      <p style="margin: 1rem 0 0 0; color: #cbd5e1; font-size: 0.9rem;"><em>Current stage highlights; click stage to see details. Progress shown via visual indicators.</em></p>
+    <h2 id="help">🛠️ Troubleshooting</h2>
+    <div class="status-list">
+      <article class="section-nav"><h3>Trusted modes are locked</h3><p>Trusted controls require the trusted principal/certificate path.</p></article>
+      <article class="section-nav"><h3>The run button is disabled</h3><p>Confirm the selected source is the exact source currently authorized for execution.</p></article>
+      <article class="section-nav"><h3>A historical session will not resume</h3><p>Expected: Session History is inspect-only and does not restore or rebind parser sessions.</p></article>
+      <article class="section-nav"><h3>Canonical comparison says UNRESOLVED</h3><p>UNRESOLVED is not a mismatch claim.</p></article>
     </div>
 
-    <hr style="border: none; border-top: 1px solid #334155; margin: 2rem 0;">
-    <p style="text-align: center; color: #cbd5e1; font-size: 0.9rem;">
-      <strong>Ballot Lens v3.0</strong> | Election Results Parser<br>
-      Press <span class="kbd">Escape</span> to close any modal | Press <span class="kbd">Ctrl</span> + <span class="kbd">Home</span> to return to dashboard
-    </p>
-  </div>
-
-  <script src="../webapp/static/js/quick_reference.js" defer></script>
-</body>
-</html>
+    <div class="callout success"><strong>Security boundary:</strong><p>Browsing, selecting, or inspecting a source does not create new execution authority.</p></div>
+    <hr class="divider">
+    <p class="footnote">ElectionPulse — Ballot Lens Quick Reference • Public &amp; Trusted Parsing • Sessions • Validation • Diagnostics</p>
+  </main>
+<script src="../webapp/static/js/quick_reference.js" defer></script></body></html>
