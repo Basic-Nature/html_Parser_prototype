@@ -1,8 +1,8 @@
 /* ============================================
    Shared operator dashboard foundation
    Independent of legacy Ballot Lens assets.
-   J2B preserves the existing dashboard palette/base behavior while removing
-   runtime dependency on ballot_lens_modern.css.
+   Owns the shared dashboard palette/base behavior without retired bundle
+   dependencies.
    ============================================ */
 
 :root {

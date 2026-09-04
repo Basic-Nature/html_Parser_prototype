@@ -55,7 +55,7 @@ def test_apply_change_scope_parser_only_filters_docs_and_ui_files():
 
     changed = [
         "docs/FEATURES/DATABASE_COMPARISON.md",
-        "webapp/static/js/ballot_lens_modern.js",
+        "webapp/frontend/ballot-lens/main.tsx",
         "webapp/parser/utils/output_utils.py",
         "webapp/tests/test_output_utils_database_crosscheck.py",
         "automate.py",
@@ -67,7 +67,7 @@ def test_apply_change_scope_parser_only_filters_docs_and_ui_files():
     assert "webapp/tests/test_output_utils_database_crosscheck.py" in filtered
     assert "automate.py" in filtered
     assert "docs/FEATURES/DATABASE_COMPARISON.md" not in filtered
-    assert "webapp/static/js/ballot_lens_modern.js" not in filtered
+    assert "webapp/frontend/ballot-lens/main.tsx" not in filtered
 
 
 def test_apply_change_scope_all_keeps_everything():

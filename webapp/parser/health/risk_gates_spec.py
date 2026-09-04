@@ -425,7 +425,6 @@ Documentation:
 Integration Points (TBD):
   • webapp/parser/html_election_parser.py: Call evaluate_risk() after parsing
   • webapp/templates/data_framework.html: Gate uploads by risk tier
-  • webapp/static/js/ballot_lens_modern.js: Filter/highlight by tier
   • webapp/Smart_Elections_Parser_Webapp.py: Guarded key confirmation flow
 
 ==============================================================================
