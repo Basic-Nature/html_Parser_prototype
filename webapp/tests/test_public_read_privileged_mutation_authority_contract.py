@@ -15,7 +15,6 @@ from webapp.parser.auth.capability_policy import (
 
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "webapp" / "Smart_Elections_Parser_Webapp.py"
-BALLOT_JS = ROOT / "webapp" / "static" / "js" / "ballot_lens_modern.js"
 QA_JS = ROOT / "webapp" / "static" / "js" / "quality_assurance_panel.js"
 QA_ENDPOINTS = ROOT / "webapp" / "parser" / "quality_assurance" / "qa_endpoints.py"
 
@@ -114,15 +113,6 @@ def test_worklist_overview_remains_principal_guarded():
     body = _function_source(MAIN, "api_election_data_worklist_overview")
     assert "get_request_principal()" in body
     assert "if not principal and not ALLOW_DEV_NO_PRINCIPAL" in body
-
-
-def test_background_get_denial_cannot_trigger_cert_modal():
-    source = BALLOT_JS.read_text(encoding="utf-8")
-    assert "function getRequestMethod(input, init)" in source
-    assert "function isReadOnlyRequestMethod(method)" in source
-    assert "const method = getRequestMethod(input, init);" in source
-    assert "(resp.status === 401 || resp.status === 403)" in source
-    assert "&& !isReadOnlyRequestMethod(method)" in source
 
 
 def test_qa_reviewer_queues_not_polled_anonymously():

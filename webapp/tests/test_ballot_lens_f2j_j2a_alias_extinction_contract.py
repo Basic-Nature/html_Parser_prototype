@@ -6,10 +6,6 @@ ROOT = Path(".")
 MAIN = ROOT / "webapp/Smart_Elections_Parser_Webapp.py"
 PUBLIC_PAGES = ROOT / "webapp/parser/routes/public_pages_blueprint.py"
 F2_TEMPLATE = ROOT / "webapp/templates/ballot_lens_f2.html"
-LEGACY_TEMPLATE = ROOT / "webapp/templates/ballot_lens.html"
-LEGACY_JS = ROOT / "webapp/static/js/ballot_lens_modern.js"
-LEGACY_PUBLIC_JS = ROOT / "webapp/static/js/ballot_lens_public_registry.js"
-LEGACY_CSS = ROOT / "webapp/static/css/ballot_lens_modern.css"
 QUALITY_DASHBOARD = ROOT / "webapp/templates/quality_dashboard.html"
 URL_STATUS_DASHBOARD = ROOT / "webapp/templates/url_status_dashboard.html"
 
@@ -41,14 +37,8 @@ def test_j2a_transitional_alias_handler_and_public_route_are_extinct():
     assert "ballot_lens_modern_route" not in blueprint
     assert '_call_handler("ballot_lens_modern")' not in blueprint
 
-def test_j2a_preserves_legacy_assets_for_later_consumer_extinction():
-    for path in (LEGACY_TEMPLATE, LEGACY_JS, LEGACY_PUBLIC_JS, LEGACY_CSS):
-        assert path.is_file()
-    legacy = _read(LEGACY_TEMPLATE)
+def test_j2a_primary_f2_template_remains_isolated_from_retired_bundle():
     f2 = _read(F2_TEMPLATE)
-    assert "ballot_lens_modern.js" in legacy
-    assert "ballot_lens_public_registry.js" in legacy
-    assert "ballot_lens_modern.css" in legacy
     assert 'id="ballotLensF2Root"' in f2
     assert "ballot_lens_modern.js" not in f2
     assert "ballot_lens_public_registry.js" not in f2
@@ -63,8 +53,10 @@ def test_j2a_handoff_allows_j2b_to_remove_dashboard_legacy_css_consumers():
     assert "quality_dashboard.css" in quality
     assert "quality_dashboard.css" in status
 
-def test_j2a_does_not_claim_legacy_asset_delete_gate():
-    assert LEGACY_TEMPLATE.is_file()
-    assert LEGACY_JS.is_file()
-    assert LEGACY_PUBLIC_JS.is_file()
-    assert LEGACY_CSS.is_file()
+def test_j2a_handoff_remains_valid_after_j2c_dependency_extinction():
+    main = _read(MAIN)
+    blueprint = _read(PUBLIC_PAGES)
+    assert "def ballot_lens_modern():" not in main
+    assert "/ballot_lens_modern" not in blueprint
+    assert 'id="ballotLensF2Root"' in _read(F2_TEMPLATE)
+

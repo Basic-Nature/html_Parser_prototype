@@ -7,10 +7,6 @@ ROOT = Path(".")
 MAIN = ROOT / "webapp/Smart_Elections_Parser_Webapp.py"
 PUBLIC_PAGES = ROOT / "webapp/parser/routes/public_pages_blueprint.py"
 F2_TEMPLATE = ROOT / "webapp/templates/ballot_lens_f2.html"
-LEGACY_TEMPLATE = ROOT / "webapp/templates/ballot_lens.html"
-LEGACY_MODERN_JS = ROOT / "webapp/static/js/ballot_lens_modern.js"
-LEGACY_PUBLIC_JS = ROOT / "webapp/static/js/ballot_lens_public_registry.js"
-LEGACY_MODERN_CSS = ROOT / "webapp/static/css/ballot_lens_modern.css"
 
 
 def _read(path: Path) -> str:
@@ -66,37 +62,16 @@ def test_j2a_transitional_modern_alias_authority_is_extinct():
     assert '_call_handler("ballot_lens_modern")' not in blueprint
 
 
-def test_j1_preserves_legacy_assets_only_for_later_reference_extinction():
-    for path in (
-        LEGACY_TEMPLATE,
-        LEGACY_MODERN_JS,
-        LEGACY_PUBLIC_JS,
-        LEGACY_MODERN_CSS,
-    ):
-        assert path.is_file()
-
-    legacy = _read(LEGACY_TEMPLATE)
+def test_j1_f2_template_is_isolated_from_retired_bundle():
     f2 = _read(F2_TEMPLATE)
-
-    assert 'id="btnRunParser2"' in legacy
-    assert "ballot_lens_modern.js" in legacy
-    assert "ballot_lens_public_registry.js" in legacy
-    assert "ballot_lens_modern.css" in legacy
-
     assert 'id="ballotLensF2Root"' in f2
     assert "ballot_lens_modern.js" not in f2
     assert "ballot_lens_public_registry.js" not in f2
     assert "ballot_lens_modern.css" not in f2
 
+def test_j1_route_contract_remains_valid_after_dependency_extinction():
+    body = _ballot_lens_body()
+    assert '"ballot_lens_f2.html"' in body
+    assert '"ballot_lens.html"' not in body
+    assert 'return "Ballot Lens F2 assets unavailable", 503' in body
 
-def test_j1_does_not_claim_legacy_asset_extinction_yet():
-    source = "\n".join(
-        _read(path)
-        for path in (
-            LEGACY_TEMPLATE,
-            LEGACY_MODERN_JS,
-            LEGACY_PUBLIC_JS,
-            LEGACY_MODERN_CSS,
-        )
-    )
-    assert "btnRunParser2" in source

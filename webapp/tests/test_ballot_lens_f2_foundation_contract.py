@@ -10,7 +10,6 @@ from webapp.parser.frontend_assets import load_ballot_lens_f2_assets
 
 ROOT = Path(".")
 MAIN = ROOT / "webapp/Smart_Elections_Parser_Webapp.py"
-LEGACY_TEMPLATE = ROOT / "webapp/templates/ballot_lens.html"
 F2_TEMPLATE = ROOT / "webapp/templates/ballot_lens_f2.html"
 F2_MAIN = ROOT / "webapp/frontend/ballot-lens/main.tsx"
 F2_APP = ROOT / "webapp/frontend/ballot-lens/app/App.tsx"
@@ -60,17 +59,13 @@ def test_f2_primary_route_is_unconditional_and_legacy_override_is_extinct():
     assert '"Ballot Lens F2 assets unavailable"' in body
 
 
-def test_legacy_ballot_lens_template_remains_separate():
-    legacy = _read(LEGACY_TEMPLATE)
+def test_f2_ballot_lens_template_is_self_contained_for_primary_route():
     f2 = _read(F2_TEMPLATE)
 
-    assert 'id="btnRunParser2"' in legacy
-    assert 'id="ballotLensF2Root"' not in legacy
     assert 'id="ballotLensF2Root"' in f2
     assert "ballot_lens_modern.js" not in f2
     assert "ballot_lens_public_registry.js" not in f2
     assert "ballot_lens_modern.css" not in f2
-
 
 def test_f2_foundation_has_no_parser_or_socket_execution():
     source = "\n".join(

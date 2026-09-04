@@ -14,7 +14,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = REPO_ROOT / "webapp" / "parser" / "urls.txt"
 APP = REPO_ROOT / "webapp" / "Smart_Elections_Parser_Webapp.py"
 SOCKET = REPO_ROOT / "webapp" / "parser" / "socket_ballot_lens_orchestration.py"
-BALLOT_JS = REPO_ROOT / "webapp" / "static" / "js" / "ballot_lens_modern.js"
 
 
 def test_registry_is_strict_schema_and_preserves_semantic_duplicates():
@@ -76,20 +75,6 @@ def test_api_urls_no_longer_appends_registry_file():
     assert "review_required" in body
     assert 'open(urls_file, "a"' not in body
     assert "f.write(url" not in body
-
-
-def test_ballot_lens_url_manager_uses_registry_metadata_without_direct_append():
-    source = BALLOT_JS.read_text(encoding="utf-8")
-
-    assert "data.entries" in source
-    assert "entry.parser_eligible === true" in source
-    assert "cachedUrls.map(extractMeta)" not in source
-    assert "await fetchStateCountyMappings();" not in source
-    assert "    fetchStateCountyMappings();" not in source
-
-    assert "Direct URL registry writes are disabled." in source
-    assert "fetch('/api/urls', {" not in source
-    assert 'fetch("/api/urls", {' not in source
 
 
 def test_socket_direct_urls_have_reviewed_registry_gate():

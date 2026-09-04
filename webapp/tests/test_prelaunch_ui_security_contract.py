@@ -11,7 +11,6 @@ APP = REPO_ROOT / "webapp" / "Smart_Elections_Parser_Webapp.py"
 WORKLIST_TEMPLATE = REPO_ROOT / "webapp" / "templates" / "worklist.html"
 WORKLIST_CSS = REPO_ROOT / "webapp" / "static" / "css" / "workflow_public.css"
 WORKLIST_JS = REPO_ROOT / "webapp" / "static" / "js" / "workflow_public.js"
-BALLOT_JS = REPO_ROOT / "webapp" / "static" / "js" / "ballot_lens_modern.js"
 
 
 def _function_source(path: Path, name: str) -> str:
@@ -123,60 +122,3 @@ def test_worklist_css_has_prelaunch_responsive_accessibility_layer():
     assert css.count("{") == css.count("}")
 
 
-def test_ballot_lens_worklist_import_matches_server_records_contract():
-    source = BALLOT_JS.read_text(encoding="utf-8")
-
-    start = source.index("function openWorklistModal()")
-    end = source.index("function populateWorklistTable", start)
-    block = source[start:end]
-
-    assert "Array.isArray(data.records)" in block
-    assert "worklistData = data.records;" in block
-    assert "Array.isArray(data.urls)" not in block
-    assert "worklistData = data.urls;" not in block
-
-
-def test_ballot_lens_worklist_records_map_real_source_url_fields():
-    source = BALLOT_JS.read_text(encoding="utf-8")
-
-    start = source.index("function importSelectedUrls()")
-    end = source.index("// Event listeners", start)
-    block = source[start:end]
-
-    assert "rowData['Download 1']" in block
-    assert "rowData['Download 2']" in block
-    assert "rowData['Source Link']" in block
-
-
-def test_ballot_lens_previews_never_fabricate_candidate_or_vote_rows():
-    source = BALLOT_JS.read_text(encoding="utf-8")
-
-    # Parser-session table previews remain sourced from parser_output payloads.
-    assert "rows_preview" in source
-    assert "TablePreviewManager.record" in source
-
-    # Result-card modal consumes only the real canonical preview payload.
-    assert "function displayExtractedResultPreview(result)" in source
-    assert "displayExtractedResultPreview(result);" in source
-    assert "result?.preview" in source
-    assert (
-        "No extracted preview payload is available for this canonical result."
-        in source
-    )
-
-    for fabricated in (
-        "Alice Johnson",
-        "Bob Smith",
-        "Alice Brown",
-        "County Attorney",
-        "sampleData",
-        "sampleJson",
-        "displayTablePreview(",
-        "displayJsonPreview(",
-    ):
-        assert fabricated not in source
-
-
-def test_known_ballot_lens_mojibake_em_dash_is_retired():
-    source = BALLOT_JS.read_text(encoding="utf-8")
-    assert "\u00e2\u20ac\u201d" not in source

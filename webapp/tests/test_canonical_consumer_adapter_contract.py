@@ -211,19 +211,32 @@ def test_canonical_endpoint_is_wired_without_warehouse_fallback():
 
 
 def test_frontend_uses_configured_canonical_api_and_preserves_null_semantics():
-    data_framework = (REPO_ROOT / "webapp/static/js/data_framework.js").read_text(encoding="utf-8")
-    ballot_lens = (REPO_ROOT / "webapp/static/js/ballot_lens_modern.js").read_text(encoding="utf-8")
-    data_template = (REPO_ROOT / "webapp/templates/data_framework.html").read_text(encoding="utf-8")
-    ballot_template = (REPO_ROOT / "webapp/templates/ballot_lens.html").read_text(encoding="utf-8")
+    data_framework = (
+        REPO_ROOT / "webapp/static/js/data_framework.js"
+    ).read_text(encoding="utf-8")
+    data_template = (
+        REPO_ROOT / "webapp/templates/data_framework.html"
+    ).read_text(encoding="utf-8")
+    f2_template = (
+        REPO_ROOT / "webapp/templates/ballot_lens_f2.html"
+    ).read_text(encoding="utf-8")
+    f2_bootstrap = (
+        REPO_ROOT / "webapp/frontend/ballot-lens/contracts/bootstrap.ts"
+    ).read_text(encoding="utf-8")
+    f2_canonical = (
+        REPO_ROOT / "webapp/frontend/ballot-lens/services/canonicalComparison.ts"
+    ).read_text(encoding="utf-8")
 
     assert "'/api/ballotlens-database'" in data_framework
     assert "'/api/warehouse_election_results'" not in data_framework
-    assert "'/api/ballotlens-database'" in ballot_lens
-    assert "'/api/warehouse_election_results" not in ballot_lens
-
     assert 'data-api-url="{{ data_api_url }}"' in data_template
-    assert 'id="ballotLensConfig"' in ballot_template
-    assert 'data-api-url="{{ data_api_url }}"' in ballot_template
+
+    assert 'data-data-api-url="{{ data_api_url|e }}"' in f2_template
+    assert "dataApiUrl: root.dataset.dataApiUrl ?? ''" in f2_bootstrap
+    assert "buildCanonicalReadPath" in f2_canonical
+    assert "const raw = dataApiUrl.trim();" in f2_canonical
+    assert "Canonical API must be a same-origin relative path" in f2_canonical
+    assert "url.pathname !== '/api/ballotlens-database'" in f2_canonical
 
     # Null must not be normalized to zero at the ingestion boundary.
     assert "if (value == null || value === '') return null;" in data_framework
@@ -239,7 +252,6 @@ def test_frontend_uses_configured_canonical_api_and_preserves_null_semantics():
     )
     for token in forbidden:
         assert token not in data_framework
-
 
 def test_canonical_endpoint_uses_public_read_capability_and_does_not_infer_null_reason():
     main_source = (REPO_ROOT / "webapp/Smart_Elections_Parser_Webapp.py").read_text(encoding="utf-8")

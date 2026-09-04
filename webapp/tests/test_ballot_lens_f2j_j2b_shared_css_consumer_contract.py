@@ -9,19 +9,7 @@ PUBLIC_PAGES = ROOT / "webapp/parser/routes/public_pages_blueprint.py"
 QUALITY_DASHBOARD = ROOT / "webapp/templates/quality_dashboard.html"
 URL_STATUS_DASHBOARD = ROOT / "webapp/templates/url_status_dashboard.html"
 SHARED_DASHBOARD_CSS = ROOT / "webapp/static/css/quality_dashboard.css"
-LEGACY_TEMPLATE = ROOT / "webapp/templates/ballot_lens.html"
-LEGACY_JS = ROOT / "webapp/static/js/ballot_lens_modern.js"
-LEGACY_PUBLIC_JS = ROOT / "webapp/static/js/ballot_lens_public_registry.js"
-LEGACY_CSS = ROOT / "webapp/static/css/ballot_lens_modern.css"
 
-J2C_ACTIVE_TEST = (
-    ROOT / "webapp/static/js/__tests__/ballot_lens_modern.placeholder.test.js"
-)
-J2C_ACTIVE_TEST_CHIPS = (
-    ROOT / "webapp/static/js/__tests__/ballot_lens_modern.chip-transitions.test.js"
-)
-J2C_TOOL = ROOT / "tools/advanced_live_validation.py"
-J2C_TOOL_COMPREHENSIVE = ROOT / "tools/comprehensive_ui_validation.py"
 
 
 def _read(path: Path) -> str:
@@ -75,20 +63,14 @@ def test_j2b_shared_dashboard_css_preserves_existing_page_base_behavior():
     assert ':root[data-theme="light"] {' in css
 
 
-def test_j2b_keeps_legacy_bundle_physically_present_for_j2c_and_delete_gate():
-    for path in (
-        LEGACY_TEMPLATE,
-        LEGACY_JS,
-        LEGACY_PUBLIC_JS,
-        LEGACY_CSS,
-    ):
-        assert path.is_file()
+def test_j2b_shared_css_migration_is_independent_of_retired_bundle_files():
+    quality = _read(QUALITY_DASHBOARD)
+    status = _read(URL_STATUS_DASHBOARD)
+    css = _read(SHARED_DASHBOARD_CSS)
 
-    legacy = _read(LEGACY_TEMPLATE)
-    assert "ballot_lens_modern.css" in legacy
-    assert "ballot_lens_modern.js" in legacy
-    assert "ballot_lens_public_registry.js" in legacy
-
+    assert "ballot_lens_modern.css" not in quality
+    assert "ballot_lens_modern.css" not in status
+    assert "Independent of legacy Ballot Lens assets." in css
 
 def test_j2b_preserves_j2a_alias_extinction():
     main = _read(MAIN)
@@ -109,16 +91,11 @@ def test_j2b_direct_runtime_legacy_css_consumers_are_zero():
     assert direct_runtime_consumers == []
 
 
-def test_j2b_does_not_cross_j2c_or_legacy_delete_gate():
-    for path in (
-        J2C_ACTIVE_TEST,
-        J2C_ACTIVE_TEST_CHIPS,
-        J2C_TOOL,
-        J2C_TOOL_COMPREHENSIVE,
-    ):
-        assert path.is_file()
+def test_j2b_handoff_preserves_alias_extinction_and_shared_css_authority():
+    main = _read(MAIN)
+    blueprint = _read(PUBLIC_PAGES)
+    assert "def ballot_lens_modern():" not in main
+    assert "/ballot_lens_modern" not in blueprint
+    assert "quality_dashboard.css" in _read(QUALITY_DASHBOARD)
+    assert "quality_dashboard.css" in _read(URL_STATUS_DASHBOARD)
 
-    assert LEGACY_TEMPLATE.is_file()
-    assert LEGACY_JS.is_file()
-    assert LEGACY_PUBLIC_JS.is_file()
-    assert LEGACY_CSS.is_file()

@@ -228,8 +228,7 @@ jobs:
         run: |
           npx jest --config=jest.config.js --runInBand \
             webapp/static/js/__tests__/auth_utils.contract.test.js \
-            webapp/static/js/__tests__/data_framework.contract.test.js \
-            webapp/static/js/__tests__/ballot_lens_modern.placeholder.test.js
+            webapp/static/js/__tests__/data_framework.contract.test.js
 
       - name: Contract checks summary
         if: always()
@@ -237,7 +236,7 @@ jobs:
           {
             echo "## Pre-Deploy QA (Contract checks, non-blocking)"
             echo "- Backend contracts: cert/auth + route-handler + error-path + deterministic ballot-lens pathway checks"
-            echo "- Frontend contracts: auth utils + data framework + ballot lens module checks"
+            echo "- Frontend contracts: auth utils + data framework; Ballot Lens F2 is enforced by the blocking frontend job"
             echo "- Live integration marker policy: \`live_integration\` tests are excluded by default"
             echo "- Mode: non-blocking (signals quality while implementation hardens)"
             echo "- Next phase: tighten to blocking once stability and pass-rate are sustained"
