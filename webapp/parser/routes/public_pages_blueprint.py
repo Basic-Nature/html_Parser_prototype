@@ -34,10 +34,6 @@ def create_public_pages_blueprint() -> Blueprint:
     def ballot_lens_route():
         return _call_handler("ballot_lens")
 
-    @bp.route("/ballot_lens_modern", methods=["GET"], endpoint="ballot_lens_modern")
-    def ballot_lens_modern_route():
-        return _call_handler("ballot_lens_modern")
-
     @bp.route("/worklist", methods=["GET"], endpoint="worklist")
     def worklist_route():
         return _call_handler("worklist")

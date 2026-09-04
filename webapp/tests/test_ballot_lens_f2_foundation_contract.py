@@ -48,7 +48,7 @@ def _read(path: Path) -> str:
 def test_f2_primary_route_is_unconditional_and_legacy_override_is_extinct():
     source = _read(MAIN)
     start = source.index("def ballot_lens():")
-    end = source.index("def ballot_lens_modern():", start)
+    end = source.index("def worklist():", start)
     body = source[start:end]
 
     assert "BALLOT_LENS_UI_VARIANT" not in body

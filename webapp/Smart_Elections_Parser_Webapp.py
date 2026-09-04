@@ -6461,11 +6461,6 @@ def ballot_lens():
         print(traceback.format_exc())
         return "Internal Server Error", 500
 
-def ballot_lens_modern():
-    """Redirect to consolidated modern interface at /ballot_lens."""
-    return redirect(url_for("ballot_lens"))
-
-
 def worklist():
     """
     Render the SMART Elections Worklist interface.
@@ -7893,7 +7888,6 @@ def auth_challenge():
 app.config["_PUBLIC_PAGES_ROUTE_HANDLERS"] = {
     "index": index,
     "ballot_lens": ballot_lens,
-    "ballot_lens_modern": ballot_lens_modern,
     "worklist": worklist,
     "auth_welcome": auth_welcome,
     "auth_challenge": auth_challenge,

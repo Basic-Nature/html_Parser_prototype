@@ -48,7 +48,7 @@ def test_legacy_raw_url_library_requires_trusted_principal():
 def test_anonymous_page_suppresses_server_file_enumeration():
     main = _read(MAIN)
     start = main.index("def ballot_lens():")
-    end = main.index("def ballot_lens_modern():", start)
+    end = main.index("def worklist():", start)
     body = main[start:end]
     assert "ballot_lens_trusted_controls = bool(principal)" in body
     assert '"input_files": []' in body

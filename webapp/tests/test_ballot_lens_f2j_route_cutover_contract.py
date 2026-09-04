@@ -20,7 +20,7 @@ def _read(path: Path) -> str:
 def _ballot_lens_body() -> str:
     source = _read(MAIN)
     start = source.index("def ballot_lens():")
-    end = source.index("def ballot_lens_modern():", start)
+    end = source.index("def worklist():", start)
     return source[start:end]
 
 
@@ -52,18 +52,18 @@ def test_j1_cutover_preserves_trusted_upload_and_file_list_gates():
     )
 
 
-def test_j1_transitional_modern_alias_still_redirects_to_primary_route():
+def test_j2a_transitional_modern_alias_authority_is_extinct():
     source = _read(MAIN)
-    start = source.index("def ballot_lens_modern():")
-    end = source.index("def worklist():", start)
-    alias = source[start:end]
-
-    assert 'return redirect(url_for("ballot_lens"))' in alias
-
     blueprint = _read(PUBLIC_PAGES)
+
+    assert "def ballot_lens_modern():" not in source
+    assert '"ballot_lens_modern": ballot_lens_modern' not in source
+
     assert '@bp.route("/ballot_lens", methods=["GET", "POST"]' in blueprint
-    assert '@bp.route("/ballot_lens_modern", methods=["GET"]' in blueprint
-    assert 'return _call_handler("ballot_lens_modern")' in blueprint
+    assert 'return _call_handler("ballot_lens")' in blueprint
+    assert "/ballot_lens_modern" not in blueprint
+    assert "ballot_lens_modern_route" not in blueprint
+    assert '_call_handler("ballot_lens_modern")' not in blueprint
 
 
 def test_j1_preserves_legacy_assets_only_for_later_reference_extinction():
