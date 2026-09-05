@@ -6,7 +6,7 @@
     <title>ElectionPulse Workflow</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/workflow_public.css') }}?v={{ static_version }}">
 </head>
-<body>
+<body data-page="workflow-public" data-workflow-contract="public-readiness-r3">
     <main class="workflow-shell">
         <header class="workflow-hero">
             <div class="workflow-kicker">Public verification workflow</div>
@@ -41,11 +41,14 @@
 
         <section
             id="workflow-state"
-            class="workflow-state workflow-state-loading"
+            class="workflow-state workflow-state-idle"
+            data-ui-state="idle"
+            role="status"
             aria-live="polite"
             aria-atomic="true"
+            aria-busy="false"
         >
-            Loading governed public workflow…
+            Governed public workflow ready to load.
         </section>
 
         <section class="workflow-stats" aria-label="Workflow summary">
@@ -149,6 +152,15 @@
                     Reset
                 </button>
             </div>
+
+            <p
+                id="workflow-filter-summary"
+                class="workflow-filter-summary"
+                aria-live="polite"
+                aria-atomic="true"
+            >
+                No filters applied.
+            </p>
         </section>
 
         <section class="workflow-table-section" aria-labelledby="workflow-table-title">
@@ -183,6 +195,8 @@
             <div
                 id="workflow-empty-state"
                 class="workflow-empty-state"
+                data-ui-state="idle"
+                role="status"
                 aria-live="polite"
                 aria-atomic="true"
                 hidden
@@ -193,10 +207,9 @@
             <span class="workflow-section-kicker">Participation foundation</span>
             <h2 id="workflow-participation-title">Public visibility now; contributor actions next</h2>
             <p>
-                W1 intentionally opens visibility without opening raw workflow identity
-                or mutation authority. Task claiming, approved-source parsing, uploads,
-                and submissions will be added through authenticated contributor roles
-                in W3/W4.
+                This public surface remains view-only. Task claiming, approved-source
+                parsing, uploads, submissions, and other workflow mutations require
+                authenticated contributor authority and are intentionally unavailable here.
             </p>
         </section>
     </main>

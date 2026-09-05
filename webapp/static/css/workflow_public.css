@@ -162,12 +162,17 @@ body {
     font-weight: 700;
 }
 
+.workflow-state-idle,
 .workflow-state-loading {
     color: var(--workflow-muted);
 }
 
 .workflow-state-ready {
     border-color: color-mix(in srgb, var(--workflow-ok) 55%, var(--workflow-border));
+}
+
+.workflow-state-empty {
+    border-color: color-mix(in srgb, var(--workflow-accent) 45%, var(--workflow-border));
 }
 
 .workflow-state-unavailable {
@@ -284,6 +289,21 @@ body {
     display: flex;
     gap: 10px;
     margin-top: 16px;
+}
+
+.workflow-filter-summary {
+    margin: 12px 0 0;
+    color: var(--workflow-muted);
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+
+.workflow-filter-grid option[data-available="false"] {
+    color: var(--workflow-muted);
+}
+
+.workflow-option-unavailable {
+    opacity: 0.72;
 }
 
 .workflow-table-wrap {

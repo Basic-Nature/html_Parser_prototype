@@ -11,6 +11,12 @@
             this.stats = null;
             this.facets = null;
             this.items = null;
+            this.requestSeq = 0;
+            this.activeController = null;
+            this.facetOptionUniverse = {
+                state: new Map(),
+                lifecycle_state: new Map()
+            };
             this.init();
         }
 
@@ -41,12 +47,13 @@
                 .replace(/\b\w/g, (match) => match.toUpperCase());
         }
 
-        async fetchJson(path) {
+        async fetchJson(path, signal = undefined) {
             const response = await fetch(path, {
                 method: 'GET',
                 headers: {
                     Accept: 'application/json'
-                }
+                },
+                signal
             });
 
             let payload;
@@ -84,10 +91,107 @@
             return Array.from(params.keys()).length > 0;
         }
 
+        normalizeUiState(kind) {
+            const allowed = new Set([
+                'idle',
+                'loading',
+                'ready',
+                'empty',
+                'unavailable',
+                'error'
+            ]);
+            return allowed.has(kind) ? kind : 'error';
+        }
+
+        setSelectValueWithFallback(id, value) {
+            const select = this.byId(id);
+            const normalized = String(value ?? '').trim();
+            if (!select || !normalized) return;
+
+            let option = Array.from(select.options)
+                .find((candidate) => candidate.value === normalized);
+            if (!option) {
+                option = document.createElement('option');
+                option.value = normalized;
+                option.textContent = this.humanize(normalized);
+                option.dataset.available = 'false';
+                option.classList.add('workflow-option-unavailable');
+                select.appendChild(option);
+            }
+            select.value = normalized;
+        }
+
+        hydrateFiltersFromLocation() {
+            const params = new URLSearchParams(window.location.search);
+            this.setSelectValueWithFallback(
+                'workflow-filter-state',
+                params.get('state')
+            );
+            this.setSelectValueWithFallback(
+                'workflow-filter-lifecycle',
+                params.get('lifecycle_state')
+            );
+
+            const year = this.byId('workflow-filter-year');
+            const search = this.byId('workflow-filter-search');
+            if (year && params.get('year')) {
+                year.value = params.get('year');
+            }
+            if (search && params.get('search')) {
+                search.value = params.get('search');
+            }
+        }
+
+        syncLocationFromFilters() {
+            const url = new URL(window.location.href);
+            for (const key of [
+                'state',
+                'year',
+                'lifecycle_state',
+                'search'
+            ]) {
+                url.searchParams.delete(key);
+            }
+
+            const params = this.buildParams();
+            params.delete('limit');
+            for (const [key, value] of params.entries()) {
+                url.searchParams.set(key, value);
+            }
+
+            const query = url.searchParams.toString();
+            const next = `${url.pathname}${query ? `?${query}` : ''}${url.hash}`;
+            window.history.replaceState(null, '', next);
+        }
+
+        renderFilterSummary() {
+            const summary = this.byId('workflow-filter-summary');
+            if (!summary) return;
+
+            const params = this.buildParams();
+            params.delete('limit');
+            const parts = [];
+            for (const [key, value] of params.entries()) {
+                const labels = {
+                    state: 'State',
+                    year: 'Year',
+                    lifecycle_state: 'Lifecycle',
+                    search: 'Search'
+                };
+                parts.push(`${labels[key] || key}: ${value}`);
+            }
+            summary.textContent = parts.length
+                ? `Active filters · ${parts.join(' · ')}`
+                : 'No filters applied.';
+        }
+
         setState(kind, message) {
             const el = this.byId('workflow-state');
             if (!el) return;
-            el.className = `workflow-state workflow-state-${kind}`;
+            const state = this.normalizeUiState(kind);
+            el.className = `workflow-state workflow-state-${state}`;
+            el.dataset.uiState = state;
+            el.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
             el.textContent = message;
         }
 
@@ -104,13 +208,13 @@
         renderStats(payload) {
             const available = payload?.available !== false;
             if (!available) {
-                for (const id of (
+                for (const id of [
                     'workflow-stat-total',
                     'workflow-stat-active',
                     'workflow-stat-blocked',
                     'workflow-stat-ready',
                     'workflow-stat-published'
-                )) {
+                ]) {
                     this.setText(id, '—');
                 }
                 return;
@@ -129,32 +233,63 @@
             this.setText('workflow-stat-published', payload?.action_counts?.published);
         }
 
-        setSelectOptions(id, rows, placeholder) {
+        setSelectOptions(id, rows, placeholder, axis) {
             const select = this.byId(id);
             if (!select) return;
 
             const current = select.value;
-            const values = (Array.isArray(rows) ? rows : [])
-                .map((row) => row?.value)
-                .filter((value) => value !== null && value !== undefined && String(value).trim())
-                .map((value) => String(value));
+            const currentCounts = new Map();
+            for (const row of (Array.isArray(rows) ? rows : [])) {
+                const value = row?.value;
+                if (
+                    value === null
+                    || value === undefined
+                    || !String(value).trim()
+                ) {
+                    continue;
+                }
+                currentCounts.set(
+                    String(value),
+                    Number(row?.count ?? 0)
+                );
+            }
 
-            const unique = Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+            const universe = this.facetOptionUniverse[axis] || new Map();
+            for (const [value, count] of currentCounts.entries()) {
+                universe.set(value, count);
+            }
+            if (current && !universe.has(current)) {
+                universe.set(current, null);
+            }
+            this.facetOptionUniverse[axis] = universe;
+
+            const values = Array.from(universe.keys())
+                .sort((a, b) => a.localeCompare(b));
             select.replaceChildren();
 
             const first = document.createElement('option');
             first.value = '';
             first.textContent = placeholder;
+            first.dataset.available = 'true';
             select.appendChild(first);
 
-            for (const value of unique) {
+            for (const value of values) {
+                const count = currentCounts.get(value);
+                const available = currentCounts.has(value) && Number(count) > 0;
                 const option = document.createElement('option');
                 option.value = value;
-                option.textContent = this.humanize(value);
+                option.dataset.available = available ? 'true' : 'false';
+                option.classList.toggle(
+                    'workflow-option-unavailable',
+                    !available
+                );
+                option.textContent = available
+                    ? `${this.humanize(value)} (${count})`
+                    : `${this.humanize(value)} (0)`;
                 select.appendChild(option);
             }
 
-            if (unique.includes(current)) {
+            if (current && values.includes(current)) {
                 select.value = current;
             }
         }
@@ -164,12 +299,14 @@
             this.setSelectOptions(
                 'workflow-filter-state',
                 payload?.facets?.state,
-                'All states'
+                'All states',
+                'state'
             );
             this.setSelectOptions(
                 'workflow-filter-lifecycle',
                 payload?.facets?.lifecycle_state,
-                'All lifecycle states'
+                'All lifecycle states',
+                'lifecycle_state'
             );
         }
 
@@ -193,9 +330,11 @@
             if (!tbody || !empty) return;
 
             tbody.replaceChildren();
+            empty.dataset.uiState = 'idle';
 
             if (payload?.available === false) {
                 empty.hidden = false;
+                empty.dataset.uiState = 'unavailable';
                 empty.textContent =
                     'Workflow data is temporarily unavailable. Published election data remains separate in Data Framework.';
                 this.setText('workflow-pagination-summary', 'Workflow unavailable');
@@ -207,6 +346,7 @@
 
             if (rows.length === 0) {
                 empty.hidden = false;
+                empty.dataset.uiState = 'empty';
                 if (this.hasFilters()) {
                     empty.textContent =
                         'No public workflow tasks match these filters.';
@@ -222,6 +362,7 @@
             }
 
             empty.hidden = true;
+            empty.dataset.uiState = 'ready';
             empty.textContent = '';
 
             for (const task of rows) {
@@ -255,7 +396,18 @@
             );
         }
 
-        async load() {
+        async load({ syncUrl = false } = {}) {
+            const requestSeq = ++this.requestSeq;
+            if (this.activeController) {
+                this.activeController.abort();
+            }
+            const controller = new AbortController();
+            this.activeController = controller;
+
+            if (syncUrl) {
+                this.syncLocationFromFilters();
+            }
+            this.renderFilterSummary();
             this.setState('loading', 'Loading governed public workflow…');
 
             const params = this.buildParams();
@@ -263,10 +415,21 @@
 
             try {
                 const [stats, facets, items] = await Promise.all([
-                    this.fetchJson(`/api/workflow/v1/stats?${query}`),
-                    this.fetchJson(`/api/workflow/v1/facets?${query}`),
-                    this.fetchJson(`/api/workflow/v1/public/items?${query}`)
+                    this.fetchJson(
+                        `/api/workflow/v1/stats?${query}`,
+                        controller.signal
+                    ),
+                    this.fetchJson(
+                        `/api/workflow/v1/facets?${query}`,
+                        controller.signal
+                    ),
+                    this.fetchJson(
+                        `/api/workflow/v1/public/items?${query}`,
+                        controller.signal
+                    )
                 ]);
+
+                if (requestSeq !== this.requestSeq) return;
 
                 this.stats = stats;
                 this.facets = facets;
@@ -276,16 +439,19 @@
                 this.renderFacets(facets);
                 this.renderAuthority(items);
                 this.renderItems(items);
+                this.renderFilterSummary();
 
                 if (items?.available === false) {
                     this.setState(
                         'unavailable',
                         'Workflow schema is not currently available to the public read plane.'
                     );
-                } else if ((items?.pagination?.total ?? 0) === 0 && !this.hasFilters()) {
+                } else if ((items?.pagination?.total ?? 0) === 0) {
                     this.setState(
-                        'ready',
-                        'Governed Workflow is online and currently contains zero seeded public tasks.'
+                        'empty',
+                        this.hasFilters()
+                            ? 'Governed Workflow is online. No public tasks match the active filters.'
+                            : 'Governed Workflow is online and currently contains zero seeded public tasks.'
                     );
                 } else {
                     this.setState(
@@ -294,6 +460,9 @@
                     );
                 }
             } catch (error) {
+                if (error?.name === 'AbortError') return;
+                if (requestSeq !== this.requestSeq) return;
+
                 console.error('[ElectionPulse Workflow] Public read failed:', error);
                 this.setState(
                     'error',
@@ -307,8 +476,16 @@
                 if (tbody) tbody.replaceChildren();
                 if (empty) {
                     empty.hidden = false;
+                    empty.dataset.uiState = 'error';
                     empty.textContent =
                         'The public workflow read is unavailable. This does not imply published election data is unavailable.';
+                }
+            } finally {
+                if (
+                    requestSeq === this.requestSeq
+                    && this.activeController === controller
+                ) {
+                    this.activeController = null;
                 }
             }
         }
@@ -323,34 +500,36 @@
             if (year) year.value = '';
             if (lifecycle) lifecycle.value = '';
             if (search) search.value = '';
-            this.load();
+            this.load({ syncUrl: true });
         }
 
         setupEvents() {
             this.byId('workflow-filter-apply')?.addEventListener(
                 'click',
-                () => this.load()
+                () => this.load({ syncUrl: true })
             );
             this.byId('workflow-filter-reset')?.addEventListener(
                 'click',
                 () => this.resetFilters()
             );
 
-            for (const id of (
+            for (const id of [
                 'workflow-filter-year',
                 'workflow-filter-search'
-            )) {
+            ]) {
                 this.byId(id)?.addEventListener('keydown', (event) => {
                     if (event.key === 'Enter') {
                         event.preventDefault();
-                        this.load();
+                        this.load({ syncUrl: true });
                     }
                 });
             }
         }
 
         init() {
+            this.hydrateFiltersFromLocation();
             this.setupEvents();
+            this.renderFilterSummary();
             this.load();
         }
     }
