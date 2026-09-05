@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import type { PublicRuntimeResult } from '../contracts/publicRuntime';
@@ -165,9 +167,10 @@ describe('F2-F results workspace contracts', () => {
     );
   });
 
-  it('performs canonical comparison with GET and same-origin credentials only', async () => {
+  it('performs canonical comparison with GET, same-origin credentials, and caller cancellation only', async () => {
     let observedInput = '';
     let observedInit: RequestInit | undefined;
+    const controller = new AbortController();
     const fetchImpl: typeof fetch = async (input, init) => {
       observedInput = String(input);
       observedInit = init;
@@ -181,11 +184,29 @@ describe('F2-F results workspace contracts', () => {
       '/api/ballotlens-database',
       runtimeResult,
       fetchImpl,
+      controller.signal,
     );
 
     expect(observedInput).toContain('/api/ballotlens-database?');
     expect(observedInit?.method).toBe('GET');
     expect(observedInit?.credentials).toBe('same-origin');
+    expect(observedInit?.signal).toBe(controller.signal);
     expect(comparison.outcome).toBe('EXACT_MATCH');
+  });
+
+  it('aborts superseded workspace canonical reads before they can update state', () => {
+    const workspaceSource = readFileSync(
+      new URL(
+        '../components/workspace/WorkspaceViews.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+
+    expect(workspaceSource).toContain('const controller = new AbortController();');
+    expect(workspaceSource).toContain('controller.signal');
+    expect(workspaceSource).toContain('if (!controller.signal.aborted)');
+    expect(workspaceSource).toContain('return () => controller.abort();');
+    expect(workspaceSource).not.toContain('let cancelled = false;');
   });
 });

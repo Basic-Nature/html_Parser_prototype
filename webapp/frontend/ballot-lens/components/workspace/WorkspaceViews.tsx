@@ -411,26 +411,31 @@ export function WorkspaceViews({
   });
 
   useEffect(() => {
-    let cancelled = false;
     if (!runtimeResult) {
       setComparisonState({
         loading: false,
         comparison: unresolvedComparison('canonical_not_requested', 0),
       });
-      return () => { cancelled = true; };
+      return;
     }
 
+    const controller = new AbortController();
     setComparisonState({
       loading: true,
       comparison: unresolvedComparison('canonical_read_in_progress', rowCount),
     });
-    void fetchCanonicalComparison(dataApiUrl, runtimeResult).then((comparison) => {
-      if (!cancelled) {
+    void fetchCanonicalComparison(
+      dataApiUrl,
+      runtimeResult,
+      fetch,
+      controller.signal,
+    ).then((comparison) => {
+      if (!controller.signal.aborted) {
         setComparisonState({ loading: false, comparison });
       }
     });
 
-    return () => { cancelled = true; };
+    return () => controller.abort();
   }, [dataApiUrl, rowCount, runtimeResult]);
 
   return (

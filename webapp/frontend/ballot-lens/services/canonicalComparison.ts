@@ -236,6 +236,7 @@ export async function fetchCanonicalComparison(
   dataApiUrl: string,
   result: PublicRuntimeResult,
   fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<CanonicalComparison> {
   const rowCount = parserRowCount(result);
   if (!dataApiUrl.trim()) {
@@ -254,6 +255,7 @@ export async function fetchCanonicalComparison(
       method: 'GET',
       credentials: 'same-origin',
       headers: { Accept: 'application/json' },
+      signal,
     });
     if (!response.ok) {
       return unresolved('canonical_read_failed', 0, rowCount);
