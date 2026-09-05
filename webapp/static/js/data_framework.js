@@ -202,6 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let vizInteractionMode = 'preview';
   let vizOverlayEnabled = false;
   let vizStatusBase = '';
+  let vizUiState = 'idle';
   let previewActive = false;
   let previewMode = 'idle';
   let previewTimer = null;
@@ -209,6 +210,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let authRestrictedMode = false;
   let _authRestrictionReason = '';
   let authRestrictionNotified = false;
+  let canonicalRecordBaseStatus = {
+    tone: 'info',
+    state: 'idle',
+    text: ''
+  };
   let compactPreferenceSet = false;
   let dropoffDrawerOpen = false;
   let dropoffData = [];
@@ -351,6 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
         el.readOnlyMessage.textContent = `Read-only mode: ${reason}`;
       }
       el.readOnlyBanner.classList.remove('d-none');
+      setUiState(el.readOnlyBanner, 'restricted');
     }
     if (previewTimer) {
       window.clearInterval(previewTimer);
@@ -363,10 +370,21 @@ document.addEventListener('DOMContentLoaded', () => {
     previewActive = false;
     previewMode = 'idle';
     setPreviewState(false);
-    setPreviewStatus('Read-only mode: authenticate to enable curated and canonical analysis feeds.');
-    setPriorityStatus('Read-only mode: priority tracker requires authentication.', 'info');
+    setPreviewStatus(
+      'Read-only mode: authenticate to enable curated and canonical analysis feeds.',
+      'restricted'
+    );
+    setPriorityStatus(
+      'Read-only mode: priority tracker requires authentication.',
+      'info',
+      'restricted'
+    );
     if (el.curatedStatus) {
-      setStatusText(el.curatedStatus, 'Read-only mode: authenticate to load curated datasets.');
+      setStatusText(
+        el.curatedStatus,
+        'Read-only mode: authenticate to load curated datasets.',
+        'restricted'
+      );
     }
     if (!authRestrictionNotified) {
       showInfoToast(reason);
@@ -546,10 +564,62 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     return null;
   }
-  function setStatus(target, type, text) {
+  const UI_STATES = new Set([
+    'idle',
+    'loading',
+    'ready',
+    'empty',
+    'restricted',
+    'error'
+  ]);
+
+  function normalizeUiState(state) {
+    return UI_STATES.has(state) ? state : 'idle';
+  }
+
+  function stateForTone(type) {
+    if (type === 'ok') return 'ready';
+    if (type === 'error') return 'error';
+    return 'idle';
+  }
+
+  function setUiState(target, state = 'idle', text = undefined) {
+    if (!target) return;
+    const normalized = normalizeUiState(state);
+    target.dataset.uiState = normalized;
+    target.setAttribute('aria-busy', normalized === 'loading' ? 'true' : 'false');
+    if (text !== undefined) {
+      target.textContent = text || '';
+    }
+  }
+
+  function setStatus(target, type, text, state = null) {
     if (!target) return;
     target.className = 'status ' + (type === 'ok' ? 'status-ok' : type === 'error' ? 'status-error' : 'status-info');
-    target.textContent = text || '';
+    setUiState(target, state || stateForTone(type), text);
+  }
+
+  function setCanonicalRecordBaseStatus(type, text, state = null) {
+    canonicalRecordBaseStatus = {
+      tone: type,
+      state: normalizeUiState(state || stateForTone(type)),
+      text: text || ''
+    };
+    setStatus(
+      el.status,
+      canonicalRecordBaseStatus.tone,
+      canonicalRecordBaseStatus.text,
+      canonicalRecordBaseStatus.state
+    );
+  }
+
+  function restoreCanonicalRecordBaseStatus() {
+    setStatus(
+      el.status,
+      canonicalRecordBaseStatus.tone,
+      canonicalRecordBaseStatus.text,
+      canonicalRecordBaseStatus.state
+    );
   }
   function sanitizeSearch(raw) {
     if (!raw) return '';
@@ -610,15 +680,18 @@ document.addEventListener('DOMContentLoaded', () => {
     return 'none';
   }
 
-  function setStatusText(target, text) {
-    if (!target) return;
-    target.textContent = text || '';
+  function setStatusText(target, text, state = 'idle') {
+    setUiState(target, state, text);
   }
 
-  function setPriorityStatus(text, tone = 'info') {
+  function setPriorityStatus(text, tone = 'info', state = null) {
     if (!el.warehousePriorityStatus) return;
     el.warehousePriorityStatus.className = `warehouse-status-strip status status-${tone}`;
-    el.warehousePriorityStatus.textContent = text || '';
+    setUiState(
+      el.warehousePriorityStatus,
+      state || stateForTone(tone === 'ok' ? 'ok' : tone),
+      text
+    );
   }
 
   function setPriorityMeta(text) {
@@ -787,7 +860,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusText = fromCache
       ? `${summary || 'Priority snapshot loaded.'} (cached)`
       : (summary || 'Priority tracker ready.');
-    setPriorityStatus(statusText, payload.missing_total ? 'info' : 'ok');
+    setPriorityStatus(
+      statusText,
+      payload.missing_total ? 'info' : 'ok',
+      'ready'
+    );
     const baseMeta = formatPriorityMeta(payload);
     const suffix = fromCache ? ' | Priority metadata: cached snapshot' : '';
     setPriorityMeta(`${baseMeta}${suffix}`);
@@ -2309,11 +2386,16 @@ function getCanonicalScopeFilters() {
     if (!el.vizPreviewStatus) return;
     const baseText = vizStatusBase || 'Visualization ready';
     const modeLabel = vizInteractionMode === VIZ_INTERACTION_EXPLORE ? 'Explore' : 'Preview';
-    el.vizPreviewStatus.textContent = `${baseText} • Mode: ${modeLabel} • Scope: ${getVizScopeLabel()} • Playback: ${getVizPlaybackLabel()}`;
+    setUiState(
+      el.vizPreviewStatus,
+      vizUiState,
+      `${baseText} • Mode: ${modeLabel} • Scope: ${getVizScopeLabel()} • Playback: ${getVizPlaybackLabel()}`
+    );
   }
 
-  function setPreviewStatus(text) {
+  function setPreviewStatus(text, state = 'idle') {
     vizStatusBase = text || '';
+    vizUiState = normalizeUiState(state);
     renderVizStatus();
   }
 
@@ -2338,7 +2420,10 @@ function getCanonicalScopeFilters() {
     const sourceRows = getVizSourceRows();
 
     if (!sourceRows.length) {
-      setPreviewStatus('Preview waiting for canonical publication rows.');
+      setPreviewStatus(
+        'Preview waiting for canonical publication rows.',
+        'empty'
+      );
       return;
     }
 
@@ -2523,7 +2608,11 @@ function getCanonicalScopeFilters() {
   async function fetchCuratedDatasets() {
     if (!curatedUrl) return;
     if (authRestrictedMode) return;
-    setStatusText(el.curatedStatus, 'Loading curated datasets...');
+    setStatusText(
+      el.curatedStatus,
+      'Loading curated datasets...',
+      'loading'
+    );
     const result = await fetchJsonWithRetry(curatedUrl, {
       authReason: 'Authentication required for curated datasets and preview feeds.',
       retries: 2
@@ -2534,7 +2623,11 @@ function getCanonicalScopeFilters() {
       curatedSelection = null;
       renderCuratedList([]);
       resetEvidenceRelationshipContext();
-      setStatusText(el.curatedStatus, 'Failed to load curated datasets.');
+      setStatusText(
+        el.curatedStatus,
+        'Failed to load curated datasets.',
+        'error'
+      );
       return;
     }
     const data = result.data;
@@ -2545,7 +2638,11 @@ function getCanonicalScopeFilters() {
     if (!curatedItems.length && !getVizSourceRows().length) {
       clearVisualization();
     }
-    setStatusText(el.curatedStatus, curatedItems.length ? `Loaded ${curatedItems.length} datasets.` : 'No curated datasets available.');
+    setStatusText(
+      el.curatedStatus,
+      curatedItems.length ? `Loaded ${curatedItems.length} datasets.` : 'No curated datasets available.',
+      curatedItems.length ? 'ready' : 'empty'
+    );
   }
 
   function getDropoffRowsForControls(rows = dropoffData) {
@@ -3243,10 +3340,16 @@ function getCanonicalScopeFilters() {
     if (el.next instanceof HTMLButtonElement || el.next instanceof HTMLInputElement) el.next.disabled = page >= pages;
     if (el.last instanceof HTMLButtonElement || el.last instanceof HTMLInputElement) el.last.disabled = page >= pages;
 
-    setStatus(el.status,
-      slice.length ? 'info' : (rawData.length ? 'info' : 'error'),
-      slice.length ? '' : (rawData.length ? 'No results match the current filters.' : '')
-    );
+    if (!slice.length && rawData.length) {
+      setStatus(
+        el.status,
+        'info',
+        'No results match the current filters.',
+        'empty'
+      );
+    } else {
+      restoreCanonicalRecordBaseStatus();
+    }
   }
 
   // ---------- CSV helpers ----------
@@ -3677,7 +3780,10 @@ function getCanonicalScopeFilters() {
 
     (async () => {
       if (showLoading) {
-        setPreviewStatus('Loading Canonical Production Analysis...');
+        setPreviewStatus(
+          'Loading Canonical Production Analysis...',
+          'loading'
+        );
       }
 
       const result = await fetchJsonWithRetry(buildCanonicalDataUrl(), {
@@ -3737,12 +3843,17 @@ function getCanonicalScopeFilters() {
           updateEvidenceRelationshipContext(curatedSelection, analysisResult);
         }
 
+        const analysisState = warehouseVizRows.length ? 'ready' : 'empty';
         if (analysisRowsPossiblyTruncated) {
           setPreviewStatus(
-            `Canonical Production - ${warehouseVizRows.length} rows - API cap reached; totals may be partial`
+            `Canonical Production - ${warehouseVizRows.length} rows - API cap reached; totals may be partial`,
+            analysisState
           );
         } else {
-          setPreviewStatus(`Canonical Production - ${warehouseVizRows.length} rows`);
+          setPreviewStatus(
+            `Canonical Production - ${warehouseVizRows.length} rows`,
+            analysisState
+          );
         }
       }
     })().catch(err => {
@@ -3750,7 +3861,10 @@ function getCanonicalScopeFilters() {
         return;
       }
       const msg = err?.message || String(err);
-      setPreviewStatus(`Canonical Analysis load failed - ${msg}`);
+      setPreviewStatus(
+        `Canonical Analysis load failed - ${msg}`,
+        'error'
+      );
       showErrorToast('Failed to load Analysis data.');
     });
   }
@@ -3762,7 +3876,11 @@ function getCanonicalScopeFilters() {
 
     (async () => {
       if (showLoading) {
-        setStatus(el.status, 'info', 'Loading Canonical Record data...');
+        setCanonicalRecordBaseStatus(
+          'info',
+          'Loading Canonical Record data...',
+          'loading'
+        );
         renderSkeleton();
       }
 
@@ -3803,15 +3921,23 @@ function getCanonicalScopeFilters() {
       const scopeText = scopeParts.length ? ` - ${scopeParts.join(' / ')}` : '';
 
       if (!rawData.length) {
-        setStatus(el.status, 'error', `No Canonical Record rows found${scopeText}.`);
+        setCanonicalRecordBaseStatus(
+          'info',
+          `No Canonical Record rows found${scopeText}.`,
+          'empty'
+        );
       } else if (rawData.length >= CANONICAL_CLIENT_ROW_LIMIT) {
-        setStatus(
-          el.status,
+        setCanonicalRecordBaseStatus(
           'ok',
-          `Loaded first ${rawData.length} Canonical Record rows${scopeText}; API cap reached, result may be partial.`
+          `Loaded first ${rawData.length} Canonical Record rows${scopeText}; API cap reached, result may be partial.`,
+          'ready'
         );
       } else {
-        setStatus(el.status, 'ok', `Loaded ${rawData.length} Canonical Record rows${scopeText}.`);
+        setCanonicalRecordBaseStatus(
+          'ok',
+          `Loaded ${rawData.length} Canonical Record rows${scopeText}.`,
+          'ready'
+        );
       }
 
       page = 1;
@@ -3828,13 +3954,13 @@ function getCanonicalScopeFilters() {
 
       const msg = err?.message || String(err);
       if (/does not exist/i.test(msg)) {
-        setStatus(
-          el.status,
+        setCanonicalRecordBaseStatus(
           'error',
-          'Canonical Record backend unavailable. Waiting for initialization.'
+          'Canonical Record backend unavailable. Waiting for initialization.',
+          'error'
         );
       } else {
-        setStatus(el.status, 'error', msg);
+        setCanonicalRecordBaseStatus('error', msg, 'error');
       }
       showErrorToast('Failed to load Canonical Record data.');
     });

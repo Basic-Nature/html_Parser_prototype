@@ -153,7 +153,7 @@
                     </div>
                   </div>
                 </div>
-                <div class="curated-status" id="curatedStatus" aria-live="polite"></div>
+                <div class="curated-status" id="curatedStatus" data-ui-state="idle" role="status" aria-live="polite" aria-atomic="true"></div>
               </div>
             </article>
           </aside>
@@ -214,7 +214,7 @@
                   </label>
                 </div>
                 <div class="viz-auto-hint" id="vizAutoHint" aria-live="polite">Preview paused while focused - move pointer away to resume.</div>
-                <div class="viz-preview-status" id="vizPreviewStatus" aria-live="polite"></div>
+                <div class="viz-preview-status" id="vizPreviewStatus" data-ui-state="idle" role="status" aria-live="polite" aria-atomic="true"></div>
                 <div class="viz-grid">
                   <div class="viz-panel" id="warehouseVizChart" aria-live="polite">
                     <div class="viz-placeholder">Select a dataset to render charts.</div>
@@ -342,8 +342,8 @@
                             </select>
                         </div>
                     </div>
-                    <div class="warehouse-status-strip" id="warehousePriorityStatus" aria-live="polite"></div>
-                    <div id="dataFrameworkReadOnlyBanner" class="alert alert-danger d-none" role="status" aria-live="polite">
+                    <div class="warehouse-status-strip" id="warehousePriorityStatus" data-ui-state="idle" role="status" aria-live="polite" aria-atomic="true"></div>
+                    <div id="dataFrameworkReadOnlyBanner" class="alert alert-danger d-none" data-ui-state="idle" role="status" aria-live="polite" aria-atomic="true">
                       <span id="dataFrameworkReadOnlyMessage">Read-only mode: authenticate to enable curated datasets, priority tracker, and preview feeds.</span>
                       <a id="dataFrameworkAuthLink" class="btn btn-sm ms-2" href="{{ url_for('auth_welcome', next=request.url) }}">Authenticate</a>
                     </div>
@@ -374,7 +374,7 @@
                             <button id="nextPageBtn" class="btn pager" aria-label="Next page">▶</button>
                             <button id="lastPageBtn" class="btn pager" aria-label="Last page">⏭</button>
                         </div>
-                        <div id="tableStatus" class="status status-info" aria-live="polite"></div>
+                        <div id="tableStatus" class="status status-info" data-ui-state="idle" role="status" aria-live="polite" aria-atomic="true"></div>
                     </div>
                 </div>
 
@@ -471,6 +471,6 @@
 
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='aa178b98045413a9') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='7dabe28d68eee76e') }}" defer></script>
 </body>
 </html>

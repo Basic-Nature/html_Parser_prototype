@@ -2829,3 +2829,44 @@ body[data-page="data-framework"] {
   }
 }
 
+/* GUI-R2 explicit client-state contract */
+@layer components {
+  [data-ui-state] {
+    border-left:3px solid transparent;
+    transition:border-color var(--t-base),background var(--t-base),opacity var(--t-base);
+  }
+
+  [data-ui-state="idle"] {
+    border-left-color:transparent;
+  }
+
+  [data-ui-state="loading"] {
+    border-left-color:var(--neon2);
+    background:rgba(212 175 55 /.08);
+    cursor:progress;
+  }
+
+  [data-ui-state="ready"] {
+    border-left-color:var(--neon);
+    background:rgba(0 255 231 /.06);
+  }
+
+  [data-ui-state="empty"] {
+    border-left-color:rgba(191 201 209 /.72);
+    background:rgba(191 201 209 /.05);
+  }
+
+  [data-ui-state="restricted"] {
+    border-left-color:var(--neon2);
+    background:rgba(212 175 55 /.10);
+  }
+
+  [data-ui-state="error"] {
+    border-left-color:var(--main-red);
+    background:rgba(235 79 67 /.10);
+  }
+
+  [data-ui-state][aria-busy="true"] {
+    opacity:.88;
+  }
+}

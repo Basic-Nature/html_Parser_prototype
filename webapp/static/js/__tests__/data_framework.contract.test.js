@@ -50,7 +50,9 @@ describe('data_framework bootstrap contract', () => {
       '<div id="dataFrameworkReadOnlyBanner" class="d-none"></div>',
       '<div id="dataFrameworkReadOnlyMessage"></div>',
       '<div id="warehousePriorityStatus"></div>',
-      '<div id="warehousePriorityMeta"></div>'
+      '<div id="warehousePriorityMeta"></div>',
+      '<div id="curatedStatus"></div>',
+      '<div id="vizPreviewStatus"></div>'
     ].join('');
 
     global.bootstrap = undefined;
@@ -114,6 +116,14 @@ describe('data_framework bootstrap contract', () => {
 
     expect(banner.classList.contains('d-none')).toBe(false);
     expect((message.textContent || '').toLowerCase()).toContain('read-only mode');
+    expect(banner.dataset.uiState).toBe('restricted');
+    expect(document.getElementById('warehousePriorityStatus').dataset.uiState).toBe('restricted');
+    expect(document.getElementById('curatedStatus').dataset.uiState).toBe('restricted');
+
+    // A protected priority-feed 401 does not make the independently loaded
+    // public Canonical Production Analysis unavailable. This fixture returns
+    // canonical rows successfully, so its final state must be ready.
+    expect(document.getElementById('vizPreviewStatus').dataset.uiState).toBe('ready');
   });
 
   test('uses cached warehouse snapshot when priority endpoint is unavailable', async () => {
@@ -413,6 +423,60 @@ describe('data_framework bootstrap contract', () => {
     expect(
       events.match(/fetchCanonicalRecordFacets\(\);/g)
     ).toHaveLength(2);
+  });
+
+
+  test('GUI-R2 exposes explicit stable client-state semantics without changing authority', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const scriptPath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(scriptPath, 'utf8');
+    const htmlPath = path.join(__dirname, '..', '..', '..', 'templates', 'data_framework.html');
+    const html = fs.readFileSync(htmlPath, 'utf8');
+    const cssPath = path.join(__dirname, '..', '..', 'css', 'data_framework.css');
+    const css = fs.readFileSync(cssPath, 'utf8');
+
+    expect(src).toContain("const UI_STATES = new Set([");
+    ['idle', 'loading', 'ready', 'empty', 'restricted', 'error'].forEach(state => {
+      expect(src).toContain(`'${state}'`);
+      expect(css).toContain(`[data-ui-state="${state}"]`);
+    });
+
+    expect(src).toContain('function setUiState(target, state = \'idle\', text = undefined)');
+    expect(src).toContain('function setCanonicalRecordBaseStatus(type, text, state = null)');
+    expect(src).toContain('function restoreCanonicalRecordBaseStatus()');
+    expect(src).toMatch(/'No results match the current filters\.',\s*'empty'/);
+    expect(src).toMatch(/'Loading Canonical Production Analysis\.\.\.',\s*'loading'/);
+    expect(src).toMatch(/'No curated datasets available\.',\s*curatedItems\.length \? 'ready' : 'empty'/);
+    expect(src).toMatch(/`No Canonical Record rows found\$\{scopeText\}\.`\s*,\s*'empty'/);
+    expect(src).toContain("setCanonicalRecordBaseStatus('error', msg, 'error');");
+    expect(src).not.toContain(
+      "slice.length ? 'info' : (rawData.length ? 'info' : 'error')"
+    );
+
+    [
+      'curatedStatus',
+      'vizPreviewStatus',
+      'warehousePriorityStatus',
+      'tableStatus',
+      'dataFrameworkReadOnlyBanner',
+    ].forEach(id => {
+      const match = html.match(new RegExp(`<[^>]+id="${id}"[^>]+>`));
+      expect(match).not.toBeNull();
+      expect(match[0]).toContain('data-ui-state="idle"');
+      expect(match[0]).toContain('aria-live="polite"');
+      expect(match[0]).toContain('aria-atomic="true"');
+    });
+
+    // Existing authority semantics remain in place.
+    expect(src).toContain('const displayValue = v => (v == null ? \'—\' : String(v));');
+    expect(src).toContain("const exportValue = v => (v == null ? 'NULL' : String(v));");
+    expect(src).toContain('if (isAuthForbiddenStatus(response.status))');
+    expect(src).toContain('enterAuthRestrictedMode(authReason');
+    expect(src).toContain("payload.authority === 'canonical_production'");
+    expect(src).not.toContain(
+      'Read-only mode: authenticate to load Canonical Record data.'
+    );
   });
 
 });
