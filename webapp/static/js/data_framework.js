@@ -184,6 +184,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let canonicalRecordFacetRequestSeq = 0;
   let canonicalRecordFacetAbortController = null;
   let analysisRowsPossiblyTruncated = false;
+  let initialCanonicalQueryScope = null;
+  let canonicalQueryScopeHydrated = false;
 
   let vizDataset = 'warehouse_core';
   let vizYear = '';
@@ -258,6 +260,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const VIZ_DATASET_WAREHOUSE = 'warehouse_core';
   const VIZ_INTERACTION_PREVIEW = 'preview';
   const VIZ_INTERACTION_EXPLORE = 'explore';
+  const SHAREABLE_CANONICAL_QUERY_MAX_LEN = 240;
+  const SHAREABLE_CANONICAL_QUERY_KEYS = Object.freeze({
+    year: 'year',
+    state: 'state',
+    jurisdiction: 'jurisdiction',
+    contest: 'contest',
+  });
   const DEFAULT_VISIBLE_COLUMNS = ['state', 'jurisdiction_name', 'jurisdiction_type', 'contest', 'candidate', 'party', 'votes'];
   const COLUMN_LABELS = {
     jurisdiction_name: 'Jurisdiction',
@@ -1572,7 +1581,114 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   
-function getCanonicalScopeFilters() {
+
+  function sanitizeCanonicalQueryValue(value) {
+    if (value === null || value === undefined) return '';
+    const normalized = String(value).trim();
+    if (
+      !normalized
+      || normalized.length > SHAREABLE_CANONICAL_QUERY_MAX_LEN
+      || /[\x00-\x1F\x7F]/.test(normalized)
+    ) {
+      return '';
+    }
+    return normalized;
+  }
+
+  function readCanonicalQueryScopeFromLocation() {
+    const params = new URLSearchParams(window.location.search || '');
+    return {
+      year: sanitizeCanonicalQueryValue(
+        params.get(SHAREABLE_CANONICAL_QUERY_KEYS.year)
+      ),
+      state: sanitizeCanonicalQueryValue(
+        params.get(SHAREABLE_CANONICAL_QUERY_KEYS.state)
+      ),
+      jurisdiction: sanitizeCanonicalQueryValue(
+        params.get(SHAREABLE_CANONICAL_QUERY_KEYS.jurisdiction)
+      ),
+      contest: sanitizeCanonicalQueryValue(
+        params.get(SHAREABLE_CANONICAL_QUERY_KEYS.contest)
+      ),
+    };
+  }
+
+  function hasCanonicalQueryScope(filters) {
+    return !!(
+      filters?.year
+      || filters?.state
+      || filters?.jurisdiction
+      || filters?.contest
+    );
+  }
+
+  function applyInitialCanonicalQueryScope() {
+    initialCanonicalQueryScope = readCanonicalQueryScopeFromLocation();
+    if (!hasCanonicalQueryScope(initialCanonicalQueryScope)) return false;
+
+    // Query values are only intent at this point. They are validated against
+    // canonicalFacetUniversePayload before the scoped result GET is allowed.
+    vizYear = initialCanonicalQueryScope.year;
+    vizState = initialCanonicalQueryScope.state;
+    vizCounty = initialCanonicalQueryScope.jurisdiction;
+    vizContest = initialCanonicalQueryScope.contest;
+
+    // A shareable scope is operator Explore state, never Preview playback.
+    // Do not persist this as a playback preference merely because a URL was opened.
+    vizInteractionMode = VIZ_INTERACTION_EXPLORE;
+    vizAutoLocked = true;
+    vizAutoPaused = true;
+    vizHoverPaused = false;
+    previewActive = false;
+    previewMode = 'idle';
+    return true;
+  }
+
+  function replaceCanonicalQueryScopeInLocation(
+    filters = getCanonicalScopeFilters()
+  ) {
+    if (!canonicalQueryScopeHydrated || !window.history?.replaceState) return;
+
+    const url = new URL(window.location.href);
+    const values = {
+      [SHAREABLE_CANONICAL_QUERY_KEYS.year]: filters.year || '',
+      [SHAREABLE_CANONICAL_QUERY_KEYS.state]: filters.state || '',
+      [SHAREABLE_CANONICAL_QUERY_KEYS.jurisdiction]:
+        filters.jurisdiction || '',
+      [SHAREABLE_CANONICAL_QUERY_KEYS.contest]: filters.contest || '',
+    };
+
+    Object.entries(values).forEach(([key, value]) => {
+      if (value) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+    });
+
+    const nextLocation = `${url.pathname}${url.search}${url.hash}`;
+    const currentLocation =
+      `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (nextLocation !== currentLocation) {
+      window.history.replaceState(window.history.state, '', nextLocation);
+    }
+  }
+
+  function clearCanonicalQueryScopeFromLocation() {
+    if (!window.history?.replaceState) return;
+    const url = new URL(window.location.href);
+    Object.values(SHAREABLE_CANONICAL_QUERY_KEYS)
+      .forEach(key => url.searchParams.delete(key));
+
+    const nextLocation = `${url.pathname}${url.search}${url.hash}`;
+    const currentLocation =
+      `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (nextLocation !== currentLocation) {
+      window.history.replaceState(window.history.state, '', nextLocation);
+    }
+  }
+
+  // Curated Source Evidence is intentionally not serialized until its API
+  // publishes a stable dataset identifier suitable for cross-surface handoff.
+
+  function getCanonicalScopeFilters() {
     return {
       year: vizYear || '',
       state: vizState || '',
@@ -2291,6 +2407,8 @@ function getCanonicalScopeFilters() {
     vizHoverPaused = false;
     previewActive = true;
     previewMode = 'idle';
+    canonicalQueryScopeHydrated = true;
+    clearCanonicalQueryScopeFromLocation();
     setPreviewState(true);
     el.vizPanel?.classList.remove('is-focus-paused');
     hideVizHint();
@@ -3577,6 +3695,8 @@ function getCanonicalScopeFilters() {
       enterVizExploreMode('year selected');
       hideVizHint();
       vizYear = tgt.value || '';
+      canonicalQueryScopeHydrated = true;
+      replaceCanonicalQueryScopeInLocation();
       refreshCanonicalExploreScope();
       updateVizAutoToggleLabel();
     }
@@ -3588,6 +3708,8 @@ function getCanonicalScopeFilters() {
       enterVizExploreMode('state selected');
       hideVizHint();
       vizState = tgt.value || '';
+      canonicalQueryScopeHydrated = true;
+      replaceCanonicalQueryScopeInLocation();
       refreshCanonicalExploreScope();
       updateVizAutoToggleLabel();
     }
@@ -3599,6 +3721,8 @@ function getCanonicalScopeFilters() {
       enterVizExploreMode('jurisdiction selected');
       hideVizHint();
       vizCounty = tgt.value || '';
+      canonicalQueryScopeHydrated = true;
+      replaceCanonicalQueryScopeInLocation();
       refreshCanonicalExploreScope();
       updateVizAutoToggleLabel();
     }
@@ -3610,6 +3734,8 @@ function getCanonicalScopeFilters() {
       enterVizExploreMode('contest selected');
       hideVizHint();
       vizContest = tgt.value || '';
+      canonicalQueryScopeHydrated = true;
+      replaceCanonicalQueryScopeInLocation();
       refreshCanonicalExploreScope();
       updateVizAutoToggleLabel();
     }
@@ -3976,6 +4102,7 @@ function getCanonicalScopeFilters() {
   loadDropoffDrawerPreference();
   loadDropoffPreferences();
   loadGhostPanelPreference();
+  const hasInitialCanonicalQueryScope = applyInitialCanonicalQueryScope();
   if (el.vizDataset instanceof HTMLSelectElement && el.vizDataset.value) {
     vizDataset = el.vizDataset.value;
   }
@@ -4032,7 +4159,42 @@ function getCanonicalScopeFilters() {
     }
   }
 
+  async function bootstrapInitialAnalysisRead() {
+    if (!hasInitialCanonicalQueryScope) {
+      fetchData(true);
+      bootstrapProtectedFeeds();
+      return;
+    }
+
+    // A URL-provided scope is never sent to the canonical result endpoint
+    // until the canonical facet universe has accepted/cleared its values.
+    const canonicalUniverseReady = await fetchCanonicalFacets({
+      universe: true,
+    });
+    if (!canonicalUniverseReady) {
+      vizYear = '';
+      vizState = '';
+      vizCounty = '';
+      vizContest = '';
+      canonicalQueryScopeHydrated = true;
+      replaceCanonicalQueryScopeInLocation();
+      fetchData(true);
+      bootstrapProtectedFeeds();
+      return;
+    }
+
+    canonicalQueryScopeHydrated = true;
+    await fetchCanonicalFacets();
+    replaceCanonicalQueryScopeInLocation();
+    fetchData(true);
+
+    // Preserve the long-standing protected-bootstrap contract exactly.
+    // A deep-link startup may therefore perform a second canonical-universe GET.
+    // That duplicate read is bounded and preferable to coupling public Analysis
+    // scope to protected-feed bootstrap state.
+    bootstrapProtectedFeeds();
+  }
+
   // Canonical publication rows are the sole election-result Analysis feed.
-  fetchData(true);
-  bootstrapProtectedFeeds();
+  bootstrapInitialAnalysisRead();
 });  

@@ -479,4 +479,141 @@ describe('data_framework bootstrap contract', () => {
     );
   });
 
+
+  test('shareable canonical Analysis scope is URL-backed and authority-validated', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(filePath, 'utf8');
+
+    expect(src).toContain("year: 'year'");
+    expect(src).toContain("state: 'state'");
+    expect(src).toContain("jurisdiction: 'jurisdiction'");
+    expect(src).toContain("contest: 'contest'");
+    expect(src).toContain('new URLSearchParams(window.location.search');
+    expect(src).toContain('function applyInitialCanonicalQueryScope()');
+    expect(src).toContain('canonicalFacetUniversePayload');
+    expect(src).toContain('before the scoped result GET is allowed');
+    expect(src).toContain('window.history.replaceState(window.history.state');
+    expect(src).toContain('url.searchParams.delete(key)');
+    expect(src).toContain('bootstrapInitialAnalysisRead');
+    expect(src).toContain('fetchCanonicalFacets({ universe: true })');
+    expect(src).toContain('canonicalQueryScopeHydrated = true;');
+    expect(src).not.toContain('url.search =');
+  });
+
+  test('shareable scope stays Analysis-only and Preview playback clears it', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(filePath, 'utf8');
+
+    const recordStart = src.indexOf('function getCanonicalRecordFacetFilters()');
+    const recordEnd = src.indexOf('function applyCanonicalRecordFacetPayload', recordStart);
+    const recordFilters = src.slice(recordStart, recordEnd);
+    expect(recordFilters).toContain("year: priorityYear || ''");
+    expect(recordFilters).toContain("state: priorityState || ''");
+    expect(recordFilters).not.toContain('SHAREABLE_CANONICAL_QUERY_KEYS');
+
+    const previewStart = src.indexOf('function enterVizPreviewMode');
+    const previewEnd = src.indexOf('function stepVizPreviewFrame', previewStart);
+    const previewBlock = src.slice(previewStart, previewEnd);
+    expect(previewBlock).toContain('clearCanonicalQueryScopeFromLocation();');
+
+    const frameStart = src.indexOf('function setVizPreviewFrame');
+    const frameEnd = src.indexOf('function startVizAutoRotation', frameStart);
+    const frameBlock = src.slice(frameStart, frameEnd);
+    expect(frameBlock).not.toContain('replaceCanonicalQueryScopeInLocation');
+
+    expect(src).toContain(
+      'Curated Source Evidence is intentionally not serialized until its API'
+    );
+    expect(src).not.toContain('df_shareable_query');
+  });
+
+  test('invalid URL Analysis scope is cleared before canonical results GET and unrelated query survives', async () => {
+    const facetPayload = {
+      contract: 'canonical_facets_v1',
+      data_source: 'canonical',
+      authority: 'canonical_production',
+      filter_model: 'bidirectional_faceted',
+      semantic_contract: {
+        facet_mode: 'self_excluding',
+        lineage: 'not_inferred',
+        null: 'preserved_null',
+        no_warehouse_fallback: true,
+      },
+      years: ['2024'],
+      states: ['CA'],
+      jurisdictions: [{ name: 'Alameda', type: 'county' }],
+      contests: ['President'],
+    };
+
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      [
+        '<select id="vizYearSelect"></select>',
+        '<select id="vizStateSelect"></select>',
+        '<select id="vizCountySelect"></select>',
+        '<select id="vizContestSelect"></select>',
+        '<select id="vizDatasetSelect"><option value="warehouse_core" selected>Composition</option></select>',
+      ].join('')
+    );
+
+    window.history.replaceState(
+      {},
+      '',
+      '/data_framework?state=ZZ&keep=1'
+    );
+
+    mockFetchInstance.mockImplementation(async (url) => {
+      const target = String(url || '');
+      if (target.includes('/api/data_framework/canonical_facets')) {
+        return jsonResponse(facetPayload);
+      }
+      if (target.includes('/api/data_framework/warehouse_status')) {
+        return jsonResponse({ error: 'auth required' }, 401);
+      }
+      if (target.includes('/api/custom_warehouse')) {
+        return jsonResponse([
+          {
+            year: '2024',
+            state: 'CA',
+            jurisdiction_name: 'Alameda',
+            jurisdiction_type: 'county',
+            contest: 'President',
+            candidate: 'Example Candidate',
+            party: 'Democratic',
+            votes: 10,
+          },
+        ]);
+      }
+      return jsonResponse({ rows: [] });
+    });
+
+    loadDataFrameworkScript();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flushAsync();
+    await flushAsync();
+
+    const urls = mockFetchInstance.mock.calls.map(
+      (args) => String(args[0] || '')
+    );
+    const facetIndex = urls.findIndex(
+      (url) => url.includes('/api/data_framework/canonical_facets')
+    );
+    const resultIndex = urls.findIndex(
+      (url) => url.includes('/api/custom_warehouse')
+    );
+
+    expect(facetIndex).toBeGreaterThanOrEqual(0);
+    expect(resultIndex).toBeGreaterThan(facetIndex);
+
+    const resultUrl = new URL(urls[resultIndex], window.location.origin);
+    expect(resultUrl.searchParams.get('state')).toBe(null);
+    expect(window.location.search).toContain('keep=1');
+    expect(window.location.search).not.toContain('state=ZZ');
+
+    window.history.replaceState({}, '', '/data_framework');
+  });
 });
