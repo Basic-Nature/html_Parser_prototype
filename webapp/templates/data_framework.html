@@ -11,6 +11,7 @@
           data-scaffold-json-url="{{ url_for('api_data_framework_scaffold') }}"
           data-scaffold-csv-url="{{ url_for('api_data_framework_scaffold_csv') }}"
           data-curated-url="{{ url_for('api_data_framework_curated') }}"
+          data-ballot-lens-url="{{ url_for('ballot_lens') }}"
           data-canonical-facets-url="{{ url_for('api_data_framework_canonical_facets') }}"
           data-priority-url="{{ url_for('api_data_framework_warehouse_status') }}"
           {% if csrf_token %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
@@ -471,6 +472,6 @@
 
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='b9d0bdd2ab290575') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='ef2843a15deaa91a') }}" defer></script>
 </body>
 </html>

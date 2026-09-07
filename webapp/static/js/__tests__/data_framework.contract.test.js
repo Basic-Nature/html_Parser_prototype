@@ -502,7 +502,7 @@ describe('data_framework bootstrap contract', () => {
     expect(src).not.toContain('url.search =');
   });
 
-  test('shareable scope stays Analysis-only and Preview playback clears it', () => {
+  test('shareable Analysis scope stays independent and Preview clears only Analysis', () => {
     const fs = require('fs');
     const path = require('path');
     const filePath = path.join(__dirname, '..', 'data_framework.js');
@@ -525,7 +525,10 @@ describe('data_framework bootstrap contract', () => {
     const frameBlock = src.slice(frameStart, frameEnd);
     expect(frameBlock).not.toContain('replaceCanonicalQueryScopeInLocation');
 
-    expect(src).toContain(
+    expect(src).toContain("const SHAREABLE_SOURCE_QUERY_KEY = 'source';");
+    expect(src).toContain('function replaceCuratedSourceIntentInLocation(registrySourceId)');
+    expect(src).toContain('replaceCuratedSourceIntentInLocation(item?.registry_source_id || null);');
+    expect(src).not.toContain(
       'Curated Source Evidence is intentionally not serialized until its API'
     );
     expect(src).not.toContain('df_shareable_query');
@@ -615,5 +618,39 @@ describe('data_framework bootstrap contract', () => {
     expect(window.location.search).not.toContain('state=ZZ');
 
     window.history.replaceState({}, '', '/data_framework');
+  });
+
+  test('GUI-DF-R2 Source Evidence serializes only authoritative registry identity', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const scriptPath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(scriptPath, 'utf8');
+    const htmlPath = path.join(
+      __dirname, '..', '..', '..', 'templates', 'data_framework.html'
+    );
+    const html = fs.readFileSync(htmlPath, 'utf8');
+
+    expect(src).toContain("const SHAREABLE_SOURCE_QUERY_KEY = 'source';");
+    expect(src).toContain('const PUBLIC_REGISTRY_SOURCE_ID_RX = /^blsrc_v1_[0-9a-f]{64}$/;');
+    expect(src).toContain('replaceCuratedSourceIntentInLocation(item?.registry_source_id || null);');
+    expect(src).not.toContain('replaceCuratedSourceIntentInLocation(item?.id');
+    expect(src).toContain("target.searchParams.set(SHAREABLE_SOURCE_QUERY_KEY, normalized);");
+    expect(src).toContain('if (target.origin !== window.location.origin) return');
+    expect(src).toContain("handoffLink.textContent = 'Open in Ballot Lens';");
+    expect(html).toContain('data-ballot-lens-url="{{ url_for(\'ballot_lens\') }}"');
+  });
+
+  test('GUI-DF-R2 invalid or unverified source intent fails closed without first-item fallback', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const scriptPath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(scriptPath, 'utf8');
+
+    expect(src).toContain('function hydrateCuratedSourceIntentFromLocation()');
+    expect(src).toContain('if (matches.length !== 1) {');
+    expect(src).toContain('replaceCuratedSourceIntentInLocation(null);');
+    expect(src).toContain('allowDefaultSelection: !sourceHydration.handled');
+    expect(src).toContain('renderCuratedDetail(null, { syncSourceQuery: false });');
+    expect(src).toContain('renderCuratedDetail(items[0], { syncSourceQuery: false });');
   });
 });

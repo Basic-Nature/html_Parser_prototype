@@ -92,3 +92,27 @@ def test_f2e2_phase_and_ui_are_honest_about_the_boundary():
     assert "Awaiting server session" in workspace
     assert "No parser result yet" in workspace
     assert "does not fabricate preview rows or vote" in workspace
+
+def test_f2e2_source_query_intent_is_registry_resolved_and_never_auto_executes():
+    app = _read(APP_SHELL)
+
+    assert "const SHAREABLE_SOURCE_QUERY_KEY = 'source';" in app
+    assert "PUBLIC_REGISTRY_SOURCE_ID_INTENT_RX" in app
+    assert "params.has(SHAREABLE_SOURCE_QUERY_KEY)" in app
+    assert "window.history.replaceState(window.history.state, '', nextLocation);" in app
+    assert "source?.registry_source_id ?? null" in app
+    assert "const matches = registryEnvelope.sources.filter(" in app
+    assert "source => source.registry_source_id === intent.registrySourceId" in app
+    assert "if (matches.length !== 1)" in app
+    assert "replaceSourceQueryIntent(null);" in app
+    assert "handlePublicSelection(matches[0] ?? null);" in app
+
+    start = app.index("// Query state is locator intent only.")
+    end = app.index(
+        "}, [handlePublicSelection, registryEnvelope]);",
+        start,
+    )
+    receiver = app[start:end]
+    assert "submitApprovedRegistrySource" not in receiver
+    assert "SUBMIT_REQUESTED" not in receiver
+

@@ -4178,9 +4178,30 @@ def _extract_year_from_text(value: str | None) -> str | None:
 
 
 def _collect_data_framework_curated(limit: int = 80) -> dict:
+    from webapp.parser.services.data_framework_source_identity import (
+        resolve_curated_registry_source_id,
+    )
+    from webapp.parser.utils.url_registry import (
+        list_public_registry_sources,
+    )
+
     scaffold = _collect_data_framework_scaffold(limit=limit * 2)  # Fetch extra for dedup
     items = []
     seen_keys = set()
+
+    # Evidence remains visible if identity authority is unavailable, while
+    # shareable identity itself fails closed to null.
+    try:
+        public_registry_sources = list_public_registry_sources(URL_LIST_FILE)
+    except Exception as exc:
+        public_registry_sources = []
+        logger.warning({
+            "level": "WARNING",
+            "type": "data_framework",
+            "message": "Curated Source Evidence registry identity unavailable; shareable IDs suppressed.",
+            "session_id": None,
+            "error_type": type(exc).__name__,
+        })
 
     for record in scaffold.get("records", []):
         state = record.get("state") or ""
@@ -4205,6 +4226,11 @@ def _collect_data_framework_curated(limit: int = 80) -> dict:
         seen_keys.add(dedup_key)
 
         year = _extract_year_from_text(updated_at) or _extract_year_from_text(contest)
+        registry_source_id = resolve_curated_registry_source_id(
+            record,
+            public_registry_sources,
+            year=year,
+        )
         title_parts = [part for part in [contest, state, county] if part]
         title = " • ".join(title_parts) if title_parts else "Curated dataset"
         item_id = "::".join([state or "NA", county or "NA", contest or "NA", updated_at or "NA"])
@@ -4220,6 +4246,7 @@ def _collect_data_framework_curated(limit: int = 80) -> dict:
             "column_count": record.get("column_count"),
             "extraction_confidence": record.get("extraction_confidence"),
             "updated_at": updated_at,
+            "registry_source_id": registry_source_id,
             "source_url": record.get("source_url"),
         })
 

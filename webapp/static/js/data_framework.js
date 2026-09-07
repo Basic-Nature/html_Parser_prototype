@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const scaffoldJsonUrl = cfgEl?.dataset?.scaffoldJsonUrl || '/api/data_framework/scaffold';
   const scaffoldCsvUrl = cfgEl?.dataset?.scaffoldCsvUrl || '/api/data_framework/scaffold.csv';
   const curatedUrl = cfgEl?.dataset?.curatedUrl || '/api/data_framework/curated';
+  const ballotLensUrl = cfgEl?.dataset?.ballotLensUrl || '/ballot_lens';
   const priorityUrl = cfgEl?.dataset?.priorityUrl || '/api/data_framework/warehouse_status';
   const canonicalFacetsUrl =
     cfgEl?.dataset?.canonicalFacetsUrl || '/api/data_framework/canonical_facets';
@@ -162,6 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let curatedItems = [];
   let curatedSelection = null;
+  let curatedSourceQueryHydrated = false;
   let curatedSearch = '';
   let curatedState = '';
   let curatedCounty = '';
@@ -267,6 +269,8 @@ document.addEventListener('DOMContentLoaded', () => {
     jurisdiction: 'jurisdiction',
     contest: 'contest',
   });
+  const SHAREABLE_SOURCE_QUERY_KEY = 'source';
+  const PUBLIC_REGISTRY_SOURCE_ID_RX = /^blsrc_v1_[0-9a-f]{64}$/;
   const DEFAULT_VISIBLE_COLUMNS = ['state', 'jurisdiction_name', 'jurisdiction_type', 'contest', 'candidate', 'party', 'votes'];
   const COLUMN_LABELS = {
     jurisdiction_name: 'Jurisdiction',
@@ -1093,9 +1097,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function renderCuratedDetail(item) {
+  function renderCuratedDetail(item, { syncSourceQuery = true } = {}) {
     stopPreviewCycle();
     curatedSelection = item || null;
+    if (syncSourceQuery) {
+      replaceCuratedSourceIntentInLocation(item?.registry_source_id || null);
+    }
     if (el.curatedRows) el.curatedRows.textContent = item?.row_count != null ? String(item.row_count) : '—';
     if (el.curatedColumns) el.curatedColumns.textContent = item?.column_count != null ? String(item.column_count) : '—';
     if (el.curatedUpdated) el.curatedUpdated.textContent = item?.updated_at || '—';
@@ -1115,6 +1122,19 @@ document.addEventListener('DOMContentLoaded', () => {
         link.className = 'btn action';
         link.textContent = 'Open source URL';
         el.curatedLinks.appendChild(link);
+      }
+
+      const handoffHref = buildBallotLensSourceHandoffHref(
+        item?.registry_source_id
+      );
+      if (handoffHref) {
+        const handoffLink = document.createElement('a');
+        handoffLink.href = handoffHref;
+        handoffLink.target = '_blank';
+        handoffLink.rel = 'noreferrer';
+        handoffLink.className = 'btn action';
+        handoffLink.textContent = 'Open in Ballot Lens';
+        el.curatedLinks.appendChild(handoffLink);
       }
     }
 
@@ -1685,8 +1705,83 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Curated Source Evidence is intentionally not serialized until its API
-  // publishes a stable dataset identifier suitable for cross-surface handoff.
+  // GUI-DF-R2: server-projected registry_source_id is the only stable
+  // Source Evidence URL identity. Query state is intent, never authority.
+  function normalizeRegistrySourceId(value) {
+    const normalized = typeof value === 'string' ? value.trim() : '';
+    return PUBLIC_REGISTRY_SOURCE_ID_RX.test(normalized) ? normalized : '';
+  }
+
+  function readCuratedSourceIntentFromLocation() {
+    const params = new URLSearchParams(window.location.search || '');
+    return {
+      present: params.has(SHAREABLE_SOURCE_QUERY_KEY),
+      registrySourceId: normalizeRegistrySourceId(
+        params.get(SHAREABLE_SOURCE_QUERY_KEY)
+      ) || null,
+    };
+  }
+
+  function replaceCuratedSourceIntentInLocation(registrySourceId) {
+    if (!window.history?.replaceState) return;
+    const normalized = normalizeRegistrySourceId(registrySourceId);
+    const url = new URL(window.location.href);
+    if (normalized) {
+      url.searchParams.set(SHAREABLE_SOURCE_QUERY_KEY, normalized);
+    } else {
+      url.searchParams.delete(SHAREABLE_SOURCE_QUERY_KEY);
+    }
+    const nextLocation = `${url.pathname}${url.search}${url.hash}`;
+    const currentLocation =
+      `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (nextLocation !== currentLocation) {
+      window.history.replaceState(window.history.state, '', nextLocation);
+    }
+  }
+
+  function buildBallotLensSourceHandoffHref(registrySourceId) {
+    const normalized = normalizeRegistrySourceId(registrySourceId);
+    if (!normalized) return '';
+    let target;
+    try {
+      target = new URL(ballotLensUrl, window.location.origin);
+    } catch (_) {
+      return '';
+    }
+    if (target.origin !== window.location.origin) return '';
+    target.searchParams.set(SHAREABLE_SOURCE_QUERY_KEY, normalized);
+    return `${target.pathname}${target.search}${target.hash}`;
+  }
+
+  function hydrateCuratedSourceIntentFromLocation() {
+    if (curatedSourceQueryHydrated) {
+      return { handled: false, match: null };
+    }
+    curatedSourceQueryHydrated = true;
+
+    const intent = readCuratedSourceIntentFromLocation();
+    if (!intent.present) {
+      return { handled: false, match: null };
+    }
+    if (!intent.registrySourceId) {
+      replaceCuratedSourceIntentInLocation(null);
+      curatedSelection = null;
+      return { handled: true, match: null };
+    }
+
+    const matches = curatedItems.filter(
+      item => normalizeRegistrySourceId(item?.registry_source_id)
+        === intent.registrySourceId
+    );
+    if (matches.length !== 1) {
+      replaceCuratedSourceIntentInLocation(null);
+      curatedSelection = null;
+      return { handled: true, match: null };
+    }
+
+    curatedSelection = matches[0];
+    return { handled: true, match: matches[0] };
+  }
 
   function getCanonicalScopeFilters() {
     return {
@@ -2700,7 +2795,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function filterCuratedItems() {
+  function filterCuratedItems({ allowDefaultSelection = true } = {}) {
     let items = curatedItems;
     if (curatedSearch) {
       const q = curatedSearch.toLowerCase();
@@ -2713,10 +2808,17 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCuratedList(items);
     const selectedId = curatedSelection?.id || null;
     if (!selectedId || !items.some(item => item.id === selectedId)) {
+      const selectedRegistrySourceId = normalizeRegistrySourceId(
+        curatedSelection?.registry_source_id
+      );
       curatedSelection = null;
+      if (selectedRegistrySourceId) {
+        replaceCuratedSourceIntentInLocation(null);
+      }
       resetEvidenceRelationshipContext();
-      if (items[0] && !previewActive) {
-        renderCuratedDetail(items[0]);
+      if (allowDefaultSelection && items[0] && !previewActive) {
+        // Existing automatic first-item convenience remains local UI state.
+        renderCuratedDetail(items[0], { syncSourceQuery: false });
         const firstButton = el.curatedList?.querySelector('.curated-item');
         if (firstButton) firstButton.classList.add('is-active');
       }
@@ -2735,8 +2837,14 @@ document.addEventListener('DOMContentLoaded', () => {
       authReason: 'Authentication required for curated datasets and preview feeds.',
       retries: 2
     });
-    if (result.authBlocked) return;
+    if (result.authBlocked) {
+      curatedSourceQueryHydrated = true;
+      replaceCuratedSourceIntentInLocation(null);
+      return;
+    }
     if (!result.ok || !result.data) {
+      curatedSourceQueryHydrated = true;
+      replaceCuratedSourceIntentInLocation(null);
       curatedItems = [];
       curatedSelection = null;
       renderCuratedList([]);
@@ -2752,7 +2860,18 @@ document.addEventListener('DOMContentLoaded', () => {
     curatedItems = Array.isArray(data?.items) ? data.items : [];
     updateCuratedStateOptions(curatedItems);
     updateCuratedCountyOptions(curatedItems);
-    filterCuratedItems();
+    const sourceHydration = hydrateCuratedSourceIntentFromLocation();
+    filterCuratedItems({
+      allowDefaultSelection: !sourceHydration.handled,
+    });
+    if (sourceHydration.match) {
+      renderCuratedDetail(
+        sourceHydration.match,
+        { syncSourceQuery: false }
+      );
+    } else if (sourceHydration.handled) {
+      renderCuratedDetail(null, { syncSourceQuery: false });
+    }
     if (!curatedItems.length && !getVizSourceRows().length) {
       clearVisualization();
     }

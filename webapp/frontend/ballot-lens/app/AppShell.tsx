@@ -43,6 +43,58 @@ import {
   canSubmitApprovedRegistrySource,
 } from '../state/selectors';
 
+const SHAREABLE_SOURCE_QUERY_KEY = 'source';
+const PUBLIC_REGISTRY_SOURCE_ID_INTENT_RX =
+  /^blsrc_v1_[0-9a-f]{64}$/;
+
+interface SourceQueryIntent {
+  readonly present: boolean;
+  readonly registrySourceId: string | null;
+}
+
+function normalizeSourceQueryIntent(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return PUBLIC_REGISTRY_SOURCE_ID_INTENT_RX.test(normalized)
+    ? normalized
+    : null;
+}
+
+function readSourceQueryIntent(): SourceQueryIntent {
+  if (typeof window === 'undefined') {
+    return { present: false, registrySourceId: null };
+  }
+  const params = new URLSearchParams(window.location.search);
+  return {
+    present: params.has(SHAREABLE_SOURCE_QUERY_KEY),
+    registrySourceId: normalizeSourceQueryIntent(
+      params.get(SHAREABLE_SOURCE_QUERY_KEY),
+    ),
+  };
+}
+
+function replaceSourceQueryIntent(registrySourceId: string | null): void {
+  if (
+    typeof window === 'undefined'
+    || !window.history?.replaceState
+  ) {
+    return;
+  }
+  const normalized = normalizeSourceQueryIntent(registrySourceId);
+  const url = new URL(window.location.href);
+  if (normalized) {
+    url.searchParams.set(SHAREABLE_SOURCE_QUERY_KEY, normalized);
+  } else {
+    url.searchParams.delete(SHAREABLE_SOURCE_QUERY_KEY);
+  }
+  const nextLocation = `${url.pathname}${url.search}${url.hash}`;
+  const currentLocation =
+    `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (nextLocation !== currentLocation) {
+    window.history.replaceState(window.history.state, '', nextLocation);
+  }
+}
+
 export function AppShell({
   bootstrap,
 }: {
@@ -77,6 +129,11 @@ export function AppShell({
   const runStateRef = useRef(runState);
   const selectedSourceRef = useRef(selectedSource);
   const trustedSelectionRef = useRef(trustedSelection);
+  const sourceQueryHydratedRef = useRef(false);
+  const initialSourceQueryIntentRef = useRef<SourceQueryIntent | null>(null);
+  if (initialSourceQueryIntentRef.current === null) {
+    initialSourceQueryIntentRef.current = readSourceQueryIntent();
+  }
 
   const dispatch = useCallback((event: RunEvent) => {
     const nextState = reduceRunState(runStateRef.current, event);
@@ -127,6 +184,7 @@ export function AppShell({
     setPublicRuntimeResult(null);
     setSelectedSource(null);
     selectedSourceRef.current = null;
+    replaceSourceQueryIntent(null);
     setTrustedSelection(null);
     trustedSelectionRef.current = null;
     dispatch({ type: 'RESET' });
@@ -144,6 +202,7 @@ export function AppShell({
     setPublicRuntimeResult(null);
     setSelectedSource(source);
     selectedSourceRef.current = source;
+    replaceSourceQueryIntent(source?.registry_source_id ?? null);
     if (!source) {
       dispatch({ type: 'RESET' });
       return;
@@ -158,6 +217,36 @@ export function AppShell({
       },
     });
   }, [dispatch]);
+
+  useEffect(() => {
+    if (
+      !registryEnvelope
+      || sourceQueryHydratedRef.current
+    ) {
+      return;
+    }
+    sourceQueryHydratedRef.current = true;
+
+    const intent = initialSourceQueryIntentRef.current;
+    if (!intent?.present) {
+      return;
+    }
+    if (!intent.registrySourceId) {
+      replaceSourceQueryIntent(null);
+      return;
+    }
+
+    // Query state is locator intent only. Server-projected registry sources
+    // remain the sole selection authority.
+    const matches = registryEnvelope.sources.filter(
+      source => source.registry_source_id === intent.registrySourceId,
+    );
+    if (matches.length !== 1) {
+      replaceSourceQueryIntent(null);
+      return;
+    }
+    handlePublicSelection(matches[0] ?? null);
+  }, [handlePublicSelection, registryEnvelope]);
 
   const handleTrustedSelection = useCallback((
     selection: TrustedSourceSelection | null,
