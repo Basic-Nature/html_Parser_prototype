@@ -5,8 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ElectionPulse Workflow</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/workflow_public.css') }}?v={{ static_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/public_app_nav.css') }}?v={{ static_version }}">
 </head>
 <body data-page="workflow-public" data-workflow-contract="public-readiness-r3">
+    <nav class="ep-app-nav" aria-label="ElectionPulse primary navigation">
+      <div class="ep-app-nav__inner">
+        <div class="ep-app-nav__identity" aria-label="ElectionPulse">ElectionPulse</div>
+        <div class="ep-app-nav__links">
+            <a href="{{ url_for('index') }}" class="ep-app-nav__link" title="ElectionPulse Observatory">Observatory</a>
+            <a href="{{ url_for('data_framework') }}" class="ep-app-nav__link" title="Published and governed election data">Data Framework</a>
+            <a href="{{ url_for('ballot_lens') }}" class="ep-app-nav__link" title="Investigate governed election data">Ballot Lens</a>
+            <a href="{{ url_for('worklist') }}" class="ep-app-nav__link is-active" aria-current="page" title="Review public verification workflow">Workflow</a>
+            <a href="{{ url_for('quality_dashboard') }}" class="ep-app-nav__link" title="Quality dashboard">Quality</a>
+            <a href="{{ url_for('auth_welcome', next=request.url) }}" class="ep-app-nav__link" title="Governed operator access">Access</a>
+        </div>
+      </div>
+    </nav>
     <main class="workflow-shell">
         <header class="workflow-hero">
             <div class="workflow-kicker">Public verification workflow</div>

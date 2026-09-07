@@ -1,0 +1,136 @@
+/* ElectionPulse shared public application navigation.
+ * R3A only: page-body visual systems remain page-owned until R3B.
+ */
+
+.ep-app-nav {
+  --ep-nav-bg: color-mix(in srgb, Canvas 92%, CanvasText 8%);
+  --ep-nav-text: CanvasText;
+  --ep-nav-muted: color-mix(in srgb, CanvasText 68%, Canvas 32%);
+  --ep-nav-border: color-mix(in srgb, CanvasText 18%, Canvas 82%);
+  --ep-nav-accent: #3478f6;
+  --ep-nav-active-text: #ffffff;
+  position: relative;
+  z-index: 20;
+  width: 100%;
+  border-bottom: 1px solid var(--ep-nav-border);
+  background: var(--ep-nav-bg);
+  color: var(--ep-nav-text);
+  box-shadow: 0 8px 24px rgba(0 0 0 / 0.12);
+}
+
+body[data-page="data-framework"] .ep-app-nav {
+  --ep-nav-bg: rgba(12 18 28 / 0.94);
+  --ep-nav-text: #f4f7f9;
+  --ep-nav-muted: #b8c8d3;
+  --ep-nav-border: rgba(0 255 231 / 0.26);
+  --ep-nav-accent: var(--neon, #00ffe7);
+  --ep-nav-active-text: #071318;
+}
+
+body[data-page="workflow-public"] .ep-app-nav {
+  --ep-nav-bg: var(--workflow-panel, Canvas);
+  --ep-nav-text: var(--workflow-text, CanvasText);
+  --ep-nav-muted: var(--workflow-muted, CanvasText);
+  --ep-nav-border: var(--workflow-border, CanvasText);
+  --ep-nav-accent: var(--workflow-accent, #3478f6);
+  --ep-nav-active-text: var(--workflow-accent-text, #ffffff);
+}
+
+.ep-app-nav__inner {
+  width: min(1500px, calc(100% - 32px));
+  margin: 0 auto;
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.ep-app-nav__identity {
+  flex: 0 0 auto;
+  color: var(--ep-nav-text);
+  font-size: 0.9rem;
+  font-weight: 850;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ep-app-nav__links {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ep-app-nav__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 11px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--ep-nav-muted);
+  font-size: 0.84rem;
+  font-weight: 750;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ep-app-nav__link:hover {
+  border-color: var(--ep-nav-border);
+  color: var(--ep-nav-text);
+  background: color-mix(in srgb, var(--ep-nav-accent) 9%, transparent);
+}
+
+.ep-app-nav__link.is-active,
+.ep-app-nav__link[aria-current="page"] {
+  border-color: color-mix(in srgb, var(--ep-nav-accent) 58%, transparent);
+  background: var(--ep-nav-accent);
+  color: var(--ep-nav-active-text);
+}
+
+.ep-app-nav__link:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ep-nav-accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 860px) {
+  .ep-app-nav__inner {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 0 8px;
+  }
+
+  .ep-app-nav__identity {
+    padding: 0 4px 5px;
+  }
+
+  .ep-app-nav__links {
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 0 2px 3px;
+    scrollbar-gutter: stable;
+    overscroll-behavior-inline: contain;
+  }
+}
+
+@media (max-width: 620px) {
+  .ep-app-nav__inner {
+    width: min(100% - 20px, 1500px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ep-app-nav *,
+  .ep-app-nav *::before,
+  .ep-app-nav *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
+}
