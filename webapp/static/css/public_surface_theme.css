@@ -1,0 +1,206 @@
+/* ElectionPulse shared public body theme - GUI-R3B.
+ * Visual-language harmonization only. No layout/visibility/runtime authority changes.
+ */
+
+:root {
+  --ep-page-bg:#0d141b;
+  --ep-page-bg-deep:#091017;
+  --ep-surface:#15202a;
+  --ep-surface-raised:#192732;
+  --ep-surface-soft:#101a22;
+  --ep-border:rgba(151 184 198 /.22);
+  --ep-border-strong:rgba(151 184 198 /.34);
+  --ep-text:#edf3f6;
+  --ep-muted:#aabac4;
+  --ep-accent:#62bbb9;
+  --ep-accent-strong:#79cec8;
+  --ep-gold:#d6b75a;
+  --ep-danger:#d86c68;
+  --ep-success:#62ad7b;
+  --ep-warning:#d0a24f;
+  --ep-radius:16px;
+  --ep-shadow:0 12px 34px rgba(0 0 0 /.24);
+  --ep-shadow-soft:0 5px 18px rgba(0 0 0 /.18);
+  --ep-focus:rgba(98 187 185 /.64);
+}
+
+body[data-page="data-framework"],
+body[data-page="workflow-public"] {
+  color-scheme:dark;
+  background:
+    radial-gradient(circle at 18% -10%,rgba(98 187 185 /.10),transparent 34%),
+    radial-gradient(circle at 88% 4%,rgba(214 183 90 /.07),transparent 27%),
+    linear-gradient(180deg,var(--ep-page-bg-deep),var(--ep-page-bg));
+  color:var(--ep-text);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+
+body[data-page="data-framework"] {
+  --glass:rgba(21 32 42 /.96);
+  --glass-alt:rgba(16 26 34 /.98);
+  --neon:var(--ep-accent);
+  --neon2:var(--ep-gold);
+  --gold:#e4ca76;
+  --border-radius:var(--ep-radius);
+  --shadow-soft:var(--ep-shadow-soft);
+  --shadow-elev:var(--ep-shadow);
+  --shadow-pop:var(--ep-shadow);
+  --focus-ring:0 0 0 3px var(--ep-focus);
+  --focus-outline-color:var(--ep-accent-strong);
+}
+
+body[data-page="data-framework"]::before {
+  background:
+    linear-gradient(120deg,rgba(255 255 255 /.018),transparent 34%),
+    radial-gradient(circle at 70% 12%,rgba(98 187 185 /.055),transparent 32%);
+  opacity:1;
+  mix-blend-mode:normal;
+}
+
+body[data-page="data-framework"] .container-main {
+  background:var(--ep-surface);
+  border:1px solid var(--ep-border);
+  border-radius:var(--ep-radius);
+  box-shadow:var(--ep-shadow);
+  backdrop-filter:none;
+}
+
+body[data-page="data-framework"] h1 {
+  color:var(--ep-text);
+  text-shadow:none;
+}
+
+body[data-page="data-framework"] .subtitle,
+body[data-page="data-framework"] .framework-panel-subtitle,
+body[data-page="data-framework"] .viz-label,
+body[data-page="data-framework"] .viz-mode-help,
+body[data-page="data-framework"] .viz-auto-hint {
+  color:var(--ep-muted);
+  text-shadow:none;
+}
+
+body[data-page="data-framework"] .framework-panel,
+body[data-page="data-framework"] .upload-section,
+body[data-page="data-framework"] .db-table-section {
+  background:var(--ep-surface-raised);
+  border-color:var(--ep-border);
+  box-shadow:var(--ep-shadow-soft);
+}
+
+body[data-page="data-framework"] .framework-panel:hover {
+  transform:none;
+  border-color:var(--ep-border-strong);
+  box-shadow:var(--ep-shadow-soft);
+}
+
+body[data-page="data-framework"] .status-pill,
+body[data-page="data-framework"] .viz-scope-badge,
+body[data-page="data-framework"] .viz-mode-help,
+body[data-page="data-framework"] .viz-dataset-switch,
+body[data-page="data-framework"] .viz-filters {
+  background:var(--ep-surface-soft);
+  border-color:var(--ep-border);
+}
+
+body[data-page="data-framework"] .viz-dataset-switch select,
+body[data-page="data-framework"] .viz-filters select,
+body[data-page="data-framework"] .viz-filters input,
+body[data-page="data-framework"] input[type="file"] {
+  background:var(--ep-page-bg);
+  border-color:var(--ep-border-strong);
+  color:var(--ep-text);
+}
+
+body[data-page="data-framework"] .db-table-section {
+  border-width:1px;
+}
+
+body[data-page="data-framework"] ::selection {
+  background:var(--ep-accent);
+  color:#071316;
+}
+
+body[data-page="workflow-public"] {
+  --workflow-bg:var(--ep-page-bg);
+  --workflow-text:var(--ep-text);
+  --workflow-muted:var(--ep-muted);
+  --workflow-border:var(--ep-border);
+  --workflow-panel:var(--ep-surface);
+  --workflow-accent:var(--ep-accent);
+  --workflow-accent-text:#071316;
+  --workflow-ok:var(--ep-success);
+  --workflow-warning:var(--ep-warning);
+  --workflow-error:var(--ep-danger);
+  --workflow-radius:var(--ep-radius);
+}
+
+body[data-page="workflow-public"] .workflow-hero,
+body[data-page="workflow-public"] .workflow-authority,
+body[data-page="workflow-public"] .workflow-filters,
+body[data-page="workflow-public"] .workflow-table-section,
+body[data-page="workflow-public"] .workflow-participation,
+body[data-page="workflow-public"] .workflow-stat-card {
+  background:var(--ep-surface);
+  border-color:var(--ep-border);
+  box-shadow:var(--ep-shadow-soft);
+}
+
+body[data-page="workflow-public"] .workflow-context > div,
+body[data-page="workflow-public"] .workflow-authority-state,
+body[data-page="workflow-public"] .workflow-state,
+body[data-page="workflow-public"] .workflow-table-wrap {
+  background:var(--ep-surface-soft);
+  border-color:var(--ep-border);
+}
+
+body[data-page="workflow-public"] .workflow-filter-grid input,
+body[data-page="workflow-public"] .workflow-filter-grid select {
+  background:var(--ep-page-bg);
+  border-color:var(--ep-border-strong);
+  color:var(--ep-text);
+}
+
+body[data-page="workflow-public"] .workflow-table th {
+  background:var(--ep-surface-raised);
+}
+
+body[data-page="workflow-public"] .workflow-link:not(.workflow-link-primary),
+body[data-page="workflow-public"] .workflow-button-secondary {
+  background:var(--ep-surface-soft);
+  border-color:var(--ep-border);
+}
+
+body[data-page="workflow-public"] .workflow-link-primary,
+body[data-page="workflow-public"] .workflow-button {
+  border-color:var(--ep-accent);
+  background:var(--ep-accent);
+  color:#071316;
+}
+
+body[data-page="data-framework"] h1,
+body[data-page="workflow-public"] h1 {
+  letter-spacing:-.025em;
+}
+
+body[data-page="data-framework"] h2,
+body[data-page="workflow-public"] h2 {
+  color:var(--ep-text);
+}
+
+body[data-page="data-framework"] a:focus-visible,
+body[data-page="workflow-public"] a:focus-visible,
+body[data-page="data-framework"] button:focus-visible,
+body[data-page="workflow-public"] button:focus-visible,
+body[data-page="data-framework"] input:focus-visible,
+body[data-page="workflow-public"] input:focus-visible,
+body[data-page="data-framework"] select:focus-visible,
+body[data-page="workflow-public"] select:focus-visible {
+  outline-color:var(--ep-accent-strong);
+}
+
+@media (prefers-reduced-motion:reduce) {
+  body[data-page="data-framework"] *,
+  body[data-page="workflow-public"] * {
+    scroll-behavior:auto !important;
+  }
+}
