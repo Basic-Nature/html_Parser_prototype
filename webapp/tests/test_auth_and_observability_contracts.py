@@ -242,6 +242,108 @@ def test_auth_challenge_rejects_protocol_relative_next(client, monkeypatch):
     assert resp.headers.get("Location") == "/ballot_lens"
 
 
+def test_certificate_start_is_disabled_by_default(client, monkeypatch):
+    monkeypatch.delenv("CERTIFICATE_AUTH_ENABLED", raising=False)
+    monkeypatch.delenv("TRUSTED_ACCESS_BASE_URL", raising=False)
+
+    resp = client.get(
+        "/auth/certificate/start?next=/ballot_lens",
+        headers={"Accept": "application/json"},
+    )
+    payload = resp.get_json()
+
+    assert resp.status_code == 404
+    assert payload["error"] == "certificate_auth_disabled"
+    assert payload["certificate_auth_available"] is False
+
+
+def test_certificate_start_fails_closed_when_enabled_without_boundary(
+    client,
+    monkeypatch,
+):
+    monkeypatch.setenv("CERTIFICATE_AUTH_ENABLED", "true")
+    monkeypatch.delenv("TRUSTED_ACCESS_BASE_URL", raising=False)
+
+    resp = client.get(
+        "/auth/certificate/start?next=/ballot_lens",
+        headers={"Accept": "application/json"},
+    )
+    payload = resp.get_json()
+
+    assert resp.status_code == 503
+    assert payload["error"] == "trusted_access_not_configured"
+    assert payload["certificate_auth_available"] is False
+
+
+def test_certificate_start_rejects_non_https_boundary(client, monkeypatch):
+    monkeypatch.setenv("CERTIFICATE_AUTH_ENABLED", "true")
+    monkeypatch.setenv(
+        "TRUSTED_ACCESS_BASE_URL",
+        "http://trusted-access.electionpulse.org",
+    )
+
+    resp = client.get(
+        "/auth/certificate/start?next=/ballot_lens",
+        headers={"Accept": "application/json"},
+    )
+    payload = resp.get_json()
+
+    assert resp.status_code == 503
+    assert payload["error"] == "trusted_access_not_configured"
+
+
+def test_certificate_start_redirects_to_dedicated_mtls_boundary(
+    client,
+    monkeypatch,
+):
+    monkeypatch.setenv("CERTIFICATE_AUTH_ENABLED", "true")
+    monkeypatch.setenv(
+        "TRUSTED_ACCESS_BASE_URL",
+        "https://trusted-access.electionpulse.org",
+    )
+
+    resp = client.get(
+        "/auth/certificate/start?next=/ballot_lens",
+        headers={"Accept": "text/html"},
+    )
+
+    assert resp.status_code in (301, 302)
+    cache_control = (resp.headers.get("Cache-Control") or "").lower()
+    directives = {
+        directive.strip().split("=", 1)[0]
+        for directive in cache_control.split(",")
+        if directive.strip()
+    }
+    assert "no-store" in directives
+
+    parsed = urlparse(resp.headers["Location"])
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "trusted-access.electionpulse.org"
+    assert parsed.path == "/auth/certificate/verify"
+    assert parse_qs(parsed.query)["return_to"] == ["/ballot_lens"]
+
+
+def test_certificate_start_sanitizes_external_return_target(
+    client,
+    monkeypatch,
+):
+    monkeypatch.setenv("CERTIFICATE_AUTH_ENABLED", "true")
+    monkeypatch.setenv(
+        "TRUSTED_ACCESS_BASE_URL",
+        "https://trusted-access.electionpulse.org",
+    )
+
+    resp = client.get(
+        "/auth/certificate/start?next=//evil.example.com",
+        headers={"Accept": "text/html"},
+    )
+
+    assert resp.status_code in (301, 302)
+    parsed = urlparse(resp.headers["Location"])
+    assert parsed.netloc == "trusted-access.electionpulse.org"
+    assert parse_qs(parsed.query)["return_to"] == ["/ballot_lens"]
+
+
 def test_auth_status_does_not_expose_raw_certificate_metadata(client, monkeypatch):
     monkeypatch.setattr(appmod, "get_request_principal", lambda: ("cert:test-user", "x_arr_clientcert", {"cn": "Test User", "subject_dn": "CN=Test User,OU=foo", "raw": "secret"}))
 
@@ -272,7 +374,9 @@ def test_api_auth_status_without_certificate_returns_200(client, monkeypatch):
     payload = resp.get_json()
     assert payload["authenticated"] is False
     assert payload["certificate_present"] is False
-    assert payload["challenge_url"].startswith("/auth/challenge")
+    assert payload["challenge_url"].startswith("/auth/certificate/start")
+    assert payload["certificate_start_url"] == payload["challenge_url"]
+    assert payload["legacy_challenge_url"].startswith("/auth/challenge")
 
 
 def test_api_ml_usage_failure_contract(client, monkeypatch):

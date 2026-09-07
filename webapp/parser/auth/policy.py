@@ -73,8 +73,11 @@ def _cert_required_response(reason: str):
         next=auth_next,
     )
 
+    # Compatibility name retained in the JSON contract, but this URL now
+    # represents an explicit navigation into the dedicated trusted-access
+    # boundary rather than a same-host TLS retry.
     challenge_url = url_for(
-        "auth_challenge",
+        "auth_certificate_start",
         next=auth_next,
     )
 

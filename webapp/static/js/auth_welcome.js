@@ -5,7 +5,7 @@
   const configEl = document.getElementById('authWelcomeConfig');
   const requireCert = document.body.getAttribute('data-require-cert') === '1';
   const defaultTargetUrl = configEl?.getAttribute('data-target-url') || '/ballot_lens';
-  const configuredChallengeUrl = configEl?.getAttribute('data-challenge-url');
+  const configuredCertificateStartUrl = configEl?.getAttribute('data-certificate-start-url');
 
   function showErrorMessage(message) {
     const container = document.getElementById('messageContainer');
@@ -56,13 +56,17 @@
     window.location.assign('/');
   }
 
-  function retryProtected() {
-    if (configuredChallengeUrl) {
-      window.location.assign(configuredChallengeUrl);
+  function startTrustedCertificateAccess(event) {
+    if (event) {
+      event.preventDefault();
+    }
+    if (configuredCertificateStartUrl) {
+      window.location.assign(configuredCertificateStartUrl);
       return;
     }
-    const next = encodeURIComponent(defaultTargetUrl);
-    window.location.assign(`/auth/challenge?next=${next}`);
+    showWarningMessage(
+      'Trusted certificate access is not configured on this public host.'
+    );
   }
 
   async function loadAuthStatus() {
@@ -161,14 +165,23 @@
 
     if (status.certificate_present !== true) {
       if (status.certificate_action_required === true) {
-        badge.textContent = 'Certificate Not Presented';
-        badge.className = 'cert-status-badge warning';
+        if (status.certificate_auth_available === true) {
+          badge.textContent = 'Certificate Required';
+          badge.className = 'cert-status-badge warning';
 
-        showWarningMessage(
-          'A certificate is required for this protected action. '
-          + 'Use Check Certificate & Continue to make a fresh '
-          + 'certificate-challenge request.'
-        );
+          showWarningMessage(
+            'Trusted certificate access is required for this protected action. '
+            + 'Use Continue with Trusted Certificate when you are ready.'
+          );
+        } else {
+          badge.textContent = 'Trusted Access Unavailable';
+          badge.className = 'cert-status-badge warning';
+
+          showWarningMessage(
+            'This protected action is locked. Trusted certificate access '
+            + 'is not currently enabled from the public site.'
+          );
+        }
       } else {
         badge.textContent = 'Certificate Not Required';
         badge.className = 'cert-status-badge valid';
@@ -262,6 +275,35 @@
     tierBadge.className = `tier-badge ${tierInfo.class}`;
   }
 
+  function updateCertificateAccessAction(status) {
+    if (!requireCert) {
+      return;
+    }
+
+    const retryBtn = document.getElementById('retryBtn');
+    const stateText = document.getElementById('certificateAccessState');
+
+    if (!retryBtn || !stateText) {
+      return;
+    }
+
+    const available = status?.certificate_auth_available === true;
+    retryBtn.hidden = !available;
+
+    if (available) {
+      stateText.textContent = (
+        'Trusted certificate access is available. When Edge asks for a '
+        + 'certificate, select "ElectionPulse Interactive Client"; you may '
+        + 'need to scroll the native certificate list.'
+      );
+    } else {
+      stateText.textContent = (
+        'Trusted certificate access is currently unavailable on this public '
+        + 'host. Public access remains available.'
+      );
+    }
+  }
+
   async function initialize() {
     const continueBtn = document.getElementById('continueBtn');
     const retryBtn = document.getElementById('retryBtn');
@@ -279,7 +321,7 @@
     if (retryBtn) {
       retryBtn.addEventListener(
         'click',
-        retryProtected
+        startTrustedCertificateAccess
       );
     }
 
@@ -320,6 +362,10 @@
     );
 
     updateTierBadge(
+      data
+    );
+
+    updateCertificateAccessAction(
       data
     );
 

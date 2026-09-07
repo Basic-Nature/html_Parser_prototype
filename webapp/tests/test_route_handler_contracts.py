@@ -114,6 +114,11 @@ def test_auth_welcome_blocks_post_method(client):
     assert response.status_code == 405
 
 
+def test_auth_certificate_start_blocks_post_method(client):
+    response = client.post("/auth/certificate/start")
+    assert response.status_code == 405
+
+
 def test_upload_input_blocks_get_method(client):
     response = client.get("/upload/input")
     assert response.status_code == 405

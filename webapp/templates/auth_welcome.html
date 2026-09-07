@@ -9,7 +9,7 @@
 </head>
 <body class="auth-welcome-page" data-require-cert="{{ '1' if require_cert else '0' }}">
     <div id="authWelcomeConfig"
-         data-challenge-url="{{ url_for('auth_challenge', next=target_url) }}"
+         data-certificate-start-url="{{ url_for('auth_certificate_start', next=target_url) }}"
          data-target-url="{{ target_url }}"
          data-require-cert="{{ '1' if require_cert else '0' }}"></div>
     <div class="auth-welcome-container">
@@ -74,13 +74,12 @@
             <div class="auth-welcome-explanation">
                 {% if require_cert %}
                 <strong>Trusted access has not been established yet.</strong>
-                ElectionPulse keeps most public tools available anonymously. Protected actions use an approved client certificate to establish a short-lived, pseudonymous trusted session without requiring a username or password.
-                Use <strong>Check Certificate &amp; Continue</strong> to present your certificate.
+                ElectionPulse keeps public tools available without requiring a client certificate. Sensitive trusted access is isolated from the public site's TLS boundary.
+                <span id="certificateAccessState">Trusted certificate access is currently unavailable on this public host.</span>
                 {% if challenge_attempted %}
                 <br><br>
-                The last challenge did not present an approved certificate, so protected actions remain locked. Public access is unaffected.
+                The last trusted-access attempt did not establish approved authority, so protected actions remain locked. Public access is unaffected.
                 {% endif %}
-                If you do not have an approved certificate, return to the public site or contact an administrator.
                 {% elif certificate_session_authenticated %}
                 <strong>Trusted session active.</strong>
                 A recently verified ElectionPulse client certificate established this short-lived pseudonymous session. The current request is using that bounded session authority; it is not claiming that a certificate was freshly presented on this TLS request.
@@ -96,8 +95,10 @@
             <!-- Actions -->
             <div class="auth-welcome-actions">
                 {% if require_cert %}
-                <a class="btn-auth primary" id="retryBtn" href="{{ url_for('auth_challenge', next=target_url) }}">
-                    Check Certificate & Continue
+                <a class="btn-auth primary" id="retryBtn"
+                   href="{{ url_for('auth_certificate_start', next=target_url) }}"
+                   hidden>
+                    Continue with Trusted Certificate
                 </a>
                 <a class="btn-auth secondary" id="returnHomeBtn" href="/">
                     Return to Home

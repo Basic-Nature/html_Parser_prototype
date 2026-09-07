@@ -15,6 +15,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 
 from webapp.parser.auth.authority_model import classify_authority
+from webapp.parser.auth.trusted_access import certificate_auth_public_state
 
 
 _RUNTIME_BINDINGS: ContextVar[dict[str, object]] = ContextVar(
@@ -123,6 +124,12 @@ def api_auth_status():
         fallback=url_for(
             "ballot_lens"
         ),
+    )
+
+    certificate_access_state = certificate_auth_public_state()
+    certificate_start_url = url_for(
+        "auth_certificate_start",
+        next=next_target,
     )
 
     try:
@@ -285,11 +292,34 @@ def api_auth_status():
             CERT_ENFORCEMENT_MODE
         ),
 
+        "certificate_auth_enabled": bool(
+            certificate_access_state["enabled"]
+        ),
+
+        "trusted_access_configured": bool(
+            certificate_access_state["configured"]
+        ),
+
+        "certificate_auth_available": bool(
+            certificate_access_state["available"]
+        ),
+
+        "certificate_start_url": (
+            certificate_start_url
+        ),
+
         "azure_client_cert_mode": (
             AZURE_CLIENT_CERT_MODE
         ),
 
-        "challenge_url": url_for(
+        # Compatibility field retained for existing consumers. It now points
+        # to the deliberate certificate-start seam instead of the legacy
+        # same-host /auth/challenge checkpoint.
+        "challenge_url": (
+            certificate_start_url
+        ),
+
+        "legacy_challenge_url": url_for(
             "auth_challenge",
             next=next_target,
         ),

@@ -46,6 +46,18 @@ def create_public_pages_blueprint() -> Blueprint:
     def auth_challenge_route():
         return _call_handler("auth_challenge")
 
+    @bp.route(
+        "/auth/certificate/start",
+        methods=["GET"],
+        endpoint="auth_certificate_start",
+    )
+    def auth_certificate_start_route():
+        from webapp.parser.auth.trusted_access import (
+            begin_trusted_certificate_access,
+        )
+
+        return begin_trusted_certificate_access()
+
     @bp.route("/ocr_diagnostics", methods=["GET"], endpoint="ocr_diagnostics")
     def ocr_diagnostics_route():
         return _call_handler("ocr_diagnostics")
