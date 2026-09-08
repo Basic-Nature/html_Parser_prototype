@@ -141,6 +141,8 @@ def test_data_framework_missing_value_token_is_not_mojibake():
 
     assert "â€”" not in source
     assert r"\u2014" in source
+    assert "â€¢" not in source
+    assert r"\u2022" in source
 
 def test_data_framework_js_cache_token_tracks_asset_sha256():
     template_path = REPO_ROOT / "webapp" / "templates" / "data_framework.html"

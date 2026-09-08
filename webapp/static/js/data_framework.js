@@ -2644,7 +2644,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!vizRows.length || vizRows !== sourceRows) {
       applyVizDatasetRows(sourceRows);
     }
-    setPreviewStatus(`Canonical Production â€¢ ${sourceRows.length} rows`);
+    setPreviewStatus(`Canonical Production \u2022 ${sourceRows.length} rows`);
     if (!vizAutoPaused && !vizHoverPaused) {
       startVizAutoRotation(false);
     }
