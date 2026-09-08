@@ -98,16 +98,29 @@ LEGACY_PRIVILEGE_TIER_IMPLIES_WORKFLOW_CAPABILITY = False
 EXTERNAL_CAPABILITY_CLAIMS_ACCEPTED = False
 STRICT_COMPARISON_SERVICE_ONLY = True
 WORKFLOW_PUBLICATION_HANDOFF_IS_CANONICAL_WRITE = False
+PUBLICATION_OPERATOR_IS_CANONICAL_WRITER = False
+PUBLICATION_OPERATOR_SEPARATION_POLICY = (
+    "PUBLICATION_OPERATOR_DISTINCT_FROM_DL1_DL2_QC1_QC2_PER_ITEM"
+)
+PUBLICATION_OPERATOR_SEPARATION_FIELDS = (
+    "dl1_principal",
+    "dl2_principal",
+    "qc1_principal",
+    "qc2_principal",
+)
 
 RESOLVED_W2A_DECISIONS = (
     "exact protected contributor role/capability names and Keycloak mapping",
     "whether QC1/QC2 reviewers must also differ from DL1/DL2 principals",
 )
 
+RESOLVED_W3A_DECISIONS = (
+    "whether publication operator must differ from all DL/QC principals",
+)
+
 REMAINING_DEFERRED_DECISIONS = (
     "exact normalized semantic comparison payload schema and version",
     "exact canonical writer callback/result contract used by publication_handoff",
-    "whether publication operator must differ from all DL/QC principals",
 )
 
 
@@ -203,4 +216,37 @@ def assert_four_principal_separation(
     if len(set(normalized.values())) != 4:
         raise WorkflowAuthorizationError(
             "DL1, DL2, QC1, and QC2 require four distinct principals"
+        )
+
+def assert_publication_operator_separation(
+    *,
+    dl1_principal: str,
+    dl2_principal: str,
+    qc1_principal: str,
+    qc2_principal: str,
+    publication_operator_principal: str,
+) -> None:
+    # Require publication operator independence from all four DL/QC principals.
+    assert_four_principal_separation(
+        dl1_principal=dl1_principal,
+        dl2_principal=dl2_principal,
+        qc1_principal=qc1_principal,
+        qc2_principal=qc2_principal,
+    )
+
+    publication_operator = str(publication_operator_principal or "").strip()
+    if not publication_operator:
+        raise WorkflowAuthorizationError(
+            "publication_operator_principal must be a non-empty principal"
+        )
+
+    governed_principals = {
+        str(dl1_principal).strip(),
+        str(dl2_principal).strip(),
+        str(qc1_principal).strip(),
+        str(qc2_principal).strip(),
+    }
+    if publication_operator in governed_principals:
+        raise WorkflowAuthorizationError(
+            "publication operator must differ from DL1, DL2, QC1, and QC2"
         )

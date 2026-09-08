@@ -23,8 +23,12 @@ from webapp.parser.contracts.workflow_authorization import (
     KEYCLOAK_ROLE_TO_INTERNAL_ROLE,
     LEGACY_PRIVILEGE_TIER_IMPLIES_WORKFLOW_CAPABILITY,
     PUBLIC_WORKFLOW_REQUIRES_KEYCLOAK,
+    PUBLICATION_OPERATOR_IS_CANONICAL_WRITER,
+    PUBLICATION_OPERATOR_SEPARATION_FIELDS,
+    PUBLICATION_OPERATOR_SEPARATION_POLICY,
     REMAINING_DEFERRED_DECISIONS,
     RESOLVED_W2A_DECISIONS,
+    RESOLVED_W3A_DECISIONS,
     ROLE_AUDITOR,
     ROLE_CAPABILITIES,
     ROLE_COMPARISON_SERVICE,
@@ -39,6 +43,7 @@ from webapp.parser.contracts.workflow_authorization import (
     WorkflowAuthorizationError,
     assert_capability,
     assert_four_principal_separation,
+    assert_publication_operator_separation,
     capabilities_for_roles,
     map_external_roles,
 )
@@ -200,14 +205,49 @@ def test_publication_handoff_remains_noncanonical():
     assert CAP_PUBLICATION_HANDOFF not in ROLE_CAPABILITIES[ROLE_REVIEWER]
 
 
-def test_resolved_and_remaining_decisions_align_lifecycle_contract():
+def test_publication_operator_separation_contract_is_exact_and_fail_closed():
+    assert PUBLICATION_OPERATOR_SEPARATION_POLICY == (
+        "PUBLICATION_OPERATOR_DISTINCT_FROM_DL1_DL2_QC1_QC2_PER_ITEM"
+    )
+    assert PUBLICATION_OPERATOR_SEPARATION_FIELDS == (
+        "dl1_principal",
+        "dl2_principal",
+        "qc1_principal",
+        "qc2_principal",
+    )
+    assert PUBLICATION_OPERATOR_IS_CANONICAL_WRITER is False
+
+    valid = {
+        "dl1_principal": "usr_dl1",
+        "dl2_principal": "usr_dl2",
+        "qc1_principal": "usr_qc1",
+        "qc2_principal": "usr_qc2",
+        "publication_operator_principal": "usr_publication",
+    }
+    assert_publication_operator_separation(**valid)
+
+    for prior_field in PUBLICATION_OPERATOR_SEPARATION_FIELDS:
+        invalid = dict(valid)
+        invalid["publication_operator_principal"] = valid[prior_field]
+        with pytest.raises(WorkflowAuthorizationError):
+            assert_publication_operator_separation(**invalid)
+
+    invalid = dict(valid)
+    invalid["publication_operator_principal"] = ""
+    with pytest.raises(WorkflowAuthorizationError):
+        assert_publication_operator_separation(**invalid)
+
+
+def test_resolved_and_remaining_decisions_align_lifecycle_contract_after_w3a():
     assert RESOLVED_W2A_DECISIONS == (
         "exact protected contributor role/capability names and Keycloak mapping",
         "whether QC1/QC2 reviewers must also differ from DL1/DL2 principals",
     )
+    assert RESOLVED_W3A_DECISIONS == (
+        "whether publication operator must differ from all DL/QC principals",
+    )
     assert REMAINING_DEFERRED_DECISIONS == (
         "exact normalized semantic comparison payload schema and version",
         "exact canonical writer callback/result contract used by publication_handoff",
-        "whether publication operator must differ from all DL/QC principals",
     )
     assert DEFERRED_DECISIONS == REMAINING_DEFERRED_DECISIONS
