@@ -113,10 +113,9 @@ def test_qc2_reviewer_separation():
         assert_qc_reviewer_separation("principal:qc", "principal:qc")
 
 
-def test_four_w1a_decisions_remain_deferred():
+def test_three_decisions_remain_deferred_after_w2a():
     assert DEFERRED_DECISIONS == (
-        "exact protected contributor role/capability names and Keycloak mapping",
-        "whether QC1/QC2 reviewers must also differ from DL1/DL2 principals",
         "exact normalized semantic comparison payload schema and version",
         "exact canonical writer callback/result contract used by publication_handoff",
+        "whether publication operator must differ from all DL/QC principals",
     )

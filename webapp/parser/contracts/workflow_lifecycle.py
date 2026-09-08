@@ -42,10 +42,9 @@ CANONICAL_PUBLICATION_POLICY = (
 )
 
 DEFERRED_DECISIONS = (
-    "exact protected contributor role/capability names and Keycloak mapping",
-    "whether QC1/QC2 reviewers must also differ from DL1/DL2 principals",
     "exact normalized semantic comparison payload schema and version",
     "exact canonical writer callback/result contract used by publication_handoff",
+    "whether publication operator must differ from all DL/QC principals",
 )
 
 FORWARD_STAGE_TRANSITIONS = {
