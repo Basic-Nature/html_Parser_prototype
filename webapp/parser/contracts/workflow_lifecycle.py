@@ -41,9 +41,11 @@ CANONICAL_PUBLICATION_POLICY = (
     "CANONICAL_WRITER_REQUIRED_BEFORE_PUBLISHED_LINKAGE"
 )
 
-DEFERRED_DECISIONS = (
+RESOLVED_W5A_DECISIONS = (
     "exact canonical writer callback/result contract used by publication_handoff",
 )
+
+DEFERRED_DECISIONS = ()
 
 FORWARD_STAGE_TRANSITIONS = {
     "source_intake": frozenset({"independent_acquisition"}),

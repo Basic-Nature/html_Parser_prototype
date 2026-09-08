@@ -15,6 +15,7 @@ from webapp.parser.contracts.workflow_lifecycle import (
     PRE_QC_POLICY,
     REVIEW_DECISIONS,
     REVIEW_STAGES,
+    RESOLVED_W5A_DECISIONS,
     STAGE_CONDITIONS,
     WORKFLOW_LIFECYCLE_CONTRACT,
     assert_dl2_claimable,
@@ -113,7 +114,8 @@ def test_qc2_reviewer_separation():
         assert_qc_reviewer_separation("principal:qc", "principal:qc")
 
 
-def test_one_decision_remains_deferred_after_w4a():
-    assert DEFERRED_DECISIONS == (
+def test_no_architecture_decisions_remain_deferred_after_w5a():
+    assert RESOLVED_W5A_DECISIONS == (
         "exact canonical writer callback/result contract used by publication_handoff",
     )
+    assert DEFERRED_DECISIONS == ()

@@ -122,9 +122,11 @@ RESOLVED_W4A_DECISIONS = (
     "exact normalized semantic comparison payload schema and version",
 )
 
-REMAINING_DEFERRED_DECISIONS = (
+RESOLVED_W5A_DECISIONS = (
     "exact canonical writer callback/result contract used by publication_handoff",
 )
+
+REMAINING_DEFERRED_DECISIONS = ()
 
 
 class WorkflowAuthorizationError(ValueError):
