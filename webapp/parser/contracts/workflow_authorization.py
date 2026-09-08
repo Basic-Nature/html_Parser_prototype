@@ -118,8 +118,11 @@ RESOLVED_W3A_DECISIONS = (
     "whether publication operator must differ from all DL/QC principals",
 )
 
-REMAINING_DEFERRED_DECISIONS = (
+RESOLVED_W4A_DECISIONS = (
     "exact normalized semantic comparison payload schema and version",
+)
+
+REMAINING_DEFERRED_DECISIONS = (
     "exact canonical writer callback/result contract used by publication_handoff",
 )
 

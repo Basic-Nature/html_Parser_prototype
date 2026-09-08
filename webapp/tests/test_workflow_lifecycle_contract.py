@@ -113,8 +113,7 @@ def test_qc2_reviewer_separation():
         assert_qc_reviewer_separation("principal:qc", "principal:qc")
 
 
-def test_two_decisions_remain_deferred_after_w3a():
+def test_one_decision_remains_deferred_after_w4a():
     assert DEFERRED_DECISIONS == (
-        "exact normalized semantic comparison payload schema and version",
         "exact canonical writer callback/result contract used by publication_handoff",
     )

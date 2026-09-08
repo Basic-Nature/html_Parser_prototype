@@ -42,7 +42,6 @@ CANONICAL_PUBLICATION_POLICY = (
 )
 
 DEFERRED_DECISIONS = (
-    "exact normalized semantic comparison payload schema and version",
     "exact canonical writer callback/result contract used by publication_handoff",
 )
 

@@ -29,6 +29,7 @@ from webapp.parser.contracts.workflow_authorization import (
     REMAINING_DEFERRED_DECISIONS,
     RESOLVED_W2A_DECISIONS,
     RESOLVED_W3A_DECISIONS,
+    RESOLVED_W4A_DECISIONS,
     ROLE_AUDITOR,
     ROLE_CAPABILITIES,
     ROLE_COMPARISON_SERVICE,
@@ -238,7 +239,7 @@ def test_publication_operator_separation_contract_is_exact_and_fail_closed():
         assert_publication_operator_separation(**invalid)
 
 
-def test_resolved_and_remaining_decisions_align_lifecycle_contract_after_w3a():
+def test_resolved_and_remaining_decisions_align_lifecycle_contract_after_w4a():
     assert RESOLVED_W2A_DECISIONS == (
         "exact protected contributor role/capability names and Keycloak mapping",
         "whether QC1/QC2 reviewers must also differ from DL1/DL2 principals",
@@ -246,8 +247,10 @@ def test_resolved_and_remaining_decisions_align_lifecycle_contract_after_w3a():
     assert RESOLVED_W3A_DECISIONS == (
         "whether publication operator must differ from all DL/QC principals",
     )
-    assert REMAINING_DEFERRED_DECISIONS == (
+    assert RESOLVED_W4A_DECISIONS == (
         "exact normalized semantic comparison payload schema and version",
+    )
+    assert REMAINING_DEFERRED_DECISIONS == (
         "exact canonical writer callback/result contract used by publication_handoff",
     )
     assert DEFERRED_DECISIONS == REMAINING_DEFERRED_DECISIONS
