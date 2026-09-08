@@ -317,6 +317,14 @@ from webapp.parser.auth.capability_policy import (
     assert_public_read_surface,
     assert_trusted_action,
 )
+from webapp.parser.auth.workflow_runtime_authorization import (
+    WorkflowRuntimeAuthorizationDenied,
+    assert_workflow_runtime_capability,
+)
+from webapp.parser.contracts.workflow_authorization import (
+    CAP_DL1_CLAIM,
+    CAP_SOURCE_READ,
+)
 from webapp.parser.utils.cert_utils import extract_client_principal
 from webapp.parser.utils.db_utils import SessionLocal, get_engine
 from webapp.parser.utils.misc_utils import extract_url_and_label, load_processed_urls
@@ -8370,7 +8378,7 @@ def api_workflow_v1_stats():
     )
 
 
-def _workflow_contributor_authority():
+def _workflow_contributor_authority(required_capability: str):
     from webapp.parser.auth.authority_model import classify_authority
     from webapp.parser.utils.privilege_tiers import (
         PrivilegeTier,
@@ -8400,11 +8408,27 @@ def _workflow_contributor_authority():
             status,
         )
 
+    try:
+        assert_workflow_runtime_capability(
+            principal,
+            required_capability,
+        )
+    except WorkflowRuntimeAuthorizationDenied:
+        return None, (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "workflow_capability_denied",
+                }
+            ),
+            403,
+        )
+
     return principal, None
 
 
 def api_workflow_v1_contributor_source(item_id):
-    principal, denied = _workflow_contributor_authority()
+    principal, denied = _workflow_contributor_authority(CAP_SOURCE_READ)
     if denied is not None:
         return denied
 
@@ -8448,7 +8472,7 @@ def api_workflow_v1_contributor_source(item_id):
 
 
 def api_workflow_v1_claim_first_pass(item_id):
-    principal, denied = _workflow_contributor_authority()
+    principal, denied = _workflow_contributor_authority(CAP_DL1_CLAIM)
     if denied is not None:
         return denied
 

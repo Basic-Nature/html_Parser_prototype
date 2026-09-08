@@ -364,3 +364,18 @@ def test_composition_root_claim_is_default_off_and_authority_guarded():
     assert "api_workflow_v1_contributor_source" in source
     assert "assert_trusted_action" in source
     assert '"expected_row_version" not in body' in source
+
+def test_composition_root_w2_workflow_capability_seam_is_wired():
+    source = APP_PATH.read_text(encoding="utf-8")
+
+    assert "from webapp.parser.auth.workflow_runtime_authorization import (" in source
+    assert "WorkflowRuntimeAuthorizationDenied" in source
+    assert "assert_workflow_runtime_capability" in source
+    assert "CAP_SOURCE_READ" in source
+    assert "CAP_DL1_CLAIM" in source
+    assert "def _workflow_contributor_authority(required_capability: str):" in source
+    assert "_workflow_contributor_authority(CAP_SOURCE_READ)" in source
+    assert "_workflow_contributor_authority(CAP_DL1_CLAIM)" in source
+    assert "assert_trusted_action(" in source
+    assert "workflow_capability_denied" in source
+    assert 'os.environ.get("WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED", "false")' in source
