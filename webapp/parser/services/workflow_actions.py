@@ -26,12 +26,17 @@ from webapp.parser.services.workflow_staging_binding import (
     WorkflowStagingBindingError,
     validate_completed_workflow_staging_binding,
 )
+from webapp.parser.contracts.workflow_lifecycle import (
+    assert_dl2_claimable,
+)
 from webapp.parser.utils.url_registry import lookup_exact_registry_entry
 
 
 WORKFLOW_CLAIM_CONTRACT = "w3_pass_claim_v1"
 APPROVED_SOURCE_CONTRACT = "w3_approved_source_projection_v1"
 WORKFLOW_DL1_SUBMIT_CONTRACT = "workflow_dl1_submit_operation_v1"
+WORKFLOW_DL2_SUBMIT_CONTRACT = "workflow_dl2_submit_operation_v1"
+WORKFLOW_DL2_CLAIM_CONTRACT = "workflow_dl2_claim_operation_v1"
 
 
 class WorkflowActionError(RuntimeError):
@@ -297,9 +302,209 @@ def claim_first_workflow_pass(
     }
 
 
+def claim_second_workflow_pass(
+    session: Session,
+    item_id: UUID | str,
+    *,
+    principal: str,
+    expected_row_version: int,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    actor = str(principal or "").strip()
+    if not actor:
+        raise WorkflowActionError("Authenticated internal principal is required.")
+
+    normalized = _normalize_item_id(item_id)
+    if isinstance(expected_row_version, bool):
+        raise WorkflowActionError("expected_row_version must be an integer.")
+    try:
+        expected_version = int(expected_row_version)
+    except (TypeError, ValueError) as exc:
+        raise WorkflowActionError("expected_row_version must be an integer.") from exc
+    if expected_version < 0:
+        raise WorkflowActionError("expected_row_version must be >= 0.")
+
+    timestamp = now or datetime.now(timezone.utc)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    timestamp = timestamp.astimezone(timezone.utc)
+
+    item = session.execute(
+        select(WorkflowItem)
+        .where(WorkflowItem.id == normalized)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if item is None:
+        raise WorkflowActionNotFound("Workflow item was not found.")
+
+    if int(item.row_version) != expected_version:
+        raise WorkflowActionConflict("Workflow row_version changed before DL2 claim.")
+
+    if (
+        item.lifecycle_state,
+        item.current_stage,
+        item.stage_condition,
+    ) != ("active", "independent_acquisition", "ready"):
+        raise WorkflowActionConflict("Workflow item is not eligible for DL2 claim.")
+
+    dl1 = session.execute(
+        select(WorkflowPass)
+        .where(
+            WorkflowPass.workflow_item_id == normalized,
+            WorkflowPass.pass_number == 1,
+            WorkflowPass.is_current.is_(True),
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if dl1 is None:
+        raise WorkflowActionConflict("DL2 claim requires a current DL1 revision.")
+
+    dl1_principal = str(dl1.assigned_principal or "").strip()
+    if (
+        dl1.pass_label != "DL1"
+        or dl1.status != "submitted"
+        or dl1.submitted_at is None
+        or not dl1_principal
+    ):
+        raise WorkflowActionConflict(
+            "DL2 claim requires the current submitted DL1 revision."
+        )
+
+    try:
+        assert_dl2_claimable(
+            dl1_status=dl1.status,
+            candidate_check_complete=(dl1.candidate_check_status == "complete"),
+            semantic_validation_complete=(dl1.semantic_validation_status == "complete"),
+            dl1_principal=dl1_principal,
+            dl2_principal=actor,
+        )
+    except ValueError as exc:
+        raise WorkflowActionConflict(str(exc)) from exc
+
+    existing_dl2 = session.execute(
+        select(WorkflowPass.id).where(
+            WorkflowPass.workflow_item_id == normalized,
+            WorkflowPass.pass_number == 2,
+            WorkflowPass.is_current.is_(True),
+        )
+    ).first()
+    if existing_dl2 is not None:
+        raise WorkflowActionConflict(
+            "Current DL2 pass already exists for workflow item."
+        )
+
+    prior_state = {
+        "lifecycle_state": item.lifecycle_state,
+        "current_stage": item.current_stage,
+        "stage_condition": item.stage_condition,
+        "row_version": item.row_version,
+        "dl1_pass_id": str(dl1.id),
+        "dl1_status": dl1.status,
+        "dl2_pass_id": None,
+    }
+
+    dl2 = WorkflowPass(
+        workflow_item_id=item.id,
+        pass_number=2,
+        pass_label="DL2",
+        revision_number=1,
+        is_current=True,
+        status="in_progress",
+        assigned_principal=actor,
+        source_evidence_ref=None,
+        staging_batch_id=None,
+        candidate_check_status=None,
+        candidate_check_result=None,
+        semantic_validation_status=None,
+        semantic_validation_result=None,
+        started_at=timestamp,
+        submitted_at=None,
+        superseded_at=None,
+        notes=None,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    session.add(dl2)
+    session.flush()
+
+    item.stage_condition = "in_progress"
+    item.row_version = expected_version + 1
+    item.updated_at = timestamp
+
+    new_state = {
+        "lifecycle_state": item.lifecycle_state,
+        "current_stage": item.current_stage,
+        "stage_condition": item.stage_condition,
+        "row_version": item.row_version,
+        "dl1_pass_id": str(dl1.id),
+        "dl1_status": dl1.status,
+        "dl2_pass_id": str(dl2.id),
+        "dl2_status": dl2.status,
+    }
+
+    event = WorkflowEvent(
+        workflow_item_id=item.id,
+        actor_type="principal",
+        actor_principal=actor,
+        actor_service=None,
+        event_type="pass_claimed",
+        stage="independent_acquisition",
+        prior_state=prior_state,
+        new_state=new_state,
+        related_pass_id=dl2.id,
+        related_comparison_id=None,
+        related_review_id=None,
+        related_staging_batch_id=None,
+        related_canonical_race_id=item.canonical_race_id,
+        reason_code=None,
+        summary="DL2 claimed for independent acquisition.",
+        event_metadata={
+            "contract": WORKFLOW_DL2_CLAIM_CONTRACT,
+            "pass_number": 2,
+            "pass_label": "DL2",
+            "revision_number": 1,
+            "dl1_pass_id": str(dl1.id),
+            "principal_independence_enforced": True,
+        },
+        occurred_at=timestamp,
+    )
+    session.add(event)
+    session.flush()
+
+    return {
+        "success": True,
+        "contract": WORKFLOW_DL2_CLAIM_CONTRACT,
+        "task_id": str(item.id),
+        "pass_id": str(dl2.id),
+        "pass_number": 2,
+        "pass_label": "DL2",
+        "revision_number": 1,
+        "status": dl2.status,
+        "lifecycle_state": item.lifecycle_state,
+        "current_stage": item.current_stage,
+        "stage_condition": item.stage_condition,
+        "row_version": item.row_version,
+        "dl1_pass_id": str(dl1.id),
+        "principal_independence_enforced": True,
+        "comparison_created": False,
+        "strict_comparison_stage_advanced": False,
+        "committed": False,
+    }
+
+
 class WorkflowSubmitConflict(WorkflowActionError):
     status_code = 409
     code = "workflow_dl1_submit_conflict"
+
+
+class WorkflowDL2SubmitConflict(WorkflowActionError):
+    status_code = 409
+    code = "workflow_dl2_submit_conflict"
+
+
+class _WorkflowPassSubmitConflict(WorkflowActionError):
+    status_code = 409
+    code = "workflow_pass_submit_conflict"
 
 
 def _normalize_pass_id(pass_id: UUID | str) -> UUID:
@@ -332,6 +537,8 @@ def _submit_expected_version(value: object) -> int:
 def _require_submit_pre_qc_binding(
     workflow_pass: WorkflowPass,
     binding: dict[str, Any],
+    *,
+    pass_label: str,
 ) -> str:
     candidate = workflow_pass.candidate_check_result
     semantic = workflow_pass.semantic_validation_result
@@ -342,8 +549,9 @@ def _require_submit_pre_qc_binding(
         or not isinstance(candidate, dict)
         or not isinstance(semantic, dict)
     ):
-        raise WorkflowSubmitConflict(
-            "DL1 submit requires completed server-owned Pre-QC validation."
+        raise _WorkflowPassSubmitConflict(
+            f"{pass_label} submit requires completed server-owned "
+            "Pre-QC validation."
         )
 
     semantic_hash = str(semantic.get("semantic_sha256") or "").strip()
@@ -368,14 +576,14 @@ def _require_submit_pre_qc_binding(
         semantic.get("binding_exact_match") is True,
     )
     if not all(checks):
-        raise WorkflowSubmitConflict(
+        raise _WorkflowPassSubmitConflict(
             "Stored Pre-QC evidence does not reconcile to the completed "
             "staging provenance binding."
         )
     return semantic_hash
 
 
-def submit_first_workflow_pass(
+def _submit_workflow_pass(
     session: Session,
     item_id: UUID | str,
     *,
@@ -386,13 +594,14 @@ def submit_first_workflow_pass(
     source_evidence_ref: str,
     artifact_ref: str,
     artifact_sha256: str,
+    required_pass_number: int,
+    required_pass_label: str,
+    contract: str,
+    require_submitted_dl1: bool,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Submit the current validated DL1 revision.
-
-    Request values identify/assert the already-server-owned evidence. They are
-    never used to create, rewrite, or backfill provenance or validation state.
-    """
+    # Submit one server-loaded governed acquisition pass.
+    # Request evidence values only assert server-owned provenance identity.
 
     actor = str(principal or "").strip()
     if not actor:
@@ -423,6 +632,14 @@ def submit_first_workflow_pass(
             "must be non-empty."
         )
 
+    if (required_pass_number, required_pass_label) not in {
+        (1, "DL1"),
+        (2, "DL2"),
+    }:
+        raise WorkflowActionError(
+            "Unsupported governed pass identity for submit."
+        )
+
     timestamp = now or datetime.now(timezone.utc)
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)
@@ -437,8 +654,8 @@ def submit_first_workflow_pass(
         raise WorkflowActionNotFound("Workflow item was not found.")
 
     if int(item.row_version) != expected_version:
-        raise WorkflowSubmitConflict(
-            "Workflow row_version changed before DL1 submit."
+        raise _WorkflowPassSubmitConflict(
+            f"Workflow row_version changed before {required_pass_label} submit."
         )
 
     if (
@@ -446,8 +663,9 @@ def submit_first_workflow_pass(
         item.current_stage,
         item.stage_condition,
     ) != ("active", "independent_acquisition", "in_progress"):
-        raise WorkflowSubmitConflict(
-            "Workflow item is not in submit-eligible DL1 acquisition state."
+        raise _WorkflowPassSubmitConflict(
+            f"Workflow item is not in submit-eligible "
+            f"{required_pass_label} acquisition state."
         )
 
     workflow_pass = session.execute(
@@ -460,21 +678,53 @@ def submit_first_workflow_pass(
 
     if (
         workflow_pass.workflow_item_id != item.id
-        or workflow_pass.pass_number != 1
-        or workflow_pass.pass_label != "DL1"
+        or workflow_pass.pass_number != required_pass_number
+        or workflow_pass.pass_label != required_pass_label
         or workflow_pass.is_current is not True
         or workflow_pass.status != "in_progress"
         or workflow_pass.submitted_at is not None
         or str(workflow_pass.assigned_principal or "").strip() != actor
     ):
-        raise WorkflowSubmitConflict(
-            "DL1 submit requires the current in-progress pre-submit "
-            "revision assigned to the requesting principal."
+        raise _WorkflowPassSubmitConflict(
+            f"{required_pass_label} submit requires the current in-progress "
+            "pre-submit revision assigned to the requesting principal."
         )
 
+    dl1 = None
+    if require_submitted_dl1:
+        dl1_rows = session.execute(
+            select(WorkflowPass)
+            .where(
+                WorkflowPass.workflow_item_id == item.id,
+                WorkflowPass.pass_number == 1,
+                WorkflowPass.is_current.is_(True),
+            )
+            .with_for_update()
+        ).scalars().all()
+        if len(dl1_rows) != 1:
+            raise _WorkflowPassSubmitConflict(
+                "DL2 submit requires exactly one current DL1 revision."
+            )
+        dl1 = dl1_rows[0]
+        dl1_principal = str(dl1.assigned_principal or "").strip()
+        if (
+            dl1.pass_label != "DL1"
+            or dl1.status != "submitted"
+            or dl1.submitted_at is None
+            or not dl1_principal
+        ):
+            raise _WorkflowPassSubmitConflict(
+                "DL2 submit requires the current submitted DL1 revision."
+            )
+        try:
+            assert_independent_second_pass(dl1_principal, actor)
+        except WorkflowActionConflict as exc:
+            raise _WorkflowPassSubmitConflict(str(exc)) from exc
+
     if workflow_pass.staging_batch_id != normalized_batch:
-        raise WorkflowSubmitConflict(
-            "Requested staging_batch_id is not the current server-bound DL1 batch."
+        raise _WorkflowPassSubmitConflict(
+            f"Requested staging_batch_id is not the current server-bound "
+            f"{required_pass_label} batch."
         )
 
     try:
@@ -486,7 +736,7 @@ def submit_first_workflow_pass(
             principal=actor,
         )
     except WorkflowStagingBindingError as exc:
-        raise WorkflowSubmitConflict(
+        raise _WorkflowPassSubmitConflict(
             f"Completed staging provenance validation failed: {exc}"
         ) from exc
 
@@ -501,13 +751,15 @@ def submit_first_workflow_pass(
         "artifact_sha256": binding["artifact_sha256"],
     }
     if request_assertions != binding_assertions:
-        raise WorkflowSubmitConflict(
-            "DL1 submit evidence assertions do not match server-owned provenance."
+        raise _WorkflowPassSubmitConflict(
+            f"{required_pass_label} submit evidence assertions do not match "
+            "server-owned provenance."
         )
 
     semantic_hash = _require_submit_pre_qc_binding(
         workflow_pass,
         binding,
+        pass_label=required_pass_label,
     )
 
     prior_state = {
@@ -516,8 +768,13 @@ def submit_first_workflow_pass(
         "stage_condition": item.stage_condition,
         "row_version": item.row_version,
         "pass_id": str(workflow_pass.id),
+        "pass_number": workflow_pass.pass_number,
+        "pass_label": workflow_pass.pass_label,
         "pass_status": workflow_pass.status,
     }
+    if dl1 is not None:
+        prior_state["current_dl1_pass_id"] = str(dl1.id)
+        prior_state["current_dl1_status"] = dl1.status
 
     workflow_pass.status = "submitted"
     workflow_pass.submitted_at = timestamp
@@ -533,8 +790,36 @@ def submit_first_workflow_pass(
         "stage_condition": item.stage_condition,
         "row_version": item.row_version,
         "pass_id": str(workflow_pass.id),
+        "pass_number": workflow_pass.pass_number,
+        "pass_label": workflow_pass.pass_label,
         "pass_status": workflow_pass.status,
     }
+    if dl1 is not None:
+        new_state["current_dl1_pass_id"] = str(dl1.id)
+        new_state["current_dl1_status"] = dl1.status
+
+    event_metadata = {
+        "contract": contract,
+        "pass_number": required_pass_number,
+        "pass_label": required_pass_label,
+        "revision_number": workflow_pass.revision_number,
+        "source_evidence_ref": binding["source_evidence_ref"],
+        "artifact_ref": binding["artifact_ref"],
+        "artifact_sha256": binding["artifact_sha256"],
+        "semantic_sha256": semantic_hash,
+    }
+
+    if required_pass_number == 1:
+        summary = "Validated DL1 revision submitted for DL2 eligibility."
+        event_metadata["dl2_auto_claimed"] = False
+    else:
+        summary = (
+            "Validated DL2 revision submitted; independent acquisition "
+            "is ready for strict comparison service."
+        )
+        event_metadata["current_dl1_pass_id"] = str(dl1.id)
+        event_metadata["comparison_created"] = False
+        event_metadata["strict_comparison_stage_advanced"] = False
 
     event = WorkflowEvent(
         workflow_item_id=item.id,
@@ -551,30 +836,20 @@ def submit_first_workflow_pass(
         related_staging_batch_id=workflow_pass.staging_batch_id,
         related_canonical_race_id=item.canonical_race_id,
         reason_code=None,
-        summary="Validated DL1 revision submitted for DL2 eligibility.",
-        event_metadata={
-            "contract": WORKFLOW_DL1_SUBMIT_CONTRACT,
-            "pass_number": 1,
-            "pass_label": "DL1",
-            "revision_number": workflow_pass.revision_number,
-            "source_evidence_ref": binding["source_evidence_ref"],
-            "artifact_ref": binding["artifact_ref"],
-            "artifact_sha256": binding["artifact_sha256"],
-            "semantic_sha256": semantic_hash,
-            "dl2_auto_claimed": False,
-        },
+        summary=summary,
+        event_metadata=event_metadata,
         occurred_at=timestamp,
     )
     session.add(event)
     session.flush()
 
-    return {
+    result = {
         "success": True,
-        "contract": WORKFLOW_DL1_SUBMIT_CONTRACT,
+        "contract": contract,
         "task_id": str(item.id),
         "pass_id": str(workflow_pass.id),
-        "pass_number": 1,
-        "pass_label": "DL1",
+        "pass_number": required_pass_number,
+        "pass_label": required_pass_label,
         "revision_number": workflow_pass.revision_number,
         "status": workflow_pass.status,
         "lifecycle_state": item.lifecycle_state,
@@ -587,6 +862,91 @@ def submit_first_workflow_pass(
         "artifact_sha256": binding["artifact_sha256"],
         "semantic_sha256": semantic_hash,
         "event_id": str(event.id),
-        "dl2_auto_claimed": False,
         "committed": False,
     }
+    if required_pass_number == 1:
+        result["dl2_auto_claimed"] = False
+    else:
+        result["current_dl1_pass_id"] = str(dl1.id)
+        result["comparison_created"] = False
+        result["strict_comparison_stage_advanced"] = False
+    return result
+
+
+def _translate_pass_submit_conflict(exc, conflict_type):
+    if isinstance(exc, _WorkflowPassSubmitConflict):
+        return conflict_type(str(exc))
+    return exc
+
+
+def submit_first_workflow_pass(
+    session: Session,
+    item_id: UUID | str,
+    *,
+    pass_id: UUID | str,
+    principal: str,
+    expected_row_version: int,
+    staging_batch_id: UUID | str,
+    source_evidence_ref: str,
+    artifact_ref: str,
+    artifact_sha256: str,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    # Compatibility wrapper for current validated DL1 submission.
+
+    try:
+        return _submit_workflow_pass(
+            session,
+            item_id,
+            pass_id=pass_id,
+            principal=principal,
+            expected_row_version=expected_row_version,
+            staging_batch_id=staging_batch_id,
+            source_evidence_ref=source_evidence_ref,
+            artifact_ref=artifact_ref,
+            artifact_sha256=artifact_sha256,
+            required_pass_number=1,
+            required_pass_label="DL1",
+            contract=WORKFLOW_DL1_SUBMIT_CONTRACT,
+            require_submitted_dl1=False,
+            now=now,
+        )
+    except _WorkflowPassSubmitConflict as exc:
+        raise WorkflowSubmitConflict(str(exc)) from exc
+
+
+def submit_second_workflow_pass(
+    session: Session,
+    item_id: UUID | str,
+    *,
+    pass_id: UUID | str,
+    principal: str,
+    expected_row_version: int,
+    staging_batch_id: UUID | str,
+    source_evidence_ref: str,
+    artifact_ref: str,
+    artifact_sha256: str,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    # Submit current validated DL2 without creating comparison state.
+
+    try:
+        return _submit_workflow_pass(
+            session,
+            item_id,
+            pass_id=pass_id,
+            principal=principal,
+            expected_row_version=expected_row_version,
+            staging_batch_id=staging_batch_id,
+            source_evidence_ref=source_evidence_ref,
+            artifact_ref=artifact_ref,
+            artifact_sha256=artifact_sha256,
+            required_pass_number=2,
+            required_pass_label="DL2",
+            contract=WORKFLOW_DL2_SUBMIT_CONTRACT,
+            require_submitted_dl1=True,
+            now=now,
+        )
+    except _WorkflowPassSubmitConflict as exc:
+        raise WorkflowDL2SubmitConflict(str(exc)) from exc
+

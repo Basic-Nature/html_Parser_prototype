@@ -24,6 +24,7 @@ from webapp.parser.services.workflow_actions import (
     WorkflowSourceNotApproved,
     assert_independent_second_pass,
     claim_first_workflow_pass,
+    claim_second_workflow_pass,
     read_approved_workflow_source,
 )
 from webapp.parser.utils.models import (
@@ -346,6 +347,18 @@ def test_contributor_blueprint_dispatch_contract():
                 200,
             )
         ),
+        "api_workflow_v1_claim_second_pass": (
+            lambda item_id: (
+                {"success": True, "kind": "claim_dl2", "item_id": str(item_id)},
+                200,
+            )
+        ),
+        "api_workflow_v1_submit_second_pass": (
+            lambda item_id: (
+                {"success": True, "kind": "submit_dl2", "item_id": str(item_id)},
+                200,
+            )
+        ),
     }
     app.register_blueprint(create_workflow_contributor_blueprint())
 
@@ -359,6 +372,12 @@ def test_contributor_blueprint_dispatch_contract():
     assert client.post(
         f"/api/workflow/v1/contributor/items/{item_id}/passes/1/submit"
     ).status_code == 200
+    assert client.post(
+        f"/api/workflow/v1/contributor/items/{item_id}/passes/2/claim"
+    ).status_code == 200
+    assert client.post(
+        f"/api/workflow/v1/contributor/items/{item_id}/passes/2/submit"
+    ).status_code == 200
 
 
 def test_composition_root_claim_is_default_off_and_authority_guarded():
@@ -371,6 +390,8 @@ def test_composition_root_claim_is_default_off_and_authority_guarded():
     assert "create_workflow_contributor_blueprint" in source
     assert "api_workflow_v1_claim_first_pass" in source
     assert "api_workflow_v1_submit_first_pass" in source
+    assert "api_workflow_v1_claim_second_pass" in source
+    assert "api_workflow_v1_submit_second_pass" in source
     assert "api_workflow_v1_contributor_source" in source
     assert "assert_trusted_action" in source
     assert '"expected_row_version" not in body' in source
@@ -384,10 +405,14 @@ def test_composition_root_w2_workflow_capability_seam_is_wired():
     assert "CAP_SOURCE_READ" in source
     assert "CAP_DL1_CLAIM" in source
     assert "CAP_DL1_SUBMIT" in source
+    assert "CAP_DL2_CLAIM" in source
+    assert "CAP_DL2_SUBMIT" in source
     assert "def _workflow_contributor_authority(required_capability: str):" in source
     assert "_workflow_contributor_authority(CAP_SOURCE_READ)" in source
     assert "_workflow_contributor_authority(CAP_DL1_CLAIM)" in source
     assert "_workflow_contributor_authority(CAP_DL1_SUBMIT)" in source
+    assert "_workflow_contributor_authority(CAP_DL2_CLAIM)" in source
+    assert "_workflow_contributor_authority(CAP_DL2_SUBMIT)" in source
     assert "assert_trusted_action(" in source
     assert "workflow_capability_denied" in source
     assert 'os.environ.get("WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED", "false")' in source
@@ -408,3 +433,7 @@ def test_dl1_submit_route_is_exact_body_allowlist_and_same_fail_closed_flag():
     assert "body_keys != _WORKFLOW_DL1_SUBMIT_REQUEST_KEYS" in source
     assert "WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED" in source
     assert "submit_first_workflow_pass(" in source
+    assert "_WORKFLOW_DL2_SUBMIT_REQUEST_KEYS" in source
+    assert "_WORKFLOW_DL2_SUBMIT_REQUEST_KEYS = _WORKFLOW_DL1_SUBMIT_REQUEST_KEYS" in source
+    assert "body_keys != _WORKFLOW_DL2_SUBMIT_REQUEST_KEYS" in source
+    assert "submit_second_workflow_pass(" in source

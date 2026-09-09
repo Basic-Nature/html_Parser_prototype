@@ -24,6 +24,7 @@ from webapp.parser.contracts.workflow_comparison import (
     ordered_vote_methods,
     semantic_sha256,
     strict_semantic_equality,
+    enumerate_semantic_differences,
     validate_comparison_payload,
 )
 
@@ -360,3 +361,155 @@ def test_difference_summary_is_exact_and_category_counts_sum():
             right_semantic_sha256="2" * 64,
             category_counts={"value_mismatch": 1},
         )
+
+
+def test_w8j_equal_payloads_enumerate_no_differences():
+    left = _payload(
+        pass_id="00000000-0000-0000-0000-000000000101",
+    )
+    right = _payload(
+        pass_id="00000000-0000-0000-0000-000000000102",
+    )
+    assert enumerate_semantic_differences(left, right) == []
+
+
+def test_w8j_scope_mismatch_is_exact_and_ordered():
+    left = _payload(
+        pass_id="00000000-0000-0000-0000-000000000101",
+    )
+    right = _payload(
+        pass_id="00000000-0000-0000-0000-000000000102",
+    )
+    right["semantic"]["scope"]["state"] = "AZ"
+    right["semantic"]["scope"]["contest"] = "Governor"
+    right["semantic_sha256"] = semantic_sha256(right["semantic"])
+
+    differences = enumerate_semantic_differences(left, right)
+    assert [d["category"] for d in differences] == [
+        "scope_mismatch",
+        "scope_mismatch",
+    ]
+    assert [d["semantic_key"]["field"] for d in differences] == [
+        "state",
+        "contest",
+    ]
+
+
+def test_w8j_null_zero_and_null_value_remain_distinct():
+    left = _payload(
+        pass_id="00000000-0000-0000-0000-000000000101",
+    )
+    right = _payload(
+        pass_id="00000000-0000-0000-0000-000000000102",
+    )
+    record = right["semantic"]["records"][0]
+    record["method_totals"][2] = {
+        "method": "Absentee Mail",
+        "state": "value",
+        "votes": 0,
+    }
+    for candidate in record["candidates"]:
+        candidate["method_votes"][2] = {
+            "method": "Absentee Mail",
+            "state": "value",
+            "votes": 1,
+        }
+        candidate["total_votes"]["votes"] += 1
+    record["method_totals"][2]["votes"] = 2
+    record["grand_total"]["votes"] += 2
+    right["semantic_sha256"] = semantic_sha256(right["semantic"])
+
+    differences = enumerate_semantic_differences(left, right)
+    categories = [d["category"] for d in differences]
+    assert "null_vs_value" in categories
+
+    right = _payload(
+        pass_id="00000000-0000-0000-0000-000000000102",
+    )
+    right["semantic"]["records"][0]["method_totals"][2] = {
+        "method": "Absentee Mail",
+        "state": "value",
+        "votes": 0,
+    }
+    right["semantic_sha256"] = semantic_sha256(right["semantic"])
+    differences = enumerate_semantic_differences(left, right)
+    assert any(d["category"] == "null_vs_zero" for d in differences)
+
+
+def test_w8j_missing_unknown_method_and_candidate_are_explicit():
+    left = _payload(
+        pass_id="00000000-0000-0000-0000-000000000101",
+    )
+    right = _payload(
+        pass_id="00000000-0000-0000-0000-000000000102",
+    )
+    record = right["semantic"]["records"][0]
+    record["vote_methods"].pop()
+    record["method_totals"].pop()
+    for candidate in record["candidates"]:
+        candidate["method_votes"].pop()
+    record["candidates"].pop()
+    right["semantic_sha256"] = semantic_sha256(right["semantic"])
+
+    differences = enumerate_semantic_differences(left, right)
+    assert any(
+        d["category"] == "missing_right"
+        and d["semantic_key"]["kind"] == "vote_method"
+        and d["semantic_key"]["method"] == "Curbside"
+        for d in differences
+    )
+    assert any(
+        d["category"] == "missing_right"
+        and d["semantic_key"]["kind"] == "candidate"
+        for d in differences
+    )
+
+
+def test_w8j_missing_reporting_unit_is_one_explicit_record_difference():
+    left = _payload(
+        pass_id="00000000-0000-0000-0000-000000000101",
+    )
+    right = _payload(
+        pass_id="00000000-0000-0000-0000-000000000102",
+    )
+    second = copy.deepcopy(left["semantic"]["records"][0])
+    second["reporting_unit"]["name"] = "Precinct 2"
+    left["semantic"]["records"].append(second)
+    left["semantic_sha256"] = semantic_sha256(left["semantic"])
+
+    differences = enumerate_semantic_differences(left, right)
+    missing = [
+        d for d in differences
+        if d["category"] == "missing_right"
+        and d["semantic_key"]["kind"] == "reporting_unit"
+    ]
+    assert len(missing) == 1
+    assert missing[0]["semantic_key"]["name"] == "Precinct 2"
+
+
+def test_w8j_difference_order_and_summary_counts_are_deterministic():
+    left = _payload(
+        pass_id="00000000-0000-0000-0000-000000000101",
+    )
+    right = _payload(
+        pass_id="00000000-0000-0000-0000-000000000102",
+    )
+    right["semantic"]["records"][0]["candidates"][0]["method_votes"][0][
+        "votes"
+    ] = 7
+    right["semantic_sha256"] = semantic_sha256(right["semantic"])
+
+    first = enumerate_semantic_differences(left, right)
+    second = enumerate_semantic_differences(left, right)
+    assert first == second
+    counts = {
+        category: sum(1 for d in first if d["category"] == category)
+        for category in DISCREPANCY_CATEGORIES
+    }
+    summary = build_difference_summary(
+        left_semantic_sha256=left["semantic_sha256"],
+        right_semantic_sha256=right["semantic_sha256"],
+        category_counts=counts,
+    )
+    assert summary["difference_count"] == len(first)
+

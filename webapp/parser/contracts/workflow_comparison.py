@@ -803,3 +803,404 @@ def build_difference_summary(
         "difference_count": difference_count,
         "category_counts": normalized_counts,
     }
+
+
+W8J_SCOPE_FIELD_ORDER = (
+    "election_year",
+    "election_date",
+    "state",
+    "jurisdiction_name",
+    "jurisdiction_type",
+    "contest",
+)
+
+
+def _w8j_nullable_state(value: object) -> str:
+    return "null" if value is None else "value"
+
+
+def _w8j_is_zero(value: object) -> bool:
+    return value == 0 or value == "0"
+
+
+def _w8j_category(
+    left_state: str,
+    right_state: str,
+    left_value: object,
+    right_value: object,
+) -> str | None:
+    if left_state == right_state and left_value == right_value:
+        return None
+    if left_state == "missing" and right_state != "missing":
+        return "missing_left"
+    if right_state == "missing" and left_state != "missing":
+        return "missing_right"
+    if {left_state, right_state} == {"null", "value"}:
+        value = right_value if right_state == "value" else left_value
+        return "null_vs_zero" if _w8j_is_zero(value) else "null_vs_value"
+    return "value_mismatch"
+
+
+def _w8j_difference(
+    *,
+    category: str,
+    semantic_key: Mapping[str, object],
+    left_value: object,
+    right_value: object,
+    left_state: str | None,
+    right_state: str | None,
+) -> dict[str, object]:
+    if category not in DISCREPANCY_CATEGORIES:
+        raise WorkflowComparisonContractError(
+            f"unsupported discrepancy category: {category!r}"
+        )
+    return {
+        "category": category,
+        "semantic_key": dict(semantic_key),
+        "left_value": left_value,
+        "right_value": right_value,
+        "left_value_state": left_state,
+        "right_value_state": right_state,
+    }
+
+
+def _w8j_state_value(
+    raw: Mapping[str, object] | None,
+    *,
+    value_key: str,
+) -> tuple[str, object]:
+    if raw is None:
+        return "missing", None
+    state = str(raw["state"])
+    return state, raw[value_key]
+
+
+def _w8j_unit_key(
+    record: Mapping[str, object],
+) -> tuple[object, object]:
+    unit = _require_mapping(
+        "record.reporting_unit",
+        record["reporting_unit"],
+    )
+    return unit["type"], unit["name"]
+
+
+def _w8j_sort_nullable(value: object) -> tuple[bool, str]:
+    return value is None, "" if value is None else str(value)
+
+
+def _w8j_unit_sort_key(
+    key: tuple[object, object],
+) -> tuple[object, ...]:
+    return (*_w8j_sort_nullable(key[0]), *_w8j_sort_nullable(key[1]))
+
+
+def _w8j_candidate_key(
+    candidate: Mapping[str, object],
+) -> tuple[object, str]:
+    return candidate["party"], str(candidate["name"])
+
+
+def _w8j_candidate_sort_key(
+    key: tuple[object, str],
+) -> tuple[object, ...]:
+    return (*_w8j_sort_nullable(key[0]), str(key[1]))
+
+
+def _w8j_method_map(
+    values: Sequence[Mapping[str, object]],
+) -> dict[str, Mapping[str, object]]:
+    return {str(value["method"]): value for value in values}
+
+
+def _w8j_append_state_difference(
+    differences: list[dict[str, object]],
+    *,
+    semantic_key: Mapping[str, object],
+    left: Mapping[str, object] | None,
+    right: Mapping[str, object] | None,
+    value_key: str,
+) -> None:
+    left_state, left_value = _w8j_state_value(left, value_key=value_key)
+    right_state, right_value = _w8j_state_value(right, value_key=value_key)
+    category = _w8j_category(
+        left_state,
+        right_state,
+        left_value,
+        right_value,
+    )
+    if category is None:
+        return
+    differences.append(
+        _w8j_difference(
+            category=category,
+            semantic_key=semantic_key,
+            left_value=left_value,
+            right_value=right_value,
+            left_state=left_state,
+            right_state=right_state,
+        )
+    )
+
+
+def enumerate_semantic_differences(
+    left: Mapping[str, object],
+    right: Mapping[str, object],
+) -> list[dict[str, object]]:
+    # Pure deterministic strict semantic difference enumeration.
+    assert_comparable_payloads(left, right)
+    left_valid = validate_comparison_payload(left)
+    right_valid = validate_comparison_payload(right)
+    if left_valid["semantic_sha256"] == right_valid["semantic_sha256"]:
+        return []
+
+    left_semantic = _require_mapping("left.semantic", left_valid["semantic"])
+    right_semantic = _require_mapping("right.semantic", right_valid["semantic"])
+    differences: list[dict[str, object]] = []
+
+    left_scope = _require_mapping("left.semantic.scope", left_semantic["scope"])
+    right_scope = _require_mapping("right.semantic.scope", right_semantic["scope"])
+    for field in W8J_SCOPE_FIELD_ORDER:
+        left_value = left_scope[field]
+        right_value = right_scope[field]
+        if left_value == right_value:
+            continue
+        differences.append(
+            _w8j_difference(
+                category="scope_mismatch",
+                semantic_key={"kind": "scope", "field": field},
+                left_value=left_value,
+                right_value=right_value,
+                left_state=_w8j_nullable_state(left_value),
+                right_state=_w8j_nullable_state(right_value),
+            )
+        )
+
+    left_records = _require_list("left.semantic.records", left_semantic["records"])
+    right_records = _require_list("right.semantic.records", right_semantic["records"])
+    left_by_unit = {
+        _w8j_unit_key(_require_mapping("left.record", record)): record
+        for record in left_records
+    }
+    right_by_unit = {
+        _w8j_unit_key(_require_mapping("right.record", record)): record
+        for record in right_records
+    }
+
+    for unit_key in sorted(
+        set(left_by_unit) | set(right_by_unit),
+        key=_w8j_unit_sort_key,
+    ):
+        left_record_raw = left_by_unit.get(unit_key)
+        right_record_raw = right_by_unit.get(unit_key)
+        unit_semantic_key = {
+            "kind": "reporting_unit",
+            "type": unit_key[0],
+            "name": unit_key[1],
+        }
+        if left_record_raw is None:
+            differences.append(
+                _w8j_difference(
+                    category="missing_left",
+                    semantic_key=unit_semantic_key,
+                    left_value=None,
+                    right_value=right_record_raw,
+                    left_state="missing",
+                    right_state="value",
+                )
+            )
+            continue
+        if right_record_raw is None:
+            differences.append(
+                _w8j_difference(
+                    category="missing_right",
+                    semantic_key=unit_semantic_key,
+                    left_value=left_record_raw,
+                    right_value=None,
+                    left_state="value",
+                    right_state="missing",
+                )
+            )
+            continue
+
+        left_record = _require_mapping("left.record", left_record_raw)
+        right_record = _require_mapping("right.record", right_record_raw)
+
+        _w8j_append_state_difference(
+            differences,
+            semantic_key={
+                **unit_semantic_key,
+                "kind": "percent_reporting",
+            },
+            left=_require_mapping(
+                "left.percent_reporting",
+                left_record["percent_reporting"],
+            ),
+            right=_require_mapping(
+                "right.percent_reporting",
+                right_record["percent_reporting"],
+            ),
+            value_key="value",
+        )
+
+        left_methods = tuple(str(v) for v in left_record["vote_methods"])
+        right_methods = tuple(str(v) for v in right_record["vote_methods"])
+        all_methods = ordered_vote_methods(
+            tuple(dict.fromkeys((*left_methods, *right_methods)))
+        )
+
+        left_method_totals = _w8j_method_map(
+            [
+                _require_mapping("left.method_total", value)
+                for value in left_record["method_totals"]
+            ]
+        )
+        right_method_totals = _w8j_method_map(
+            [
+                _require_mapping("right.method_total", value)
+                for value in right_record["method_totals"]
+            ]
+        )
+
+        for method in all_methods:
+            left_present = method in left_methods
+            right_present = method in right_methods
+            if left_present != right_present:
+                differences.append(
+                    _w8j_difference(
+                        category=(
+                            "missing_left" if not left_present else "missing_right"
+                        ),
+                        semantic_key={
+                            **unit_semantic_key,
+                            "kind": "vote_method",
+                            "method": method,
+                        },
+                        left_value=method if left_present else None,
+                        right_value=method if right_present else None,
+                        left_state="value" if left_present else "missing",
+                        right_state="value" if right_present else "missing",
+                    )
+                )
+            _w8j_append_state_difference(
+                differences,
+                semantic_key={
+                    **unit_semantic_key,
+                    "kind": "method_total",
+                    "method": method,
+                },
+                left=left_method_totals.get(method),
+                right=right_method_totals.get(method),
+                value_key="votes",
+            )
+
+        left_candidates = {
+            _w8j_candidate_key(_require_mapping("left.candidate", candidate)):
+                candidate
+            for candidate in left_record["candidates"]
+        }
+        right_candidates = {
+            _w8j_candidate_key(_require_mapping("right.candidate", candidate)):
+                candidate
+            for candidate in right_record["candidates"]
+        }
+
+        for candidate_key in sorted(
+            set(left_candidates) | set(right_candidates),
+            key=_w8j_candidate_sort_key,
+        ):
+            left_candidate_raw = left_candidates.get(candidate_key)
+            right_candidate_raw = right_candidates.get(candidate_key)
+            candidate_semantic_key = {
+                **unit_semantic_key,
+                "kind": "candidate",
+                "party": candidate_key[0],
+                "candidate": candidate_key[1],
+            }
+            if left_candidate_raw is None:
+                differences.append(
+                    _w8j_difference(
+                        category="missing_left",
+                        semantic_key=candidate_semantic_key,
+                        left_value=None,
+                        right_value=right_candidate_raw,
+                        left_state="missing",
+                        right_state="value",
+                    )
+                )
+                continue
+            if right_candidate_raw is None:
+                differences.append(
+                    _w8j_difference(
+                        category="missing_right",
+                        semantic_key=candidate_semantic_key,
+                        left_value=left_candidate_raw,
+                        right_value=None,
+                        left_state="value",
+                        right_state="missing",
+                    )
+                )
+                continue
+
+            left_candidate = _require_mapping(
+                "left.candidate",
+                left_candidate_raw,
+            )
+            right_candidate = _require_mapping(
+                "right.candidate",
+                right_candidate_raw,
+            )
+            left_votes = _w8j_method_map(
+                [
+                    _require_mapping("left.candidate.method", value)
+                    for value in left_candidate["method_votes"]
+                ]
+            )
+            right_votes = _w8j_method_map(
+                [
+                    _require_mapping("right.candidate.method", value)
+                    for value in right_candidate["method_votes"]
+                ]
+            )
+            for method in all_methods:
+                _w8j_append_state_difference(
+                    differences,
+                    semantic_key={
+                        **candidate_semantic_key,
+                        "kind": "candidate_method",
+                        "method": method,
+                    },
+                    left=left_votes.get(method),
+                    right=right_votes.get(method),
+                    value_key="votes",
+                )
+            _w8j_append_state_difference(
+                differences,
+                semantic_key={
+                    **candidate_semantic_key,
+                    "kind": "candidate_total",
+                },
+                left=_require_mapping(
+                    "left.candidate.total_votes",
+                    left_candidate["total_votes"],
+                ),
+                right=_require_mapping(
+                    "right.candidate.total_votes",
+                    right_candidate["total_votes"],
+                ),
+                value_key="votes",
+            )
+
+        _w8j_append_state_difference(
+            differences,
+            semantic_key={
+                **unit_semantic_key,
+                "kind": "grand_total",
+            },
+            left=_require_mapping("left.grand_total", left_record["grand_total"]),
+            right=_require_mapping("right.grand_total", right_record["grand_total"]),
+            value_key="votes",
+        )
+
+    return differences
+

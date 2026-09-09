@@ -60,4 +60,26 @@ def create_workflow_contributor_blueprint() -> Blueprint:
             item_id=item_id,
         )
 
+    @bp.route(
+        "/api/workflow/v1/contributor/items/<uuid:item_id>/passes/2/claim",
+        methods=["POST"],
+        endpoint="api_workflow_v1_claim_second_pass",
+    )
+    def claim_second_pass_route(item_id):
+        return _call_handler(
+            "api_workflow_v1_claim_second_pass",
+            item_id=item_id,
+        )
+
+    @bp.route(
+        "/api/workflow/v1/contributor/items/<uuid:item_id>/passes/2/submit",
+        methods=["POST"],
+        endpoint="api_workflow_v1_submit_second_pass",
+    )
+    def submit_second_pass_route(item_id):
+        return _call_handler(
+            "api_workflow_v1_submit_second_pass",
+            item_id=item_id,
+        )
+
     return bp

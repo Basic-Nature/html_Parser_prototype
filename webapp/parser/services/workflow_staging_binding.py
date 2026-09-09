@@ -6,7 +6,7 @@ SQLAlchemy Session and never commit or roll back.
 
 Binding is two-phase:
 1. begin_workflow_staging_binding() creates a PENDING BatchMetadata row and
-   binds its batch_id to the current DL1 WorkflowPass.
+   binds its batch_id to the current governed acquisition WorkflowPass.
 2. finalize_workflow_staging_binding() validates staged rows, freezes evidence
    identity, marks the batch COMPLETED, creates a WorkflowArtifactLink, and
    appends an audit event.
@@ -98,7 +98,13 @@ def _status_is(value: Any, expected: StatusEnum) -> bool:
     )
 
 
-def _pass_matches_dl1(
+_SUPPORTED_GOVERNED_PASS_PAIRS = frozenset({
+    (1, "DL1"),
+    (2, "DL2"),
+})
+
+
+def _pass_matches_governed_acquisition(
     workflow_pass: WorkflowPass,
     *,
     item_id: UUID,
@@ -106,8 +112,10 @@ def _pass_matches_dl1(
 ) -> bool:
     return (
         workflow_pass.workflow_item_id == item_id
-        and workflow_pass.pass_number == 1
-        and workflow_pass.pass_label == "DL1"
+        and (
+            workflow_pass.pass_number,
+            workflow_pass.pass_label,
+        ) in _SUPPORTED_GOVERNED_PASS_PAIRS
         and workflow_pass.is_current is True
         and workflow_pass.status == "in_progress"
         and str(workflow_pass.assigned_principal or "").strip() == actor
@@ -173,15 +181,15 @@ def _load_item_pass_for_update(
         item.stage_condition,
     ) != ("active", "independent_acquisition", "in_progress"):
         raise WorkflowStagingBindingConflict(
-            "Workflow item is not in active DL1 acquisition state."
+            "Workflow item is not in active independent acquisition state."
         )
-    if not _pass_matches_dl1(
+    if not _pass_matches_governed_acquisition(
         workflow_pass,
         item_id=item.id,
         actor=actor,
     ):
         raise WorkflowStagingBindingConflict(
-            "Current DL1 pass does not belong to the requesting principal."
+            f"Current {workflow_pass.pass_label} pass does not belong to the requesting principal."
         )
     return item, workflow_pass
 
@@ -208,7 +216,7 @@ def begin_workflow_staging_binding(
     )
     if workflow_pass.staging_batch_id is not None:
         raise WorkflowStagingBindingConflict(
-            "Current DL1 pass already has a staging batch binding."
+            f"Current {workflow_pass.pass_label} pass already has a staging batch binding."
         )
 
     entry = lookup_exact_registry_entry(
@@ -268,11 +276,12 @@ def begin_workflow_staging_binding(
         related_staging_batch_id=batch.batch_id,
         related_canonical_race_id=item.canonical_race_id,
         reason_code=None,
-        summary="Server-owned DL1 staging provenance binding started.",
+        summary=(f"Server-owned {workflow_pass.pass_label} staging "
+                 "provenance binding started."),
         event_metadata={
             "contract": WORKFLOW_STAGING_BINDING_CONTRACT,
-            "pass_number": 1,
-            "pass_label": "DL1",
+            "pass_number": workflow_pass.pass_number,
+            "pass_label": workflow_pass.pass_label,
         },
         occurred_at=timestamp,
     )
@@ -332,7 +341,7 @@ def finalize_workflow_staging_binding(
     )
     if workflow_pass.staging_batch_id != normalized_batch:
         raise WorkflowStagingBindingConflict(
-            "Staging batch is not the server-bound batch for current DL1."
+            f"Staging batch is not the server-bound batch for current {workflow_pass.pass_label}."
         )
 
     batch = session.execute(
@@ -455,11 +464,12 @@ def finalize_workflow_staging_binding(
         related_staging_batch_id=batch.batch_id,
         related_canonical_race_id=item.canonical_race_id,
         reason_code=None,
-        summary="Server-owned DL1 staging provenance binding completed.",
+        summary=(f"Server-owned {workflow_pass.pass_label} staging "
+                 "provenance binding completed."),
         event_metadata={
             "contract": WORKFLOW_STAGING_BINDING_CONTRACT,
-            "pass_number": 1,
-            "pass_label": "DL1",
+            "pass_number": workflow_pass.pass_number,
+            "pass_label": workflow_pass.pass_label,
             "artifact_ref": artifact,
             "artifact_sha256": artifact_hash,
         },
@@ -505,17 +515,17 @@ def validate_completed_workflow_staging_binding(
         raise WorkflowStagingBindingNotFound(
             "Completed Workflow staging binding was not found."
         )
-    if not _pass_matches_dl1(
+    if not _pass_matches_governed_acquisition(
         workflow_pass,
         item_id=item.id,
         actor=actor,
     ):
         raise WorkflowStagingBindingConflict(
-            "Completed binding does not belong to current DL1 principal."
+            f"Completed binding does not belong to current {workflow_pass.pass_label} principal."
         )
     if workflow_pass.staging_batch_id != batch.batch_id:
         raise WorkflowStagingBindingConflict(
-            "Current DL1 pass does not reference the supplied staging batch."
+            f"Current {workflow_pass.pass_label} pass does not reference the supplied staging batch."
         )
     if not _status_is(batch.status, StatusEnum.COMPLETED):
         raise WorkflowStagingBindingConflict(
@@ -528,8 +538,8 @@ def validate_completed_workflow_staging_binding(
         or metadata.get("binding_state") != "complete"
         or metadata.get("workflow_item_id") != str(item.id)
         or metadata.get("workflow_pass_id") != str(workflow_pass.id)
-        or metadata.get("pass_number") != 1
-        or metadata.get("pass_label") != "DL1"
+        or metadata.get("pass_number") != workflow_pass.pass_number
+        or metadata.get("pass_label") != workflow_pass.pass_label
         or metadata.get("revision_number") != workflow_pass.revision_number
         or metadata.get("assigned_principal") != actor
         or metadata.get("exact_source_url") != str(item.source_url or "")
@@ -580,3 +590,152 @@ def validate_completed_workflow_staging_binding(
         "row_count": metadata["row_count"],
         "committed": False,
     }
+
+
+def validate_frozen_workflow_staging_binding(
+    session: Session,
+    item_id: UUID | str,
+    pass_id: UUID | str,
+    staging_batch_id: UUID | str,
+    *,
+    required_pass_number: int,
+    required_pass_label: str,
+) -> dict[str, Any]:
+    # Read-only submitted-pass provenance validation for comparison service.
+    normalized_item = _uuid(item_id, name="item_id")
+    normalized_pass = _uuid(pass_id, name="pass_id")
+    normalized_batch = _uuid(staging_batch_id, name="staging_batch_id")
+
+    item = session.get(WorkflowItem, normalized_item)
+    workflow_pass = session.get(WorkflowPass, normalized_pass)
+    batch = session.get(BatchMetadata, normalized_batch)
+    if item is None or workflow_pass is None or batch is None:
+        raise WorkflowStagingBindingNotFound(
+            "Frozen submitted Workflow staging binding was not found."
+        )
+
+    pair = (required_pass_number, required_pass_label)
+    if pair not in _SUPPORTED_GOVERNED_PASS_PAIRS:
+        raise WorkflowStagingBindingConflict(
+            "Frozen binding requires a supported governed pass identity."
+        )
+    actor = str(workflow_pass.assigned_principal or "").strip()
+    if (
+        workflow_pass.workflow_item_id != item.id
+        or (workflow_pass.pass_number, workflow_pass.pass_label) != pair
+        or workflow_pass.is_current is not True
+        or workflow_pass.status != "submitted"
+        or workflow_pass.submitted_at is None
+        or not actor
+        or workflow_pass.staging_batch_id != batch.batch_id
+    ):
+        raise WorkflowStagingBindingConflict(
+            "Frozen binding requires the exact current submitted governed pass."
+        )
+    if not _status_is(batch.status, StatusEnum.COMPLETED):
+        raise WorkflowStagingBindingConflict(
+            "Frozen Workflow staging batch is not completed."
+        )
+
+    metadata = batch.metastats if isinstance(batch.metastats, dict) else {}
+    if (
+        metadata.get("contract") != WORKFLOW_STAGING_BINDING_CONTRACT
+        or metadata.get("binding_state") != "complete"
+        or metadata.get("workflow_item_id") != str(item.id)
+        or metadata.get("workflow_pass_id") != str(workflow_pass.id)
+        or metadata.get("pass_number") != workflow_pass.pass_number
+        or metadata.get("pass_label") != workflow_pass.pass_label
+        or metadata.get("revision_number") != workflow_pass.revision_number
+        or metadata.get("assigned_principal") != actor
+        or metadata.get("exact_source_url") != str(item.source_url or "")
+        or metadata.get("source_race_id") != item.source_race_id
+        or not metadata.get("source_evidence_ref")
+        or not metadata.get("artifact_ref")
+        or _SHA256_RE.fullmatch(str(metadata.get("artifact_sha256") or ""))
+            is None
+        or not isinstance(metadata.get("row_count"), int)
+        or metadata.get("row_count") < 1
+    ):
+        raise WorkflowStagingBindingConflict(
+            "Frozen completed staging metadata failed provenance validation."
+        )
+
+    links = session.execute(
+        select(WorkflowArtifactLink).where(
+            WorkflowArtifactLink.workflow_item_id == item.id,
+            WorkflowArtifactLink.pass_id == workflow_pass.id,
+            WorkflowArtifactLink.relation_type
+                == WORKFLOW_STAGING_BINDING_RELATION,
+            WorkflowArtifactLink.staging_batch_id == batch.batch_id,
+        )
+    ).scalars().all()
+    if len(links) != 1:
+        raise WorkflowStagingBindingConflict(
+            "Frozen staging provenance requires exactly one artifact link."
+        )
+    link = links[0]
+    link_metadata = (
+        link.artifact_metadata
+        if isinstance(link.artifact_metadata, dict)
+        else {}
+    )
+    if (
+        link.artifact_type != WORKFLOW_STAGING_BINDING_ARTIFACT_TYPE
+        or link.artifact_ref != metadata["artifact_ref"]
+        or link.artifact_sha256 != metadata["artifact_sha256"]
+        or workflow_pass.source_evidence_ref != metadata["source_evidence_ref"]
+        or link_metadata.get("contract") != WORKFLOW_STAGING_BINDING_CONTRACT
+        or link_metadata.get("binding_state") != "complete"
+        or link_metadata.get("source_evidence_ref")
+            != metadata["source_evidence_ref"]
+        or link_metadata.get("row_count") != metadata["row_count"]
+        or link_metadata.get("exact_source_url")
+            != metadata["exact_source_url"]
+    ):
+        raise WorkflowStagingBindingConflict(
+            "Frozen staging provenance artifact identity does not reconcile."
+        )
+
+    rows = session.execute(
+        select(StagingElectionResult).where(
+            StagingElectionResult.batch_id == batch.batch_id
+        )
+    ).scalars().all()
+    if (
+        len(rows) != metadata["row_count"]
+        or any(
+            str(row.source_url or "") != metadata["exact_source_url"]
+            for row in rows
+        )
+    ):
+        raise WorkflowStagingBindingConflict(
+            "Frozen staging rows do not reconcile to completed provenance."
+        )
+
+    comparison_binding = {
+        "workflow_item_id": str(item.id),
+        "workflow_pass_id": str(workflow_pass.id),
+        "pass_number": workflow_pass.pass_number,
+        "revision_number": workflow_pass.revision_number,
+        "source_evidence_ref": metadata["source_evidence_ref"],
+        "staging_batch_id": str(batch.batch_id),
+        "normalized_artifact_ref": metadata["artifact_ref"],
+        "normalized_artifact_sha256": metadata["artifact_sha256"],
+    }
+    return {
+        "success": True,
+        "contract": WORKFLOW_STAGING_BINDING_CONTRACT,
+        "task_id": str(item.id),
+        "pass_id": str(workflow_pass.id),
+        "pass_number": workflow_pass.pass_number,
+        "pass_label": workflow_pass.pass_label,
+        "assigned_principal": actor,
+        "staging_batch_id": str(batch.batch_id),
+        "source_evidence_ref": metadata["source_evidence_ref"],
+        "artifact_ref": metadata["artifact_ref"],
+        "artifact_sha256": metadata["artifact_sha256"],
+        "row_count": metadata["row_count"],
+        "comparison_binding": comparison_binding,
+        "committed": False,
+    }
+

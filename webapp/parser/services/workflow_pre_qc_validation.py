@@ -48,6 +48,10 @@ from webapp.parser.utils.models import (
 
 WORKFLOW_PRE_QC_VALIDATION_CONTRACT = "workflow_pre_qc_pass_validation_v1"
 WORKFLOW_PRE_QC_VALIDATION_SERVICE = "workflow_pre_qc_validation"
+_SUPPORTED_GOVERNED_PASS_PAIRS = frozenset({
+    (1, "DL1"),
+    (2, "DL2"),
+})
 
 
 class WorkflowPreQCValidationError(RuntimeError):
@@ -287,17 +291,18 @@ def _candidate_accounting(
     }
 
 
-def validate_first_workflow_pass_pre_qc(
+def _validate_workflow_pass_pre_qc(
     session: Session,
     item_id: UUID | str,
     pass_id: UUID | str,
     staging_batch_id: UUID | str,
     *,
+    required_pair: tuple[int, str] | None,
     principal: str,
     normalized_payload: object,
     now: datetime | None = None,
 ) -> dict[str, object]:
-    """Validate and persist successful DL1 Pre-QC evidence atomically."""
+    """Validate one server-loaded governed acquisition pass atomically."""
 
     actor = _actor(principal)
     normalized_item = _uuid(item_id, name="item_id")
@@ -327,16 +332,23 @@ def validate_first_workflow_pass_pre_qc(
         raise WorkflowPreQCValidationConflict(
             "Workflow item is not in active independent acquisition."
         )
+    pass_pair = (
+        workflow_pass.pass_number,
+        workflow_pass.pass_label,
+    )
     if (
         workflow_pass.workflow_item_id != item.id
-        or workflow_pass.pass_number != 1
-        or workflow_pass.pass_label != "DL1"
+        or pass_pair not in _SUPPORTED_GOVERNED_PASS_PAIRS
+        or (
+            required_pair is not None
+            and pass_pair != required_pair
+        )
         or workflow_pass.is_current is not True
         or workflow_pass.status != "in_progress"
         or str(workflow_pass.assigned_principal or "").strip() != actor
     ):
         raise WorkflowPreQCValidationConflict(
-            "Pre-QC requires the current in-progress DL1 assignee."
+            "Pre-QC requires the current in-progress governed pass assignee."
         )
 
     try:
@@ -363,7 +375,7 @@ def validate_first_workflow_pass_pre_qc(
     expected_binding = {
         "workflow_item_id": str(item.id),
         "workflow_pass_id": str(workflow_pass.id),
-        "pass_number": 1,
+        "pass_number": workflow_pass.pass_number,
         "revision_number": workflow_pass.revision_number,
         "source_evidence_ref": binding["source_evidence_ref"],
         "staging_batch_id": str(normalized_batch),
@@ -482,9 +494,12 @@ def validate_first_workflow_pass_pre_qc(
         related_staging_batch_id=normalized_batch,
         related_canonical_race_id=item.canonical_race_id,
         reason_code=None,
-        summary="Server-owned DL1 Pre-QC validation completed.",
+        summary=(f"Server-owned {workflow_pass.pass_label} "
+                 "Pre-QC validation completed."),
         event_metadata={
             "contract": WORKFLOW_PRE_QC_VALIDATION_CONTRACT,
+            "pass_number": workflow_pass.pass_number,
+            "pass_label": workflow_pass.pass_label,
             "staging_binding_contract":
                 WORKFLOW_STAGING_BINDING_CONTRACT,
             "comparison_payload_contract":
@@ -509,3 +524,147 @@ def validate_first_workflow_pass_pre_qc(
         "semantic_validation_status": "complete",
         "committed": False,
     }
+
+
+def validate_workflow_pass_pre_qc(
+    session: Session,
+    item_id: UUID | str,
+    pass_id: UUID | str,
+    staging_batch_id: UUID | str,
+    *,
+    principal: str,
+    normalized_payload: object,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """Validate a server-loaded governed acquisition pass."""
+    return _validate_workflow_pass_pre_qc(
+        session,
+        item_id,
+        pass_id,
+        staging_batch_id,
+        required_pair=None,
+        principal=principal,
+        normalized_payload=normalized_payload,
+        now=now,
+    )
+
+
+def validate_first_workflow_pass_pre_qc(
+    session: Session,
+    item_id: UUID | str,
+    pass_id: UUID | str,
+    staging_batch_id: UUID | str,
+    *,
+    principal: str,
+    normalized_payload: object,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """Backward-compatible DL1-only Pre-QC entry point."""
+    return _validate_workflow_pass_pre_qc(
+        session,
+        item_id,
+        pass_id,
+        staging_batch_id,
+        required_pair=(1, "DL1"),
+        principal=principal,
+        normalized_payload=normalized_payload,
+        now=now,
+    )
+
+
+def validate_second_workflow_pass_pre_qc(
+    session: Session,
+    item_id: UUID | str,
+    pass_id: UUID | str,
+    staging_batch_id: UUID | str,
+    *,
+    principal: str,
+    normalized_payload: object,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """DL2-only Pre-QC entry point using the shared pass-aware engine."""
+    return _validate_workflow_pass_pre_qc(
+        session,
+        item_id,
+        pass_id,
+        staging_batch_id,
+        required_pair=(2, "DL2"),
+        principal=principal,
+        normalized_payload=normalized_payload,
+        now=now,
+    )
+
+
+def validate_frozen_workflow_pre_qc_payload(
+    workflow_pass: WorkflowPass,
+    frozen_binding: Mapping[str, object],
+    normalized_payload: object,
+) -> dict[str, object]:
+    # Read-only submitted-pass Pre-QC reconciliation for comparison service.
+    if (
+        workflow_pass.is_current is not True
+        or workflow_pass.status != "submitted"
+        or workflow_pass.submitted_at is None
+        or workflow_pass.candidate_check_status != "complete"
+        or workflow_pass.semantic_validation_status != "complete"
+        or not isinstance(workflow_pass.candidate_check_result, Mapping)
+        or not isinstance(workflow_pass.semantic_validation_result, Mapping)
+    ):
+        raise WorkflowPreQCValidationConflict(
+            "Frozen comparison requires a current submitted pass with completed Pre-QC."
+        )
+
+    comparison_binding = frozen_binding.get("comparison_binding")
+    if not isinstance(comparison_binding, Mapping):
+        raise WorkflowPreQCValidationConflict(
+            "Frozen comparison binding is missing its W4 binding."
+        )
+
+    try:
+        payload = validate_comparison_payload(normalized_payload)
+    except WorkflowComparisonContractError as exc:
+        raise WorkflowPreQCValidationConflict(
+            f"Frozen comparison payload failed W4 validation: {exc}"
+        ) from exc
+
+    if dict(payload["binding"]) != dict(comparison_binding):
+        raise WorkflowPreQCValidationConflict(
+            "Frozen W4 payload binding does not match server provenance."
+        )
+
+    candidate = workflow_pass.candidate_check_result
+    semantic = workflow_pass.semantic_validation_result
+    semantic_hash = payload["semantic_sha256"]
+    checks = (
+        candidate.get("contract") == WORKFLOW_PRE_QC_VALIDATION_CONTRACT,
+        semantic.get("contract") == WORKFLOW_PRE_QC_VALIDATION_CONTRACT,
+        candidate.get("status") == "complete",
+        semantic.get("status") == "complete",
+        candidate.get("semantic_sha256") == semantic_hash,
+        semantic.get("semantic_sha256") == semantic_hash,
+        candidate.get("staging_batch_id")
+            == comparison_binding["staging_batch_id"],
+        semantic.get("staging_batch_id")
+            == comparison_binding["staging_batch_id"],
+        candidate.get("normalized_artifact_ref")
+            == comparison_binding["normalized_artifact_ref"],
+        semantic.get("normalized_artifact_ref")
+            == comparison_binding["normalized_artifact_ref"],
+        candidate.get("normalized_artifact_sha256")
+            == comparison_binding["normalized_artifact_sha256"],
+        semantic.get("normalized_artifact_sha256")
+            == comparison_binding["normalized_artifact_sha256"],
+        candidate.get("roster_completeness_claim") is False,
+        semantic.get("comparison_payload_contract")
+            == WORKFLOW_COMPARISON_PAYLOAD_CONTRACT,
+        semantic.get("comparison_version") == WORKFLOW_COMPARISON_VERSION,
+        semantic.get("null_zero_missing_policy") == "preserved_distinct",
+        semantic.get("scope_exact_match") is True,
+        semantic.get("binding_exact_match") is True,
+    )
+    if not all(checks):
+        raise WorkflowPreQCValidationConflict(
+            "Frozen completed Pre-QC evidence does not reconcile to payload."
+        )
+    return payload
+
