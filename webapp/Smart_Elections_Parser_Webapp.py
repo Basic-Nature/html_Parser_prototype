@@ -295,6 +295,9 @@ from webapp.parser.routes import (
     create_workflow_contributor_blueprint,
 )
 from webapp.parser.routes.workflow_blueprint import create_workflow_v1_blueprint
+from webapp.parser.routes.workflow_reviewer_blueprint import (
+    create_workflow_reviewer_blueprint,
+)
 from webapp.parser.services.workflow_reader import (
     WORKFLOW_AUTHORITY,
     WorkflowReadValidationError,
@@ -310,6 +313,10 @@ from webapp.parser.services.workflow_actions import (
     read_approved_workflow_source,
     submit_first_workflow_pass,
     submit_second_workflow_pass,
+)
+from webapp.parser.services.workflow_discrepancy_resolution import (
+    WorkflowDiscrepancyResolutionError,
+    resolve_workflow_comparison_discrepancies,
 )
 from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socket_handler
 from webapp.parser.url_parser import (
@@ -329,6 +336,7 @@ from webapp.parser.contracts.workflow_authorization import (
     CAP_DL1_SUBMIT,
     CAP_DL2_CLAIM,
     CAP_DL2_SUBMIT,
+    CAP_DISCREPANCY_RESOLVE,
     CAP_SOURCE_READ,
 )
 from webapp.parser.utils.cert_utils import extract_client_principal
@@ -456,6 +464,13 @@ REQUIRE_CERT_FOR_MUTATIONS = True
 # fail-closed until a later explicit deployment/apply gate.
 WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED = (
     os.environ.get("WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED", "false")
+    .strip().lower() in {"1", "true", "yes", "on"}
+)
+
+# Reviewer mutation authority is deliberately separate from contributor
+# acquisition authority and remains fail-closed until an explicit runtime gate.
+WORKFLOW_REVIEWER_MUTATIONS_ENABLED = (
+    os.environ.get("WORKFLOW_REVIEWER_MUTATIONS_ENABLED", "false")
     .strip().lower() in {"1", "true", "yes", "on"}
 )
 
@@ -1402,6 +1417,23 @@ except Exception as e:
         "type": "status",
         "message": f"Failed to register Data Framework routes blueprint: {e}",
         "session_id": None
+    })
+
+# Register protected Workflow reviewer authority routes.
+try:
+    app.register_blueprint(create_workflow_reviewer_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Workflow reviewer routes blueprint registered",
+        "session_id": None,
+    })
+except Exception as exc:
+    logger.error({
+        "level": "ERROR",
+        "type": "status",
+        "message": f"Workflow reviewer routes blueprint registration failed: {exc}",
+        "session_id": None,
     })
 
 # Register protected Workflow contributor authority routes.
@@ -8433,6 +8465,13 @@ def _workflow_contributor_authority(required_capability: str):
     return principal, None
 
 
+def _workflow_reviewer_authority(required_capability: str):
+    # Reuse the established provider-neutral trusted-principal + server-owned
+    # Workflow capability bridge; reviewer capability still comes only from
+    # WORKFLOW_REVIEWER_PRINCIPALS.
+    return _workflow_contributor_authority(required_capability)
+
+
 def api_workflow_v1_contributor_source(item_id):
     principal, denied = _workflow_contributor_authority(CAP_SOURCE_READ)
     if denied is not None:
@@ -8774,6 +8813,93 @@ def api_workflow_v1_submit_second_pass(item_id):
         ), 503
     finally:
         db_session.close()
+
+
+_WORKFLOW_REVIEWER_RESOLUTION_REQUEST_KEYS = frozenset({
+    "expected_row_version",
+    "resolution_code",
+    "resolution_notes",
+})
+
+
+def api_workflow_v1_resolve_discrepancies(item_id, comparison_id):
+    principal, denied = _workflow_reviewer_authority(
+        CAP_DISCREPANCY_RESOLVE
+    )
+    if denied is not None:
+        return denied
+
+    if not WORKFLOW_REVIEWER_MUTATIONS_ENABLED:
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_reviewer_mutations_disabled",
+            }
+        ), 503
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_discrepancy_resolution_invalid_request",
+            }
+        ), 400
+
+    body_keys = set(body)
+    if body_keys != _WORKFLOW_REVIEWER_RESOLUTION_REQUEST_KEYS:
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_discrepancy_resolution_invalid_request",
+            }
+        ), 400
+
+    db_session = SessionLocal()
+    try:
+        payload = resolve_workflow_comparison_discrepancies(
+            db_session,
+            item_id,
+            comparison_id,
+            principal=principal,
+            expected_row_version=body["expected_row_version"],
+            resolution_code=body["resolution_code"],
+            resolution_notes=body["resolution_notes"],
+        )
+        db_session.commit()
+        payload["committed"] = True
+        return jsonify(payload), 200
+    except WorkflowDiscrepancyResolutionError as exc:
+        db_session.rollback()
+        return jsonify(
+            {
+                "success": False,
+                "error": exc.code,
+                "message": str(exc),
+            }
+        ), exc.status_code
+    except Exception as exc:
+        db_session.rollback()
+        logger.error({
+            "level": "ERROR",
+            "type": "workflow",
+            "message": f"Workflow discrepancy resolution failed: {exc}",
+            "session_id": None,
+        })
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_discrepancy_resolution_unavailable",
+            }
+        ), 503
+    finally:
+        db_session.close()
+
+
+app.config["_WORKFLOW_REVIEWER_ROUTE_HANDLERS"] = {
+    "api_workflow_v1_resolve_discrepancies":
+        api_workflow_v1_resolve_discrepancies,
+}
 
 
 app.config["_WORKFLOW_CONTRIBUTOR_ROUTE_HANDLERS"] = {

@@ -31,6 +31,7 @@ STAGE_CONDITIONS = frozenset({
 PASS_STATUSES = frozenset({"pending", "in_progress", "submitted", "superseded"})
 COMPARISON_STATUSES = frozenset({"pending", "complete", "superseded"})
 DISCREPANCY_RESOLUTION_STATUSES = frozenset({"open", "resolved", "superseded"})
+DISCREPANCY_RESOLUTION_SELECTION_CODES = frozenset({"select_dl1", "select_dl2"})
 REVIEW_STAGES = frozenset({"qc1", "qc2"})
 REVIEW_DECISIONS = frozenset({"approved", "returned", "rejected"})
 
@@ -113,6 +114,23 @@ def next_stage_after_comparison(strict_equality_passed: bool) -> str:
     if not isinstance(strict_equality_passed, bool):
         raise ValueError("strict_equality_passed must be bool")
     return "qc1_review" if strict_equality_passed else "discrepancy_resolution"
+
+
+def assert_discrepancy_resolver_separation(
+    *,
+    dl1_principal: str,
+    dl2_principal: str,
+    resolver_principal: str,
+) -> None:
+    _require_nonempty("dl1_principal", dl1_principal)
+    _require_nonempty("dl2_principal", dl2_principal)
+    _require_nonempty("resolver_principal", resolver_principal)
+    if dl1_principal == dl2_principal:
+        raise ValueError("DL1 and DL2 principals must remain distinct")
+    if resolver_principal in {dl1_principal, dl2_principal}:
+        raise ValueError(
+            "Discrepancy resolver must differ from DL1 and DL2 principals"
+        )
 
 
 def assert_qc_reviewer_separation(qc1_principal: str, qc2_principal: str) -> None:
