@@ -42,4 +42,15 @@ def create_workflow_reviewer_blueprint() -> Blueprint:
             comparison_id=comparison_id,
         )
 
+    @bp.route(
+        "/api/workflow/v1/reviewer/items/<uuid:item_id>/reviews/qc1",
+        methods=["POST"],
+        endpoint="api_workflow_v1_submit_qc1_review",
+    )
+    def submit_qc1_review_route(item_id):
+        return _call_handler(
+            "api_workflow_v1_submit_qc1_review",
+            item_id=item_id,
+        )
+
     return bp

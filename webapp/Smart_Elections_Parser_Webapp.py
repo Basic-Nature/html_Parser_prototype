@@ -318,6 +318,10 @@ from webapp.parser.services.workflow_discrepancy_resolution import (
     WorkflowDiscrepancyResolutionError,
     resolve_workflow_comparison_discrepancies,
 )
+from webapp.parser.services.workflow_reviews import (
+    WorkflowQCReviewError,
+    record_workflow_qc_review,
+)
 from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socket_handler
 from webapp.parser.url_parser import (
     parse_url_simple,
@@ -337,6 +341,7 @@ from webapp.parser.contracts.workflow_authorization import (
     CAP_DL2_CLAIM,
     CAP_DL2_SUBMIT,
     CAP_DISCREPANCY_RESOLVE,
+    CAP_QC1_REVIEW,
     CAP_SOURCE_READ,
 )
 from webapp.parser.utils.cert_utils import extract_client_principal
@@ -8896,9 +8901,51 @@ def api_workflow_v1_resolve_discrepancies(item_id, comparison_id):
         db_session.close()
 
 
+_WORKFLOW_REVIEWER_QC1_REQUEST_KEYS = frozenset({
+    "expected_row_version", "decision", "checklist_version",
+    "checklist_result", "reason_codes", "notes",
+})
+
+
+def api_workflow_v1_submit_qc1_review(item_id):
+    principal, denied = _workflow_reviewer_authority(CAP_QC1_REVIEW)
+    if denied is not None:
+        return denied
+    if not WORKFLOW_REVIEWER_MUTATIONS_ENABLED:
+        return jsonify({"success": False, "error": "workflow_reviewer_mutations_disabled"}), 503
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"success": False, "error": "workflow_qc1_review_invalid_request"}), 400
+    body_keys = set(body)
+    if body_keys != _WORKFLOW_REVIEWER_QC1_REQUEST_KEYS:
+        return jsonify({"success": False, "error": "workflow_qc1_review_invalid_request"}), 400
+    db_session = SessionLocal()
+    try:
+        payload = record_workflow_qc_review(
+            db_session, item_id, review_stage="qc1", principal=principal,
+            expected_row_version=body["expected_row_version"], decision=body["decision"],
+            checklist_version=body["checklist_version"], checklist_result=body["checklist_result"],
+            reason_codes=body["reason_codes"], notes=body["notes"],
+        )
+        db_session.commit()
+        payload["committed"] = True
+        return jsonify(payload), 200
+    except WorkflowQCReviewError as exc:
+        db_session.rollback()
+        return jsonify({"success": False, "error": exc.code, "message": str(exc)}), exc.status_code
+    except Exception:
+        db_session.rollback()
+        logger.exception("Unhandled governed QC1 review failure.")
+        return jsonify({"success": False, "error": "workflow_qc_review_internal_error"}), 503
+    finally:
+        db_session.close()
+
+
 app.config["_WORKFLOW_REVIEWER_ROUTE_HANDLERS"] = {
     "api_workflow_v1_resolve_discrepancies":
         api_workflow_v1_resolve_discrepancies,
+    "api_workflow_v1_submit_qc1_review":
+        api_workflow_v1_submit_qc1_review,
 }
 
 

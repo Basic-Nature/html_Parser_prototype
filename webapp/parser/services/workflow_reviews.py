@@ -1,0 +1,243 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import re
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from webapp.parser.contracts.workflow_lifecycle import (
+    DISCREPANCY_RESOLUTION_SELECTION_CODES,
+    REVIEW_DECISIONS,
+    assert_forward_stage_transition,
+)
+from webapp.parser.utils.models import (
+    WorkflowComparison,
+ WorkflowDiscrepancy,
+    WorkflowEvent,
+    WorkflowItem,
+    WorkflowPass,
+    WorkflowReview,
+)
+
+WORKFLOW_QC_REVIEW_CONTRACT = "workflow_qc_review_v1"
+WORKFLOW_QC_REVIEW_SERVICE = "workflow_reviews"
+_MAX_NOTES = 4000
+_MAX_TOKEN = 64
+_TOKEN_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
+
+class WorkflowQCReviewError(RuntimeError):
+    status_code = 400
+    code = "workflow_qc_review_error"
+
+class WorkflowQCReviewNotFound(WorkflowQCReviewError):
+    status_code = 404
+    code = "workflow_qc_review_not_found"
+
+class WorkflowQCReviewConflict(WorkflowQCReviewError):
+    status_code = 409
+    code = "workflow_qc_review_conflict"
+
+def _uuid(value: UUID | str, *, name: str) -> UUID:
+    try:
+        return value if isinstance(value, UUID) else UUID(str(value))
+    except (TypeError, ValueError) as exc:
+        raise WorkflowQCReviewError(f"{name} must be a UUID.") from exc
+
+def _expected_version(value: object) -> int:
+    if isinstance(value, bool):
+        raise WorkflowQCReviewError("expected_row_version must be an integer.")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise WorkflowQCReviewError("expected_row_version must be an integer.") from exc
+    if parsed < 0:
+        raise WorkflowQCReviewError("expected_row_version must be >= 0.")
+    return parsed
+
+def _actor(principal: object) -> str:
+    actor = str(principal or "").strip()
+    if not actor:
+        raise WorkflowQCReviewError("Authenticated reviewer principal is required.")
+    return actor
+
+def _review_stage(value: object) -> str:
+    stage = str(value or "").strip()
+    if stage != "qc1":
+        raise WorkflowQCReviewError("Only server-owned QC1 review is enabled by this contract.")
+    return stage
+
+def _decision(value: object) -> str:
+    decision = str(value or "").strip()
+    if decision not in REVIEW_DECISIONS:
+        raise WorkflowQCReviewError("decision must be approved, returned, or rejected.")
+    return decision
+
+def _checklist_version(value: object) -> str:
+    version = str(value or "").strip()
+    if not version:
+        raise WorkflowQCReviewError("checklist_version must be non-empty.")
+    if len(version) > _MAX_TOKEN:
+        raise WorkflowQCReviewError("checklist_version must be <= 64 characters.")
+    return version
+
+def _checklist_result(value: object) -> dict[str, bool]:
+    if not isinstance(value, dict) or not value:
+        raise WorkflowQCReviewError("checklist_result must be a non-empty object.")
+    normalized: dict[str, bool] = {}
+    for raw_key, raw_value in value.items():
+        key = str(raw_key or "").strip()
+        if _TOKEN_RE.fullmatch(key) is None:
+            raise WorkflowQCReviewError("checklist_result keys must be stable lowercase check IDs.")
+        if not isinstance(raw_value, bool):
+            raise WorkflowQCReviewError("checklist_result values must be bool.")
+        normalized[key] = raw_value
+    return normalized
+
+def _reason_codes(value: object) -> list[str]:
+    if not isinstance(value, list):
+        raise WorkflowQCReviewError("reason_codes must be an array.")
+    normalized: list[str] = []
+    for raw in value:
+        code = str(raw or "").strip()
+        if _TOKEN_RE.fullmatch(code) is None:
+            raise WorkflowQCReviewError("reason_codes must contain stable lowercase codes.")
+        if code in normalized:
+            raise WorkflowQCReviewError("reason_codes must not contain duplicates.")
+        normalized.append(code)
+    return normalized
+
+def _notes(value: object) -> str:
+    notes = str(value or "").strip()
+    if len(notes) > _MAX_NOTES:
+        raise WorkflowQCReviewError("notes must be <= 4000 characters.")
+    return notes
+
+def _validate_review_payload(*, decision: object, checklist_version: object, checklist_result: object, reason_codes: object, notes: object) -> tuple[str, str, dict[str, bool], list[str], str]:
+    d = _decision(decision)
+    v = _checklist_version(checklist_version)
+    c = _checklist_result(checklist_result)
+    r = _reason_codes(reason_codes)
+    n = _notes(notes)
+    if d == "approved":
+        if not all(c.values()):
+            raise WorkflowQCReviewError("approved QC1 review requires every checklist result true.")
+        if r:
+            raise WorkflowQCReviewError("approved QC1 review requires empty reason_codes.")
+    else:
+        if not r:
+            raise WorkflowQCReviewError("returned or rejected QC1 review requires reason_codes.")
+        if not n:
+            raise WorkflowQCReviewError("returned or rejected QC1 review requires notes.")
+    return d, v, c, r, n
+
+def _utc(now: datetime | None) -> datetime:
+    value = now or datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+def _load_current_submitted_pair(session: Session, item: WorkflowItem) -> tuple[WorkflowPass, WorkflowPass]:
+    rows = session.execute(select(WorkflowPass).where(WorkflowPass.workflow_item_id == item.id, WorkflowPass.pass_number.in_((1, 2)), WorkflowPass.is_current.is_(True)).with_for_update()).scalars().all()
+    if len(rows) != 2:
+        raise WorkflowQCReviewConflict("QC review requires exactly one current DL1 and DL2.")
+    by_pair = {(int(row.pass_number), str(row.pass_label)): row for row in rows}
+    if set(by_pair) != {(1, "DL1"), (2, "DL2")}:
+        raise WorkflowQCReviewConflict("Current acquisition pass identities are invalid.")
+    dl1, dl2 = by_pair[(1, "DL1")], by_pair[(2, "DL2")]
+    p1, p2 = str(dl1.assigned_principal or "").strip(), str(dl2.assigned_principal or "").strip()
+    if dl1.status != "submitted" or dl2.status != "submitted" or dl1.submitted_at is None or dl2.submitted_at is None or dl1.staging_batch_id is None or dl2.staging_batch_id is None or not p1 or not p2 or p1 == p2:
+        raise WorkflowQCReviewConflict("QC review requires immutable submitted independent DL1/DL2 with staging bindings.")
+    return dl1, dl2
+
+def _load_exact_comparison(session: Session, item: WorkflowItem, dl1: WorkflowPass, dl2: WorkflowPass) -> WorkflowComparison:
+    rows = session.execute(select(WorkflowComparison).where(WorkflowComparison.workflow_item_id == item.id, WorkflowComparison.left_pass_id == dl1.id, WorkflowComparison.right_pass_id == dl2.id, WorkflowComparison.status == "complete").with_for_update()).scalars().all()
+    if len(rows) != 1:
+        raise WorkflowQCReviewConflict("QC review requires exactly one completed comparison for the current submitted DL1/DL2 pair.")
+    comparison = rows[0]
+    if comparison.checked_at is None or not str(comparison.checked_by_service_version or "").strip() or not isinstance(comparison.difference_count, int) or comparison.difference_count < 0:
+        raise WorkflowQCReviewConflict("Completed comparison authority is incomplete.")
+    return comparison
+
+def _derive_selected_pass(session: Session, item: WorkflowItem, dl1: WorkflowPass, dl2: WorkflowPass, comparison: WorkflowComparison) -> tuple[WorkflowPass, str]:
+    discrepancies = session.execute(select(WorkflowDiscrepancy).where(WorkflowDiscrepancy.workflow_item_id == item.id, WorkflowDiscrepancy.comparison_id == comparison.id).order_by(WorkflowDiscrepancy.id).with_for_update()).scalars().all()
+    if comparison.strict_equality_passed is True:
+        if comparison.difference_count != 0 or discrepancies or comparison.reviewed_by_principal is not None or comparison.reviewed_at is not None:
+            raise WorkflowQCReviewConflict("Strict-equal comparison does not reconcile with zero discrepancies and no resolution fields.")
+        return dl1, "strict_equal_dl1"
+    if comparison.strict_equality_passed is not False:
+        raise WorkflowQCReviewConflict("Comparison strict_equality_passed must be bool.")
+    if comparison.difference_count <= 0 or len(discrepancies) != comparison.difference_count or not str(comparison.reviewed_by_principal or "").strip() or comparison.reviewed_at is None:
+        raise WorkflowQCReviewConflict("Resolved mismatch comparison authority is incomplete.")
+    codes = {row.resolution_code for row in discrepancies}
+    resolvers = {str(row.resolved_by_principal or "").strip() for row in discrepancies}
+    statuses = {row.resolution_status for row in discrepancies}
+    notes = {str(row.resolution_notes or "").strip() for row in discrepancies}
+    if statuses != {"resolved"} or len(codes) != 1 or next(iter(codes)) not in DISCREPANCY_RESOLUTION_SELECTION_CODES or resolvers != {str(comparison.reviewed_by_principal).strip()} or "" in resolvers or len(notes) != 1 or "" in notes or any(row.resolved_at is None for row in discrepancies):
+        raise WorkflowQCReviewConflict("Mismatch discrepancies must be one complete uniformly resolved W9 selection.")
+    code = next(iter(codes))
+    return (dl1 if code == "select_dl1" else dl2), str(code)
+
+def _expected_effect(decision: str) -> dict[str, object]:
+    if decision == "approved":
+        return {"lifecycle_state": "active", "current_stage": "qc2_review", "stage_condition": "pending", "blocked_reason_code": None, "event_type": "qc1_review_approved"}
+    if decision == "returned":
+        return {"lifecycle_state": "active", "current_stage": "qc1_review", "stage_condition": "awaiting_dependency", "blocked_reason_code": None, "event_type": "qc1_review_returned"}
+    return {"lifecycle_state": "blocked", "current_stage": "qc1_review", "stage_condition": "failed", "blocked_reason_code": "qc1_rejected", "event_type": "qc1_review_rejected"}
+
+def _exact_replay(session: Session, item: WorkflowItem, comparison: WorkflowComparison, selected: WorkflowPass, *, actor: str, decision: str, checklist_version: str, checklist_result: dict[str, bool], reason_codes: list[str], notes: str) -> dict[str, Any] | None:
+    reviews = session.execute(select(WorkflowReview).where(WorkflowReview.workflow_item_id == item.id, WorkflowReview.review_stage == "qc1").with_for_update()).scalars().all()
+    if not reviews:
+        return None
+    if len(reviews) != 1:
+        raise WorkflowQCReviewConflict("QC1 review set is not uniquely replayable.")
+    review = reviews[0]
+    effect = _expected_effect(decision)
+    expected_blocker_detail = notes if decision == "rejected" else None
+    if review.reviewer_principal != actor or review.decision != decision or review.selected_pass_id != selected.id or review.selected_staging_batch_id != selected.staging_batch_id or review.checklist_version != checklist_version or review.checklist_result != checklist_result or review.reason_codes != reason_codes or (review.notes or "") != notes or review.reviewed_at is None or item.lifecycle_state != effect["lifecycle_state"] or item.current_stage != effect["current_stage"] or item.stage_condition != effect["stage_condition"] or item.blocked_reason_code != effect["blocked_reason_code"] or item.blocker_detail != expected_blocker_detail:
+        raise WorkflowQCReviewConflict("Existing QC1 review is not an exact replay.")
+    events = session.execute(select(WorkflowEvent).where(WorkflowEvent.workflow_item_id == item.id, WorkflowEvent.related_review_id == review.id, WorkflowEvent.event_type == effect["event_type"])).scalars().all()
+    if len(events) != 1:
+        raise WorkflowQCReviewConflict("Existing QC1 review audit event set is not exact.")
+    event = events[0]
+    metadata = event.event_metadata if isinstance(event.event_metadata, dict) else {}
+    if event.actor_type != "principal" or event.actor_principal != actor or event.actor_service is not None or event.stage != "qc1_review" or event.related_pass_id != selected.id or event.related_staging_batch_id != selected.staging_batch_id or event.related_comparison_id != comparison.id or metadata.get("contract") != WORKFLOW_QC_REVIEW_CONTRACT or metadata.get("review_stage") != "qc1" or metadata.get("decision") != decision or metadata.get("selected_pass_id") != str(selected.id) or metadata.get("selected_staging_batch_id") != str(selected.staging_batch_id) or metadata.get("canonical_writer_invoked") is not False:
+        raise WorkflowQCReviewConflict("Existing QC1 review audit event does not reconcile.")
+    return {"success": True, "contract": WORKFLOW_QC_REVIEW_CONTRACT, "task_id": str(item.id), "review_id": str(review.id), "review_stage": "qc1", "decision": decision, "reviewer_principal": actor, "selected_pass_id": str(selected.id), "selected_pass_number": int(selected.pass_number), "selected_pass_label": str(selected.pass_label), "selected_staging_batch_id": str(selected.staging_batch_id), "comparison_id": str(comparison.id), "current_stage": item.current_stage, "stage_condition": item.stage_condition, "lifecycle_state": item.lifecycle_state, "row_version": int(item.row_version), "event_id": str(event.id), "already_reviewed": True, "committed": False}
+
+def record_workflow_qc_review(session: Session, item_id: UUID | str, *, review_stage: str, principal: str, expected_row_version: int, decision: str, checklist_version: str, checklist_result: dict[str, bool], reason_codes: list[str], notes: str, now: datetime | None = None) -> dict[str, Any]:
+    normalized_item = _uuid(item_id, name="item_id")
+    stage = _review_stage(review_stage)
+    actor = _actor(principal)
+    expected = _expected_version(expected_row_version)
+    d, cv, cr, rc, nt = _validate_review_payload(decision=decision, checklist_version=checklist_version, checklist_result=checklist_result, reason_codes=reason_codes, notes=notes)
+    timestamp = _utc(now)
+    item = session.execute(select(WorkflowItem).where(WorkflowItem.id == normalized_item).with_for_update()).scalar_one_or_none()
+    if item is None:
+        raise WorkflowQCReviewNotFound("Workflow item was not found.")
+    if int(item.row_version) != expected:
+        raise WorkflowQCReviewConflict("Workflow row_version changed before QC1 review.")
+    dl1, dl2 = _load_current_submitted_pair(session, item)
+    if actor in {str(dl1.assigned_principal).strip(), str(dl2.assigned_principal).strip()}:
+        raise WorkflowQCReviewConflict("QC1 reviewer must differ from DL1 and DL2 principals.")
+    comparison = _load_exact_comparison(session, item, dl1, dl2)
+    selected, selection_reason = _derive_selected_pass(session, item, dl1, dl2, comparison)
+    replay = _exact_replay(session, item, comparison, selected, actor=actor, decision=d, checklist_version=cv, checklist_result=cr, reason_codes=rc, notes=nt)
+    if replay is not None:
+        return replay
+    if (item.lifecycle_state, item.current_stage, item.stage_condition) != ("active", "qc1_review", "pending"):
+        raise WorkflowQCReviewConflict("Workflow item is not pending QC1 review.")
+    if stage != "qc1":
+        raise WorkflowQCReviewConflict("Only QC1 is enabled in this implementation.")
+    if d == "approved":
+        assert_forward_stage_transition("qc1_review", "qc2_review")
+    prior_state = {"lifecycle_state": item.lifecycle_state, "current_stage": item.current_stage, "stage_condition": item.stage_condition, "blocked_reason_code": item.blocked_reason_code, "blocker_detail": item.blocker_detail, "row_version": item.row_version}
+    review = WorkflowReview(workflow_item_id=item.id, review_stage="qc1", reviewer_principal=actor, decision=d, selected_pass_id=selected.id, selected_staging_batch_id=selected.staging_batch_id, checklist_version=cv, checklist_result=cr, reason_codes=rc, notes=nt, reviewed_at=timestamp)
+    session.add(review); session.flush()
+    effect = _expected_effect(d)
+    item.lifecycle_state = str(effect["lifecycle_state"]); item.current_stage = str(effect["current_stage"]); item.stage_condition = str(effect["stage_condition"]); item.blocked_reason_code = effect["blocked_reason_code"]; item.blocker_detail = nt if d == "rejected" else None; item.row_version = expected + 1; item.updated_at = timestamp
+    event = WorkflowEvent(workflow_item_id=item.id, actor_type="principal", actor_principal=actor, actor_service=None, event_type=str(effect["event_type"]), stage="qc1_review", prior_state=prior_state, new_state={"lifecycle_state": item.lifecycle_state, "current_stage": item.current_stage, "stage_condition": item.stage_condition, "blocked_reason_code": item.blocked_reason_code, "blocker_detail": item.blocker_detail, "row_version": item.row_version}, related_pass_id=selected.id, related_comparison_id=comparison.id, related_review_id=review.id, related_staging_batch_id=selected.staging_batch_id, related_canonical_race_id=item.canonical_race_id, reason_code=None if d == "approved" else rc[0], summary=f"QC1 reviewer recorded {d} decision.", event_metadata={"contract": WORKFLOW_QC_REVIEW_CONTRACT, "review_stage": "qc1", "decision": d, "checklist_version": cv, "reason_codes": list(rc), "selected_pass_id": str(selected.id), "selected_pass_number": int(selected.pass_number), "selected_pass_label": str(selected.pass_label), "selected_staging_batch_id": str(selected.staging_batch_id), "selection_reason": selection_reason, "client_selected_pass_authority": False, "mixed_side_value_merge": False, "direct_value_edit": False, "canonical_writer_invoked": False})
+    session.add(event); session.flush()
+    return {"success": True, "contract": WORKFLOW_QC_REVIEW_CONTRACT, "task_id": str(item.id), "review_id": str(review.id), "review_stage": "qc1", "decision": d, "reviewer_principal": actor, "selected_pass_id": str(selected.id), "selected_pass_number": int(selected.pass_number), "selected_pass_label": str(selected.pass_label), "selected_staging_batch_id": str(selected.staging_batch_id), "comparison_id": str(comparison.id), "current_stage": item.current_stage, "stage_condition": item.stage_condition, "lifecycle_state": item.lifecycle_state, "row_version": int(item.row_version), "event_id": str(event.id), "already_reviewed": False, "committed": False}
