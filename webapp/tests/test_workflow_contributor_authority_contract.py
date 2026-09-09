@@ -340,6 +340,12 @@ def test_contributor_blueprint_dispatch_contract():
                 200,
             )
         ),
+        "api_workflow_v1_submit_first_pass": (
+            lambda item_id: (
+                {"success": True, "kind": "submit", "item_id": str(item_id)},
+                200,
+            )
+        ),
     }
     app.register_blueprint(create_workflow_contributor_blueprint())
 
@@ -349,6 +355,9 @@ def test_contributor_blueprint_dispatch_contract():
     ).status_code == 200
     assert client.post(
         f"/api/workflow/v1/contributor/items/{item_id}/passes/1/claim"
+    ).status_code == 200
+    assert client.post(
+        f"/api/workflow/v1/contributor/items/{item_id}/passes/1/submit"
     ).status_code == 200
 
 
@@ -361,6 +370,7 @@ def test_composition_root_claim_is_default_off_and_authority_guarded():
     )
     assert "create_workflow_contributor_blueprint" in source
     assert "api_workflow_v1_claim_first_pass" in source
+    assert "api_workflow_v1_submit_first_pass" in source
     assert "api_workflow_v1_contributor_source" in source
     assert "assert_trusted_action" in source
     assert '"expected_row_version" not in body' in source
@@ -373,9 +383,28 @@ def test_composition_root_w2_workflow_capability_seam_is_wired():
     assert "assert_workflow_runtime_capability" in source
     assert "CAP_SOURCE_READ" in source
     assert "CAP_DL1_CLAIM" in source
+    assert "CAP_DL1_SUBMIT" in source
     assert "def _workflow_contributor_authority(required_capability: str):" in source
     assert "_workflow_contributor_authority(CAP_SOURCE_READ)" in source
     assert "_workflow_contributor_authority(CAP_DL1_CLAIM)" in source
+    assert "_workflow_contributor_authority(CAP_DL1_SUBMIT)" in source
     assert "assert_trusted_action(" in source
     assert "workflow_capability_denied" in source
     assert 'os.environ.get("WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED", "false")' in source
+
+
+def test_dl1_submit_route_is_exact_body_allowlist_and_same_fail_closed_flag():
+    source = APP_PATH.read_text(encoding="utf-8")
+    assert "_WORKFLOW_DL1_SUBMIT_REQUEST_KEYS" in source
+    for key in (
+        "expected_row_version",
+        "pass_id",
+        "source_evidence_ref",
+        "staging_batch_id",
+        "artifact_ref",
+        "artifact_sha256",
+    ):
+        assert f'"{key}"' in source
+    assert "body_keys != _WORKFLOW_DL1_SUBMIT_REQUEST_KEYS" in source
+    assert "WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED" in source
+    assert "submit_first_workflow_pass(" in source

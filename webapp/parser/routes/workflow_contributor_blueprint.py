@@ -49,4 +49,15 @@ def create_workflow_contributor_blueprint() -> Blueprint:
             item_id=item_id,
         )
 
+    @bp.route(
+        "/api/workflow/v1/contributor/items/<uuid:item_id>/passes/1/submit",
+        methods=["POST"],
+        endpoint="api_workflow_v1_submit_first_pass",
+    )
+    def submit_first_pass_route(item_id):
+        return _call_handler(
+            "api_workflow_v1_submit_first_pass",
+            item_id=item_id,
+        )
+
     return bp

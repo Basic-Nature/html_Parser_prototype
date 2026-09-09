@@ -307,6 +307,7 @@ from webapp.parser.services.workflow_actions import (
     WorkflowActionError,
     claim_first_workflow_pass,
     read_approved_workflow_source,
+    submit_first_workflow_pass,
 )
 from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socket_handler
 from webapp.parser.url_parser import (
@@ -323,6 +324,7 @@ from webapp.parser.auth.workflow_runtime_authorization import (
 )
 from webapp.parser.contracts.workflow_authorization import (
     CAP_DL1_CLAIM,
+    CAP_DL1_SUBMIT,
     CAP_SOURCE_READ,
 )
 from webapp.parser.utils.cert_utils import extract_client_principal
@@ -8533,9 +8535,102 @@ def api_workflow_v1_claim_first_pass(item_id):
         db_session.close()
 
 
+_WORKFLOW_DL1_SUBMIT_REQUEST_KEYS = frozenset({
+    "expected_row_version",
+    "pass_id",
+    "source_evidence_ref",
+    "staging_batch_id",
+    "artifact_ref",
+    "artifact_sha256",
+})
+
+
+def api_workflow_v1_submit_first_pass(item_id):
+    principal, denied = _workflow_contributor_authority(CAP_DL1_SUBMIT)
+    if denied is not None:
+        return denied
+
+    if not WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED:
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_contributor_mutations_disabled",
+            }
+        ), 503
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_dl1_submit_request_invalid",
+            }
+        ), 400
+
+    body_keys = frozenset(body.keys())
+    if body_keys != _WORKFLOW_DL1_SUBMIT_REQUEST_KEYS:
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_dl1_submit_request_invalid",
+                "missing_keys": sorted(
+                    _WORKFLOW_DL1_SUBMIT_REQUEST_KEYS - body_keys
+                ),
+                "unexpected_keys": sorted(
+                    body_keys - _WORKFLOW_DL1_SUBMIT_REQUEST_KEYS
+                ),
+            }
+        ), 400
+
+    db_session = SessionLocal()
+    try:
+        payload = submit_first_workflow_pass(
+            db_session,
+            item_id,
+            pass_id=body["pass_id"],
+            principal=principal,
+            expected_row_version=body["expected_row_version"],
+            staging_batch_id=body["staging_batch_id"],
+            source_evidence_ref=body["source_evidence_ref"],
+            artifact_ref=body["artifact_ref"],
+            artifact_sha256=body["artifact_sha256"],
+        )
+        db_session.commit()
+        payload["committed"] = True
+        return jsonify(payload), 200
+    except WorkflowActionError as exc:
+        db_session.rollback()
+        return jsonify(
+            {
+                "success": False,
+                "error": exc.code,
+                "detail": str(exc),
+            }
+        ), exc.status_code
+    except Exception:
+        db_session.rollback()
+        logger.exception(
+            {
+                "level": "ERROR",
+                "type": "workflow",
+                "message": "First workflow pass submit failed.",
+                "session_id": None,
+            }
+        )
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_dl1_submit_unavailable",
+            }
+        ), 503
+    finally:
+        db_session.close()
+
+
 app.config["_WORKFLOW_CONTRIBUTOR_ROUTE_HANDLERS"] = {
     "api_workflow_v1_contributor_source": api_workflow_v1_contributor_source,
     "api_workflow_v1_claim_first_pass": api_workflow_v1_claim_first_pass,
+    "api_workflow_v1_submit_first_pass": api_workflow_v1_submit_first_pass,
 }
 
 
