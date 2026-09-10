@@ -18,6 +18,7 @@ from collections.abc import Iterable
 WORKFLOW_AUTHORIZATION_CONTRACT = "workflow_authorization_contract_v1"
 
 CAP_SOURCE_READ = "workflow.source.read"
+CAP_BALLOT_LENS_EXECUTE = "workflow.ballot_lens.execute"
 CAP_DL1_CLAIM = "workflow.dl1.claim"
 CAP_DL1_SUBMIT = "workflow.dl1.submit"
 CAP_DL2_CLAIM = "workflow.dl2.claim"
@@ -31,6 +32,7 @@ CAP_COMPARISON_EXECUTE = "workflow.comparison.execute"
 
 CAPABILITIES = frozenset({
     CAP_SOURCE_READ,
+    CAP_BALLOT_LENS_EXECUTE,
     CAP_DL1_CLAIM,
     CAP_DL1_SUBMIT,
     CAP_DL2_CLAIM,
@@ -61,6 +63,7 @@ ROLES = HUMAN_ROLES | SERVICE_ROLES
 ROLE_CAPABILITIES = {
     ROLE_CONTRIBUTOR: frozenset({
         CAP_SOURCE_READ,
+        CAP_BALLOT_LENS_EXECUTE,
         CAP_DL1_CLAIM,
         CAP_DL1_SUBMIT,
         CAP_DL2_CLAIM,

@@ -8,7 +8,12 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_app_nav.css') }}?v={{ static_version }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_surface_theme.css') }}?v={{ static_version }}">
 </head>
-<body data-page="workflow-public" data-workflow-contract="public-readiness-r3">
+<body
+    data-page="workflow-public"
+    data-workflow-contract="public-readiness-r3"
+    data-workflow-operator-access='{{ workflow_operator_access | tojson | forceescape }}'
+    data-ballot-lens-url="{{ url_for('ballot_lens') }}"
+>
     <nav class="ep-app-nav" aria-label="ElectionPulse primary navigation">
       <div class="ep-app-nav__inner">
         <div class="ep-app-nav__identity" aria-label="ElectionPulse">ElectionPulse</div>
@@ -36,6 +41,13 @@
                 <a href="{{ url_for('data_framework') }}" class="workflow-link workflow-link-primary">
                     Explore Published Data →
                 </a>
+                <a
+                    id="workflow-operator-access-link"
+                    href="{{ url_for('auth_welcome', next=request.url) }}"
+                    class="workflow-link"
+                >
+                    Operator Access
+                </a>
             </nav>
 
             <div class="workflow-context">
@@ -53,6 +65,25 @@
                 </div>
             </div>
         </header>
+
+        <section
+            class="workflow-operator"
+            aria-labelledby="workflow-operator-title"
+        >
+            <div>
+                <span class="workflow-section-kicker">Workbench</span>
+                <h2 id="workflow-operator-title">Operator Workbench</h2>
+                <p id="workflow-operator-copy">
+                    Public task visibility is available now. Authenticated
+                    operator actions appear only from server-projected
+                    Workflow capabilities.
+                </p>
+            </div>
+            <div class="workflow-operator-state">
+                <span>Access</span>
+                <strong id="workflow-operator-status">Checking…</strong>
+            </div>
+        </section>
 
         <section
             id="workflow-state"

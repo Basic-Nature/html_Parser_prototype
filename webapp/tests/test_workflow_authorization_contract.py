@@ -6,6 +6,7 @@ import pytest
 
 from webapp.parser.contracts.workflow_authorization import (
     CAP_AUDIT_READ,
+    CAP_BALLOT_LENS_EXECUTE,
     CAP_COMPARISON_EXECUTE,
     CAP_DL1_CLAIM,
     CAP_DL1_SUBMIT,
@@ -56,6 +57,7 @@ def test_exact_w2a_authorization_vocabulary():
     assert WORKFLOW_AUTHORIZATION_CONTRACT == "workflow_authorization_contract_v1"
     assert CAPABILITIES == {
         CAP_SOURCE_READ,
+        CAP_BALLOT_LENS_EXECUTE,
         CAP_DL1_CLAIM,
         CAP_DL1_SUBMIT,
         CAP_DL2_CLAIM,
@@ -80,6 +82,7 @@ def test_exact_w2a_authorization_vocabulary():
 def test_exact_role_bundles_and_service_only_comparison():
     assert ROLE_CAPABILITIES[ROLE_CONTRIBUTOR] == {
         CAP_SOURCE_READ,
+        CAP_BALLOT_LENS_EXECUTE,
         CAP_DL1_CLAIM,
         CAP_DL1_SUBMIT,
         CAP_DL2_CLAIM,
@@ -130,12 +133,14 @@ def test_external_mapping_is_allowlisted_and_never_maps_service_role():
 def test_capabilities_are_server_derived_and_unknown_internal_roles_fail_closed():
     assert capabilities_for_roles([ROLE_CONTRIBUTOR]) == {
         CAP_SOURCE_READ,
+        CAP_BALLOT_LENS_EXECUTE,
         CAP_DL1_CLAIM,
         CAP_DL1_SUBMIT,
         CAP_DL2_CLAIM,
         CAP_DL2_SUBMIT,
     }
     assert_capability([ROLE_CONTRIBUTOR], CAP_DL1_CLAIM)
+    assert_capability([ROLE_CONTRIBUTOR], CAP_BALLOT_LENS_EXECUTE)
     with pytest.raises(WorkflowAuthorizationError):
         assert_capability([ROLE_AUDITOR], CAP_DL1_CLAIM)
     with pytest.raises(WorkflowAuthorizationError):

@@ -47,7 +47,14 @@ def test_anonymous_page_suppresses_server_file_enumeration():
     start = main.index("def ballot_lens():")
     end = main.index("def worklist():", start)
     body = main[start:end]
-    assert "ballot_lens_trusted_controls = bool(principal)" in body
+    assert (
+        "ballot_lens_operator_access = "
+        "_workflow_operator_access_projection("
+        in body
+    )
+    assert '"can_execute_ballot_lens"' in body
+    assert "ballot_lens_trusted_controls = bool(" in body
+    assert "ballot_lens_trusted_controls = bool(principal)" not in body
     assert '"input_files": []' in body
     assert '"output_files": []' in body
     assert '"uploaded_files": []' in body

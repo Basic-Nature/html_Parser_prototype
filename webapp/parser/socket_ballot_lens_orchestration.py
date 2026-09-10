@@ -1264,14 +1264,307 @@ def _handle_public_registry_authority_split(
 
     _start_public_registry_runtime(public_ctx, h)
 
+
+WORKFLOW_BALLOT_LENS_INTENT_KEY = "workflow_item_id"
+
+
+def _is_workflow_ballot_lens_intent(payload: dict[str, Any]) -> bool:
+    return (
+        isinstance(payload, dict)
+        and WORKFLOW_BALLOT_LENS_INTENT_KEY in payload
+    )
+
+
+def _emit_workflow_ballot_lens_authority_status(
+    h: dict[str, Any],
+    *,
+    level: str,
+    reason_code: str,
+    message: str,
+    session_id: str | None = None,
+    authority_projection: dict[str, Any] | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "level": level,
+        "type": "workflow_ballot_lens_authority",
+        "message": message,
+        "reason_code": reason_code,
+        "session_id": session_id,
+    }
+    if authority_projection is not None:
+        payload["authority"] = dict(authority_projection)
+    try:
+        normalized = h["normalize_log_obj"](payload)
+        if isinstance(session_id, str) and session_id:
+            h["emit"](
+                "parser_output",
+                normalized,
+                room=session_id,
+            )
+        else:
+            h["emit"]("parser_output", normalized)
+    except Exception:
+        pass
+
+
+def _initialize_workflow_ballot_lens_authority(
+    payload: dict[str, Any],
+    h: dict[str, Any],
+) -> dict[str, Any] | None:
+    from webapp.parser.auth.workflow_runtime_authorization import (
+        WorkflowRuntimeAuthorizationDenied,
+        assert_workflow_runtime_capability,
+    )
+    from webapp.parser.config import URL_LIST_FILE
+    from webapp.parser.contracts.workflow_authorization import (
+        CAP_BALLOT_LENS_EXECUTE,
+    )
+    from webapp.parser.services.workflow_ballot_lens_execution import (
+        WorkflowBallotLensExecutionDenied,
+        authorize_workflow_ballot_lens_execution,
+        validate_workflow_execution_request,
+    )
+    from webapp.parser.services.workflow_ballot_lens_runtime_context import (
+        WorkflowBallotLensRuntimeContextDenied,
+        build_workflow_ballot_lens_server_context,
+    )
+    from webapp.parser.utils.db_utils import SessionLocal
+
+    try:
+        request_payload = validate_workflow_execution_request(payload)
+        principal, principal_source, _ = h["get_request_principal"]()
+        roles = assert_workflow_runtime_capability(
+            principal,
+            CAP_BALLOT_LENS_EXECUTE,
+        )
+
+        db_session = SessionLocal()
+        try:
+            server_context = build_workflow_ballot_lens_server_context(
+                db_session,
+                request_payload,
+                registry_path=URL_LIST_FILE,
+            )
+            authority = authorize_workflow_ballot_lens_execution(
+                request_payload,
+                principal=principal,
+                internal_roles=roles,
+                server_context=server_context,
+            )
+        finally:
+            db_session.rollback()
+            db_session.close()
+
+        resolved_url = authority.resolved_source_url
+        allowed, _ = h["safe_validate_external_url"](
+            resolved_url,
+            allowlist_suffixes=h["url_allowlist_suffixes"],
+            allowlist_hosts=h["url_allowlist_hosts"],
+            enforce_allowlist=h["url_enforce_allowlist"],
+            block_private_ips=h["url_block_private_ips"],
+            allowlist_bypass=False,
+        )
+        if not allowed:
+            raise WorkflowBallotLensExecutionDenied(
+                "Workflow Ballot Lens execution denied."
+            )
+
+        guard_ok, _ = h["guarded_ingestion_allowed"]("direct_urls")
+        if not guard_ok:
+            raise WorkflowBallotLensExecutionDenied(
+                "Workflow Ballot Lens execution denied."
+            )
+    except (
+        WorkflowRuntimeAuthorizationDenied,
+        WorkflowBallotLensExecutionDenied,
+        WorkflowBallotLensRuntimeContextDenied,
+    ) as exc:
+        try:
+            h["logger"].warning(
+                {
+                    "level": "WARNING",
+                    "type": "workflow_ballot_lens_authority",
+                    "message": "Workflow Ballot Lens authority denied.",
+                    "reason_code": type(exc).__name__,
+                    "raw_url_disclosed": False,
+                }
+            )
+        except Exception:
+            pass
+        _emit_workflow_ballot_lens_authority_status(
+            h,
+            level="WARNING",
+            reason_code="workflow_ballot_lens_authority_denied",
+            message="Workflow Ballot Lens execution is unavailable for this request.",
+        )
+        return None
+    except Exception as exc:
+        try:
+            h["logger"].error(
+                {
+                    "level": "ERROR",
+                    "type": "workflow_ballot_lens_authority",
+                    "message": "Workflow Ballot Lens authority dependency failed.",
+                    "reason_code": type(exc).__name__,
+                    "raw_url_disclosed": False,
+                }
+            )
+        except Exception:
+            pass
+        _emit_workflow_ballot_lens_authority_status(
+            h,
+            level="ERROR",
+            reason_code="workflow_ballot_lens_authority_unavailable",
+            message="Workflow Ballot Lens execution is temporarily unavailable.",
+        )
+        return None
+
+    h["cleanup_sessions"]()
+    session_id = h["resolve_session_id"](
+        request_payload,
+        create_if_missing=True,
+    )
+    if not isinstance(session_id, str) or not session_id.strip():
+        _emit_workflow_ballot_lens_authority_status(
+            h,
+            level="ERROR",
+            reason_code="workflow_ballot_lens_session_unavailable",
+            message="Unable to establish a Workflow Ballot Lens session.",
+        )
+        return None
+
+    if not h["rate_limit_socket_action"](session_id, "ballot_lens"):
+        _emit_workflow_ballot_lens_authority_status(
+            h,
+            level="WARNING",
+            reason_code="workflow_ballot_lens_rate_limited",
+            message="Workflow Ballot Lens start rate limit exceeded.",
+            session_id=session_id,
+        )
+        return None
+
+    h["join_room"](session_id)
+    h["socketio"].sleep(0.05)
+    h["emit"]("session_id", {"session_id": session_id})
+
+    try:
+        socket_sid = h["safe_sid"]()
+    except Exception:
+        socket_sid = getattr(h["request"], "sid", None)
+    if isinstance(socket_sid, str):
+        h["session_manager"].bind_socket(socket_sid, session_id)
+
+    if not h["session_manager"].has_session(session_id):
+        h["create_session_metadata"](session_id)
+    meta = h["session_manager"].get_metadata(session_id) or {}
+    if meta.get("auth_blocked"):
+        _emit_workflow_ballot_lens_authority_status(
+            h,
+            level="WARNING",
+            reason_code="workflow_ballot_lens_session_auth_blocked",
+            message="Workflow Ballot Lens session requires re-authentication.",
+            session_id=session_id,
+        )
+        return None
+    if h["safe_get"](meta, "locked") and h["safe_is_alive"](session_id):
+        _emit_workflow_ballot_lens_authority_status(
+            h,
+            level="WARNING",
+            reason_code="workflow_ballot_lens_session_locked",
+            message="Workflow Ballot Lens session already has an active run.",
+            session_id=session_id,
+        )
+        return None
+    if h["safe_is_alive"](session_id):
+        _emit_workflow_ballot_lens_authority_status(
+            h,
+            level="WARNING",
+            reason_code="workflow_ballot_lens_already_running",
+            message="Workflow Ballot Lens parser is already running.",
+            session_id=session_id,
+        )
+        return None
+
+    h["session_manager"].mark_active(session_id)
+    h["session_manager"].touch_session(session_id)
+    h["session_manager"].update_metadata(
+        session_id,
+        dev_isolation_bypass=False,
+        workflow_ballot_lens=True,
+        workflow_item_id=authority.workflow_item_id,
+        workflow_pass_id=authority.workflow_pass_id,
+        workflow_row_version=authority.expected_row_version,
+    )
+
+    projection = authority.safe_projection()
+    _emit_workflow_ballot_lens_authority_status(
+        h,
+        level="INFO",
+        reason_code="workflow_ballot_lens_authority_accepted",
+        message="Workflow Ballot Lens authority accepted.",
+        session_id=session_id,
+        authority_projection=projection,
+    )
+
+    return {
+        "session_id": session_id,
+        "principal": principal,
+        "principal_source": principal_source,
+        "run_cfg": {
+            "requested_source": "input",
+            "requested_origin": "server",
+            "force_parse_input_file": None,
+            "force_parse_format": None,
+            "manual_upload_rel": None,
+            "warehouse_override_url": "",
+            "direct_urls": [resolved_url],
+            "url_reference_hints": [],
+            "trusted_run_mode": "worklist",
+        },
+    }
+
+
+def _handle_workflow_ballot_lens_authority_split(
+    payload: dict[str, Any],
+    h: dict[str, Any],
+) -> None:
+    workflow_ctx = _initialize_workflow_ballot_lens_authority(
+        payload,
+        h,
+    )
+    if not workflow_ctx:
+        return
+
+    session_id = workflow_ctx["session_id"]
+    _configure_logging_and_prompt(session_id, h)
+    _start_pipeline_worker(
+        session_id,
+        workflow_ctx["principal"],
+        workflow_ctx["principal_source"],
+        False,
+        workflow_ctx["run_cfg"],
+        h,
+    )
+
 def run_ballot_lens_socket_handler(data=None, *, hooks: dict[str, Any]) -> None:
     payload = _normalize_payload(data)
 
-    # Presence of registry_source_id is an explicit public-intent marker.
-    # Mixed payloads do not fall back to the trusted legacy path; the exact
-    # public payload validator rejects any additional legacy fields.
+    # Public anonymous execution remains its own exact registry_source_id
+    # intent. Mixed public payloads are rejected by the existing public
+    # validator and never fall through into Workflow or legacy trusted mode.
     if _is_public_registry_intent(payload):
         _handle_public_registry_authority_split(
+            payload,
+            hooks,
+        )
+        return
+
+    # Presence of workflow_item_id is the distinct governed Workflow intent.
+    # Exact browser payload validation happens inside the Workflow authority
+    # split, so mixed raw URL/public-source/capability fields fail closed and
+    # never fall through into the legacy trusted path.
+    if _is_workflow_ballot_lens_intent(payload):
+        _handle_workflow_ballot_lens_authority_split(
             payload,
             hooks,
         )

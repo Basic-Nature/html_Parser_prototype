@@ -11,6 +11,9 @@
             this.stats = null;
             this.facets = null;
             this.items = null;
+            this.operatorAccess = this.readOperatorAccess();
+            this.ballotLensUrl =
+                document.body?.dataset?.ballotLensUrl || '/ballot_lens';
             this.requestSeq = 0;
             this.activeController = null;
             this.facetOptionUniverse = {
@@ -47,9 +50,208 @@
                 .replace(/\b\w/g, (match) => match.toUpperCase());
         }
 
+        readOperatorAccess() {
+            const fallback = Object.freeze({
+                contract: 'workflow_operator_access_v1',
+                authenticated: false,
+                capabilities: Object.freeze([]),
+                canExecuteBallotLens: false
+            });
+            const raw = document.body?.dataset?.workflowOperatorAccess;
+            if (!raw) return fallback;
+
+            try {
+                const parsed = JSON.parse(raw);
+                if (
+                    !parsed
+                    || typeof parsed !== 'object'
+                    || Array.isArray(parsed)
+                    || parsed.contract !== 'workflow_operator_access_v1'
+                    || typeof parsed.authenticated !== 'boolean'
+                    || !Array.isArray(parsed.capabilities)
+                    || !parsed.capabilities.every(
+                        value => typeof value === 'string'
+                    )
+                    || typeof parsed.can_execute_ballot_lens !== 'boolean'
+                    || parsed.principal_disclosed !== false
+                ) {
+                    return fallback;
+                }
+                return Object.freeze({
+                    contract: parsed.contract,
+                    authenticated: parsed.authenticated,
+                    capabilities: Object.freeze([...parsed.capabilities]),
+                    canExecuteBallotLens: (
+                        parsed.authenticated
+                        && parsed.can_execute_ballot_lens
+                    )
+                });
+            } catch {
+                return fallback;
+            }
+        }
+
+        renderOperatorAccess() {
+            const status = this.byId('workflow-operator-status');
+            const copy = this.byId('workflow-operator-copy');
+            const accessLink = this.byId('workflow-operator-access-link');
+            const operator = this.operatorAccess;
+
+            if (accessLink) {
+                accessLink.hidden = operator.authenticated;
+            }
+            if (status) {
+                status.textContent = !operator.authenticated
+                    ? 'Public view'
+                    : operator.canExecuteBallotLens
+                        ? 'Contributor Workbench'
+                        : 'Authenticated · view only';
+            }
+            if (copy) {
+                copy.textContent = !operator.authenticated
+                    ? 'Public task visibility is available now. Use Operator Access to enter the governed Workbench.'
+                    : operator.canExecuteBallotLens
+                        ? 'Ballot Lens handoff is available for eligible in-progress acquisition tasks. The server revalidates assignment, source trust, row version, and capability before execution.'
+                        : 'This authenticated session has no Workflow Ballot Lens execution capability. Public-safe Workflow visibility remains available.';
+            }
+        }
+
+        isUuid(value) {
+            return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+                .test(String(value ?? '').trim());
+        }
+
+        validateHandoff(payload) {
+            if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+                throw new Error('Invalid Workflow handoff response.');
+            }
+            const requiredKeys = [
+                'browser_payload_keys',
+                'can_execute_ballot_lens',
+                'contract',
+                'expected_row_version',
+                'principal_disclosed',
+                'source_url_disclosed',
+                'success',
+                'workflow_item_id',
+                'workflow_pass_id'
+            ].sort();
+            const actualKeys = Object.keys(payload).sort();
+            if (
+                requiredKeys.length !== actualKeys.length
+                || !requiredKeys.every(
+                    (key, index) => key === actualKeys[index]
+                )
+            ) {
+                throw new Error('Unexpected Workflow handoff response fields.');
+            }
+            if (
+                payload.success !== true
+                || payload.contract !== 'workflow_ballot_lens_handoff_v1'
+                || payload.can_execute_ballot_lens !== true
+                || payload.principal_disclosed !== false
+                || payload.source_url_disclosed !== false
+                || !this.isUuid(payload.workflow_item_id)
+                || !this.isUuid(payload.workflow_pass_id)
+                || !Number.isSafeInteger(payload.expected_row_version)
+                || payload.expected_row_version <= 0
+                || JSON.stringify(payload.browser_payload_keys) !== JSON.stringify([
+                    'workflow_item_id',
+                    'workflow_pass_id',
+                    'expected_row_version'
+                ])
+            ) {
+                throw new Error('Workflow handoff authority did not validate.');
+            }
+            return payload;
+        }
+
+        async openBallotLensHandoff(taskId, button) {
+            if (!this.operatorAccess.canExecuteBallotLens) return;
+            if (!this.isUuid(taskId)) {
+                this.setState(
+                    'error',
+                    'Workflow task identity could not be prepared for Ballot Lens.'
+                );
+                return;
+            }
+
+            if (button) button.disabled = true;
+            try {
+                const endpoint =
+                    `/api/workflow/v1/contributor/items/${encodeURIComponent(taskId)}/ballot-lens-handoff`;
+                const raw = await this.fetchJson(endpoint);
+                const handoff = this.validateHandoff(raw);
+
+                const target = new URL(
+                    this.ballotLensUrl,
+                    window.location.origin
+                );
+                target.searchParams.set(
+                    'workflow_item_id',
+                    handoff.workflow_item_id
+                );
+                target.searchParams.set(
+                    'workflow_pass_id',
+                    handoff.workflow_pass_id
+                );
+                target.searchParams.set(
+                    'expected_row_version',
+                    String(handoff.expected_row_version)
+                );
+                window.location.assign(target.toString());
+            } catch (error) {
+                if (button) button.disabled = false;
+                this.setState(
+                    'error',
+                    `Ballot Lens handoff unavailable: ${error.message}`
+                );
+            }
+        }
+
+        renderParticipation(task, cell) {
+            if (!cell) return;
+
+            if (!this.operatorAccess.authenticated) {
+                const state = document.createElement('span');
+                state.className = 'workflow-participation-state';
+                state.textContent = 'View only';
+                cell.appendChild(state);
+                return;
+            }
+
+            const acquisitionReady = (
+                task?.lifecycle_state === 'active'
+                && task?.current_stage === 'independent_acquisition'
+                && task?.stage_condition === 'in_progress'
+            );
+            if (
+                !this.operatorAccess.canExecuteBallotLens
+                || !acquisitionReady
+            ) {
+                const state = document.createElement('span');
+                state.className = 'workflow-participation-state';
+                state.textContent = this.operatorAccess.canExecuteBallotLens
+                    ? 'No parser action'
+                    : 'Authenticated · view only';
+                cell.appendChild(state);
+                return;
+            }
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'workflow-action-button';
+            button.textContent = 'Open in Ballot Lens';
+            button.addEventListener('click', () => {
+                this.openBallotLensHandoff(task?.id, button);
+            });
+            cell.appendChild(button);
+        }
+
         async fetchJson(path, signal = undefined) {
             const response = await fetch(path, {
                 method: 'GET',
+                credentials: 'same-origin',
                 headers: {
                     Accept: 'application/json'
                 },
@@ -382,10 +584,12 @@
                             ${this.escapeHtml(this.humanize(task.lifecycle_state))}
                         </span>
                     </td>
-                    <td>
-                        <span class="workflow-participation-state">View only</span>
-                    </td>
+                    <td class="workflow-participation-cell"></td>
                 `;
+                this.renderParticipation(
+                    task,
+                    tr.querySelector('.workflow-participation-cell')
+                );
                 tbody.appendChild(tr);
             }
 
@@ -438,6 +642,7 @@
                 this.renderStats(stats);
                 this.renderFacets(facets);
                 this.renderAuthority(items);
+                this.renderOperatorAccess();
                 this.renderItems(items);
                 this.renderFilterSummary();
 

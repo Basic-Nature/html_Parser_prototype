@@ -416,3 +416,84 @@ body {
         animation-iteration-count: 1 !important;
     }
 }
+
+/* W13D authenticated Workbench overlay. Public presentation remains intact. */
+.workflow-operator {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 24px;
+    align-items: center;
+    padding: 24px;
+    margin: 18px 0;
+    border: 1px solid var(--workflow-border);
+    border-radius: var(--workflow-radius);
+    background: var(--workflow-panel);
+}
+
+.workflow-operator h2 {
+    margin: 0;
+}
+
+.workflow-operator p {
+    max-width: 860px;
+    margin-bottom: 0;
+    color: var(--workflow-muted);
+    line-height: 1.55;
+}
+
+.workflow-operator-state {
+    display: grid;
+    gap: 6px;
+    min-width: 230px;
+    padding: 14px;
+    border: 1px solid var(--workflow-border);
+    border-radius: 10px;
+}
+
+.workflow-operator-state span {
+    color: var(--workflow-muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.workflow-action-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 7px 11px;
+    border: 1px solid var(--workflow-accent);
+    border-radius: 8px;
+    background: var(--workflow-accent);
+    color: var(--workflow-accent-text);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.workflow-action-button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.workflow-action-button:focus-visible {
+    outline: 3px solid color-mix(
+        in srgb,
+        var(--workflow-accent) 55%,
+        transparent
+    );
+    outline-offset: 3px;
+}
+
+@media (max-width: 980px) {
+    .workflow-operator {
+        grid-template-columns: 1fr;
+        align-items: start;
+    }
+
+    .workflow-operator-state {
+        min-width: 0;
+    }
+}

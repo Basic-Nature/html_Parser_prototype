@@ -334,6 +334,15 @@ from webapp.parser.services.workflow_publication import (
     WorkflowPublicationWriterFailure,
     publish_workflow_item,
 )
+from webapp.parser.services.workflow_ballot_lens_handoff import (
+    WorkflowBallotLensHandoffDenied,
+    project_workflow_ballot_lens_handoff,
+)
+from webapp.parser.services.workflow_operator_access import (
+    WORKFLOW_OPERATOR_ACCESS_CONTRACT,
+    WorkflowOperatorAccessError,
+    project_workflow_operator_access,
+)
 from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socket_handler
 from webapp.parser.url_parser import (
     parse_url_simple,
@@ -346,8 +355,10 @@ from webapp.parser.auth.capability_policy import (
 from webapp.parser.auth.workflow_runtime_authorization import (
     WorkflowRuntimeAuthorizationDenied,
     assert_workflow_runtime_capability,
+    resolve_workflow_roles_for_principal,
 )
 from webapp.parser.contracts.workflow_authorization import (
+    CAP_BALLOT_LENS_EXECUTE,
     CAP_DL1_CLAIM,
     CAP_DL1_SUBMIT,
     CAP_DL2_CLAIM,
@@ -6535,7 +6546,12 @@ def ballot_lens():
             else:
                 flash(saved_name or "Invalid file type or no file selected.", "danger")
         principal, _principal_source, _cert_meta = get_request_principal()
-        ballot_lens_trusted_controls = bool(principal)
+        ballot_lens_operator_access = _workflow_operator_access_projection(
+            principal
+        )
+        ballot_lens_trusted_controls = bool(
+            ballot_lens_operator_access.get("can_execute_ballot_lens")
+        )
         file_lists = {
             "input_files": [],
             "output_files": [],
@@ -6580,17 +6596,45 @@ def ballot_lens():
         print(traceback.format_exc())
         return "Internal Server Error", 500
 
+
+def _workflow_operator_access_projection(principal):
+    actor = str(principal or "").strip()
+    if not actor:
+        return {
+            "contract": WORKFLOW_OPERATOR_ACCESS_CONTRACT,
+            "authenticated": False,
+            "capabilities": [],
+            "can_execute_ballot_lens": False,
+            "principal_disclosed": False,
+        }
+
+    roles = resolve_workflow_roles_for_principal(actor)
+    try:
+        return project_workflow_operator_access(actor, roles)
+    except WorkflowOperatorAccessError:
+        return {
+            "contract": WORKFLOW_OPERATOR_ACCESS_CONTRACT,
+            "authenticated": True,
+            "capabilities": [],
+            "can_execute_ballot_lens": False,
+            "principal_disclosed": False,
+        }
+
+
 def worklist():
     """
-    Render the SMART Elections Worklist interface.
-    
-    Displays live Google Sheets worklist with DL1/DL2 standardization,
-    Pre-QC, QC1, QC2, and production status tracking.
+    Render the ElectionPulse Workflow public/read-only surface with an
+    authenticated capability-projected Workbench overlay when available.
     """
     try:
+        principal, _principal_source, _cert_meta = get_request_principal()
+        workflow_operator_access = _workflow_operator_access_projection(
+            principal
+        )
         return render_template(
             "worklist.html",
             static_version=os.environ.get("STATIC_VERSION", "v1"),
+            workflow_operator_access=workflow_operator_access,
         )
     except Exception:
         import traceback
@@ -8518,6 +8562,49 @@ def _workflow_reviewer_authority(required_capability: str):
     return _workflow_contributor_authority(required_capability)
 
 
+
+def api_workflow_v1_ballot_lens_handoff(item_id):
+    principal, denied = _workflow_contributor_authority(
+        CAP_BALLOT_LENS_EXECUTE
+    )
+    if denied is not None:
+        return denied
+
+    internal_roles = resolve_workflow_roles_for_principal(principal)
+    db_session = SessionLocal()
+    try:
+        payload = project_workflow_ballot_lens_handoff(
+            db_session,
+            item_id,
+            principal=principal,
+            internal_roles=internal_roles,
+            registry_path=URL_LIST_FILE,
+        )
+        db_session.rollback()
+        return jsonify(payload), 200
+    except WorkflowBallotLensHandoffDenied:
+        db_session.rollback()
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_ballot_lens_handoff_denied",
+            }
+        ), 403
+    except Exception:
+        db_session.rollback()
+        logger.exception(
+            "Workflow Ballot Lens handoff failed unexpectedly."
+        )
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_ballot_lens_handoff_unavailable",
+            }
+        ), 503
+    finally:
+        db_session.close()
+
+
 def api_workflow_v1_contributor_source(item_id):
     principal, denied = _workflow_contributor_authority(CAP_SOURCE_READ)
     if denied is not None:
@@ -9142,6 +9229,8 @@ app.config["_WORKFLOW_PUBLICATION_ROUTE_HANDLERS"] = {
 
 
 app.config["_WORKFLOW_CONTRIBUTOR_ROUTE_HANDLERS"] = {
+    "api_workflow_v1_ballot_lens_handoff":
+        api_workflow_v1_ballot_lens_handoff,
     "api_workflow_v1_contributor_source": api_workflow_v1_contributor_source,
     "api_workflow_v1_claim_first_pass": api_workflow_v1_claim_first_pass,
     "api_workflow_v1_submit_first_pass": api_workflow_v1_submit_first_pass,

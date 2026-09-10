@@ -30,6 +30,11 @@ import {
   type TrustedSourceSelection,
 } from '../services/trustedExecution';
 import {
+  clearWorkflowHandoffQuery,
+  readWorkflowHandoffQueryIntent,
+  type WorkflowHandoffQueryIntent,
+} from '../services/workflowHandoff';
+import {
   createInitialRunState,
   reduceRunState,
 } from '../state/runMachine';
@@ -131,8 +136,14 @@ export function AppShell({
   const trustedSelectionRef = useRef(trustedSelection);
   const sourceQueryHydratedRef = useRef(false);
   const initialSourceQueryIntentRef = useRef<SourceQueryIntent | null>(null);
+  const initialWorkflowHandoffIntentRef =
+    useRef<WorkflowHandoffQueryIntent | null>(null);
   if (initialSourceQueryIntentRef.current === null) {
     initialSourceQueryIntentRef.current = readSourceQueryIntent();
+  }
+  if (initialWorkflowHandoffIntentRef.current === null) {
+    initialWorkflowHandoffIntentRef.current =
+      readWorkflowHandoffQueryIntent();
   }
 
   const dispatch = useCallback((event: RunEvent) => {
@@ -185,6 +196,7 @@ export function AppShell({
     setSelectedSource(null);
     selectedSourceRef.current = null;
     replaceSourceQueryIntent(null);
+    clearWorkflowHandoffQuery();
     setTrustedSelection(null);
     trustedSelectionRef.current = null;
     dispatch({ type: 'RESET' });
@@ -198,6 +210,7 @@ export function AppShell({
   const handlePublicSelection = useCallback((
     source: PublicRegistrySource | null,
   ) => {
+    clearWorkflowHandoffQuery();
     setSubmitError(null);
     setPublicRuntimeResult(null);
     setSelectedSource(source);
@@ -268,6 +281,31 @@ export function AppShell({
       },
     });
   }, [dispatch]);
+
+  useEffect(() => {
+    const intent = initialWorkflowHandoffIntentRef.current;
+    if (!intent?.present) {
+      return;
+    }
+
+    if (
+      initialSourceQueryIntentRef.current?.present
+      || !bootstrap.trustedControls
+      || !intent.selection
+    ) {
+      clearWorkflowHandoffQuery();
+      return;
+    }
+
+    setActiveMode('worklist');
+    setSelectedSource(null);
+    selectedSourceRef.current = null;
+    replaceSourceQueryIntent(null);
+    handleTrustedSelection(intent.selection);
+  }, [
+    bootstrap.trustedControls,
+    handleTrustedSelection,
+  ]);
 
   const runEligible = (
     activeMode === 'public_registry'

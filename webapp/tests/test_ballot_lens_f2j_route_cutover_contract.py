@@ -39,7 +39,14 @@ def test_j1_cutover_preserves_trusted_upload_and_file_list_gates():
     assert '_guarded_ingestion_allowed("ballot_lens_upload")' in body
     assert "_save_uploaded_file(" in body
     assert "get_request_principal()" in body
-    assert "ballot_lens_trusted_controls = bool(principal)" in body
+    assert (
+        "ballot_lens_operator_access = "
+        "_workflow_operator_access_projection("
+        in body
+    )
+    assert '"can_execute_ballot_lens"' in body
+    assert "ballot_lens_trusted_controls = bool(" in body
+    assert "ballot_lens_trusted_controls = bool(principal)" not in body
     assert '"input_files": []' in body
     assert '"output_files": []' in body
     assert '"uploaded_files": []' in body

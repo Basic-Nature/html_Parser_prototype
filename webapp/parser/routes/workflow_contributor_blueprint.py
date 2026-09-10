@@ -39,6 +39,17 @@ def create_workflow_contributor_blueprint() -> Blueprint:
         )
 
     @bp.route(
+        "/api/workflow/v1/contributor/items/<uuid:item_id>/ballot-lens-handoff",
+        methods=["GET"],
+        endpoint="api_workflow_v1_ballot_lens_handoff",
+    )
+    def ballot_lens_handoff_route(item_id):
+        return _call_handler(
+            "api_workflow_v1_ballot_lens_handoff",
+            item_id=item_id,
+        )
+
+    @bp.route(
         "/api/workflow/v1/contributor/items/<uuid:item_id>/passes/1/claim",
         methods=["POST"],
         endpoint="api_workflow_v1_claim_first_pass",
