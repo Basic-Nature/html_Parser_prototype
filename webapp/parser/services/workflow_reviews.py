@@ -828,3 +828,178 @@ def record_workflow_qc_review(
         "already_reviewed": False,
         "committed": False,
     }
+
+
+def load_workflow_publication_approval_authority(
+    session: Session,
+    item_id: UUID | str,
+    *,
+    require_ready_state: bool = True,
+) -> dict[str, Any]:
+    """Reconstruct the exact QC-approved publication authority server-side.
+
+    This is a read/lock helper for the publication orchestrator. It does not
+    mutate Workflow or canonical state and never calls the canonical writer.
+    """
+    normalized_item = _uuid(item_id, name="item_id")
+    item = session.execute(
+        select(WorkflowItem)
+        .where(WorkflowItem.id == normalized_item)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if item is None:
+        raise WorkflowQCReviewConflict("Workflow item was not found.")
+
+    dl1, dl2 = _load_current_submitted_pair(session, item)
+    comparison = _load_exact_comparison(session, item, dl1, dl2)
+    selected, selection_reason = _derive_selected_pass(
+        session,
+        item,
+        dl1,
+        dl2,
+        comparison,
+    )
+    qc1 = _load_approved_qc1_authority(
+        session,
+        item,
+        dl1=dl1,
+        dl2=dl2,
+        comparison=comparison,
+        derived_selected=selected,
+    )
+
+    qc2_rows = session.execute(
+        select(WorkflowReview)
+        .where(
+            WorkflowReview.workflow_item_id == item.id,
+            WorkflowReview.review_stage == "qc2",
+        )
+        .with_for_update()
+    ).scalars().all()
+    if len(qc2_rows) != 1:
+        raise WorkflowQCReviewConflict(
+            "Publication requires exactly one QC2 review authority."
+        )
+    qc2 = qc2_rows[0]
+    qc1_principal = str(qc1.reviewer_principal or "").strip()
+    qc2_principal = str(qc2.reviewer_principal or "").strip()
+    dl1_principal = str(dl1.assigned_principal or "").strip()
+    dl2_principal = str(dl2.assigned_principal or "").strip()
+    if (
+        qc2.decision != "approved"
+        or not qc2_principal
+        or qc2_principal in {dl1_principal, dl2_principal, qc1_principal}
+        or qc2.selected_pass_id != selected.id
+        or qc2.selected_staging_batch_id != selected.staging_batch_id
+        or not str(qc2.checklist_version or "").strip()
+        or not isinstance(qc2.checklist_result, dict)
+        or not qc2.checklist_result
+        or not all(value is True for value in qc2.checklist_result.values())
+        or (qc2.reason_codes or []) != []
+        or qc2.reviewed_at is None
+    ):
+        raise WorkflowQCReviewConflict(
+            "Publication requires one approved QC2 review that exactly "
+            "inherits the approved QC1 selected pass and staging authority."
+        )
+
+    qc2_events = session.execute(
+        select(WorkflowEvent).where(
+            WorkflowEvent.workflow_item_id == item.id,
+            WorkflowEvent.related_review_id == qc2.id,
+            WorkflowEvent.event_type == "qc2_review_approved",
+        )
+    ).scalars().all()
+    if len(qc2_events) != 1:
+        raise WorkflowQCReviewConflict(
+            "Publication requires one exact QC2 approval audit event."
+        )
+    qc2_event = qc2_events[0]
+    metadata = (
+        qc2_event.event_metadata
+        if isinstance(qc2_event.event_metadata, dict)
+        else {}
+    )
+    if (
+        qc2_event.actor_type != "principal"
+        or qc2_event.actor_principal != qc2_principal
+        or qc2_event.actor_service is not None
+        or qc2_event.stage != "qc2_review"
+        or qc2_event.related_pass_id != selected.id
+        or qc2_event.related_staging_batch_id != selected.staging_batch_id
+        or qc2_event.related_comparison_id != comparison.id
+        or metadata.get("contract") != WORKFLOW_QC_REVIEW_CONTRACT
+        or metadata.get("review_stage") != "qc2"
+        or metadata.get("decision") != "approved"
+        or metadata.get("selected_pass_id") != str(selected.id)
+        or metadata.get("selected_staging_batch_id")
+        != str(selected.staging_batch_id)
+        or metadata.get("qc1_review_id") != str(qc1.id)
+        or metadata.get("selection_reason")
+        != "approved_qc1_review_inherited"
+        or metadata.get("canonical_writer_invoked") is not False
+        or metadata.get("client_selected_pass_authority") is not False
+        or metadata.get("mixed_side_value_merge") is not False
+        or metadata.get("direct_value_edit") is not False
+    ):
+        raise WorkflowQCReviewConflict(
+            "QC2 approval audit provenance does not reconcile for publication."
+        )
+
+    open_discrepancies = session.execute(
+        select(WorkflowDiscrepancy.id).where(
+            WorkflowDiscrepancy.workflow_item_id == item.id,
+            WorkflowDiscrepancy.comparison_id == comparison.id,
+            WorkflowDiscrepancy.resolution_status == "open",
+        )
+    ).all()
+    if open_discrepancies:
+        raise WorkflowQCReviewConflict(
+            "Publication requires zero open discrepancies."
+        )
+
+    ready_state = (
+        "ready_for_publication",
+        "publication_handoff",
+        "ready",
+    )
+    published_state = (
+        "published",
+        "publication_handoff",
+        "complete",
+    )
+    current_state = (
+        item.lifecycle_state,
+        item.current_stage,
+        item.stage_condition,
+    )
+    if require_ready_state:
+        if current_state != ready_state or item.canonical_race_id is not None:
+            raise WorkflowQCReviewConflict(
+                "Workflow item is not exactly ready for publication handoff."
+            )
+    elif current_state not in {ready_state, published_state}:
+        raise WorkflowQCReviewConflict(
+            "Workflow item is neither publication-ready nor published."
+        )
+    elif current_state == published_state and item.canonical_race_id is None:
+        raise WorkflowQCReviewConflict(
+            "Published Workflow item is missing canonical linkage."
+        )
+
+    return {
+        "item": item,
+        "dl1": dl1,
+        "dl2": dl2,
+        "comparison": comparison,
+        "selected_pass": selected,
+        "selection_reason": selection_reason,
+        "qc1_review": qc1,
+        "qc2_review": qc2,
+        "qc2_event": qc2_event,
+        "dl1_principal": dl1_principal,
+        "dl2_principal": dl2_principal,
+        "qc1_principal": qc1_principal,
+        "qc2_principal": qc2_principal,
+        "open_discrepancy_count": 0,
+    }

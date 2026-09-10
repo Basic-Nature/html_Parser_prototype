@@ -298,6 +298,9 @@ from webapp.parser.routes.workflow_blueprint import create_workflow_v1_blueprint
 from webapp.parser.routes.workflow_reviewer_blueprint import (
     create_workflow_reviewer_blueprint,
 )
+from webapp.parser.routes.workflow_publication_blueprint import (
+    create_workflow_publication_blueprint,
+)
 from webapp.parser.services.workflow_reader import (
     WORKFLOW_AUTHORITY,
     WorkflowReadValidationError,
@@ -322,6 +325,15 @@ from webapp.parser.services.workflow_reviews import (
     WorkflowQCReviewError,
     record_workflow_qc_review,
 )
+from webapp.parser.services.workflow_canonical_writer import (
+    build_workflow_canonical_writer,
+)
+from webapp.parser.services.workflow_publication import (
+    WorkflowPublicationError,
+    WorkflowPublicationLinkFailure,
+    WorkflowPublicationWriterFailure,
+    publish_workflow_item,
+)
 from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socket_handler
 from webapp.parser.url_parser import (
     parse_url_simple,
@@ -343,6 +355,7 @@ from webapp.parser.contracts.workflow_authorization import (
     CAP_DISCREPANCY_RESOLVE,
     CAP_QC1_REVIEW,
     CAP_QC2_REVIEW,
+    CAP_PUBLICATION_HANDOFF,
     CAP_SOURCE_READ,
 )
 from webapp.parser.utils.cert_utils import extract_client_principal
@@ -479,6 +492,15 @@ WORKFLOW_REVIEWER_MUTATIONS_ENABLED = (
     os.environ.get("WORKFLOW_REVIEWER_MUTATIONS_ENABLED", "false")
     .strip().lower() in {"1", "true", "yes", "on"}
 )
+
+# Canonical publication mutation authority is deliberately separate from
+# contributor and reviewer mutation boundaries and remains fail-closed until an
+# explicit production activation checkpoint.
+WORKFLOW_PUBLICATION_MUTATIONS_ENABLED = (
+    os.environ.get("WORKFLOW_PUBLICATION_MUTATIONS_ENABLED", "false")
+    .strip().lower() in {"1", "true", "yes", "on"}
+)
+WORKFLOW_PUBLICATION_RUNTIME_ALLOWLIST = "WORKFLOW_PUBLICATION_OPERATOR_PRINCIPALS"
 
 # Local, non-DB monitoring log for DB usage/events
 DB_MONITOR_FILE = LOG_DIR / "db_monitor.jsonl"
@@ -1439,6 +1461,24 @@ except Exception as exc:
         "level": "ERROR",
         "type": "status",
         "message": f"Workflow reviewer routes blueprint registration failed: {exc}",
+        "session_id": None,
+    })
+
+
+# Register protected Workflow publication-operator authority route.
+try:
+    app.register_blueprint(create_workflow_publication_blueprint())
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Workflow publication route blueprint registered",
+        "session_id": None,
+    })
+except Exception as exc:
+    logger.error({
+        "level": "ERROR",
+        "type": "status",
+        "message": f"Workflow publication route blueprint registration failed: {exc}",
         "session_id": None,
     })
 
@@ -9000,6 +9040,91 @@ def api_workflow_v1_submit_qc2_review(item_id):
     finally:
         db_session.close()
 
+_WORKFLOW_PUBLICATION_REQUEST_KEYS = frozenset({"expected_row_version"})
+_WORKFLOW_PUBLICATION_ARTIFACT_LOADER = "_WORKFLOW_PUBLICATION_ARTIFACT_LOADER"
+_WORKFLOW_PUBLICATION_PAYLOAD_ADAPTER = "_WORKFLOW_PUBLICATION_PAYLOAD_ADAPTER"
+
+
+def _workflow_publication_authority(required_capability: str):
+    # Publication authority remains provider-neutral and derives only from the
+    # dedicated server-owned publication-operator allowlist/capability mapping.
+    return _workflow_contributor_authority(required_capability)
+
+
+def api_workflow_v1_publication_handoff(item_id):
+    principal, denied = _workflow_publication_authority(
+        CAP_PUBLICATION_HANDOFF
+    )
+    if denied is not None:
+        return denied
+    if not WORKFLOW_PUBLICATION_MUTATIONS_ENABLED:
+        return jsonify({
+            "success": False,
+            "error": "workflow_publication_mutations_disabled",
+        }), 503
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({
+            "success": False,
+            "error": "workflow_publication_request_invalid",
+        }), 400
+    body_keys = frozenset(body.keys())
+    if body_keys != _WORKFLOW_PUBLICATION_REQUEST_KEYS:
+        return jsonify({
+            "success": False,
+            "error": "workflow_publication_request_invalid",
+            "missing_keys": sorted(
+                _WORKFLOW_PUBLICATION_REQUEST_KEYS - body_keys
+            ),
+            "unexpected_keys": sorted(
+                body_keys - _WORKFLOW_PUBLICATION_REQUEST_KEYS
+            ),
+        }), 400
+
+    artifact_loader = app.config.get(_WORKFLOW_PUBLICATION_ARTIFACT_LOADER)
+    payload_adapter = app.config.get(_WORKFLOW_PUBLICATION_PAYLOAD_ADAPTER)
+    if not callable(artifact_loader) or not callable(payload_adapter):
+        return jsonify({
+            "success": False,
+            "error": "workflow_publication_dependencies_unconfigured",
+        }), 503
+
+    try:
+        payload = publish_workflow_item(
+            item_id,
+            principal=principal,
+            expected_row_version=body["expected_row_version"],
+            workflow_session_factory=SessionLocal,
+            canonical_writer=build_workflow_canonical_writer(SessionLocal),
+            normalized_artifact_loader=artifact_loader,
+            comparison_payload_adapter=payload_adapter,
+        )
+        return jsonify(payload), 200
+    except WorkflowPublicationWriterFailure as exc:
+        return jsonify(exc.payload), exc.status_code
+    except WorkflowPublicationLinkFailure as exc:
+        return jsonify({
+            "success": False,
+            "error": exc.code,
+            "message": str(exc),
+            "idempotency_key": exc.idempotency_key,
+            "canonical_result": exc.canonical_result,
+            "recovery": "idempotent_writer_replay_then_workflow_link_retry",
+        }), exc.status_code
+    except WorkflowPublicationError as exc:
+        return jsonify({
+            "success": False,
+            "error": exc.code,
+            "message": str(exc),
+        }), exc.status_code
+    except Exception:
+        logger.exception("Workflow publication handoff failed unexpectedly.")
+        return jsonify({
+            "success": False,
+            "error": "workflow_publication_internal_error",
+        }), 503
+
 
 app.config["_WORKFLOW_REVIEWER_ROUTE_HANDLERS"] = {
     "api_workflow_v1_resolve_discrepancies":
@@ -9008,6 +9133,11 @@ app.config["_WORKFLOW_REVIEWER_ROUTE_HANDLERS"] = {
         api_workflow_v1_submit_qc1_review,
     "api_workflow_v1_submit_qc2_review":
         api_workflow_v1_submit_qc2_review,
+}
+
+app.config["_WORKFLOW_PUBLICATION_ROUTE_HANDLERS"] = {
+    "api_workflow_v1_publication_handoff":
+        api_workflow_v1_publication_handoff,
 }
 
 
