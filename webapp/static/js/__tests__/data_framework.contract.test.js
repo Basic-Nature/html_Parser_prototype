@@ -47,8 +47,6 @@ describe('data_framework bootstrap contract', () => {
       '<button id="nextPageBtn" type="button"></button>',
       '<button id="lastPageBtn" type="button"></button>',
       '<div id="pageInfo"></div>',
-      '<div id="dataFrameworkReadOnlyBanner" class="d-none"></div>',
-      '<div id="dataFrameworkReadOnlyMessage"></div>',
       '<div id="warehousePriorityStatus"></div>',
       '<div id="warehousePriorityMeta"></div>',
       '<div id="curatedStatus"></div>',
@@ -75,6 +73,24 @@ describe('data_framework bootstrap contract', () => {
             votes: '45230',
           },
         ]);
+      }
+      if (target.includes('/api/data_framework/canonical_facets')) {
+        return jsonResponse({
+          contract: 'canonical_facets_v1',
+          data_source: 'canonical',
+          authority: 'canonical_production',
+          filter_model: 'bidirectional_faceted',
+          semantic_contract: {
+            facet_mode: 'self_excluding',
+            lineage: 'not_inferred',
+            null: 'preserved_null',
+            no_warehouse_fallback: true,
+          },
+          years: ['2024'],
+          states: ['CA'],
+          jurisdictions: [],
+          contests: ['President'],
+        });
       }
       return jsonResponse({ rows: [] });
     });
@@ -106,24 +122,29 @@ describe('data_framework bootstrap contract', () => {
     expect(urls.some((u) => u.includes('/api/ballotlens-database'))).toBe(true);
   });
 
-  test('enters read-only mode when auth-protected feed returns 401', async () => {
+  test('scopes a priority 401 without suppressing public canonical or curated reads', async () => {
     loadDataFrameworkScript();
     document.dispatchEvent(new Event('DOMContentLoaded'));
-    await flushAsync();
 
-    const banner = document.getElementById('dataFrameworkReadOnlyBanner');
-    const message = document.getElementById('dataFrameworkReadOnlyMessage');
+    // Public Analysis and protected/bootstrap feeds run independently. Do not
+    // encode an event-loop-turn count into the contract; wait for the public
+    // canonical read and Curated request to settle/appear.
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      const urls = mockFetchInstance.mock.calls.map((args) => String(args[0] || ''));
+      const analysisReady =
+        document.getElementById('vizPreviewStatus').dataset.uiState === 'ready';
+      const curatedRequested =
+        urls.some((u) => u.includes('/api/data_framework/curated'));
+      if (analysisReady && curatedRequested) break;
+      await flushAsync();
+    }
 
-    expect(banner.classList.contains('d-none')).toBe(false);
-    expect((message.textContent || '').toLowerCase()).toContain('read-only mode');
-    expect(banner.dataset.uiState).toBe('restricted');
+    const urls = mockFetchInstance.mock.calls.map((args) => String(args[0] || ''));
     expect(document.getElementById('warehousePriorityStatus').dataset.uiState).toBe('restricted');
-    expect(document.getElementById('curatedStatus').dataset.uiState).toBe('restricted');
-
-    // A protected priority-feed 401 does not make the independently loaded
-    // public Canonical Production Analysis unavailable. This fixture returns
-    // canonical rows successfully, so its final state must be ready.
     expect(document.getElementById('vizPreviewStatus').dataset.uiState).toBe('ready');
+    expect(document.getElementById('curatedStatus').dataset.uiState).not.toBe('restricted');
+    expect(urls.some((u) => u.includes('/api/custom_warehouse'))).toBe(true);
+    expect(urls.some((u) => u.includes('/api/data_framework/curated'))).toBe(true);
   });
 
   test('uses cached warehouse snapshot when priority endpoint is unavailable', async () => {
@@ -437,7 +458,7 @@ describe('data_framework bootstrap contract', () => {
     const css = fs.readFileSync(cssPath, 'utf8');
 
     expect(src).toContain("const UI_STATES = new Set([");
-    ['idle', 'loading', 'ready', 'empty', 'restricted', 'error'].forEach(state => {
+    ['idle', 'loading', 'ready', 'empty', 'partial', 'stale', 'restricted', 'error'].forEach(state => {
       expect(src).toContain(`'${state}'`);
       expect(css).toContain(`[data-ui-state="${state}"]`);
     });
@@ -459,7 +480,6 @@ describe('data_framework bootstrap contract', () => {
       'vizPreviewStatus',
       'warehousePriorityStatus',
       'tableStatus',
-      'dataFrameworkReadOnlyBanner',
     ].forEach(id => {
       const match = html.match(new RegExp(`<[^>]+id="${id}"[^>]+>`));
       expect(match).not.toBeNull();
@@ -468,11 +488,19 @@ describe('data_framework bootstrap contract', () => {
       expect(match[0]).toContain('aria-atomic="true"');
     });
 
+    expect(html).not.toContain('id="dataFrameworkReadOnlyBanner"');
+    const operatorRestriction =
+      html.match(/<[^>]+id="dataFrameworkUploadRestricted"[^>]+>/);
+    expect(operatorRestriction).not.toBeNull();
+    expect(operatorRestriction[0]).toContain('data-ui-state="restricted"');
+    expect(operatorRestriction[0]).toContain('aria-live="polite"');
+
     // Existing authority semantics remain in place.
     expect(src).toContain('const displayValue = v => (v == null ? \'—\' : String(v));');
     expect(src).toContain("const exportValue = v => (v == null ? 'NULL' : String(v));");
     expect(src).toContain('if (isAuthForbiddenStatus(response.status))');
-    expect(src).toContain('enterAuthRestrictedMode(authReason');
+    expect(src).toMatch(/enterSurfaceRestrictedMode\(\s*restrictionSurface,/);
+    expect(src).not.toContain('authRestrictedMode');
     expect(src).toContain("payload.authority === 'canonical_production'");
     expect(src).not.toContain(
       'Read-only mode: authenticate to load Canonical Record data.'
@@ -653,4 +681,37 @@ describe('data_framework bootstrap contract', () => {
     expect(src).toContain('renderCuratedDetail(null, { syncSourceQuery: false });');
     expect(src).toContain('renderCuratedDetail(items[0], { syncSourceQuery: false });');
   });
+
+  test('W14C preserves all canonical selector universes and promotes bounded/cache states', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const scriptPath = path.join(__dirname, '..', 'data_framework.js');
+    const src = fs.readFileSync(scriptPath, 'utf8');
+
+    const countyStart = src.indexOf('function updateVizCounties()');
+    const countyEnd = src.indexOf('function updateTopRaces()', countyStart);
+    const countyBlock = src.slice(countyStart, countyEnd);
+
+    const contestStart = src.indexOf('function updateTopRaces()');
+    const contestEnd = src.indexOf('function ensureVizSelectionHasData()', contestStart);
+    const contestBlock = src.slice(contestStart, contestEnd);
+
+    expect(countyBlock).toContain('canonicalFacetUniversePayload');
+    expect(countyBlock).toContain('universePayload.jurisdictions');
+    expect(countyBlock).toContain('facetPayload.jurisdictions');
+    expect(countyBlock).toContain('replaceCanonicalOptions(');
+    expect(countyBlock).not.toContain('setSelectOptions(el.vizCounty');
+
+    expect(contestBlock).toContain('canonicalFacetUniversePayload');
+    expect(contestBlock).toContain('universePayload.contests');
+    expect(contestBlock).toContain('facetPayload.contests');
+    expect(contestBlock).toContain('replaceCanonicalOptions(');
+    expect(contestBlock).not.toContain('setSelectOptions(el.vizContest');
+
+    expect(src).toContain("fromCache ? 'stale' : 'ready'");
+    expect(src).toMatch(/API cap reached; totals may be partial`,\s*'partial'/);
+    expect(src).toMatch(/API cap reached, result may be partial\.`,\s*'partial'/);
+  });
+
+
 });

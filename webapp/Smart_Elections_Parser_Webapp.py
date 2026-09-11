@@ -343,6 +343,9 @@ from webapp.parser.services.workflow_operator_access import (
     WorkflowOperatorAccessError,
     project_workflow_operator_access,
 )
+from webapp.parser.services.data_framework_operator_access import (
+    resolve_data_framework_operator_access,
+)
 from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socket_handler
 from webapp.parser.url_parser import (
     parse_url_simple,
@@ -4214,7 +4217,16 @@ app.config["_URL_LIBRARY_ROUTE_HANDLERS"] = {
 }
 
 def data_framework():
-    return render_template("data_framework.html", data_api_url=DATA_API_URL)
+    principal, principal_source, _ = get_request_principal()
+    operator_access = resolve_data_framework_operator_access(
+        principal,
+        principal_source,
+    )
+    return render_template(
+        "data_framework.html",
+        data_api_url=DATA_API_URL,
+        data_framework_operator_access=operator_access,
+    )
 
 
 def _collect_data_framework_scaffold(limit: int = 100) -> dict:

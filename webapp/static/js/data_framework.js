@@ -124,8 +124,6 @@ document.addEventListener('DOMContentLoaded', () => {
     ghostPanelBody: document.getElementById('ghostPanelBody'),
     pipelineSteps: document.getElementById('uploadPipelineSteps'),
     pipelineDetail: document.getElementById('uploadPipelineDetail'),
-    readOnlyBanner: document.getElementById('dataFrameworkReadOnlyBanner'),
-    readOnlyMessage: document.getElementById('dataFrameworkReadOnlyMessage'),
     evidenceContextBar: document.getElementById('evidenceContextBar'),
     evidenceContextTitle: document.getElementById('evidenceContextTitle'),
     evidenceContextScope: document.getElementById('evidenceContextScope'),
@@ -211,9 +209,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let previewMode = 'idle';
   let previewTimer = null;
   let priorityTimer = null;
-  let authRestrictedMode = false;
-  let _authRestrictionReason = '';
-  let authRestrictionNotified = false;
   let canonicalRecordBaseStatus = {
     tone: 'info',
     state: 'idle',
@@ -296,6 +291,7 @@ document.addEventListener('DOMContentLoaded', () => {
   /**
    * @typedef {Object} FetchRetryOptions
    * @property {string=} authReason
+   * @property {string=} restrictionSurface
    * @property {number=} retries
    * @property {number=} baseDelayMs
    * @property {Record<string, string>=} headers
@@ -307,6 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
    */
   async function fetchJsonWithRetry(url, {
     authReason,
+    restrictionSurface = null,
     retries = 2,
     baseDelayMs = 450,
     headers = { 'Accept': 'application/json' },
@@ -320,7 +317,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const response = await fetch(url, { headers, signal });
         lastStatus = response.status;
         if (isAuthForbiddenStatus(response.status)) {
-          enterAuthRestrictedMode(authReason || 'Authentication required for protected Data Framework endpoints.');
+          enterSurfaceRestrictedMode(
+            restrictionSurface,
+            authReason || 'Authentication required for this Data Framework operation.'
+          );
           return { ok: false, authBlocked: true, status: response.status, data: null, error: 'auth_forbidden' };
         }
 
@@ -362,47 +362,24 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
-  function enterAuthRestrictedMode(reason = 'Authentication required for protected Data Framework endpoints.') {
-    authRestrictedMode = true;
-    _authRestrictionReason = reason;
-    if (el.readOnlyBanner) {
-      if (el.readOnlyMessage) {
-        el.readOnlyMessage.textContent = `Read-only mode: ${reason}`;
-      }
-      el.readOnlyBanner.classList.remove('d-none');
-      setUiState(el.readOnlyBanner, 'restricted');
+  function enterSurfaceRestrictedMode(
+    surface,
+    reason = 'Authentication required for this Data Framework operation.'
+  ) {
+    const key = String(surface || 'operation').trim() || 'operation';
+    const message = String(reason || 'Authentication required.');
+    if (key === 'priority') {
+      setPriorityStatus(message, 'info', 'restricted');
+    } else if (key === 'curated') {
+      setStatusText(el.curatedStatus, message, 'restricted');
+    } else if (key === 'analysis') {
+      setPreviewStatus(message, 'restricted');
+    } else if (key === 'canonical-record') {
+      setCanonicalRecordBaseStatus('info', message, 'restricted');
+    } else if (key === 'scaffold') {
+      setStatus(el.status, 'info', message, 'restricted');
     }
-    if (previewTimer) {
-      window.clearInterval(previewTimer);
-      previewTimer = null;
-    }
-    if (priorityTimer) {
-      window.clearInterval(priorityTimer);
-      priorityTimer = null;
-    }
-    previewActive = false;
-    previewMode = 'idle';
-    setPreviewState(false);
-    setPreviewStatus(
-      'Read-only mode: authenticate to enable curated and canonical analysis feeds.',
-      'restricted'
-    );
-    setPriorityStatus(
-      'Read-only mode: priority tracker requires authentication.',
-      'info',
-      'restricted'
-    );
-    if (el.curatedStatus) {
-      setStatusText(
-        el.curatedStatus,
-        'Read-only mode: authenticate to load curated datasets.',
-        'restricted'
-      );
-    }
-    if (!authRestrictionNotified) {
-      showInfoToast(reason);
-      authRestrictionNotified = true;
-    }
+    return key;
   }
 
   // ---------- Utilities ----------
@@ -582,6 +559,8 @@ document.addEventListener('DOMContentLoaded', () => {
     'loading',
     'ready',
     'empty',
+    'partial',
+    'stale',
     'restricted',
     'error'
   ]);
@@ -876,7 +855,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setPriorityStatus(
       statusText,
       payload.missing_total ? 'info' : 'ok',
-      'ready'
+      fromCache ? 'stale' : 'ready'
     );
     const baseMeta = formatPriorityMeta(payload);
     const suffix = fromCache ? ' | Priority metadata: cached snapshot' : '';
@@ -886,13 +865,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function fetchPriorityStatus() {
     if (!priorityUrl) return;
-    if (authRestrictedMode) return;
     try {
       const url = new URL(priorityUrl, window.location.origin);
       if (priorityState) url.searchParams.set('state', priorityState);
       if (priorityYear) url.searchParams.set('year', priorityYear);
       const result = await fetchJsonWithRetry(url.toString(), {
         authReason: 'Authentication required for Data Framework priority and preview APIs.',
+        restrictionSurface: 'priority',
         retries: 2
       });
       if (result.authBlocked) return;
@@ -2048,6 +2027,7 @@ document.addEventListener('DOMContentLoaded', () => {
       buildCanonicalFacetUrl(getCanonicalRecordFacetFilters()),
       {
         authReason: 'Authentication required for Canonical Record facets.',
+        restrictionSurface: 'canonical-record',
         retries: 2,
         signal: canonicalRecordFacetAbortController.signal,
       }
@@ -2076,6 +2056,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const result = await fetchJsonWithRetry(buildCanonicalFacetUrl(filters), {
       authReason: 'Authentication required for canonical Data Framework facets.',
+        restrictionSurface: 'analysis',
       retries: 2,
       signal: canonicalFacetAbortController.signal,
     });
@@ -2160,20 +2141,61 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateVizCounties() {
-    const scopeRows = getRowsForYearState(vizRows, vizYear, vizState);
-    const computedCounties = getUniqueCountyValues(scopeRows, row => getVizJurisdictionName(row));
-    const counties = computedCounties;
-    if (el.vizCounty instanceof HTMLSelectElement) {
-      vizCounty = setSelectOptions(el.vizCounty, counties, vizCounty, true, 'All jurisdictions');
-    } else if (!counties.includes(vizCounty)) {
-      vizCounty = '';
+    // Canonical facets own jurisdiction selector validity. Bounded result rows
+    // may render data but cannot collapse the canonical jurisdiction universe.
+    const facetPayload = isCanonicalFacetPayload(canonicalFacetPayload)
+      ? canonicalFacetPayload
+      : canonicalFacetUniversePayload;
+    const universePayload = isCanonicalFacetPayload(canonicalFacetUniversePayload)
+      ? canonicalFacetUniversePayload
+      : facetPayload;
+
+    if (
+      el.vizCounty instanceof HTMLSelectElement
+      && isCanonicalFacetPayload(facetPayload)
+      && isCanonicalFacetPayload(universePayload)
+    ) {
+      const universeJurisdictions = canonicalJurisdictionOptions(
+        universePayload.jurisdictions
+      );
+      const availableJurisdictions = canonicalJurisdictionOptions(
+        facetPayload.jurisdictions
+      );
+      vizCounty = replaceCanonicalOptions(
+        el.vizCounty,
+        universeJurisdictions,
+        availableJurisdictions,
+        vizCounty,
+        'All jurisdictions',
+        entry => entry.name,
+        entry => entry.types.length
+          ? `${entry.name} — ${entry.types.join(' / ')}`
+          : entry.name,
+        (option, entry) => {
+          option.dataset.jurisdictionTypes = entry.types.join('|');
+        }
+      );
+    } else if (!(el.vizCounty instanceof HTMLSelectElement)) {
+      const scopeRows = getRowsForYearState(vizRows, vizYear, vizState);
+      const counties = getUniqueCountyValues(
+        scopeRows,
+        row => getVizJurisdictionName(row)
+      );
+      if (!counties.includes(vizCounty)) {
+        vizCounty = '';
+      }
     }
 
     updateTopRaces();
   }
 
   function updateTopRaces() {
-    const contestScopeRows = getRowsForYearStateCounty(vizRows, vizYear, vizState, vizCounty);
+    const contestScopeRows = getRowsForYearStateCounty(
+      vizRows,
+      vizYear,
+      vizState,
+      vizCounty
+    );
     const fallbackScopeRows = contestScopeRows.length
       ? contestScopeRows
       : getRowsForYearState(vizRows, vizYear, vizState);
@@ -2188,12 +2210,33 @@ document.addEventListener('DOMContentLoaded', () => {
     const contestsByVotes = Object.entries(contestTotals)
       .sort((a, b) => b[1] - a[1])
       .map(entry => entry[0]);
-    const contestOptions = contestsByVotes;
 
-    if (el.vizContest instanceof HTMLSelectElement) {
-      vizContest = setSelectOptions(el.vizContest, contestOptions, vizContest);
-    } else if (!contestOptions.includes(vizContest)) {
-      vizContest = contestOptions[0] || '';
+    // Canonical facets own contest selector validity and availability.
+    const facetPayload = isCanonicalFacetPayload(canonicalFacetPayload)
+      ? canonicalFacetPayload
+      : canonicalFacetUniversePayload;
+    const universePayload = isCanonicalFacetPayload(canonicalFacetUniversePayload)
+      ? canonicalFacetUniversePayload
+      : facetPayload;
+
+    if (
+      el.vizContest instanceof HTMLSelectElement
+      && isCanonicalFacetPayload(facetPayload)
+      && isCanonicalFacetPayload(universePayload)
+    ) {
+      vizContest = replaceCanonicalOptions(
+        el.vizContest,
+        universePayload.contests,
+        facetPayload.contests,
+        vizContest,
+        'All contests',
+        value => String(value),
+        value => String(value)
+      );
+    } else if (!(el.vizContest instanceof HTMLSelectElement)) {
+      if (!contestsByVotes.includes(vizContest)) {
+        vizContest = contestsByVotes[0] || '';
+      }
     }
 
     const stateScopeRows = getRowsForYearState(vizRows, vizYear, vizState);
@@ -2650,7 +2693,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   function startPreviewCycle(mode = 'idle') {
-    if (authRestrictedMode) return;
     if (vizInteractionMode !== VIZ_INTERACTION_PREVIEW) return;
     previewActive = true;
     previewMode = mode;
@@ -2827,7 +2869,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function fetchCuratedDatasets() {
     if (!curatedUrl) return;
-    if (authRestrictedMode) return;
     setStatusText(
       el.curatedStatus,
       'Loading curated datasets...',
@@ -2835,6 +2876,7 @@ document.addEventListener('DOMContentLoaded', () => {
     );
     const result = await fetchJsonWithRetry(curatedUrl, {
       authReason: 'Authentication required for curated datasets and preview feeds.',
+        restrictionSurface: 'curated',
       retries: 2
     });
     if (result.authBlocked) {
@@ -3385,6 +3427,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const result = await fetchJsonWithRetry(scaffoldJsonUrl + '?limit=200', {
           authReason: 'Authentication required for scaffold JSON endpoint.',
+        restrictionSurface: 'scaffold',
           retries: 1,
         });
         if (result.authBlocked) return;
@@ -4033,6 +4076,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const result = await fetchJsonWithRetry(buildCanonicalDataUrl(), {
         authReason: 'Authentication required for canonical Analysis feed.',
+        restrictionSurface: 'analysis',
         retries: 2,
         signal: canonicalDataAbortController.signal,
       });
@@ -4092,7 +4136,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (analysisRowsPossiblyTruncated) {
           setPreviewStatus(
             `Canonical Production - ${warehouseVizRows.length} rows - API cap reached; totals may be partial`,
-            analysisState
+            'partial'
           );
         } else {
           setPreviewStatus(
@@ -4131,6 +4175,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const result = await fetchJsonWithRetry(buildCanonicalRecordDataUrl(), {
         authReason: 'Authentication required for Canonical Record feed.',
+        restrictionSurface: 'canonical-record',
         retries: 2,
         signal: canonicalRecordAbortController.signal,
       });
@@ -4175,7 +4220,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setCanonicalRecordBaseStatus(
           'ok',
           `Loaded first ${rawData.length} Canonical Record rows${scopeText}; API cap reached, result may be partial.`,
-          'ready'
+          'partial'
         );
       } else {
         setCanonicalRecordBaseStatus(
@@ -4255,7 +4300,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function bootstrapProtectedFeeds() {
     await fetchPriorityStatus();
-    if (authRestrictedMode) return;
 
     // Canonical facet authority defines valid State / Year options. Warehouse
     // status remains contextual priority metadata and never defines record scope.

@@ -14,14 +14,16 @@
           data-ballot-lens-url="{{ url_for('ballot_lens') }}"
           data-canonical-facets-url="{{ url_for('api_data_framework_canonical_facets') }}"
           data-priority-url="{{ url_for('api_data_framework_warehouse_status') }}"
+          data-operator-access='{{ data_framework_operator_access | tojson | forceescape }}'
           {% if csrf_token %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
     <!-- Bootstrap -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css', v='g241') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css', v='a20af21318a2d76e') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_app_nav.css', v='r3a') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_surface_theme.css', v='r3b') }}">
 </head>
 <body data-page="data-framework" data-workbench-contract="db-first-g241">
+    <a class="df-skip-link" href="#dataFrameworkMain">Skip to Data Framework content</a>
     <nav class="ep-app-nav" aria-label="ElectionPulse primary navigation">
       <div class="ep-app-nav__inner">
         <div class="ep-app-nav__identity" aria-label="ElectionPulse">ElectionPulse</div>
@@ -35,7 +37,7 @@
         </div>
       </div>
     </nav>
-    <div class="container-main data-workbench-shell">
+    <main class="container-main data-workbench-shell" id="dataFrameworkMain" tabindex="-1">
         <header class="workbench-hero">
           <div class="workbench-eyebrow">ElectionPulse &middot; Data Operations</div>
           <div class="workbench-title-row">
@@ -193,7 +195,7 @@
                   <span class="panel-context-label">Evidence context</span>
                   <span>No source selected; the current analysis view is independent.</span>
                 </div>
-                <div class="viz-scope-semantic-note">Jurisdiction follows the selected dataset&#39;s reported scope. DB-Lite may retain legacy County/District labels; canonical rows preserve jurisdiction name and type separately.</div>
+                <div class="viz-scope-semantic-note">Jurisdiction follows canonical publication scope. Canonical rows preserve jurisdiction name and type separately; county-specific tooling remains explicitly bounded to county data.</div>
                 <div class="viz-filters" aria-label="Visualization filters">
                   <div class="viz-filter-group">
                     <label for="vizYearSelect" class="viz-label">Year</label>
@@ -316,20 +318,20 @@
                   <span class="panel-context-label">Evidence relationship</span>
                   <span>No source-to-canonical lineage is established. Canonical rows remain independently governed.</span>
                 </div>
-                <div class="db-table-section db-table-compact" id="warehouseTableSection">
+                <div class="db-table-section db-table-compact" id="warehouseTableSection" role="region" aria-label="Canonical record table and controls" tabindex="0">
                     <div class="table-toolbar" role="region" aria-label="Table controls">
                         <div class="left-controls">
                             <input id="globalSearch" type="search" placeholder="Search all columns..." aria-label="Search all data">
                         </div>
                         <div class="right-controls">
-                            <button id="refreshBtn" class="btn action" data-bs-toggle="tooltip" title="Reload data from the API">🔄 Refresh</button>
-                            <button id="exportCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Export filtered results to CSV">⬇ Export CSV</button>
-                            <button id="scaffoldJsonBtn" class="btn action" data-bs-toggle="tooltip" title="Download guarded JSON scaffold">🧱 Scaffold JSON</button>
-                            <button id="scaffoldCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Download scaffold CSV">📄 Scaffold CSV</button>
+                            <button type="button" id="refreshBtn" class="btn action" data-bs-toggle="tooltip" title="Reload data from the API">🔄 Refresh</button>
+                            <button type="button" id="exportCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Export filtered results to CSV">⬇ Export CSV</button>
+                            <button type="button" id="scaffoldJsonBtn" class="btn action" data-bs-toggle="tooltip" title="Download guarded JSON scaffold">🧱 Scaffold JSON</button>
+                            <button type="button" id="scaffoldCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Download scaffold CSV">📄 Scaffold CSV</button>
                             <button id="compactToggleBtn" class="btn action compact-toggle" type="button" aria-pressed="false" data-bs-toggle="tooltip" title="Toggle compact table rows">Dense</button>
-                            <button id="resetFiltersBtn" class="btn action" data-bs-toggle="tooltip" title="Clear search and sorting">↺ Reset</button>
+                            <button type="button" id="resetFiltersBtn" class="btn action" data-bs-toggle="tooltip" title="Clear search and sorting">↺ Reset</button>
                             <div class="column-chooser">
-                                <button id="columnChooserBtn" class="btn action" aria-haspopup="true" aria-expanded="false" data-bs-toggle="tooltip" title="Show/hide columns">▦ Columns</button>
+                                <button type="button" id="columnChooserBtn" class="btn action" aria-haspopup="true" aria-expanded="false" data-bs-toggle="tooltip" title="Show/hide columns">▦ Columns</button>
                                 <div id="columnChooserMenu" class="column-chooser-menu" role="menu" aria-label="Toggle visible columns"></div>
                             </div>
                             <div class="dropdown">
@@ -351,10 +353,7 @@
                         </div>
                     </div>
                     <div class="warehouse-status-strip" id="warehousePriorityStatus" data-ui-state="idle" role="status" aria-live="polite" aria-atomic="true"></div>
-                    <div id="dataFrameworkReadOnlyBanner" class="alert alert-danger d-none" data-ui-state="idle" role="status" aria-live="polite" aria-atomic="true">
-                      <span id="dataFrameworkReadOnlyMessage">Read-only mode: authenticate to enable curated datasets, priority tracker, and preview feeds.</span>
-                      <a id="dataFrameworkAuthLink" class="btn btn-sm ms-2" href="{{ url_for('auth_welcome', next=request.url) }}">Authenticate</a>
-                    </div>
+
                     <div class="warehouse-priority-controls" aria-label="Priority focus">
                       <label for="priorityStateSelect" class="sr-only">Priority state</label>
                       <select id="priorityStateSelect" aria-label="Priority state">
@@ -367,7 +366,8 @@
                       <div class="warehouse-priority-meta" id="warehousePriorityMeta" aria-live="polite"></div>
                     </div>
 
-                    <table id="data-table" class="neon-grid" aria-live="polite">
+                    <table id="data-table" class="neon-grid" aria-live="polite" aria-describedby="tableStatus warehousePriorityMeta">
+                        <caption class="sr-only">Canonical election records matching the current filters.</caption>
                         <thead>
                             <tr id="table-header"></tr>
                         </thead>
@@ -376,11 +376,11 @@
 
                     <div class="table-footer">
                         <div class="pagination" role="navigation" aria-label="Pagination">
-                            <button id="firstPageBtn" class="btn pager" aria-label="First page">⏮</button>
-                            <button id="prevPageBtn" class="btn pager" aria-label="Previous page">◀</button>
-                            <span id="pageInfo" class="page-info"></span>
-                            <button id="nextPageBtn" class="btn pager" aria-label="Next page">▶</button>
-                            <button id="lastPageBtn" class="btn pager" aria-label="Last page">⏭</button>
+                            <button type="button" id="firstPageBtn" aria-controls="data-table" class="btn pager" aria-label="First page">⏮</button>
+                            <button type="button" id="prevPageBtn" aria-controls="data-table" class="btn pager" aria-label="Previous page">◀</button>
+                            <span id="pageInfo" class="page-info" role="status" aria-live="polite" aria-atomic="true"></span>
+                            <button type="button" id="nextPageBtn" aria-controls="data-table" class="btn pager" aria-label="Next page">▶</button>
+                            <button type="button" id="lastPageBtn" aria-controls="data-table" class="btn pager" aria-label="Last page">⏭</button>
                         </div>
                         <div id="tableStatus" class="status status-info" data-ui-state="idle" role="status" aria-live="polite" aria-atomic="true"></div>
                     </div>
@@ -414,17 +414,25 @@
                           <button type="button" class="pipeline-step" data-step="qa">3 Quality</button>
                           <button type="button" class="pipeline-step" data-step="publish">4 Publish</button>
                         </div>
-                        <div class="pipeline-detail" id="uploadPipelineDetail">Select a step to see what happens next.</div>
+                        <div class="pipeline-detail" id="uploadPipelineDetail" role="status" aria-live="polite" aria-atomic="true">Select a step to see what happens next.</div>
                         <div class="upload-section">
+                          {% if data_framework_operator_access.can_upload_input %}
                           <form id="uploadForm" enctype="multipart/form-data" method="POST" action="{{ url_for('upload_to_input') }}">
-                                <label for="csvFile"><b>Upload CSV to Database:</b></label><br>
+                            <label for="csvFile"><b>Upload reviewed input:</b></label><br>
                             {% if csrf_token %}
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             {% endif %}
                             <input type="file" id="csvFile" name="csv_file" accept=".csv" required>
-                                <button type="submit">Upload</button>
-                            </form>
-                            <div id="uploadStatus" class="status status-info" aria-live="polite"></div>
+                            <button type="submit">Upload</button>
+                          </form>
+                          {% else %}
+                          <div id="dataFrameworkUploadRestricted" data-ui-state="restricted" role="status" aria-live="polite">
+                            <strong>Operator action required.</strong>
+                            <span>Public Data Framework remains view-only. Use Operator Access to begin a governed mutation session.</span>
+                            <a class="btn btn-sm ms-2" href="{{ url_for('auth_welcome', next=request.url) }}">Operator Access</a>
+                          </div>
+                          {% endif %}
+                          <div id="uploadStatus" class="status status-info" role="status" aria-live="polite" aria-atomic="true"></div>
                         </div>
                       </div>
                     </article>
@@ -459,7 +467,7 @@
             </article>
           </aside>
         </div>
-    </div>
+    </main>
 
     <!-- Toast stack -->
     <div class="position-fixed bottom-0 end-0 p-3 toast-stack">
@@ -479,6 +487,6 @@
 
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='68a6dcf9b6e15b87') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='10953b91576b4db2') }}" defer></script>
 </body>
 </html>
