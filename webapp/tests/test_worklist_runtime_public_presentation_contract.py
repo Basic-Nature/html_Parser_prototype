@@ -31,9 +31,12 @@ def test_runtime_worklist_is_w1_public_workflow_surface():
         "QC2 Final Review",
         "DL1 Operator",
         "DL2 Operator",
-        "Worklist Source",
     ):
         assert retired_runtime_ui not in runtime
+
+    assert "Worklist Source" in runtime
+    assert "Source Link" in runtime
+    assert "raw workflow URLs" in runtime
 
 
 def test_runtime_workflow_has_no_duplicate_ids_and_is_csp_clean():
@@ -96,4 +99,15 @@ def test_runtime_public_workflow_assets_have_accessibility_layer():
     assert ":focus-visible" in css
     assert "prefers-reduced-motion: reduce" in css
     assert "scrollbar-gutter: stable" in css
+    assert "@media (forced-colors: active)" in css
+    assert "min-height: 44px" in css
+
+    runtime = RUNTIME.read_text(encoding="utf-8")
+    assert 'class="workflow-skip-link"' in runtime
+    assert 'id="workflowMain"' in runtime
+    assert 'tabindex="-1"' in runtime
+    assert 'class="workflow-table-wrap"' in runtime
+    assert 'tabindex="0"' in runtime
+    assert 'aria-describedby="workflow-table-description"' in runtime
+    assert '<caption class="workflow-sr-only">' in runtime
     assert css.count("{") == css.count("}")

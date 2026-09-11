@@ -83,6 +83,12 @@ def test_public_workflow_projection_strictly_omits_identity_and_internal_metadat
         "linked": True,
         "lineage_inferred": False,
     }
+    assert public["provenance"] == {
+        "source_race_id": "AZ-2024-PRES",
+        "canonical_linked": True,
+        "lineage_inferred": False,
+        "source_link_available": False,
+    }
     assert public["blocker"] == {"reason_code": "source_missing"}
     assert public["visibility"] == "public_projection"
     assert public["contribution"]["actions_enabled"] is False

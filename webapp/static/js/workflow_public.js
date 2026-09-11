@@ -16,6 +16,8 @@
                 document.body?.dataset?.ballotLensUrl || '/ballot_lens';
             this.requestSeq = 0;
             this.activeController = null;
+            this.pageOffset = 0;
+            this.pageLimit = 200;
             this.facetOptionUniverse = {
                 state: new Map(),
                 lifecycle_state: new Map()
@@ -92,6 +94,7 @@
         }
 
         renderOperatorAccess() {
+            const panel = this.byId('workflow-operator-panel');
             const status = this.byId('workflow-operator-status');
             const copy = this.byId('workflow-operator-copy');
             const accessLink = this.byId('workflow-operator-access-link');
@@ -99,6 +102,11 @@
 
             if (accessLink) {
                 accessLink.hidden = operator.authenticated;
+            }
+            if (panel) {
+                panel.dataset.uiState = operator.canExecuteBallotLens
+                    ? 'ready'
+                    : 'restricted';
             }
             if (status) {
                 status.textContent = !operator.authenticated
@@ -282,7 +290,7 @@
             if (year) params.set('year', year);
             if (lifecycle) params.set('lifecycle_state', lifecycle);
             if (search) params.set('search', search);
-            params.set('limit', '200');
+            params.set('limit', String(this.pageLimit));
 
             return params;
         }
@@ -299,6 +307,9 @@
                 'loading',
                 'ready',
                 'empty',
+                'restricted',
+                'partial',
+                'stale',
                 'unavailable',
                 'error'
             ]);
@@ -485,6 +496,11 @@
                     'workflow-option-unavailable',
                     !available
                 );
+                option.disabled = !available && value !== current;
+                option.setAttribute(
+                    'aria-disabled',
+                    option.disabled ? 'true' : 'false'
+                );
                 option.textContent = available
                     ? `${this.humanize(value)} (${count})`
                     : `${this.humanize(value)} (0)`;
@@ -512,7 +528,117 @@
             );
         }
 
+        setPageButtonState(button, disabled) {
+            if (!button) return;
+            button.disabled = Boolean(disabled);
+            button.setAttribute(
+                'aria-disabled',
+                button.disabled ? 'true' : 'false'
+            );
+        }
+
+        renderPagination(payload) {
+            const prev = this.byId('workflow-page-prev');
+            const next = this.byId('workflow-page-next');
+            const pagination = payload?.pagination || {};
+
+            if (payload?.available === false) {
+                this.setPageButtonState(prev, true);
+                this.setPageButtonState(next, true);
+                this.setText(
+                    'workflow-pagination-summary',
+                    'Workflow unavailable'
+                );
+                return;
+            }
+
+            const parsedLimit = Number(pagination.limit);
+            const parsedOffset = Number(pagination.offset);
+            const parsedReturned = Number(pagination.returned);
+            const limit = Number.isSafeInteger(parsedLimit) && parsedLimit > 0
+                ? parsedLimit
+                : this.pageLimit;
+            const offset = Number.isSafeInteger(parsedOffset) && parsedOffset >= 0
+                ? parsedOffset
+                : this.pageOffset;
+            const returned = Number.isSafeInteger(parsedReturned) && parsedReturned >= 0
+                ? parsedReturned
+                : (
+                    Array.isArray(payload?.items)
+                        ? payload.items.length
+                        : 0
+                );
+
+            this.pageLimit = limit;
+            this.pageOffset = offset;
+
+            this.setPageButtonState(prev, offset <= 0);
+            this.setPageButtonState(
+                next,
+                pagination.has_more !== true
+            );
+
+            const total = pagination.total;
+            if (total === null || total === undefined) {
+                this.setText(
+                    'workflow-pagination-summary',
+                    `${returned} shown`
+                );
+                return;
+            }
+
+            const numericTotal = Number(total);
+            if (!Number.isFinite(numericTotal) || numericTotal <= 0) {
+                this.setText('workflow-pagination-summary', '0 tasks');
+                return;
+            }
+
+            const start = returned > 0 ? offset + 1 : 0;
+            const end = offset + returned;
+            this.setText(
+                'workflow-pagination-summary',
+                `${start}–${end} of ${numericTotal} tasks`
+            );
+        }
+
+        focusResultContext() {
+            const tbody = this.byId('workflow-items-body');
+            const tableRegion = document.querySelector(
+                '.workflow-table-wrap'
+            );
+            const state = this.byId('workflow-state');
+            const target = tbody?.children?.length
+                ? tableRegion
+                : state;
+            if (target && typeof target.focus === 'function') {
+                target.focus();
+            }
+        }
+
+        applyFilters() {
+            this.pageOffset = 0;
+            this.load({ syncUrl: true, focusResults: true });
+        }
+
+        changePage(direction) {
+            const delta = direction === 'next'
+                ? this.pageLimit
+                : direction === 'prev'
+                    ? -this.pageLimit
+                    : 0;
+            if (!delta) return;
+
+            const nextOffset = Math.max(0, this.pageOffset + delta);
+            if (nextOffset === this.pageOffset) return;
+            this.pageOffset = nextOffset;
+            this.load({ focusResults: true });
+        }
+
         renderAuthority(payload) {
+            this.setText(
+                'workflow-source-link-policy',
+                'Approved registry sources only · raw workflow URLs withheld'
+            );
             if (payload?.available === false) {
                 this.setText('workflow-source-status', 'Temporarily unavailable');
                 return;
@@ -539,7 +665,7 @@
                 empty.dataset.uiState = 'unavailable';
                 empty.textContent =
                     'Workflow data is temporarily unavailable. Published election data remains separate in Data Framework.';
-                this.setText('workflow-pagination-summary', 'Workflow unavailable');
+                this.renderPagination(payload);
                 return;
             }
 
@@ -556,10 +682,7 @@
                     empty.textContent =
                         'Workflow infrastructure is online. No public verification tasks have been seeded yet.';
                 }
-                this.setText(
-                    'workflow-pagination-summary',
-                    total === null || total === undefined ? '—' : `${total} tasks`
-                );
+                this.renderPagination(payload);
                 return;
             }
 
@@ -576,6 +699,11 @@
                     <td>${this.escapeHtml(scope.jurisdiction_name ?? '—')}</td>
                     <td>${this.escapeHtml(this.humanize(scope.jurisdiction_type))}</td>
                     <td>${this.escapeHtml(scope.contest ?? '—')}</td>
+                    <td>${this.escapeHtml(
+                        task?.provenance?.source_race_id
+                        ?? scope.source_race_id
+                        ?? '—'
+                    )}</td>
                     <td>${this.escapeHtml(this.humanize(task.current_stage))}</td>
                     <td>${this.escapeHtml(this.humanize(task.stage_condition))}</td>
                     <td>${this.escapeHtml(task.priority ?? '—')}</td>
@@ -593,14 +721,10 @@
                 tbody.appendChild(tr);
             }
 
-            const returned = payload?.pagination?.returned ?? rows.length;
-            this.setText(
-                'workflow-pagination-summary',
-                `${returned} shown · ${total ?? '—'} total`
-            );
+            this.renderPagination(payload);
         }
 
-        async load({ syncUrl = false } = {}) {
+        async load({ syncUrl = false, focusResults = false } = {}) {
             const requestSeq = ++this.requestSeq;
             if (this.activeController) {
                 this.activeController.abort();
@@ -616,40 +740,72 @@
 
             const params = this.buildParams();
             const query = params.toString();
+            const itemParams = new URLSearchParams(params);
+            itemParams.set('offset', String(this.pageOffset));
+            const itemQuery = itemParams.toString();
 
             try {
-                const [stats, facets, items] = await Promise.all([
-                    this.fetchJson(
-                        `/api/workflow/v1/stats?${query}`,
-                        controller.signal
-                    ),
-                    this.fetchJson(
-                        `/api/workflow/v1/facets?${query}`,
-                        controller.signal
-                    ),
-                    this.fetchJson(
-                        `/api/workflow/v1/public/items?${query}`,
-                        controller.signal
-                    )
-                ]);
+                const [statsResult, facetsResult, itemsResult] =
+                    await Promise.allSettled([
+                        this.fetchJson(
+                            `/api/workflow/v1/stats?${query}`,
+                            controller.signal
+                        ),
+                        this.fetchJson(
+                            `/api/workflow/v1/facets?${query}`,
+                            controller.signal
+                        ),
+                        this.fetchJson(
+                            `/api/workflow/v1/public/items?${itemQuery}`,
+                            controller.signal
+                        )
+                    ]);
 
                 if (requestSeq !== this.requestSeq) return;
+                if (itemsResult.status !== 'fulfilled') {
+                    throw itemsResult.reason;
+                }
+
+                const stats = statsResult.status === 'fulfilled'
+                    ? statsResult.value
+                    : null;
+                const facets = facetsResult.status === 'fulfilled'
+                    ? facetsResult.value
+                    : null;
+                const items = itemsResult.value;
 
                 this.stats = stats;
                 this.facets = facets;
                 this.items = items;
 
-                this.renderStats(stats);
-                this.renderFacets(facets);
+                this.renderStats(stats || { available: false });
+                if (facets) this.renderFacets(facets);
                 this.renderAuthority(items);
                 this.renderOperatorAccess();
                 this.renderItems(items);
                 this.renderFilterSummary();
 
+                const auxiliaryPartial = (
+                    statsResult.status !== 'fulfilled'
+                    || facetsResult.status !== 'fulfilled'
+                    || stats?.available === false
+                    || facets?.available === false
+                );
+
                 if (items?.available === false) {
                     this.setState(
                         'unavailable',
                         'Workflow schema is not currently available to the public read plane.'
+                    );
+                } else if (items?.stale === true) {
+                    this.setState(
+                        'stale',
+                        'Workflow queue is available from a stale governed snapshot. Verify freshness before acting on status.'
+                    );
+                } else if (auxiliaryPartial) {
+                    this.setState(
+                        'partial',
+                        'Verification queue is available, but one or more summary panels could not be refreshed.'
                     );
                 } else if ((items?.pagination?.total ?? 0) === 0) {
                     this.setState(
@@ -664,14 +820,18 @@
                         'Governed Workflow is online. Public task visibility is identity-safe and read-only.'
                     );
                 }
+
+                if (focusResults && requestSeq === this.requestSeq) {
+                    this.focusResultContext();
+                }
             } catch (error) {
                 if (error?.name === 'AbortError') return;
                 if (requestSeq !== this.requestSeq) return;
 
-                console.error('[ElectionPulse Workflow] Public read failed:', error);
+                console.error('[ElectionPulse Workflow] Public queue read failed:', error);
                 this.setState(
                     'error',
-                    `Workflow data could not be loaded: ${error.message}`
+                    `Workflow queue could not be loaded: ${error.message}`
                 );
                 this.setText('workflow-source-status', 'Read unavailable');
                 this.setText('workflow-pagination-summary', 'Read unavailable');
@@ -683,7 +843,11 @@
                     empty.hidden = false;
                     empty.dataset.uiState = 'error';
                     empty.textContent =
-                        'The public workflow read is unavailable. This does not imply published election data is unavailable.';
+                        'The public workflow queue is unavailable. This does not imply published election data is unavailable.';
+                }
+                this.renderPagination({ available: false });
+                if (focusResults && requestSeq === this.requestSeq) {
+                    this.focusResultContext();
                 }
             } finally {
                 if (
@@ -705,17 +869,26 @@
             if (year) year.value = '';
             if (lifecycle) lifecycle.value = '';
             if (search) search.value = '';
-            this.load({ syncUrl: true });
+            this.pageOffset = 0;
+            this.load({ syncUrl: true, focusResults: true });
         }
 
         setupEvents() {
             this.byId('workflow-filter-apply')?.addEventListener(
                 'click',
-                () => this.load({ syncUrl: true })
+                () => this.applyFilters()
             );
             this.byId('workflow-filter-reset')?.addEventListener(
                 'click',
                 () => this.resetFilters()
+            );
+            this.byId('workflow-page-prev')?.addEventListener(
+                'click',
+                () => this.changePage('prev')
+            );
+            this.byId('workflow-page-next')?.addEventListener(
+                'click',
+                () => this.changePage('next')
             );
 
             for (const id of [
@@ -725,7 +898,7 @@
                 this.byId(id)?.addEventListener('keydown', (event) => {
                     if (event.key === 'Enter') {
                         event.preventDefault();
-                        this.load({ syncUrl: true });
+                        this.applyFilters();
                     }
                 });
             }

@@ -261,7 +261,6 @@ describe('SMART Elections Worklist UI', () => {
       'modal-preqc-results',
       'modal-qc1-form',
       'modal-qc2-form',
-      'Worklist Source',
       'Worklist Overview',
       'smart_elections_worklist.js',
       '/api/election_data/worklist',
@@ -272,6 +271,9 @@ describe('SMART Elections Worklist UI', () => {
     expect(runtime).toContain('<h1>ElectionPulse Workflow</h1>');
     expect(runtime).toContain('Public verification workflow');
     expect(runtime).toContain('Governed Workflow Plane');
+    expect(runtime).toContain('Worklist Source');
+    expect(runtime).toContain('Source Link');
+    expect(runtime).toContain('raw workflow URLs withheld');
     expect(runtime).toContain(
       'Public visibility now; contributor actions next'
     );

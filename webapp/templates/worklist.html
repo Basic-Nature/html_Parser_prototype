@@ -14,6 +14,7 @@
     data-workflow-operator-access='{{ workflow_operator_access | tojson | forceescape }}'
     data-ballot-lens-url="{{ url_for('ballot_lens') }}"
 >
+    <a class="workflow-skip-link" href="#workflowMain">Skip to Workflow content</a>
     <nav class="ep-app-nav" aria-label="ElectionPulse primary navigation">
       <div class="ep-app-nav__inner">
         <div class="ep-app-nav__identity" aria-label="ElectionPulse">ElectionPulse</div>
@@ -27,7 +28,7 @@
         </div>
       </div>
     </nav>
-    <main class="workflow-shell">
+    <main id="workflowMain" class="workflow-shell" tabindex="-1">
         <header class="workflow-hero">
             <div class="workflow-kicker">Public verification workflow</div>
             <h1>ElectionPulse Workflow</h1>
@@ -67,7 +68,9 @@
         </header>
 
         <section
+            id="workflow-operator-panel"
             class="workflow-operator"
+            data-ui-state="restricted"
             aria-labelledby="workflow-operator-title"
         >
             <div>
@@ -89,6 +92,7 @@
             id="workflow-state"
             class="workflow-state workflow-state-idle"
             data-ui-state="idle"
+            tabindex="-1"
             role="status"
             aria-live="polite"
             aria-atomic="true"
@@ -120,21 +124,36 @@
             </article>
         </section>
 
-        <section class="workflow-authority" aria-labelledby="workflow-authority-title">
+        <section
+            id="workflow-source-panel"
+            class="workflow-authority"
+            aria-labelledby="workflow-authority-title"
+        >
             <div>
                 <span class="workflow-section-kicker">Authority</span>
                 <h2 id="workflow-authority-title">Governed Workflow Plane</h2>
                 <p>
                     This page uses an identity-safe public projection of the
-                    noncanonical PostgreSQL workflow. Internal contributor identity,
-                    internal metadata, raw source URLs, and privileged actions are not
-                    exposed here.
+                    noncanonical PostgreSQL workflow. Worklist source details describe
+                    election-data provenance, never staff identity. Raw workflow URLs,
+                    internal principals, and internal metadata remain withheld.
                 </p>
             </div>
-            <div class="workflow-authority-state">
-                <span>Source</span>
-                <strong id="workflow-source-status">Checking…</strong>
-            </div>
+            <dl
+                class="workflow-source-details"
+                aria-label="Worklist Source provenance"
+            >
+                <div>
+                    <dt>Worklist Source</dt>
+                    <dd id="workflow-source-status">Checking…</dd>
+                </div>
+                <div>
+                    <dt>Source Link</dt>
+                    <dd id="workflow-source-link-policy">
+                        Approved registry sources only · raw workflow URLs withheld
+                    </dd>
+                </div>
+            </dl>
         </section>
 
         <section class="workflow-filters" aria-labelledby="workflow-filters-title">
@@ -152,7 +171,7 @@
             <div class="workflow-filter-grid">
                 <label>
                     State
-                    <select id="workflow-filter-state">
+                    <select id="workflow-filter-state" aria-describedby="workflow-filter-summary">
                         <option value="">All states</option>
                     </select>
                 </label>
@@ -161,6 +180,7 @@
                     Election year
                     <input
                         id="workflow-filter-year"
+                        aria-describedby="workflow-filter-summary"
                         type="number"
                         min="1700"
                         max="2300"
@@ -170,7 +190,7 @@
 
                 <label>
                     Lifecycle
-                    <select id="workflow-filter-lifecycle">
+                    <select id="workflow-filter-lifecycle" aria-describedby="workflow-filter-summary">
                         <option value="">All lifecycle states</option>
                     </select>
                 </label>
@@ -179,6 +199,7 @@
                     Search
                     <input
                         id="workflow-filter-search"
+                        aria-describedby="workflow-filter-summary"
                         type="search"
                         maxlength="256"
                         placeholder="Contest, jurisdiction, source race ID"
@@ -187,13 +208,19 @@
             </div>
 
             <div class="workflow-filter-actions">
-                <button id="workflow-filter-apply" type="button" class="workflow-button">
+                <button
+                    id="workflow-filter-apply"
+                    type="button"
+                    class="workflow-button"
+                    aria-controls="workflow-table workflow-state workflow-pagination-summary"
+                >
                     Apply filters
                 </button>
                 <button
                     id="workflow-filter-reset"
                     type="button"
                     class="workflow-button workflow-button-secondary"
+                    aria-controls="workflow-table workflow-state workflow-pagination-summary"
                 >
                     Reset
                 </button>
@@ -215,11 +242,29 @@
                     <span class="workflow-section-kicker">Transparent process</span>
                     <h2 id="workflow-table-title">Verification Queue</h2>
                 </div>
-                <p id="workflow-pagination-summary">Loading…</p>
+                <p
+                    id="workflow-pagination-summary"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                >Loading…</p>
             </div>
 
-            <div class="workflow-table-wrap">
+            <p id="workflow-table-description" class="workflow-sr-only">
+                Governed verification tasks. Use horizontal scrolling on smaller screens.
+                Source record values are public-safe election provenance identifiers.
+            </p>
+            <div
+                class="workflow-table-wrap"
+                tabindex="0"
+                role="region"
+                aria-labelledby="workflow-table-title"
+                aria-describedby="workflow-table-description"
+            >
                 <table class="workflow-table" id="workflow-table">
+                    <caption class="workflow-sr-only">
+                        Public verification queue with identity-safe provenance and workflow status.
+                    </caption>
                     <thead>
                         <tr>
                             <th scope="col">Year</th>
@@ -227,6 +272,7 @@
                             <th scope="col">Jurisdiction</th>
                             <th scope="col">Type</th>
                             <th scope="col">Contest</th>
+                            <th scope="col">Source record</th>
                             <th scope="col">Stage</th>
                             <th scope="col">Condition</th>
                             <th scope="col">Priority</th>
@@ -237,6 +283,33 @@
                     <tbody id="workflow-items-body"></tbody>
                 </table>
             </div>
+
+            <nav
+                class="workflow-pagination"
+                aria-label="Verification queue pagination"
+                aria-describedby="workflow-pagination-summary"
+            >
+                <button
+                    id="workflow-page-prev"
+                    type="button"
+                    class="workflow-button workflow-button-secondary"
+                    aria-controls="workflow-table"
+                    aria-disabled="true"
+                    disabled
+                >
+                    Previous page
+                </button>
+                <button
+                    id="workflow-page-next"
+                    type="button"
+                    class="workflow-button workflow-button-secondary"
+                    aria-controls="workflow-table"
+                    aria-disabled="true"
+                    disabled
+                >
+                    Next page
+                </button>
+            </nav>
 
             <div
                 id="workflow-empty-state"
