@@ -254,6 +254,7 @@ def _filter_conditions(
     filters: Mapping[str, Any],
     *,
     exclude_axis: str | None = None,
+    include_source_url_search: bool = True,
 ) -> list[Any]:
     conditions: list[Any] = []
 
@@ -324,14 +325,16 @@ def _filter_conditions(
             )
     if "search" in filters:
         pattern = f"%{filters['search']}%"
-        conditions.append(
-            or_(
-                WorkflowItem.contest.ilike(pattern),
-                WorkflowItem.jurisdiction_name.ilike(pattern),
-                WorkflowItem.source_race_id.ilike(pattern),
-                WorkflowItem.source_url.ilike(pattern),
+        search_conditions = [
+            WorkflowItem.contest.ilike(pattern),
+            WorkflowItem.jurisdiction_name.ilike(pattern),
+            WorkflowItem.source_race_id.ilike(pattern),
+        ]
+        if include_source_url_search:
+            search_conditions.append(
+                WorkflowItem.source_url.ilike(pattern)
             )
-        )
+        conditions.append(or_(*search_conditions))
 
     return conditions
 
@@ -564,11 +567,16 @@ def _serialize_event(row: WorkflowEvent) -> dict[str, Any]:
 def read_workflow_items(
     session: Session,
     raw_params: Mapping[str, Any] | None = None,
+    *,
+    include_source_url_search: bool = True,
 ) -> dict[str, Any]:
     _set_transaction_read_only(session)
     filters = parse_workflow_filters(raw_params)
     limit, offset = parse_pagination(raw_params)
-    conditions = _filter_conditions(filters)
+    conditions = _filter_conditions(
+        filters,
+        include_source_url_search=include_source_url_search,
+    )
 
     count_stmt = _where(
         select(func.count()).select_from(WorkflowItem),
@@ -693,10 +701,13 @@ def _facet_rows(
     session: Session,
     filters: Mapping[str, Any],
     axis: str,
+    *,
+    include_source_url_search: bool = True,
 ) -> list[dict[str, Any]]:
     conditions = _filter_conditions(
         filters,
         exclude_axis=axis,
+        include_source_url_search=include_source_url_search,
     )
 
     if axis == "jurisdiction":
@@ -754,12 +765,19 @@ def _facet_rows(
 def read_workflow_facets(
     session: Session,
     raw_params: Mapping[str, Any] | None = None,
+    *,
+    include_source_url_search: bool = True,
 ) -> dict[str, Any]:
     _set_transaction_read_only(session)
     filters = parse_workflow_filters(raw_params)
 
     facets = {
-        axis: _facet_rows(session, filters, axis)
+        axis: _facet_rows(
+            session,
+            filters,
+            axis,
+            include_source_url_search=include_source_url_search,
+        )
         for axis in _FACET_AXES
     }
 
@@ -796,10 +814,15 @@ def _group_counts(
 def read_workflow_stats(
     session: Session,
     raw_params: Mapping[str, Any] | None = None,
+    *,
+    include_source_url_search: bool = True,
 ) -> dict[str, Any]:
     _set_transaction_read_only(session)
     filters = parse_workflow_filters(raw_params)
-    conditions = _filter_conditions(filters)
+    conditions = _filter_conditions(
+        filters,
+        include_source_url_search=include_source_url_search,
+    )
 
     total_stmt = _where(
         select(func.count()).select_from(WorkflowItem),

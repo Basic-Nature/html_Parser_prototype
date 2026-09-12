@@ -558,7 +558,11 @@ def read_public_workflow_items(
 
     session = SessionLocal()
     try:
-        payload = read_workflow_items(session, raw_params)
+        payload = read_workflow_items(
+            session,
+            raw_params,
+            include_source_url_search=False,
+        )
         projected = [
             _project_public_workflow_item(row)
             for row in payload.get("items", [])
@@ -609,7 +613,11 @@ def read_public_workflow_facets(
 
     session = SessionLocal()
     try:
-        payload = read_workflow_facets(session, raw_params)
+        payload = read_workflow_facets(
+            session,
+            raw_params,
+            include_source_url_search=False,
+        )
         return {
             **payload,
             "available": True,
@@ -647,7 +655,11 @@ def read_public_workflow_stats(
 
     session = SessionLocal()
     try:
-        payload = read_workflow_stats(session, raw_params)
+        payload = read_workflow_stats(
+            session,
+            raw_params,
+            include_source_url_search=False,
+        )
         return {
             **payload,
             "available": True,
