@@ -1109,3 +1109,207 @@ summary:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* W16L bounded Ballot Lens presentation polish.
+ * Presentation consumes existing runtime/session/checkpoint state only.
+ * No execution, reducer, source-selection, session, or socket authority lives here.
+ */
+.blf2-workspace-header > div:first-child {
+  min-width: 0;
+  flex: 1 1 560px;
+}
+
+.blf2-workspace-state {
+  max-width: min(100%, 440px);
+  align-items: stretch;
+}
+
+.blf2-workspace-state > span {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.blf2-workspace-state > span:first-child {
+  border-color: var(--blf2-border-strong);
+  color: var(--blf2-text-secondary);
+  font-weight: 700;
+}
+
+.blf2-workspace-state > span:nth-child(2) {
+  max-width: 280px;
+  overflow: hidden;
+  color: var(--blf2-muted);
+  font-family: var(--blf2-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.blf2-result-frame {
+  border-color: var(--blf2-border-strong);
+}
+
+.blf2-result-toolbar {
+  padding: 12px 16px;
+}
+
+.blf2-data-guardrails span {
+  font-weight: 700;
+  letter-spacing: 0.015em;
+}
+
+.blf2-checkpoint-summary {
+  margin-bottom: 10px;
+}
+
+.blf2-checkpoint-list li {
+  border-radius: 8px;
+  padding-inline: 6px;
+}
+
+.blf2-checkpoint-list li[data-state="active"] {
+  background: var(--blf2-accent-soft);
+}
+
+.blf2-checkpoint-list li[data-state="warning"] {
+  background: var(--blf2-warning-soft);
+}
+
+.blf2-checkpoint-list li[data-state="active"] .blf2-checkpoint-marker {
+  border-color: var(--blf2-accent);
+  background: var(--blf2-accent);
+}
+
+.blf2-checkpoint-list li[data-state="complete"] .blf2-checkpoint-marker {
+  border-color: var(--blf2-success);
+  background: var(--blf2-success);
+}
+
+.blf2-checkpoint-list li[data-state="warning"] .blf2-checkpoint-marker {
+  border-color: var(--blf2-warning);
+  background: var(--blf2-warning);
+}
+
+.blf2-checkpoint-list li[data-state="error"] .blf2-checkpoint-marker {
+  border-color: var(--blf2-danger);
+}
+
+.blf2-checkpoint-list li[data-state="complete"] .blf2-checkpoint-copy strong {
+  color: var(--blf2-success);
+}
+
+.blf2-checkpoint-list li[data-state="warning"] .blf2-checkpoint-copy strong {
+  color: var(--blf2-warning);
+}
+
+.blf2-checkpoint-list li[data-state="error"] .blf2-checkpoint-copy strong {
+  color: var(--blf2-danger);
+}
+
+.blf2-checkpoint-copy small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
+  white-space: normal;
+}
+
+.blf2-diagnostics[open] > summary {
+  background: var(--blf2-surface-soft);
+}
+
+.blf2-diagnostics-meta {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.blf2-diagnostics-body {
+  display: grid;
+  gap: 14px;
+}
+
+.blf2-session-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.blf2-session-facts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.blf2-session-facts > div {
+  min-width: 0;
+}
+
+.blf2-session-facts dd {
+  overflow-wrap: anywhere;
+}
+
+.blf2-session-events {
+  max-height: 300px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 940px) {
+  .blf2-checkpoints {
+    padding: 16px 14px;
+  }
+
+  .blf2-session-facts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .blf2-workspace-state {
+    max-width: 100%;
+  }
+
+  .blf2-workspace-state > span:nth-child(2) {
+    max-width: 100%;
+  }
+
+  .blf2-run-action,
+  .blf2-workspace-tabs button {
+    min-height: 44px;
+  }
+
+  .blf2-checkpoint-copy small {
+    -webkit-line-clamp: 3;
+  }
+
+  .blf2-diagnostics summary {
+    min-height: 56px;
+  }
+
+  .blf2-diagnostics-meta {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .blf2-session-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .blf2-session-facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (forced-colors: active) {
+  .blf2-checkpoint-list li[data-state],
+  .blf2-diagnostics[open] > summary {
+    background: Canvas;
+  }
+
+  .blf2-checkpoint-marker,
+  .blf2-run-action {
+    forced-color-adjust: auto;
+  }
+}
