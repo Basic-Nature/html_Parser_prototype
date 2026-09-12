@@ -3062,3 +3062,188 @@ body[data-page="data-framework"] .warehouse-priority-controls > * {
     box-shadow:none;
   }
 }
+
+/* W16D bounded readiness-presentation polish.
+ * Presentation only: existing data-ui-state semantics remain runtime-owned.
+ */
+@layer components {
+  .readiness-key {
+    margin:.15em 0 1.35em;
+    border:1px solid rgba(174 199 216 /.28);
+    border-radius:14px;
+    background:rgba(12 18 28 /.62);
+    color:var(--df-text, #e6e8ea);
+    box-shadow:0 8px 22px rgba(0 0 0 /.16);
+  }
+
+  .readiness-key summary {
+    min-height:44px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1em;
+    padding:.7em .9em;
+    cursor:pointer;
+    font-weight:800;
+    letter-spacing:.02em;
+  }
+
+  .readiness-key summary::marker {
+    color:var(--neon);
+  }
+
+  .readiness-key-summary {
+    color:#b7c9d7;
+    font-size:.78em;
+    font-weight:600;
+    text-align:right;
+  }
+
+  .readiness-key-grid {
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:.65em;
+    padding:0 .9em .9em;
+  }
+
+  .readiness-key-item {
+    min-width:0;
+    display:grid;
+    gap:.15em;
+    padding:.6em .7em;
+    border-radius:10px;
+    border:1px solid rgba(174 199 216 /.22);
+    background:rgba(18 27 38 /.74);
+  }
+
+  .readiness-key-item strong {
+    font-size:.72em;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+  }
+
+  .readiness-key-item span {
+    color:#c7d4de;
+    font-size:.78em;
+    line-height:1.35;
+  }
+
+  .readiness-key-item[data-readiness-state="ready"] strong { color:#a7f3d0; }
+  .readiness-key-item[data-readiness-state="loading"] strong { color:#f8e7a6; }
+  .readiness-key-item[data-readiness-state="empty"] strong { color:#cbd5e1; }
+  .readiness-key-item[data-readiness-state="partial"] strong,
+  .readiness-key-item[data-readiness-state="stale"] strong,
+  .readiness-key-item[data-readiness-state="restricted"] strong { color:#f4c98b; }
+  .readiness-key-item[data-readiness-state="error"] strong { color:#fecaca; }
+
+  [data-ui-state] {
+    position:relative;
+  }
+
+  [data-ui-state]:not([data-ui-state="idle"]) {
+    padding-top:1.85rem;
+  }
+
+  [data-ui-state]:not([data-ui-state="idle"])::before {
+    content:attr(data-ui-state);
+    position:absolute;
+    top:.42rem;
+    left:.65rem;
+    display:inline-flex;
+    align-items:center;
+    min-height:1.05rem;
+    padding:.12rem .42rem;
+    border:1px solid currentColor;
+    border-radius:999px;
+    font-size:.62rem;
+    font-weight:800;
+    line-height:1;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:#cbd5e1;
+    background:rgba(12 18 28 /.82);
+  }
+
+  [data-ui-state="loading"]::before { color:#f8e7a6; }
+  [data-ui-state="ready"]::before { color:#a7f3d0; }
+  [data-ui-state="empty"]::before { color:#cbd5e1; }
+  [data-ui-state="partial"]::before,
+  [data-ui-state="stale"]::before,
+  [data-ui-state="restricted"]::before { color:#f4c98b; }
+  [data-ui-state="error"]::before { color:#fecaca; }
+
+  .evidence-context-bar {
+    border-color:rgba(0 255 231 /.34);
+    box-shadow:0 8px 24px rgba(0 0 0 /.16);
+  }
+
+  .evidence-context-kicker,
+  .panel-context-label {
+    letter-spacing:.09em;
+    text-transform:uppercase;
+  }
+
+  .evidence-context-summary > strong {
+    font-size:1.02rem;
+    line-height:1.25;
+  }
+
+  .evidence-relation {
+    min-width:0;
+  }
+
+  .evidence-relation > span {
+    letter-spacing:.07em;
+    text-transform:uppercase;
+    font-size:.68rem;
+  }
+
+  .evidence-relation > strong {
+    line-height:1.25;
+  }
+}
+
+@media (max-width:760px) {
+  .readiness-key summary {
+    align-items:flex-start;
+    flex-direction:column;
+    gap:.25em;
+  }
+
+  .readiness-key-summary {
+    text-align:left;
+  }
+
+  .readiness-key-grid {
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width:520px) {
+  .readiness-key-grid {
+    grid-template-columns:1fr;
+  }
+
+  [data-ui-state]:not([data-ui-state="idle"]) {
+    padding-top:2rem;
+  }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .readiness-key,
+  .readiness-key * {
+    transition:none !important;
+    animation:none !important;
+  }
+}
+
+@media (forced-colors:active) {
+  .readiness-key,
+  .readiness-key-item,
+  [data-ui-state]:not([data-ui-state="idle"])::before {
+    border-color:CanvasText;
+    background:Canvas;
+    color:CanvasText;
+    forced-color-adjust:auto;
+  }
+}
