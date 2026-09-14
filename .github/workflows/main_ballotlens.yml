@@ -572,8 +572,6 @@ jobs:
         shell: bash
         env:
           ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
-          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
-          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
         run: |
           set -euo pipefail
           EXPECTED_IMAGE="${ACR_LOGIN_SERVER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
@@ -583,10 +581,34 @@ jobs:
             --resource-group BallotLens_group \
             --container-image-name "$EXPECTED_IMAGE" \
             --container-registry-url "https://${ACR_LOGIN_SERVER}" \
-            --container-registry-user "$ACR_USERNAME" \
-            --container-registry-password "$ACR_PASSWORD" \
             --only-show-errors \
             --output none
+
+          # Preserve the accepted W17AK App Service pull-auth boundary.
+          # CI may authenticate separately to push the image, but the web app
+          # itself must pull from ACR with managed identity.
+          az webapp config set \
+            --name BallotLens \
+            --resource-group BallotLens_group \
+            --generic-configurations '{"acrUseManagedIdentityCreds": true}' \
+            --only-show-errors \
+            --output none
+
+          ACR_MI_PULL="$(
+            az webapp config show \
+              --name BallotLens \
+              --resource-group BallotLens_group \
+              --query acrUseManagedIdentityCreds \
+              --output tsv \
+              --only-show-errors
+          )"
+
+          if [[ "${ACR_MI_PULL,,}" != "true" ]]; then
+            echo "::error::App Service managed-identity ACR pull must remain enabled."
+            exit 1
+          fi
+
+          echo "App Service managed-identity ACR pull verified."
 
       - name: Verify App Service immutable container target
         shell: bash

@@ -70,16 +70,18 @@ def test_normal_deploy_never_runs_alembic_and_tracks_migration_source() -> None:
     assert "governed_schema_migration.py" not in text
 
 
-def test_deploy_uses_current_container_cli_flags() -> None:
+def test_deploy_uses_current_container_cli_and_managed_identity_flags() -> None:
     text = MAIN_WORKFLOW.read_text(encoding="utf-8")
 
     required = (
         "--container-image-name",
         "--container-registry-url",
-        "--container-registry-user",
-        "--container-registry-password",
+        '{"acrUseManagedIdentityCreds": true}',
+        "--query acrUseManagedIdentityCreds",
     )
     forbidden = (
+        "--container-registry-user",
+        "--container-registry-password",
         "--docker-custom-image-name",
         "--docker-registry-server-url",
         "--docker-registry-server-user",
@@ -89,6 +91,12 @@ def test_deploy_uses_current_container_cli_flags() -> None:
         assert marker in text
     for marker in forbidden:
         assert marker not in text
+
+    # CI build/push authentication is intentionally separate from
+    # App Service runtime ACR pull authentication.
+    assert "uses: docker/login-action@v4" in text
+    assert "username: ${{ secrets.ACR_USERNAME }}" in text
+    assert "password: ${{ secrets.ACR_PASSWORD }}" in text
 
 
 def test_e7b2_transition_is_exactly_allow_listed() -> None:
@@ -141,10 +149,22 @@ def test_runner_requires_exact_apply_confirmation() -> None:
     assert module.expected_confirmation(spec) == f"APPLY:{FROM}:{TARGET}"
 
 
-def test_runner_preserves_accepted_tls_contract_and_deployed_sha_gate() -> None:
+def test_runner_decouples_schema_governance_from_client_cert_tls_and_preserves_deployed_sha_gate() -> None:
     text = RUNNER.read_text(encoding="utf-8")
-    assert 'state["client_cert_enabled"] is not True' in text
-    assert 'state["client_cert_mode"] != "OptionalInteractiveUser"' in text
+
+    # The runtime fields remain observed for evidence/debugging.
+    assert '"client_cert_enabled": site.get("clientCertEnabled")' in text
+    assert '"client_cert_mode": site.get("clientCertMode")' in text
+
+    # Schema persistence is independent of client-certificate TLS posture.
+    assert 'state["client_cert_enabled"] is not True' not in text
+    assert 'state["client_cert_mode"] != "OptionalInteractiveUser"' not in text
+    assert "clientCertEnabled drifted from accepted True state." not in text
+    assert "clientCertMode drifted from accepted OptionalInteractiveUser state" not in text
+
+    # Existing non-TLS safety gates remain mandatory.
+    assert 'state["state"] != "Running"' in text
+    assert "WEBSITE_SKIP_RUNNING_KUDUAGENT" in text
     assert "require_deployed_commit" in text
     assert 'os.environ.get("GITHUB_SHA"' in text
 

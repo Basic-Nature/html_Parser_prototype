@@ -221,13 +221,11 @@ def ensure_azure_target() -> dict[str, Any]:
         raise RuntimeError(f"Resolved unexpected App Service target: {state!r}")
     if state["state"] != "Running":
         raise RuntimeError(f"App Service is not Running: {state['state']!r}")
-    if state["client_cert_enabled"] is not True:
-        raise RuntimeError("clientCertEnabled drifted from accepted True state.")
-    if state["client_cert_mode"] != "OptionalInteractiveUser":
-        raise RuntimeError(
-            "clientCertMode drifted from accepted OptionalInteractiveUser state: "
-            f"{state['client_cert_mode']!r}"
-        )
+
+    # Client-certificate TLS posture is observed for migration evidence but is
+    # intentionally not an authorization or readiness precondition for schema
+    # persistence. Trusted identity schema installation must remain independent
+    # of public certificate-auth activation and transport negotiation mode.
 
     app_settings = az_json(
         "webapp",

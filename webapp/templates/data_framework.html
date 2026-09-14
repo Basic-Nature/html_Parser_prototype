@@ -18,7 +18,7 @@
           {% if csrf_token %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
     <!-- Bootstrap -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css', v='a20af21318a2d76e') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css', v='40e8b165faf7a2ff') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_app_nav.css', v='r3a') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_surface_theme.css', v='r3b') }}">
 </head>
@@ -115,6 +115,23 @@
             </div>
           </div>
         </section>
+
+        <details class="readiness-key" id="readinessStateGuide">
+          <summary>
+            <span>Status key</span>
+            <span class="readiness-key-summary">How Data Framework reports readiness without changing authority</span>
+          </summary>
+          <div class="readiness-key-grid" role="list" aria-label="Data Framework readiness states">
+            <div class="readiness-key-item" role="listitem" data-readiness-state="idle"><strong>Idle</strong><span>Waiting for a scoped operation.</span></div>
+            <div class="readiness-key-item" role="listitem" data-readiness-state="loading"><strong>Loading</strong><span>A governed request is in progress.</span></div>
+            <div class="readiness-key-item" role="listitem" data-readiness-state="ready"><strong>Ready</strong><span>The current authoritative view is loaded.</span></div>
+            <div class="readiness-key-item" role="listitem" data-readiness-state="empty"><strong>Empty</strong><span>The scope is valid; no rows match.</span></div>
+            <div class="readiness-key-item" role="listitem" data-readiness-state="partial"><strong>Partial</strong><span>The bounded result may be incomplete.</span></div>
+            <div class="readiness-key-item" role="listitem" data-readiness-state="stale"><strong>Stale</strong><span>Cached evidence is shown while refresh is needed.</span></div>
+            <div class="readiness-key-item" role="listitem" data-readiness-state="restricted"><strong>Restricted</strong><span>This surface requires governed operator access.</span></div>
+            <div class="readiness-key-item" role="listitem" data-readiness-state="error"><strong>Error</strong><span>The request failed; prior authority is not silently replaced.</span></div>
+          </div>
+        </details>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}

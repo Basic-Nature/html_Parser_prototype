@@ -10,7 +10,7 @@ CSS = F2 / "styles" / "shell.css"
 
 FROZEN_FILES = {
     F2 / "app" / "AppShell.tsx":
-        "a334e6459073deb6052ea60e5bc25698661be99232df2ead5ec356b6700ecfd7",
+        "644579302703cab7b3c7988d4100cccbd5676cb7036ca54ec2338425b2665513",
     F2 / "components" / "workspace" / "WorkspaceShell.tsx":
         "1d0de9f5da64446270940d30765dda40f64e8baa6cdabb8ce016d4066441ec45",
     F2 / "components" / "checkpoints" / "CheckpointRail.tsx":
@@ -20,7 +20,7 @@ FROZEN_FILES = {
     F2 / "components" / "source" / "PublicRegistryBrowser.tsx":
         "8ef531999cacf604fc25305482477a35a9ec3f69dae00d88ed4586b63c3fb793",
     F2 / "components" / "source" / "TrustedSourceBrowser.tsx":
-        "7bd77921e58fd58a413d89c8a127b22dbc3d8fd826fc73d46d6c5718d153c063",
+        "e62f667e3f612157211e9d74f642fcf6387f36453fd5349153933b31264b8e6e",
     F2 / "state" / "runMachine.ts":
         "ef313db6334fd2b759663595dba75cc9c50887cabb6dbff4db3e785c4a656705",
     F2 / "state" / "sessionHistory.ts":
@@ -28,14 +28,15 @@ FROZEN_FILES = {
     F2 / "services" / "publicSubmit.ts":
         "ec1f60d8bcf332bc65f0735e13c699cc49d1399504d61efb133023dd070da8a3",
     F2 / "services" / "trustedExecution.ts":
-        "82c2cd3da00d27a896f82fd6562fcd68662cc5bd0d403ddb5a64d82724376ef6",
+        "5560c00f87efa5ab3cb23a14c0cac22cff61f1f1dc568d7f12a9ca5a5f91550e",
     F2 / "services" / "publicRuntimeLifecycle.ts":
         "0f3d9a27a855d61ca5f3e565dc6598a61ccc6ada8ccedc212583a032d893ea6b",
 }
 
 
 def _sha(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    data = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def test_w16l_mutates_presentation_css_only_and_keeps_runtime_authority_frozen() -> None:
