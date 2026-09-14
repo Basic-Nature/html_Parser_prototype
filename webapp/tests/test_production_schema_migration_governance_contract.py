@@ -70,16 +70,18 @@ def test_normal_deploy_never_runs_alembic_and_tracks_migration_source() -> None:
     assert "governed_schema_migration.py" not in text
 
 
-def test_deploy_uses_current_container_cli_flags() -> None:
+def test_deploy_uses_current_container_cli_and_managed_identity_flags() -> None:
     text = MAIN_WORKFLOW.read_text(encoding="utf-8")
 
     required = (
         "--container-image-name",
         "--container-registry-url",
-        "--container-registry-user",
-        "--container-registry-password",
+        '{"acrUseManagedIdentityCreds": true}',
+        "--query acrUseManagedIdentityCreds",
     )
     forbidden = (
+        "--container-registry-user",
+        "--container-registry-password",
         "--docker-custom-image-name",
         "--docker-registry-server-url",
         "--docker-registry-server-user",
@@ -89,6 +91,12 @@ def test_deploy_uses_current_container_cli_flags() -> None:
         assert marker in text
     for marker in forbidden:
         assert marker not in text
+
+    # CI build/push authentication is intentionally separate from
+    # App Service runtime ACR pull authentication.
+    assert "uses: docker/login-action@v4" in text
+    assert "username: ${{ secrets.ACR_USERNAME }}" in text
+    assert "password: ${{ secrets.ACR_PASSWORD }}" in text
 
 
 def test_e7b2_transition_is_exactly_allow_listed() -> None:
