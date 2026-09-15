@@ -804,6 +804,8 @@ def build_database_url() -> str:
 def read_db_state(spec: dict[str, Any]) -> dict[str, Any]:
     expected_tables = list(spec.get("expected_new_tables") or [])
     support_tables = list(spec.get("required_existing_tables") or [])
+    expected_columns = {str(table): [str(column) for column in columns] for table, columns in dict(spec.get("expected_new_columns") or {}).items()}
+    required_empty_tables = list(spec.get("required_empty_tables") or [])
     conn = connect_db()
     try:
         conn.autocommit = False
@@ -832,9 +834,17 @@ def read_db_state(spec: dict[str, Any]) -> dict[str, Any]:
         revisions = [str(row[0]) for row in cur.fetchall()]
 
         table_state: dict[str, bool] = {}
-        for table in sorted(set(expected_tables + support_tables + ["alembic_version"])):
+        observed_tables = sorted(set(expected_tables + support_tables + required_empty_tables + list(expected_columns) + ["alembic_version"]))
+        for table in observed_tables:
             cur.execute("SELECT to_regclass(%s)", (f"public.{table}",))
             table_state[table] = cur.fetchone()[0] is not None
+
+        expected_column_state: dict[str, dict[str, bool]] = {}
+        for table, columns in sorted(expected_columns.items()):
+            expected_column_state[table] = {}
+            for column in columns:
+                cur.execute("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = %s AND table_name = %s AND column_name = %s)", ("public", table, column))
+                expected_column_state[table][column] = bool(cur.fetchone()[0])
 
         cur.execute("SELECT COUNT(*) FROM canonical_election_results")
         canonical_result_count = int(cur.fetchone()[0])
@@ -855,6 +865,14 @@ def read_db_state(spec: dict[str, Any]) -> dict[str, Any]:
             else:
                 expected_table_counts[table] = None
 
+        required_empty_table_counts: dict[str, int | None] = {}
+        for table in required_empty_tables:
+            if table_state.get(table):
+                cur.execute(f'SELECT COUNT(*) FROM "{table}"')
+                required_empty_table_counts[table] = int(cur.fetchone()[0])
+            else:
+                required_empty_table_counts[table] = None
+
         conn.rollback()
         return {
             "database": current_database,
@@ -871,6 +889,8 @@ def read_db_state(spec: dict[str, Any]) -> dict[str, Any]:
             "alembic_revisions": revisions,
             "tables": table_state,
             "expected_table_counts": expected_table_counts,
+            "expected_column_state": expected_column_state,
+            "required_empty_table_counts": required_empty_table_counts,
             "canonical_result_count": canonical_result_count,
             "canonical_race_count": canonical_race_count,
             "canonical_total_votes_sum": canonical_total_votes_sum,
@@ -898,6 +918,8 @@ def classify_pre_state(
 ) -> str:
     revisions = state["alembic_revisions"]
     expected_tables = list(spec["expected_new_tables"])
+    expected_columns = {str(table): [str(column) for column in columns] for table, columns in dict(spec.get("expected_new_columns") or {}).items()}
+    required_empty_tables = list(spec.get("required_empty_tables") or [])
 
     missing_support = [
         table
@@ -918,6 +940,9 @@ def classify_pre_state(
                 "Alembic is at target but expected table(s) are missing: "
                 + ", ".join(missing_expected)
             )
+        missing_columns = [f"{table}.{column}" for table, columns in expected_columns.items() for column in columns if not state["expected_column_state"].get(table, {}).get(column)]
+        if missing_columns:
+            raise RuntimeError("Alembic is at target but expected column(s) are missing: " + ", ".join(missing_columns))
         return "already_applied"
 
     if revisions != [spec["from_revision"]]:
@@ -934,6 +959,13 @@ def classify_pre_state(
             "Expected workflow tables absent before migration but found partial state: "
             + ", ".join(partial)
         )
+
+    preexisting_columns = [f"{table}.{column}" for table, columns in expected_columns.items() for column in columns if state["expected_column_state"].get(table, {}).get(column)]
+    if preexisting_columns:
+        raise RuntimeError("Unexpected pre-existing target column(s) before migration: " + ", ".join(preexisting_columns))
+    nonempty_required = {table: state["required_empty_table_counts"].get(table) for table in required_empty_tables if state["required_empty_table_counts"].get(table) != 0}
+    if nonempty_required:
+        raise RuntimeError(f"Required empty table is not empty or is missing: {nonempty_required!r}")
 
     return "ready"
 
@@ -987,6 +1019,11 @@ def verify_post_state(
     ]
     if missing:
         raise RuntimeError("Expected new table(s) missing: " + ", ".join(missing))
+
+    expected_columns = {str(table): [str(column) for column in columns] for table, columns in dict(spec.get("expected_new_columns") or {}).items()}
+    missing_columns = [f"{table}.{column}" for table, columns in expected_columns.items() for column in columns if not after["expected_column_state"].get(table, {}).get(column)]
+    if missing_columns:
+        raise RuntimeError("Expected new column(s) missing: " + ", ".join(missing_columns))
 
     if spec.get("expect_new_tables_empty"):
         nonempty = {
