@@ -127,6 +127,9 @@ class TrustedElevationChallenge(Base):
     browser_session_binding_hash = Column(String(64), nullable=False)
     requested_operation_class = Column(String(96), nullable=False)
     required_capability = Column(String(128), nullable=False)
+    resource_type = Column(String(64), nullable=False)
+    resource_id = Column(String(128), nullable=False)
+    resource_version = Column(Integer, nullable=False)
     return_target = Column(String(1024), nullable=False)
     state = Column(String(24), nullable=False)
     issued_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
@@ -134,7 +137,9 @@ class TrustedElevationChallenge(Base):
     consumed_at = Column(DateTime(timezone=True), nullable=True)
     __table_args__ = (
         CheckConstraint("state IN ('pending','redirected','verified','denied','expired','consumed')", name="ck_trusted_challenge_state"),
+        CheckConstraint("resource_version >= 1", name="ck_trusted_challenge_resource_version"),
         Index("ix_trusted_challenges_state_expiry", "state", "expires_at"),
+        Index("ix_trusted_challenges_resource_state", "resource_type", "resource_id", "state"),
     )
 
 class TrustedAccessHandoff(Base):
@@ -163,15 +168,21 @@ class TrustedElevationGrant(Base):
     credential_id = Column(UUID(as_uuid=True), ForeignKey("trusted_credentials.id", ondelete="RESTRICT"), nullable=False)
     operation_class = Column(String(96), nullable=False)
     required_capability = Column(String(128), nullable=False)
+    resource_type = Column(String(64), nullable=False)
+    resource_id = Column(String(128), nullable=False)
+    resource_version = Column(Integer, nullable=False)
     policy_version = Column(String(64), nullable=False)
     state = Column(String(24), nullable=False)
     issued_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
     reason_code = Column(String(64), nullable=True)
     __table_args__ = (
         CheckConstraint("state IN ('pending','active','expired','revoked','consumed')", name="ck_trusted_grant_state"),
+        CheckConstraint("resource_version >= 1", name="ck_trusted_grant_resource_version"),
         Index("ix_trusted_grants_principal_state", "principal_id", "state"),
+        Index("ix_trusted_grants_resource_state", "resource_type", "resource_id", "state"),
     )
 
 class TrustedTrustEvent(Base):
