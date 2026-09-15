@@ -120,7 +120,7 @@ def _initialize_session_and_auth(payload: dict[str, Any], h: dict[str, Any]) -> 
 
 def _prepare_run_inputs(payload: dict[str, Any], session_id: str, dev_isolation_bypass: bool, h: dict[str, Any]) -> dict[str, Any]:
     from webapp.parser.config import URL_LIST_FILE
-    from webapp.parser.utils.url_registry import is_parser_eligible_url
+    from webapp.parser.services.source_registry_runtime import is_parser_eligible_url
     requested_source = h["safe_lower"](
         h["safe_get"](payload, "file_source", h["get_manual_source"](session_id))
     )
@@ -1118,7 +1118,7 @@ def _initialize_public_registry_authority(
         authorize_public_registry_parse,
         validate_public_start_payload,
     )
-    from webapp.parser.utils.url_registry import (
+    from webapp.parser.services.source_registry_runtime import (
         PublicRegistryResolutionError,
         resolve_public_registry_source,
     )

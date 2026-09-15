@@ -34,7 +34,7 @@ from webapp.parser.utils.models import (
     WorkflowItem,
     WorkflowPass,
 )
-from webapp.parser.utils.url_registry import lookup_exact_registry_entry
+from webapp.parser.services.source_registry_runtime import lookup_exact_registry_entry
 
 
 WORKFLOW_STAGING_BINDING_CONTRACT = "workflow_staging_binding_v1"

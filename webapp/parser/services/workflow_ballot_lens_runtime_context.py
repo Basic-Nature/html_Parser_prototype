@@ -42,7 +42,7 @@ from webapp.parser.utils.models import (
     WorkflowItem,
     WorkflowPass,
 )
-from webapp.parser.utils.url_registry import load_url_registry
+from webapp.parser.services.source_registry_runtime import load_url_registry
 
 
 WORKFLOW_BALLOT_LENS_RUNTIME_CONTEXT_CONTRACT = (

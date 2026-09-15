@@ -29,7 +29,7 @@ from webapp.parser.services.workflow_staging_binding import (
 from webapp.parser.contracts.workflow_lifecycle import (
     assert_dl2_claimable,
 )
-from webapp.parser.utils.url_registry import lookup_exact_registry_entry
+from webapp.parser.services.source_registry_runtime import lookup_exact_registry_entry
 
 
 WORKFLOW_CLAIM_CONTRACT = "w3_pass_claim_v1"

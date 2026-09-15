@@ -3335,7 +3335,7 @@ def api_public_ballot_lens_registry():
         configured_public_registry_pilot_source_id,
         public_registry_parse_feature_enabled,
     )
-    from webapp.parser.utils.url_registry import (
+    from webapp.parser.services.source_registry_runtime import (
         project_public_registry_sources,
     )
     try:
@@ -3390,7 +3390,7 @@ def api_urls():
     # Read the reviewed URL registry. GET remains backward compatible through
     # ``urls`` while also returning structured metadata in ``entries``.
     # Direct HTTP registry writes are intentionally retired.
-    from webapp.parser.utils.url_registry import load_url_registry
+    from webapp.parser.services.source_registry_runtime import load_url_registry
 
     try:
         if request.method == "GET":
