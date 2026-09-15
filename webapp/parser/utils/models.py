@@ -1190,3 +1190,276 @@ class Alert(Base):
 
     def __repr__(self):
         return f"<Alert(id={self.id}, level={self.level})>"
+
+# --- SOURCE REGISTRY CONTROL PLANE (W20 FOUNDATION, ISOLATED METADATA) ---
+#
+# IMPORTANT:
+# These models deliberately use SourceRegistryBase rather than the application
+# Base. Production runtime currently verifies every table in Base.metadata and
+# must remain deployable before the governed d2e33e73c6d2 schema migration.
+# The separate metadata is an explicit source-before-schema compatibility
+# boundary; the Alembic migration remains the production DDL authority.
+SourceRegistryBase = declarative_base()
+SOURCE_REGISTRY_JSON = JSON().with_variant(JSONB(), "postgresql")
+
+
+def _source_registry_utcnow():
+    return datetime.now(timezone.utc)
+
+
+class SourceRegistrySource(SourceRegistryBase):
+    __tablename__ = "source_registry_sources"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lifecycle_state = Column(String(16), nullable=False)
+    row_version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_source_registry_utcnow)
+    created_by_principal_id = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_source_registry_utcnow,
+        onupdate=_source_registry_utcnow,
+    )
+    __table_args__ = (
+        CheckConstraint(
+            "lifecycle_state IN ('active','quarantined','deprecated')",
+            name="ck_source_registry_source_lifecycle",
+        ),
+        CheckConstraint("row_version >= 1", name="ck_source_registry_source_version"),
+        Index("ix_source_registry_sources_lifecycle_state", "lifecycle_state"),
+    )
+
+
+class SourceRegistryRevision(SourceRegistryBase):
+    __tablename__ = "source_registry_revisions"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("source_registry_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    revision_number = Column(Integer, nullable=False)
+    exact_url = Column(Text, nullable=False)
+    normalized_url = Column(Text, nullable=False)
+    host = Column(String(255), nullable=False)
+    url_sha256 = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_source_registry_utcnow)
+    created_by_principal_id = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
+    __table_args__ = (
+        UniqueConstraint("source_id", "revision_number", name="uq_source_registry_revision_number"),
+        UniqueConstraint("source_id", "url_sha256", name="uq_source_registry_revision_url_hash"),
+        CheckConstraint("revision_number >= 1", name="ck_source_registry_revision_number"),
+        CheckConstraint("length(url_sha256) = 64", name="ck_source_registry_revision_url_hash"),
+        Index("ix_source_registry_revisions_source", "source_id"),
+        Index("ix_source_registry_revisions_host", "host"),
+    )
+
+
+class SourceRegistryBinding(SourceRegistryBase):
+    __tablename__ = "source_registry_bindings"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("source_registry_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    current_revision_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("source_registry_revisions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    year = Column(String(16), nullable=False)
+    contest = Column(String(512), nullable=False)
+    state = Column(String(64), nullable=False)
+    scope = Column(String(512), nullable=False)
+    format = Column(String(64), nullable=False)
+    notes = Column(Text, nullable=False)
+    review_state = Column(String(24), nullable=False)
+    parser_eligible = Column(Boolean, nullable=False)
+    public_eligible = Column(Boolean, nullable=False)
+    workflow_eligible = Column(Boolean, nullable=False)
+    row_version = Column(Integer, nullable=False, default=1)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    published_by_principal_id = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_source_registry_utcnow)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_source_registry_utcnow,
+        onupdate=_source_registry_utcnow,
+    )
+    __table_args__ = (
+        CheckConstraint(
+            "review_state IN ('backlog','approved','quarantined','deprecated')",
+            name="ck_source_registry_binding_review_state",
+        ),
+        CheckConstraint("row_version >= 1", name="ck_source_registry_binding_version"),
+        CheckConstraint(
+            "public_eligible = false OR parser_eligible = true",
+            name="ck_source_registry_binding_public_implies_parser",
+        ),
+        CheckConstraint(
+            "workflow_eligible = false OR parser_eligible = true",
+            name="ck_source_registry_binding_workflow_implies_parser",
+        ),
+        CheckConstraint(
+            "public_eligible = false OR review_state = 'approved'",
+            name="ck_source_registry_binding_public_requires_approved",
+        ),
+        CheckConstraint(
+            "workflow_eligible = false OR review_state = 'approved'",
+            name="ck_source_registry_binding_workflow_requires_approved",
+        ),
+        CheckConstraint(
+            "review_state NOT IN ('quarantined','deprecated') OR "
+            "(parser_eligible=false AND public_eligible=false AND workflow_eligible=false)",
+            name="ck_source_registry_binding_disabled_states",
+        ),
+        Index("ix_source_registry_bindings_review", "review_state"),
+        Index("ix_source_registry_bindings_public", "public_eligible", "review_state"),
+        Index("ix_source_registry_bindings_workflow", "workflow_eligible", "review_state"),
+        Index("ix_source_registry_bindings_source", "source_id"),
+    )
+
+
+class SourceRegistryAlias(SourceRegistryBase):
+    __tablename__ = "source_registry_aliases"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    binding_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("source_registry_bindings.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    alias_type = Column(String(32), nullable=False)
+    alias_value = Column(String(96), nullable=False, unique=True)
+    active = Column(Boolean, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_source_registry_utcnow)
+    __table_args__ = (
+        CheckConstraint(
+            "alias_type IN ('legacy_blsrc_v1','stable_blsrc_v2')",
+            name="ck_source_registry_alias_type",
+        ),
+        Index("ix_source_registry_aliases_binding_active", "binding_id", "active"),
+    )
+
+
+class SourceRegistryProposal(SourceRegistryBase):
+    __tablename__ = "source_registry_proposals"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    operation = Column(String(32), nullable=False)
+    target_binding_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("source_registry_bindings.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    expected_target_row_version = Column(Integer, nullable=True)
+    proposed_payload = Column(SOURCE_REGISTRY_JSON, nullable=False)
+    payload_sha256 = Column(String(64), nullable=False)
+    status = Column(String(24), nullable=False)
+    proposer_principal_id = Column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_source_registry_utcnow)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_source_registry_utcnow,
+        onupdate=_source_registry_utcnow,
+    )
+    row_version = Column(Integer, nullable=False, default=1)
+    __table_args__ = (
+        CheckConstraint(
+            "operation IN ('create','revise_url','revise_metadata','change_eligibility',"
+            "'quarantine','deprecate','restore')",
+            name="ck_source_registry_proposal_operation",
+        ),
+        CheckConstraint(
+            "status IN ('submitted','review_approved','review_rejected','published','cancelled')",
+            name="ck_source_registry_proposal_status",
+        ),
+        CheckConstraint("row_version >= 1", name="ck_source_registry_proposal_version"),
+        CheckConstraint(
+            "expected_target_row_version IS NULL OR expected_target_row_version >= 1",
+            name="ck_source_registry_proposal_target_version",
+        ),
+        Index("ix_source_registry_proposals_status_created", "status", "created_at"),
+        Index("ix_source_registry_proposals_target", "target_binding_id"),
+    )
+
+
+class SourceRegistryReview(SourceRegistryBase):
+    __tablename__ = "source_registry_reviews"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    proposal_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("source_registry_proposals.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    proposal_row_version = Column(Integer, nullable=False)
+    decision = Column(String(16), nullable=False)
+    reviewer_principal_id = Column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+    reason = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_source_registry_utcnow)
+    __table_args__ = (
+        UniqueConstraint("proposal_id", "proposal_row_version", name="uq_source_registry_review_proposal_version"),
+        CheckConstraint("proposal_row_version >= 1", name="ck_source_registry_review_version"),
+        CheckConstraint("decision IN ('approve','reject')", name="ck_source_registry_review_decision"),
+    )
+
+
+class SourceRegistryEvent(SourceRegistryBase):
+    __tablename__ = "source_registry_events"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("source_registry_sources.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    binding_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("source_registry_bindings.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    proposal_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("source_registry_proposals.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    event_type = Column(String(64), nullable=False)
+    principal_id = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
+    credential_id = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
+    session_id = Column(UUID(as_uuid=True), nullable=True)
+    resource_version = Column(Integer, nullable=False)
+    before_sha256 = Column(String(64), nullable=True)
+    after_sha256 = Column(String(64), nullable=True)
+    reason = Column(Text, nullable=False)
+    event_metadata = Column(SOURCE_REGISTRY_JSON, nullable=False, default=dict)
+    previous_event_hash = Column(String(64), nullable=True)
+    event_hash = Column(String(64), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_source_registry_utcnow)
+    __table_args__ = (
+        CheckConstraint("resource_version >= 1", name="ck_source_registry_event_version"),
+        CheckConstraint("length(event_hash) = 64", name="ck_source_registry_event_hash"),
+        Index("ix_source_registry_events_binding_time", "binding_id", "created_at"),
+        Index("ix_source_registry_events_type_time", "event_type", "created_at"),
+        Index("ix_source_registry_events_principal_time", "principal_id", "created_at"),
+    )

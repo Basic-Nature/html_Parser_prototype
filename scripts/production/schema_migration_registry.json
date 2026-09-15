@@ -113,6 +113,62 @@
       ],
       "rollback_policy": "manual_review_only_no_automatic_downgrade",
       "target_revision": "f18a7c3d4e92"
+    },
+    "d2e33e73c6d2": {
+      "expect_new_tables_empty": false,
+      "expected_new_columns": {},
+      "expected_new_tables": [
+        "source_registry_sources",
+        "source_registry_revisions",
+        "source_registry_bindings",
+        "source_registry_aliases",
+        "source_registry_proposals",
+        "source_registry_reviews",
+        "source_registry_events"
+      ],
+      "expected_post_table_counts": {
+        "source_registry_sources": 207,
+        "source_registry_revisions": 211,
+        "source_registry_bindings": 213,
+        "source_registry_aliases": 277,
+        "source_registry_proposals": 0,
+        "source_registry_reviews": 0,
+        "source_registry_events": 213
+      },
+      "bootstrap_snapshot_path": "scripts/production/source_registry_bootstrap_v1.json",
+      "bootstrap_snapshot_sha256": "2420c00728ac4ba42b00165d2000f15aa5a8f15428578a292062a29ae90833b0",
+      "from_revision": "a19c7e4b2d60",
+      "kind": "source_registry_control_plane_foundation_bootstrap",
+      "migration_path": "alembic/versions/d2e33e73c6d2_source_registry_control_plane_foundation.py",
+      "migration_sha256": "e0ff7cc43859ae15c1963e784d9efd5e7e5ff919aad20a7c178ea61d95494cb6",
+      "preserve_canonical_publication_metrics": true,
+      "required_empty_tables": [],
+      "required_existing_tables": [
+        "alembic_version",
+        "batch_metadata",
+        "canonical_election_races",
+        "canonical_election_results",
+        "canonical_source_artifacts",
+        "workflow_items",
+        "workflow_passes",
+        "workflow_comparisons",
+        "workflow_discrepancies",
+        "workflow_reviews",
+        "workflow_artifact_links",
+        "workflow_events",
+        "trusted_principals",
+        "trusted_identity_bindings",
+        "trusted_credentials",
+        "trusted_role_bindings",
+        "trusted_devices",
+        "trusted_sessions",
+        "trusted_elevation_challenges",
+        "trusted_access_handoffs",
+        "trusted_elevation_grants",
+        "trusted_trust_events"
+      ],
+      "rollback_policy": "manual_review_only_no_automatic_downgrade",
+      "target_revision": "d2e33e73c6d2"
     }
   },
   "schema_version": "electionpulse_production_schema_migration_registry_v1"

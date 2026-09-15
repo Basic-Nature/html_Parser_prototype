@@ -392,3 +392,64 @@ def lookup_exact_registry_entry(
         )
 
     return None
+
+# ---------------------------------------------------------------------------
+# W20 Source Registry control-plane foundation (inert compatibility helpers)
+# ---------------------------------------------------------------------------
+# These helpers do not change existing file-registry authority. Runtime callers
+# remain on the legacy helpers until an independently accepted durable cutover.
+import os as _source_registry_os
+import uuid as _source_registry_uuid
+
+SOURCE_REGISTRY_AUTHORITY_MODE_ENV = "SOURCE_REGISTRY_AUTHORITY_MODE"
+SOURCE_REGISTRY_MUTATIONS_ENABLED_ENV = "SOURCE_REGISTRY_MUTATIONS_ENABLED"
+SOURCE_REGISTRY_AUTHORITY_MODES = frozenset({
+    "legacy_file",
+    "shadow_db",
+    "durable_db",
+})
+STABLE_PUBLIC_REGISTRY_SOURCE_ID_PREFIX = "blsrc_v2_"
+_STABLE_PUBLIC_REGISTRY_SOURCE_ID_RE = re.compile(
+    r"\Ablsrc_v2_[0-9a-f]{64}\Z"
+)
+
+
+def source_registry_authority_mode(
+    environ: dict[str, str] | None = None,
+) -> str:
+    source = _source_registry_os.environ if environ is None else environ
+    value = str(
+        source.get(SOURCE_REGISTRY_AUTHORITY_MODE_ENV, "legacy_file")
+        or "legacy_file"
+    ).strip().lower()
+    if value not in SOURCE_REGISTRY_AUTHORITY_MODES:
+        raise ValueError(f"Unknown Source Registry authority mode: {value!r}")
+    return value
+
+
+def source_registry_mutations_enabled(
+    environ: dict[str, str] | None = None,
+) -> bool:
+    source = _source_registry_os.environ if environ is None else environ
+    raw = str(
+        source.get(SOURCE_REGISTRY_MUTATIONS_ENABLED_ENV, "false")
+        or "false"
+    ).strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def stable_public_registry_v2_alias(binding_id: str) -> str:
+    canonical = str(_source_registry_uuid.UUID(str(binding_id)))
+    material = (
+        "source-registry-binding-v2\0" + canonical
+    ).encode("utf-8")
+    digest = hashlib.sha256(material).hexdigest()
+    return f"{STABLE_PUBLIC_REGISTRY_SOURCE_ID_PREFIX}{digest}"
+
+
+def is_stable_public_registry_v2_alias(value: str) -> bool:
+    return bool(
+        _STABLE_PUBLIC_REGISTRY_SOURCE_ID_RE.fullmatch(
+            str(value or "").strip()
+        )
+    )

@@ -912,6 +912,32 @@ def validate_source(app_root: Path, spec: dict[str, Any]) -> str:
     return actual
 
 
+def validate_support_file(app_root: Path, spec: dict[str, Any]) -> str | None:
+    relative = str(spec.get("bootstrap_snapshot_path") or "").strip()
+    expected = str(spec.get("bootstrap_snapshot_sha256") or "").strip()
+    if not relative and not expected:
+        return None
+    if not relative or not expected:
+        raise RuntimeError("Governed migration support-file path/SHA contract is incomplete.")
+    support_path = app_root / relative
+    if not support_path.is_file():
+        raise RuntimeError(f"Governed migration support file absent in deployed image: {support_path}")
+    actual = sha256_bytes(support_path.read_bytes())
+    if actual != expected:
+        raise RuntimeError("Governed migration support-file SHA mismatch. " f"expected={expected} actual={actual}")
+    return actual
+
+
+def verify_expected_post_table_counts(state: dict[str, Any], spec: dict[str, Any], *, phase: str) -> None:
+    expected = {str(table): int(count) for table, count in dict(spec.get("expected_post_table_counts") or {}).items()}
+    if not expected:
+        return
+    actual = state.get("expected_table_counts") or {}
+    drift = {table: {"expected": count, "actual": actual.get(table)} for table, count in expected.items() if actual.get(table) != count}
+    if drift:
+        raise RuntimeError(f"{phase} expected seeded table count mismatch: {drift!r}")
+
+
 def classify_pre_state(
     state: dict[str, Any],
     spec: dict[str, Any],
@@ -943,6 +969,7 @@ def classify_pre_state(
         missing_columns = [f"{table}.{column}" for table, columns in expected_columns.items() for column in columns if not state["expected_column_state"].get(table, {}).get(column)]
         if missing_columns:
             raise RuntimeError("Alembic is at target but expected column(s) are missing: " + ", ".join(missing_columns))
+        verify_expected_post_table_counts(state, spec, phase="already_applied")
         return "already_applied"
 
     if revisions != [spec["from_revision"]]:
@@ -1036,6 +1063,8 @@ def verify_post_state(
                 f"Expected new workflow tables to be empty; found {nonempty!r}"
             )
 
+    verify_expected_post_table_counts(after, spec, phase="post_migration")
+
     if spec.get("preserve_canonical_publication_metrics"):
         fields = (
             "canonical_result_count",
@@ -1077,6 +1106,9 @@ def worker_main(args: argparse.Namespace) -> int:
 
         app_root = find_app_root()
         result["migration_sha256"] = validate_source(app_root, spec)
+        support_sha256 = validate_support_file(app_root, spec)
+        if support_sha256 is not None:
+            result["bootstrap_snapshot_sha256"] = support_sha256
 
         before = read_db_state(spec)
         result["before"] = before
