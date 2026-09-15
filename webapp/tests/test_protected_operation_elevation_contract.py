@@ -21,7 +21,7 @@ def test_fail_closed_codes_are_present() -> None:
 
 def test_allow_occurs_after_live_rechecks() -> None:
     source = _source()
-    allow_index = source.rindex('ProtectedOperationDecision(True, "allow")')
+    allow_index = source.rindex('return ProtectedOperationDecision(True, "allow", grant_id)')
     for marker in (
         "principal.state",
         "capabilities_for_principal",
