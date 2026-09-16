@@ -66,6 +66,11 @@ def _json_safe(value: Any, *, path: str) -> Any:
     )
 
 
+def inspection_json_safe_value(value: Any, *, path: str) -> Any:
+    """Public fail-closed JSON-safety authority for inspection projections."""
+    return _json_safe(value, path=path)
+
+
 def _project_location(location: SourceLocation | None) -> dict[str, Any] | None:
     if location is None:
         return None
