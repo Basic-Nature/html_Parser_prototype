@@ -401,8 +401,20 @@ def parse(
     Returns: headers, data, contest, metadata
     """
     html_context = html_context or {}
+    parser_observation_emit_func = kwargs.pop(
+        "parser_observation_emit_func",
+        None,
+    )
     # Parity guard: support provided_tables + skip_pivot (mirrors table_core behavior)
     provided_tables = html_context.get("provided_tables")
+    if (
+        isinstance(provided_tables, list)
+        and provided_tables
+        and parser_observation_emit_func is not None
+    ):
+        raise RuntimeError(
+            "parser observation callback is unavailable for provided_tables wrapper path"
+        )
     if isinstance(provided_tables, list) and provided_tables:
         # Merge any provided tables, then pass through the builder
         ctx = dict(html_context)
@@ -509,6 +521,7 @@ def parse(
             inspection_store=inspection_store,
         inspection_principal=inspection_principal,
         inspection_emit_func=inspection_emit_func,
+        parser_observation_emit_func=parser_observation_emit_func,
 )
 
     result_any = cast(Any, result)

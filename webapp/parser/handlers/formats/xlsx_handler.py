@@ -365,7 +365,19 @@ def parse(
     **kwargs: Any,
 ) -> Tuple[List[str] | None, List[Dict[str, Any]] | None, str | None, Dict[str, Any]]:
     html_context = html_context or {}
+    parser_observation_emit_func = kwargs.pop(
+        "parser_observation_emit_func",
+        None,
+    )
     provided_tables = html_context.get("provided_tables")
+    if (
+        isinstance(provided_tables, list)
+        and provided_tables
+        and parser_observation_emit_func is not None
+    ):
+        raise RuntimeError(
+            "parser observation callback is unavailable for provided_tables wrapper path"
+        )
     if isinstance(provided_tables, list) and provided_tables:
         ctx = dict(html_context)
         ctx.update({
@@ -478,6 +490,7 @@ def parse(
         coordinator=coordinator,
         sheet=sheet,
         html_context=html_context,
+        parser_observation_emit_func=parser_observation_emit_func,
     )
     result_any = cast(Any, result)
     if not (isinstance(result_any, tuple) and len(result_any) == 4):
