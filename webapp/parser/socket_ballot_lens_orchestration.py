@@ -599,6 +599,73 @@ def _make_pipeline_inspection_emitter(
     return _emit_pipeline_inspection
 
 
+def _make_parser_observation_emitter(
+    session_id: str,
+    principal: Any,
+    h: dict[str, Any],
+):
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise ValueError("parser observation emitter requires session_id")
+
+    principal_binding = str(principal or "").strip()
+    if not principal_binding:
+        raise ValueError(
+            "parser observation emitter requires authenticated principal"
+        )
+
+    def _emit_parser_observation(payload: dict[str, Any]) -> None:
+        if not principal_binding:
+            raise RuntimeError("parser observation principal binding lost")
+        if not isinstance(payload, dict):
+            raise TypeError("parser observation payload must be a dict")
+        if payload.get("contract") != "parser_observation_bundle_v1":
+            raise ValueError("unexpected parser observation contract")
+
+        authority = payload.get("authority")
+        if (
+            not isinstance(authority, dict)
+            or authority.get("canonical") is not False
+        ):
+            raise ValueError(
+                "parser observation payload must be noncanonical"
+            )
+        if (
+            payload.get("raw_rows_included") is not False
+            or "rows" in payload
+        ):
+            raise ValueError(
+                "parser observation payload must not contain raw rows"
+            )
+        if (
+            payload.get("raw_headers_included") is not False
+            or "headers" in payload
+        ):
+            raise ValueError(
+                "parser observation payload must not contain raw headers"
+            )
+        if payload.get("automatic_timestamp") is not False:
+            raise ValueError(
+                "parser observation payload must not add timestamps"
+            )
+
+        envelope = {
+            "contract": "parser_observation_socket_v1",
+            "authority": {
+                "canonical": False,
+                "transport": "same_run_socket",
+            },
+            "session_id": session_id,
+            "observation": payload,
+        }
+
+        h["socketio"].emit(
+            "parser_observation",
+            envelope,
+            room=session_id,
+        )
+
+    return _emit_parser_observation
+
 def _start_pipeline_worker(
     session_id: str,
     principal: Any,
@@ -742,6 +809,11 @@ def _start_pipeline_worker(
                     principal_source=principal_source,
                     dev_isolation_bypass=dev_isolation_bypass,
                                 inspection_emit_func=_make_pipeline_inspection_emitter(
+                        session_id,
+                        principal,
+                        h,
+                    ),
+                    parser_observation_emit_func=_make_parser_observation_emitter(
                         session_id,
                         principal,
                         h,
@@ -1029,6 +1101,7 @@ def _start_public_registry_runtime(
                     principal_source=None,
                     dev_isolation_bypass=False,
                     inspection_emit_func=None,
+                    parser_observation_emit_func=None,
                 )
                 if (
                     not isinstance(result, dict)

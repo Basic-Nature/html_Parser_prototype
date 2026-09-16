@@ -269,6 +269,7 @@ def _process_public_registry_url_for_web(
         "manual_upload_path",
         "direct_urls",
         "inspection_emit_func",
+        "parser_observation_emit_func",
     ):
         if local_kwargs.get(forbidden_key):
             raise RuntimeError(

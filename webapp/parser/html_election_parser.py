@@ -2997,6 +2997,9 @@ def main(
                 force_parse_format=kwargs.get("force_parse_format"),
                 cancel_flag=cancel_flag,
                 artifact_identity=kwargs.get("artifact_identity"),
+                parser_observation_emit_func=kwargs.get(
+                    "parser_observation_emit_func"
+                ),
             )
             if override_result is True:
                 logger.info({
