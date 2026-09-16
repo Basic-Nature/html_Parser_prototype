@@ -58,6 +58,26 @@ def _trusted_projection(binding: Any, revision: Any) -> dict[str, object]:
     }
 
 
+_WORKFLOW_PROJECTION_KEYS = (
+    "year",
+    "contest",
+    "state",
+    "scope",
+    "format",
+    "notes",
+    "url",
+    "registry_category",
+)
+
+
+def _workflow_projection(binding: Any, revision: Any) -> dict[str, object]:
+    trusted = _trusted_projection(binding, revision)
+    return {
+        key: trusted[key]
+        for key in _WORKFLOW_PROJECTION_KEYS
+    }
+
+
 def _public_projection(alias: Any, binding: Any) -> dict[str, object]:
     return {
         "registry_source_id": str(alias.alias_value or ""),
@@ -269,7 +289,7 @@ class SqlAlchemySourceRegistryDbReader:
                 raise SourceRegistryDbAmbiguity(
                     "workflow exact URL resolved ambiguously"
                 )
-            return _trusted_projection(*rows[0])
+            return _workflow_projection(*rows[0])
 
         return self._read(read)
 
