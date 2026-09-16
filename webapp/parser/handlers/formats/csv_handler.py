@@ -37,6 +37,9 @@ from ...utils.shared_logic import (
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.table_builder import build_table_noninteractive_result
 from ...services.ephemeral_pipeline_inspection import ProcessLocalInspectionStore
+from ...services.parser_observation_callback import (
+    emit_parser_observation_bundle_if_requested,
+)
 from ...services.pipeline_inspection import project_pipeline_inspection
 from ...utils.table_core import robust_table_extraction
 
@@ -92,7 +95,13 @@ def parse_csv_election_results(
     csv_path: str,
     session_id: Optional[str] = None,
     coordinator: Any = None,
-    html_context: Optional[Dict[str, Any]] = None, *, inspection_store=None, inspection_principal=None, inspection_emit_func=None) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
+    html_context: Optional[Dict[str, Any]] = None,
+    *,
+    inspection_store=None,
+    inspection_principal=None,
+    inspection_emit_func=None,
+    parser_observation_emit_func=None,
+) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
     data: List[Dict[str, Any]] = []
     headers: List[str] = []
     contest_column = None
@@ -291,6 +300,10 @@ def parse_csv_election_results(
     _emit_pipeline_inspection_if_requested(
         _c2g_table_result,
         inspection_emit_func=inspection_emit_func,
+    )
+    emit_parser_observation_bundle_if_requested(
+        _c2g_table_result,
+        parser_observation_emit_func=parser_observation_emit_func,
     )
     headers_final = list(_c2g_table_result.headers)
     data_final = [dict(row) for row in _c2g_table_result.rows]

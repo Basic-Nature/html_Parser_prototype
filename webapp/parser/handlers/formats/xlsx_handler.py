@@ -31,6 +31,9 @@ from ...utils.shared_logic import (
 )
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.table_builder import build_table_noninteractive_result
+from ...services.parser_observation_callback import (
+    emit_parser_observation_bundle_if_requested,
+)
 from ...utils.table_core import robust_table_extraction
 
 _HANDLER_NAME = "xlsx_handler"
@@ -69,6 +72,8 @@ def parse_xlsx_election_results(
     coordinator: Any = None,
     sheet: str | int | None = None,
     html_context: Optional[Dict[str, Any]] = None,
+    *,
+    parser_observation_emit_func=None,
 ) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
     html_context = dict(html_context or {})
     if pd is None:
@@ -262,6 +267,10 @@ def parse_xlsx_election_results(
     headers, data = expand_single_rawjson_row(headers, data, context=context)
 
     _c2g_table_result = build_table_noninteractive_result(domain=domain, headers=headers, data=data, coordinator=coordinator, context=context, pivot_to_wide=True, debug=False, source_type='xlsx')
+    emit_parser_observation_bundle_if_requested(
+        _c2g_table_result,
+        parser_observation_emit_func=parser_observation_emit_func,
+    )
     headers_final = list(_c2g_table_result.headers)
     data_final = [dict(row) for row in _c2g_table_result.rows]
     _entity_info = _c2g_table_result.semantic_annotations["entity_info"]
