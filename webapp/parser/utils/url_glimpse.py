@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright
 
+from ..services.screenshot_image_evidence import finalize_screenshot_image_evidence
+
 
 def _safe_slug(value: str) -> str:
     cleaned = "".join(ch if ch.isalnum() else "_" for ch in (value or "").strip().lower())
@@ -19,6 +21,7 @@ def capture_url_glimpse(
     out_dir: Path,
     timeout_ms: int = 45_000,
     wait_ms: int = 1_800,
+    screenshot_observation_emit_func=None,
 ) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -88,6 +91,11 @@ def capture_url_glimpse(
 
         try:
             page.screenshot(path=str(screenshot_path), full_page=True)
+            result["screenshot_evidence"] = finalize_screenshot_image_evidence(
+                screenshot_path,
+                capture_role="url_glimpse",
+                observation_emit_func=screenshot_observation_emit_func,
+            )
         except Exception as exc:
             result["screenshot_error"] = str(exc)
 

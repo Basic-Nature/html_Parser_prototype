@@ -50,6 +50,7 @@ from ..config import CONTEXT_LIBRARY_PATH, HEADLESS_DEFAULT
 from ..config import OCR_DEBUG_DIR, ENABLE_OCR, TESSERACT_CMD
 from .logger_singleton import console, logger, prompt
 from .shared_logic import safe_get_first, safe_is_set, safe_lower
+from ..services.screenshot_image_evidence import finalize_screenshot_image_evidence
 
 # --- Type Aliases for IDE and Type Checking ---
 PageType = Union[SyncPage, AsyncPage]
@@ -370,6 +371,7 @@ def save_diagnostics(
     url: Optional[str] = None,
     vendor: Optional[str] = None,
     index_filename: str = "diagnostics_index.jsonl",
+    screenshot_observation_emit_func=None,
 ) -> dict:
     """
     Save HTML and PNG diagnostics into `OCR_DEBUG_DIR` and run OCR on the PNG
@@ -413,6 +415,11 @@ def save_diagnostics(
                 try:
                     page.screenshot(path=png_path, full_page=True)
                     out["screenshot"] = str(png_path)
+                    out["screenshot_evidence"] = finalize_screenshot_image_evidence(
+                        png_path,
+                        capture_role="browser_diagnostics",
+                        observation_emit_func=screenshot_observation_emit_func,
+                    )
                 except Exception as e:
                     out["error"] = (out.get("error") or "") + f";screenshot:{e}"
         except Exception:
