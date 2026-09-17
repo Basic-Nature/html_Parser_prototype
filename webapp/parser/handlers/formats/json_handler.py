@@ -8,6 +8,13 @@ from typing import Any, DefaultDict, Dict, Iterable, List, Optional, Set, Tuple,
 
 import orjson
 
+from ...contracts.artifact_identity import ArtifactIdentityHandoff
+from ...services.parser_observation_callback import (
+    emit_parser_observation_bundle_if_requested,
+)
+from ...services.parser_result_observation_adapter import (
+    adapt_final_parser_result_for_observation,
+)
 from ...config import ENABLE_PARALLEL
 from ...Context_Integration.Context_Library.constants import (
     BALLOT_TYPES,
@@ -1353,6 +1360,8 @@ def parse(
     html_context: Dict[str, Any] | None = None,
     manual_file: str | None = None,
     session_id: Optional[str] = None,
+    *,
+    artifact_identity: ArtifactIdentityHandoff | None = None,
     **kwargs: Any,
 ) -> Tuple[List[str] | None, List[Dict[str, Any]] | None, str | None, Dict[str, Any]]:
     """
@@ -1360,8 +1369,20 @@ def parse(
     Returns: headers, data, contest, metadata
     """
     html_context = html_context or {}
+    parser_observation_emit_func = kwargs.pop(
+        "parser_observation_emit_func",
+        None,
+    )
     # Parity guard: allow provided_tables + skip_pivot without manual_file
     provided_tables = html_context.get("provided_tables")
+    if (
+        isinstance(provided_tables, list)
+        and provided_tables
+        and parser_observation_emit_func is not None
+    ):
+        raise RuntimeError(
+            "parser observation callback is unavailable for provided_tables wrapper path"
+        )
     if isinstance(provided_tables, list) and provided_tables:
         ctx = dict(html_context)
         ctx.update({
@@ -1470,4 +1491,20 @@ def parse(
             "got_type": type(result).__name__
         })
         return None, None, None, {"error": "Invalid parse result"}
+    if parser_observation_emit_func is not None:
+        headers_out, rows_out, _contest_out, _metadata_out = result_any
+        observation_result = adapt_final_parser_result_for_observation(
+            headers_out,
+            rows_out,
+            source_type="json",
+            source_sha256=(
+                artifact_identity.document_sha256
+                if artifact_identity is not None
+                else None
+            ),
+        )
+        emit_parser_observation_bundle_if_requested(
+            observation_result,
+            parser_observation_emit_func=parser_observation_emit_func,
+        )
     return cast(Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]], result_any)
