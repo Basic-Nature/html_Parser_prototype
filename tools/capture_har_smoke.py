@@ -10,6 +10,16 @@ import time
 
 from playwright.sync_api import sync_playwright
 
+# Keep this standalone tool runnable via python tools/<script>.py while reusing
+# the central network-capture evidence contract.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from webapp.parser.services.network_capture_evidence import (
+    finalize_network_capture_evidence,
+)
+
 OUT_DIR = os.path.join("tools", "debug_headless_output")
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -142,6 +152,14 @@ with sync_playwright() as p:
         print(f"Wrote network capture to: {out_path}")
     except Exception as e:
         print(f"Failed to write capture: {e}")
+    else:
+        try:
+            finalize_network_capture_evidence(out_path)
+        except Exception as evidence_error:
+            print(
+                "Network capture evidence finalization failed:",
+                evidence_error,
+            )
 
     try:
         context.close()
