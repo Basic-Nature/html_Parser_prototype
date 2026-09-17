@@ -26,6 +26,7 @@ except ImportError:
 
 from ..utils.logger_singleton import logger
 from ..utils.telemetry import emit_telemetry_event
+from ..services.dom_browser_evidence import finalize_dom_browser_evidence
 
 
 def capture_dom_snapshot(
@@ -33,7 +34,10 @@ def capture_dom_snapshot(
     *,
     wait_for_selector: str | None = None,
     max_wait_ms: int = 5000,
-    session_id: str | None = None
+    session_id: str | None = None,
+    dom_evidence_path=None,
+    dom_artifact_identity=None,
+    dom_observation_emit_func=None,
 ) -> str:
     """Capture static HTML content from a Playwright page without JS execution.
     
@@ -93,6 +97,24 @@ def capture_dom_snapshot(
             "session_id": session_id
         })
         raise
+    
+    if dom_evidence_path is None:
+        if (
+            dom_artifact_identity is not None
+            or dom_observation_emit_func is not None
+        ):
+            raise ValueError(
+                "DOM evidence identity/callback requires explicit "
+                "dom_evidence_path"
+            )
+    else:
+        finalize_dom_browser_evidence(
+            html_content,
+            dom_evidence_path,
+            capture_role="dom_snapshot",
+            artifact_identity=dom_artifact_identity,
+            observation_emit_func=dom_observation_emit_func,
+        )
     
     duration_ms = int((time.time() - start_time) * 1000)
     content_size = len(html_content)
@@ -282,7 +304,11 @@ def extract_tables_from_snapshot(
 def snapshot_mode_pipeline(
     page,
     context: Dict[str, Any] | None = None,
-    session_id: str | None = None
+    session_id: str | None = None,
+    *,
+    dom_evidence_path=None,
+    dom_artifact_identity=None,
+    dom_observation_emit_func=None,
 ) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
     """Complete DOM snapshot extraction pipeline for medium-trust URLs.
     
@@ -320,7 +346,10 @@ def snapshot_mode_pipeline(
             page,
             wait_for_selector="table",
             max_wait_ms=5000,
-            session_id=session_id
+            session_id=session_id,
+            dom_evidence_path=dom_evidence_path,
+            dom_artifact_identity=dom_artifact_identity,
+            dom_observation_emit_func=dom_observation_emit_func,
         )
     except Exception as exc:
         logger.error({
