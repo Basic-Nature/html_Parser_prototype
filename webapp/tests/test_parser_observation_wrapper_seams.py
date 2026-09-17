@@ -165,15 +165,15 @@ def test_xlsx_provided_tables_without_callback_preserves_current_path(monkeypatc
     assert metadata["quality_metrics"] == {"projected": True}
 
 
-def test_projection_does_not_add_router_runtime_or_socket_callback_references():
+def test_projection_keeps_generic_router_layers_free_of_callback_references():
     webapp_root = Path(__file__).resolve().parents[1]
+
+    # W22 intentionally wires html_election_parser, web_pipeline, and the
+    # trusted socket worker. Generic router/shared layers remain callback-free.
     for rel in (
         "parser/utils/format_router.py",
         "parser/state_router.py",
         "parser/utils/shared_logic.py",
-        "parser/html_election_parser.py",
-        "parser/web_pipeline.py",
-        "parser/socket_ballot_lens_orchestration.py",
     ):
         text = (webapp_root / rel).read_text(encoding="utf-8")
         assert "parser_observation_emit_func" not in text

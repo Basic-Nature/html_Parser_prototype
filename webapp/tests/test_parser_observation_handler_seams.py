@@ -203,14 +203,23 @@ def test_existing_pipeline_inspection_transport_is_not_reused() -> None:
     ):
         assert forbidden not in callback_source
 
+    # W22 intentionally carries the observation emitter through the trusted
+    # socket and web-pipeline layers. Keep the legacy inspection store and
+    # browser consumer isolated from that private callback.
     for untouched in (
-        socket_source,
         store_source,
-        web_pipeline_source,
         js_source,
     ):
         assert "parser_observation_emit_func" not in untouched
         assert "parser_observation_callback" not in untouched
+
+    # Transport layers may forward the emitter, but they must not import/reuse
+    # the handler callback service directly.
+    for transport_source in (
+        socket_source,
+        web_pipeline_source,
+    ):
+        assert "parser_observation_callback" not in transport_source
 
 
 def test_callback_seam_is_not_metadata_or_return_value_wiring() -> None:
