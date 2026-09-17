@@ -51,6 +51,7 @@ from ..config import OCR_DEBUG_DIR, ENABLE_OCR, TESSERACT_CMD
 from .logger_singleton import console, logger, prompt
 from .shared_logic import safe_get_first, safe_is_set, safe_lower
 from ..services.screenshot_image_evidence import finalize_screenshot_image_evidence
+from ..services.ocr_derivative_evidence import observe_ocr_derivative
 
 # --- Type Aliases for IDE and Type Checking ---
 PageType = Union[SyncPage, AsyncPage]
@@ -447,6 +448,14 @@ def save_diagnostics(
                             txt_path = os.path.join(dump_dir, f"{base}.txt")
                             with open(txt_path, "w", encoding="utf-8", errors="replace") as fh:
                                 fh.write(txt)
+                            txt = observe_ocr_derivative(
+                                txt,
+                                source_input=img,
+                                method="image_to_string",
+                                producer="save_diagnostics",
+                                context={"purpose_code": "browser_diagnostics_ocr"},
+                                persisted_path=txt_path,
+                            )
                             out["ocr_txt"] = str(txt_path)
                     except Exception as e:
                         out["error"] = (out.get("error") or "") + f";ocr:{e}"

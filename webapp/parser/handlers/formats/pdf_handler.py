@@ -19,6 +19,7 @@ from collections import Counter, OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image, ImageOps, ImageFilter, ImageEnhance
 from ...Context_Integration.location_inference import infer_county_from_lines
+from ...services.ocr_derivative_evidence import observe_ocr_derivative
 from ...config import (
     ENABLE_OCR,
     ENABLE_PARALLEL,
@@ -915,7 +916,7 @@ def _contest_probe_scan(
                 session_id=session_id,
             )
             gray = ImageOps.grayscale(oriented)
-            text = pytesseract.image_to_string(gray, config="--oem 1 --psm 6")
+            text = observe_ocr_derivative(pytesseract.image_to_string(gray, config="--oem 1 --psm 6"), source_input=gray, method="image_to_string", producer="_contest_probe_scan", context={"purpose_code": "contest_probe_scan"})
         except Exception as exc:
             logger.debug({
                 "level": "DEBUG",
@@ -3220,11 +3221,11 @@ def _ocr_images(images, tesseract_config: str, confidence_threshold=None):
         details = {}
         if hasattr(pytesseract, "Output"):
             try:
-                details = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT, config=tesseract_config)
+                details = observe_ocr_derivative(pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT, config=tesseract_config), source_input=img, method="image_to_data", producer="_ocr_images", context={"purpose_code": "ocr_images_data"})
             except Exception:
                 # Fallback to plain text if data API fails
                 try:
-                    text = pytesseract.image_to_string(img, config=tesseract_config)
+                    text = observe_ocr_derivative(pytesseract.image_to_string(img, config=tesseract_config), source_input=img, method="image_to_string", producer="_ocr_images", context={"purpose_code": "ocr_images_fallback_text"})
                 except Exception:
                     text = ""
             else:
@@ -3244,7 +3245,7 @@ def _ocr_images(images, tesseract_config: str, confidence_threshold=None):
                             text += word + " "
         else:
             try:
-                text = pytesseract.image_to_string(img, config=tesseract_config)
+                text = observe_ocr_derivative(pytesseract.image_to_string(img, config=tesseract_config), source_input=img, method="image_to_string", producer="_ocr_images", context={"purpose_code": "ocr_images_text"})
             except Exception:
                 text = ""
 
@@ -3598,7 +3599,7 @@ def ocr_multi_pass(images, passes=3, confidence_threshold=30, session_id=None):
         page_text = ""
         confidences = []
         if pytesseract:
-            details = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT) if hasattr(pytesseract, "Output") else {}
+            details = observe_ocr_derivative(pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT), source_input=img, method="image_to_data", producer="ocr_multi_pass.process_image_ocr", context={"purpose_code": "ocr_multi_pass_data"}) if hasattr(pytesseract, "Output") else {}
             for j in range(len(details.get("text", []))):
                 word = details["text"][j].strip()
                 conf = details["conf"][j]
@@ -3974,7 +3975,7 @@ def _extract_tables_via_layout(
         page_index = actual_page if isinstance(actual_page, int) else 0
         _ensure_not_cancelled(cancel_flag, session_id, f"layout:page:{page_index}")
         try:
-            df = pytesseract.image_to_data(image, output_type=tess_output, config=config)
+            df = observe_ocr_derivative(pytesseract.image_to_data(image, output_type=tess_output, config=config), source_input=image, method="image_to_data", producer="_extract_tables_via_layout._process_page", context={"purpose_code": "layout_table_data"})
         except Exception as exc:
             logger.debug({
                 "level": "DEBUG",
@@ -4457,7 +4458,7 @@ def _extract_statement_return_blocks(
         page_index = actual_page if isinstance(actual_page, int) else 0
         _ensure_not_cancelled(cancel_flag, session_id, f"statement_blocks:page:{page_index}")
         try:
-            df = pytesseract.image_to_data(image, output_type=pytesseract.Output.DATAFRAME, config=config)
+            df = observe_ocr_derivative(pytesseract.image_to_data(image, output_type=pytesseract.Output.DATAFRAME, config=config), source_input=image, method="image_to_data", producer="_extract_statement_return_blocks._process_statement_page", context={"purpose_code": "statement_block_data"})
         except Exception as exc:
             logger.debug({
                 "level": "DEBUG",
