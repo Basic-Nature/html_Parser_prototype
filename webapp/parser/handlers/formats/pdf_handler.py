@@ -137,6 +137,12 @@ from ...utils.contest_detection import (
 )
 from ...utils.contest_selector import select_contest_auto_first, select_contest_noninteractive
 from ...utils.table_builder import build_table_noninteractive
+from ...services.parser_observation_callback import (
+    emit_parser_observation_bundle_if_requested,
+)
+from ...services.parser_result_observation_adapter import (
+    adapt_final_parser_result_for_observation,
+)
 from ...utils.output_utils import finalize_election_output
 from ...utils.shared_logic import (
     format_county_label,
@@ -6453,8 +6459,20 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
     Returns: headers, data, contest, metadata
     """
     html_context = html_context or {}
+    parser_observation_emit_func = kwargs.pop(
+        "parser_observation_emit_func",
+        None,
+    )
     # Parity guard: allow provided_tables + skip_pivot to bypass file requirement
     provided_tables = html_context.get("provided_tables")
+    if (
+        isinstance(provided_tables, list)
+        and provided_tables
+        and parser_observation_emit_func is not None
+    ):
+        raise RuntimeError(
+            "parser observation callback is unavailable for provided_tables wrapper path"
+        )
     if isinstance(provided_tables, list) and provided_tables:
         ctx = dict(html_context)
         ctx.update({
@@ -6583,4 +6601,20 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
             "got_type": type(result).__name__
         })
         return None, None, None, {"error": "Invalid parse result"}
+    if parser_observation_emit_func is not None:
+        headers_out, rows_out, _contest_out, _metadata_out = result
+        observation_result = adapt_final_parser_result_for_observation(
+            headers_out,
+            rows_out,
+            source_type="pdf",
+            source_sha256=(
+                artifact_identity.document_sha256
+                if artifact_identity is not None
+                else None
+            ),
+        )
+        emit_parser_observation_bundle_if_requested(
+            observation_result,
+            parser_observation_emit_func=parser_observation_emit_func,
+        )
     return result
