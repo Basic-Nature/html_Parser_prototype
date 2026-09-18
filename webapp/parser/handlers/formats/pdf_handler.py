@@ -21,6 +21,7 @@ from PIL import Image, ImageOps, ImageFilter, ImageEnhance
 from ...Context_Integration.location_inference import infer_county_from_lines
 from ...services.ocr_derivative_evidence import observe_ocr_derivative
 from ...services.pdf_native_text_derivative_evidence import observe_pdf_native_text_derivative_if_requested
+from ...services.pdf_structure_derivative_evidence import observe_pdf_structure_derivative_if_requested
 from ...config import (
     ENABLE_OCR,
     ENABLE_PARALLEL,
@@ -4867,7 +4868,7 @@ def _dedupe_contest_titles(titles):
     return list(dict.fromkeys(titles))
    
 from ...contracts.artifact_identity import ArtifactIdentityHandoff
-def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, cancel_flag=None, *, artifact_identity: ArtifactIdentityHandoff | None = None, pdf_native_text_source_sha256=None, pdf_native_text_observation_emit_func=None) -> tuple[list[str], list[dict], str, dict]:
+def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, cancel_flag=None, *, artifact_identity: ArtifactIdentityHandoff | None = None, pdf_native_text_source_sha256=None, pdf_native_text_observation_emit_func=None, pdf_structure_source_sha256=None, pdf_structure_observation_emit_func=None) -> tuple[list[str], list[dict], str, dict]:
     """ Main PDF handler function."""
     # Log active OCR tuning config at parse start for diagnostics
     from ...config import log_ocr_config_summary, get_ocr_config_dict, log_extraction_quality  # type: ignore[attr-defined]
@@ -5231,6 +5232,35 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
         page_text_map=page_text_map,
         fitz_mode=metadata.get("fitz_mode_used"),
     )
+    observe_pdf_structure_derivative_if_requested(
+        emit_func=pdf_structure_observation_emit_func,
+        phase="page_text_structure",
+        bounded_summary={
+            "page_count": (
+                pdf_page_total
+                if isinstance(pdf_page_total, int)
+                and not isinstance(pdf_page_total, bool)
+                and pdf_page_total >= 0
+                else None
+            ),
+            "page_line_total": len(line_records or []),
+            "page_line_pages": len(page_summaries or []),
+            "page_line_source": (
+                "fallback"
+                if page_lines_fallback
+                else "page_map"
+            ),
+            "page_line_index_available": bool(line_records),
+            "page_lines_fallback": bool(page_lines_fallback),
+            "page_text_map_entries": len(page_text_map or []),
+            "fitz_mode": (
+                str(metadata.get("fitz_mode_used"))[:80]
+                if metadata.get("fitz_mode_used") is not None
+                else None
+            ),
+        },
+        source_document_sha256=pdf_structure_source_sha256,
+    )
 
     metadata["ocr_evidence"] = _build_ocr_evidence(
         pdf_path=pdf_path,
@@ -5434,6 +5464,28 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
                 )
                 else None
             ),
+        )
+        observe_pdf_structure_derivative_if_requested(
+            emit_func=pdf_structure_observation_emit_func,
+            phase="contest_hint_structure",
+            bounded_summary={
+                "contest_detection_available": True,
+                "detected_title_count": len(detected_titles),
+                "selection_mode_if_already_present": (
+                    str(metadata.get("contest_selection_mode"))[:80]
+                    if metadata.get("contest_selection_mode") is not None
+                    else None
+                ),
+                "contest_segment_hint_count_if_already_present": (
+                    len(metadata.get("contest_segments") or [])
+                    if isinstance(
+                        metadata.get("contest_segments"),
+                        (list, tuple),
+                    )
+                    else None
+                ),
+            },
+            source_document_sha256=pdf_structure_source_sha256,
         )
     probe_titles = contest_probe_info.get("titles") if contest_probe_info else []
     if probe_titles:
@@ -6159,7 +6211,93 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
                 ),
             )
             if recon_result:
+                observe_pdf_structure_derivative_if_requested(
+                    emit_func=pdf_structure_observation_emit_func,
+                    phase="columnar_structure",
+                    bounded_summary={
+                        "attempted": True,
+                        "attempt_count_if_already_present": (
+                            len(metadata.get("columnar_reconstruction_attempts"))
+                            if isinstance(
+                                metadata.get("columnar_reconstruction_attempts"),
+                                list,
+                            )
+                            else None
+                        ),
+                        "failure_present": isinstance(
+                            metadata.get("columnar_reconstruction_failure"),
+                            dict,
+                        ),
+                        "result_present": True,
+                        "segment_count_if_already_present": (
+                            len(
+                                (
+                                    metadata.get("columnar_reconstruction")
+                                    or {}
+                                ).get("bundle_outputs")
+                            )
+                            if (
+                                isinstance(
+                                    metadata.get("columnar_reconstruction"),
+                                    dict,
+                                )
+                                and isinstance(
+                                    (
+                                        metadata.get("columnar_reconstruction")
+                                        or {}
+                                    ).get("bundle_outputs"),
+                                    list,
+                                )
+                            )
+                            else None
+                        ),
+                    },
+                    source_document_sha256=pdf_structure_source_sha256,
+                )
                 return recon_result
+            observe_pdf_structure_derivative_if_requested(
+                emit_func=pdf_structure_observation_emit_func,
+                phase="columnar_structure",
+                bounded_summary={
+                    "attempted": True,
+                    "attempt_count_if_already_present": (
+                        len(metadata.get("columnar_reconstruction_attempts"))
+                        if isinstance(
+                            metadata.get("columnar_reconstruction_attempts"),
+                            list,
+                        )
+                        else None
+                    ),
+                    "failure_present": isinstance(
+                        metadata.get("columnar_reconstruction_failure"),
+                        dict,
+                    ),
+                    "result_present": False,
+                    "segment_count_if_already_present": (
+                        len(
+                            (
+                                metadata.get("columnar_reconstruction")
+                                or {}
+                            ).get("bundle_outputs")
+                        )
+                        if (
+                            isinstance(
+                                metadata.get("columnar_reconstruction"),
+                                dict,
+                            )
+                            and isinstance(
+                                (
+                                    metadata.get("columnar_reconstruction")
+                                    or {}
+                                ).get("bundle_outputs"),
+                                list,
+                            )
+                        )
+                        else None
+                    ),
+                },
+                source_document_sha256=pdf_structure_source_sha256,
+            )
 
             if statement_rows_copy and statement_headers_copy:
                 metadata["statement_blocks_used"] = True
@@ -6380,7 +6518,93 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
         ),
     )
     if recon_result:
+        observe_pdf_structure_derivative_if_requested(
+            emit_func=pdf_structure_observation_emit_func,
+            phase="columnar_structure",
+            bounded_summary={
+                "attempted": True,
+                "attempt_count_if_already_present": (
+                    len(metadata.get("columnar_reconstruction_attempts"))
+                    if isinstance(
+                        metadata.get("columnar_reconstruction_attempts"),
+                        list,
+                    )
+                    else None
+                ),
+                "failure_present": isinstance(
+                    metadata.get("columnar_reconstruction_failure"),
+                    dict,
+                ),
+                "result_present": True,
+                "segment_count_if_already_present": (
+                    len(
+                        (
+                            metadata.get("columnar_reconstruction")
+                            or {}
+                        ).get("bundle_outputs")
+                    )
+                    if (
+                        isinstance(
+                            metadata.get("columnar_reconstruction"),
+                            dict,
+                        )
+                        and isinstance(
+                            (
+                                metadata.get("columnar_reconstruction")
+                                or {}
+                            ).get("bundle_outputs"),
+                            list,
+                        )
+                    )
+                    else None
+                ),
+            },
+            source_document_sha256=pdf_structure_source_sha256,
+        )
         return recon_result
+    observe_pdf_structure_derivative_if_requested(
+        emit_func=pdf_structure_observation_emit_func,
+        phase="columnar_structure",
+        bounded_summary={
+            "attempted": True,
+            "attempt_count_if_already_present": (
+                len(metadata.get("columnar_reconstruction_attempts"))
+                if isinstance(
+                    metadata.get("columnar_reconstruction_attempts"),
+                    list,
+                )
+                else None
+            ),
+            "failure_present": isinstance(
+                metadata.get("columnar_reconstruction_failure"),
+                dict,
+            ),
+            "result_present": False,
+            "segment_count_if_already_present": (
+                len(
+                    (
+                        metadata.get("columnar_reconstruction")
+                        or {}
+                    ).get("bundle_outputs")
+                )
+                if (
+                    isinstance(
+                        metadata.get("columnar_reconstruction"),
+                        dict,
+                    )
+                    and isinstance(
+                        (
+                            metadata.get("columnar_reconstruction")
+                            or {}
+                        ).get("bundle_outputs"),
+                        list,
+                    )
+                )
+                else None
+            ),
+        },
+        source_document_sha256=pdf_structure_source_sha256,
+    )
 
     # No headers at all: still try semantic candidate totals from entire text
     cand_headers, cand_rows = extract_candidate_totals_from_lines(lines, selected_contest_title)
@@ -6477,8 +6701,21 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
         "pdf_native_text_observation_emit_func",
         None,
     )
+    pdf_structure_observation_emit_func = kwargs.pop(
+        "pdf_structure_observation_emit_func",
+        None,
+    )
     # Parity guard: allow provided_tables + skip_pivot to bypass file requirement
     provided_tables = html_context.get("provided_tables")
+    if (
+        isinstance(provided_tables, list)
+        and provided_tables
+        and pdf_structure_observation_emit_func is not None
+    ):
+        raise RuntimeError(
+            "structure derivative observation callback is unavailable "
+            "for provided_tables wrapper path"
+        )
     if (
         isinstance(provided_tables, list)
         and provided_tables
@@ -6612,6 +6849,12 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
                 else None
             ),
             pdf_native_text_observation_emit_func=pdf_native_text_observation_emit_func,
+            pdf_structure_source_sha256=(
+                artifact_identity.document_sha256
+                if artifact_identity is not None
+                else None
+            ),
+            pdf_structure_observation_emit_func=pdf_structure_observation_emit_func,
         )
     except PDFParseCancelled as exc:
         meta_seed = {
