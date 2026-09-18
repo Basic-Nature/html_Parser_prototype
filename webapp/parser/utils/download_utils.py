@@ -117,6 +117,7 @@ def download_file(
     check_hash=False,
     filename_override: str | None = None,
     allowlist_bypass: bool = False,
+    source_download_observation_emit_func=None,
 ):
     """
     Download the linked file and save it into the input directory.
@@ -127,11 +128,13 @@ def download_file(
     file_url = urljoin(page_url, href)
     # Normalize URL: collapse redundant slashes
     file_url = _normalize_download_url(file_url)
+    requested_url = file_url
     logger.info(f"[DEBUG][download_file] page_url={page_url}, href={href}, file_url={file_url}, save_path={save_path}")
     if is_already_downloaded(file_url, save_path, check_hash=check_hash):
         logger.info(f"[DOWNLOAD] Skipping already downloaded file: {filename}")
         return save_path
 
+    download_completed = False
     try:
         allowed, reason = safe_validate_external_url(file_url, allowlist_bypass=allowlist_bypass)
         if not allowed:
@@ -206,8 +209,25 @@ def download_file(
         if context_info:
             organizer = ContextOrganizer()
             organizer.append_to_context_library({"downloads": [entry]})
+        download_completed = True
+        if source_download_observation_emit_func is not None:
+            from ..services.source_download_artifact_evidence import (
+                observe_source_download_artifact_if_requested,
+            )
+            observe_source_download_artifact_if_requested(
+                emit_func=source_download_observation_emit_func,
+                persisted_path=save_path,
+                requested_url=requested_url,
+                effective_request_url=file_url,
+                final_response_url=final_url,
+                transport="requests_stream",
+                precomputed_payload_sha256=filehash,
+                precomputed_payload_size=total,
+            )
         return save_path
     except Exception as e:
+        if download_completed:
+            raise
         logger.error(f"[ERROR] Failed to download {file_url}: {e}")
         entry = {
             "url": file_url,
@@ -227,6 +247,7 @@ def download_multiple_files(
     check_hash=False,
     filename_override: str | None = None,
     allowlist_bypass: bool = False,
+    source_download_observation_emit_func=None,
 ):
     """
     Download multiple files (given as a list of hrefs) to the input directory.
@@ -245,6 +266,7 @@ def download_multiple_files(
             check_hash=check_hash,
             filename_override=filename_override,
             allowlist_bypass=allowlist_bypass,
+            source_download_observation_emit_func=source_download_observation_emit_func,
         )
         if file_path:
             downloaded_files.append(file_path)
@@ -258,6 +280,7 @@ def download_confirmed_file(
     check_hash=False,
     filename_override: str | None = None,
     allowlist_bypass: bool = False,
+    source_download_observation_emit_func=None,
 ):
     """
     Download the file if confirmed by the user.
@@ -273,6 +296,7 @@ def download_confirmed_file(
         check_hash=check_hash,
         filename_override=filename_override,
         allowlist_bypass=allowlist_bypass,
+        source_download_observation_emit_func=source_download_observation_emit_func,
     )
 
 def summarize_downloads():

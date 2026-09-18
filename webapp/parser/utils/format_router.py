@@ -540,6 +540,7 @@ def prompt_and_handle_download(
     manual_upload_mode: bool = False,
     uploads_dir: Optional[str] = None,
     cancel_flag=None,
+    source_download_observation_emit_func=None,
     **handler_kwargs,
 ) -> Tuple[Optional[tuple], bool]:
     """
@@ -995,6 +996,11 @@ def prompt_and_handle_download(
         # Resolve URL relative to page.url
         page_url = getattr(page, "url", target_url) if page is not None else target_url
         resolved_url = _build_download_url(page_url, file_url)
+        requested_download_url = resolved_url
+        source_download_transport = None
+        source_download_effective_url = None
+        source_download_final_url = None
+        source_download_observation_already_emitted = False
 
         # Headers: cookies + browser-like
         cookie_hdr = _cookies_header_from_page(page)
@@ -1052,6 +1058,9 @@ def prompt_and_handle_download(
                     with open(save_path, "wb") as f:
                         f.write(resp.body())
                     local_file_path = save_path
+                    source_download_transport = "playwright_api_request"
+                    source_download_effective_url = resolved_url
+                    source_download_final_url = getattr(resp, "url", "") or resolved_url
                 else:
                     logger.error({
                         "level": "ERROR",
@@ -1077,7 +1086,14 @@ def prompt_and_handle_download(
                     check_hash=True,
                     filename_override=selected_filename or None,
                     allowlist_bypass=bool(handler_kwargs.get("allowlist_bypass")),
+                    source_download_observation_emit_func=source_download_observation_emit_func,
                 )
+                if local_file_path:
+                    source_download_transport = "requests_stream"
+                    source_download_effective_url = resolved_url
+                    source_download_observation_already_emitted = (
+                        source_download_observation_emit_func is not None
+                    )
             except TypeError:
                 # 3) Last resort: raw requests
                 try:
@@ -1094,6 +1110,9 @@ def prompt_and_handle_download(
                             if chunk:
                                 f.write(chunk)
                     local_file_path = tmp
+                    source_download_transport = "raw_requests_temp_last_resort"
+                    source_download_effective_url = resolved_url
+                    source_download_final_url = getattr(r, "url", "") or resolved_url
                 except Exception as e:
                     logger.error({
                         "level": "ERROR",
@@ -1111,6 +1130,22 @@ def prompt_and_handle_download(
                 "session_id": session_id
             })
             return None, None
+
+        if (
+            source_download_observation_emit_func is not None
+            and not source_download_observation_already_emitted
+        ):
+            from ..services.source_download_artifact_evidence import (
+                observe_source_download_artifact_if_requested,
+            )
+            observe_source_download_artifact_if_requested(
+                emit_func=source_download_observation_emit_func,
+                persisted_path=local_file_path,
+                requested_url=requested_download_url,
+                effective_request_url=source_download_effective_url or resolved_url,
+                final_response_url=source_download_final_url,
+                transport=source_download_transport,
+            )
 
         # Dispatch to format handler with manual_file
         handler = None
