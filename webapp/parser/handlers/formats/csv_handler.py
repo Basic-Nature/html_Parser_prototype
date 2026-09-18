@@ -40,6 +40,10 @@ from ...services.ephemeral_pipeline_inspection import ProcessLocalInspectionStor
 from ...services.parser_observation_callback import (
     emit_parser_observation_bundle_if_requested,
 )
+from ...contracts.artifact_identity import ArtifactIdentityHandoff
+from ...services.csv_source_derivative_evidence import (
+    observe_csv_source_derivative_if_requested,
+)
 from ...services.pipeline_inspection import project_pipeline_inspection
 from ...utils.table_core import robust_table_extraction
 
@@ -101,6 +105,8 @@ def parse_csv_election_results(
     inspection_principal=None,
     inspection_emit_func=None,
     parser_observation_emit_func=None,
+    csv_source_sha256=None,
+    csv_source_observation_emit_func=None,
 ) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
     data: List[Dict[str, Any]] = []
     headers: List[str] = []
@@ -109,8 +115,10 @@ def parse_csv_election_results(
 
     # Robust file open with encoding fallback
     try:
+        csv_encoding = "utf-8"
         f = open(csv_path, newline='', encoding='utf-8')
     except Exception:
+        csv_encoding = "latin-1"
         f = open(csv_path, newline='', encoding='latin-1')
 
     with f:
@@ -124,6 +132,15 @@ def parse_csv_election_results(
             }
             if any((val or "").strip() for val in normalized_row.values()):
                 data.append(normalized_row)
+
+    observe_csv_source_derivative_if_requested(
+        emit_func=csv_source_observation_emit_func,
+        decoded_headers=raw_headers,
+        decoded_rows=data,
+        encoding=csv_encoding,
+        producer="csv_handler.parse_csv_election_results",
+        source_document_sha256=csv_source_sha256,
+    )
 
     headers, data = normalize_table_headers(raw_headers, data)
     headers = [h.strip() for h in headers]
@@ -394,7 +411,12 @@ def parse(
     html_context: Dict[str, Any] | None = None,
     manual_file: str | None = None,
     session_id: Optional[str] = None,
-    *, inspection_store=None, inspection_principal=None, inspection_emit_func=None, **kwargs: Any,
+    *,
+    inspection_store=None,
+    inspection_principal=None,
+    inspection_emit_func=None,
+    artifact_identity: ArtifactIdentityHandoff | None = None,
+    **kwargs: Any,
 ) -> Tuple[List[str] | None, List[Dict[str, Any]] | None, str | None, Dict[str, Any]]:
     """
     Universal pipeline entry: Accepts a CSV file path (manual_file) from the format router.
@@ -405,8 +427,21 @@ def parse(
         "parser_observation_emit_func",
         None,
     )
+    csv_source_observation_emit_func = kwargs.pop(
+        "csv_source_observation_emit_func",
+        None,
+    )
     # Parity guard: support provided_tables + skip_pivot (mirrors table_core behavior)
     provided_tables = html_context.get("provided_tables")
+    if (
+        isinstance(provided_tables, list)
+        and provided_tables
+        and csv_source_observation_emit_func is not None
+    ):
+        raise RuntimeError(
+            "CSV source derivative observation callback is unavailable "
+            "for provided_tables wrapper path"
+        )
     if (
         isinstance(provided_tables, list)
         and provided_tables
@@ -522,6 +557,12 @@ def parse(
         inspection_principal=inspection_principal,
         inspection_emit_func=inspection_emit_func,
         parser_observation_emit_func=parser_observation_emit_func,
+        csv_source_sha256=(
+            artifact_identity.document_sha256
+            if artifact_identity is not None
+            else None
+        ),
+        csv_source_observation_emit_func=csv_source_observation_emit_func,
 )
 
     result_any = cast(Any, result)

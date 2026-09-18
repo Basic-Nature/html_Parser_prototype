@@ -12,6 +12,10 @@ from ....utils.browser_utils import (
 from ....utils.logger_singleton import logger
 from ....utils.prompt_singleton import prompt
 from ....utils.output_utils import finalize_election_output
+from ....contracts.artifact_identity import ArtifactIdentityHandoff
+from ....services.csv_source_derivative_evidence import (
+    observe_csv_source_derivative_if_requested,
+)
 from ....utils.shared_logic import (
     safe_get,
     safe_isdigit,
@@ -44,8 +48,21 @@ def apply_navigation_steps(page, config):
         except Exception as e:
             logger.warning(f"[NAV] Step failed: {step} — {e}")
 
-def parse(page=None, html_context=None, coordinator=None, context=None, session_id=None, **kwargs):
+def parse(
+    page=None,
+    html_context=None,
+    coordinator=None,
+    context=None,
+    session_id=None,
+    *,
+    artifact_identity: ArtifactIdentityHandoff | None = None,
+    **kwargs,
+):
     html_context = html_context if isinstance(html_context, dict) else {}
+    csv_source_observation_emit_func = kwargs.pop(
+        "csv_source_observation_emit_func",
+        None,
+    )
     config = safe_get(html_context, "config", {})
     logger.info("[PA Handler] Contest routing active — using shared contest context with state-level extraction.")
 
@@ -146,6 +163,19 @@ def parse(page=None, html_context=None, coordinator=None, context=None, session_
             headers = reader.fieldnames
             for row in reader:
                 data.append(row)
+
+            observe_csv_source_derivative_if_requested(
+                emit_func=csv_source_observation_emit_func,
+                decoded_headers=headers,
+                decoded_rows=data,
+                encoding="utf-8",
+                producer="pennsylvania.parse",
+                source_document_sha256=(
+                    artifact_identity.document_sha256
+                    if artifact_identity is not None
+                    else None
+                ),
+            )
 
             # Compute a grand total row for numeric columns
             numeric_columns = [
