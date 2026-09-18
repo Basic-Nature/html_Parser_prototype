@@ -20,6 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from PIL import Image, ImageOps, ImageFilter, ImageEnhance
 from ...Context_Integration.location_inference import infer_county_from_lines
 from ...services.ocr_derivative_evidence import observe_ocr_derivative
+from ...services.pdf_native_text_derivative_evidence import observe_pdf_native_text_derivative_if_requested
 from ...config import (
     ENABLE_OCR,
     ENABLE_PARALLEL,
@@ -4866,7 +4867,7 @@ def _dedupe_contest_titles(titles):
     return list(dict.fromkeys(titles))
    
 from ...contracts.artifact_identity import ArtifactIdentityHandoff
-def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, cancel_flag=None, *, artifact_identity: ArtifactIdentityHandoff | None = None) -> tuple[list[str], list[dict], str, dict]:
+def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, cancel_flag=None, *, artifact_identity: ArtifactIdentityHandoff | None = None, pdf_native_text_source_sha256=None, pdf_native_text_observation_emit_func=None) -> tuple[list[str], list[dict], str, dict]:
     """ Main PDF handler function."""
     # Log active OCR tuning config at parse start for diagnostics
     from ...config import log_ocr_config_summary, get_ocr_config_dict, log_extraction_quality  # type: ignore[attr-defined]
@@ -5018,6 +5019,14 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None, canc
             metadata["fitz_mode_used"] = mode_used
             if alt_page_map:
                 page_text_map = alt_page_map
+
+    observe_pdf_native_text_derivative_if_requested(
+        emit_func=pdf_native_text_observation_emit_func,
+        selected_text=all_text,
+        page_text_map=page_text_map,
+        native_text_mode=str(metadata.get("fitz_mode_used") or "text"),
+        source_document_sha256=pdf_native_text_source_sha256,
+    )
 
     # If the "text" is markup-only, treat as empty to force OCR
     if _is_mostly_markup(all_text):
@@ -6464,8 +6473,20 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
         "parser_observation_emit_func",
         None,
     )
+    pdf_native_text_observation_emit_func = kwargs.pop(
+        "pdf_native_text_observation_emit_func",
+        None,
+    )
     # Parity guard: allow provided_tables + skip_pivot to bypass file requirement
     provided_tables = html_context.get("provided_tables")
+    if (
+        isinstance(provided_tables, list)
+        and provided_tables
+        and pdf_native_text_observation_emit_func is not None
+    ):
+        raise RuntimeError(
+            "native text derivative observation callback is unavailable for provided_tables wrapper path"
+        )
     if (
         isinstance(provided_tables, list)
         and provided_tables
@@ -6585,6 +6606,12 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
             coordinator=coordinator,
             cancel_flag=cancel_flag,
             artifact_identity=artifact_identity,
+            pdf_native_text_source_sha256=(
+                artifact_identity.document_sha256
+                if artifact_identity is not None
+                else None
+            ),
+            pdf_native_text_observation_emit_func=pdf_native_text_observation_emit_func,
         )
     except PDFParseCancelled as exc:
         meta_seed = {
