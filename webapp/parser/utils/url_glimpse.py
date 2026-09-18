@@ -7,6 +7,9 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright
 
+from ..services.browser_console_event_evidence import (
+    observe_browser_console_event_if_requested,
+)
 from ..services.screenshot_image_evidence import finalize_screenshot_image_evidence
 
 
@@ -22,6 +25,7 @@ def capture_url_glimpse(
     timeout_ms: int = 45_000,
     wait_ms: int = 1_800,
     screenshot_observation_emit_func=None,
+    console_observation_emit_func=None,
 ) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -32,6 +36,8 @@ def capture_url_glimpse(
     screenshot_path = out_dir / f"{stem}.png"
     html_path = out_dir / f"{stem}.html"
     json_path = out_dir / f"{stem}.json"
+
+    console_observation_args = None
 
     result: dict = {
         "url": url,
@@ -105,12 +111,23 @@ def capture_url_glimpse(
             result["html_error"] = str(exc)
 
         if console_msgs:
-            result["console"] = console_msgs[-50:]
+            bounded_console_msgs = console_msgs[-50:]
+            result["console"] = bounded_console_msgs
+            if console_observation_emit_func is not None:
+                console_observation_args = {
+                    "events": bounded_console_msgs,
+                    "requested_url": url,
+                    "final_url": page.url,
+                    "capture_role": "url_glimpse",
+                    "observation_emit_func": console_observation_emit_func,
+                }
 
         context.close()
         browser.close()
 
     json_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    if console_observation_args is not None:
+        observe_browser_console_event_if_requested(**console_observation_args)
     return result
 
 
