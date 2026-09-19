@@ -102,6 +102,7 @@ jobs:
           MODE: ${{ inputs.mode }}
           TARGET_REVISION: ${{ inputs.target_revision }}
           CONFIRMATION: ${{ inputs.confirmation }}
+          MIGRATION_EXECUTOR_APP_NAME: BallotLens-Migration
         run: |
           set -euo pipefail
           python scripts/production/governed_schema_migration.py \
@@ -130,6 +131,8 @@ jobs:
             echo "- Source commit: \`${{ github.sha }}\`"
             echo "- Azure authentication: OIDC"
             echo "- Kudu authentication: Microsoft Entra bearer token"
+            echo "- Migration executor: dedicated BallotLens-Migration App Service"
+            echo "- Database login source: dedicated executor app settings only"
             echo "- Normal application deploy workflow does not run Alembic"
             echo "- Automatic downgrade: disabled"
             echo "- Evidence artifact retention: 90 days"

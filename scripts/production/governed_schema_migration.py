@@ -18,10 +18,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-APP_NAME = "BallotLens"
+PRIMARY_APP_NAME = "BallotLens"
+APP_NAME = "BallotLens-Migration"
 RESOURCE_GROUP = "BallotLens_group"
 EXPECTED_DB_NAME = "ballotlens-database"
 EXPECTED_DB_HOST = "ballotlens-server.postgres.database.azure.com"
+EXPECTED_MIGRATION_DB_USER = "electionpulse_migration"
+EXPECTED_OWNER_ROLE = "electionpulse_app_owner"
 WEBJOB_BASE_NAME = "ElectionPulseGovernedSchemaMigration"
 REGISTRY_FILENAME = "schema_migration_registry.json"
 RESULT_MARKER = "EP_SCHEMA_MIGRATION_RESULT_JSON="
@@ -217,6 +220,16 @@ def ensure_azure_target() -> dict[str, Any]:
         "scm_base": resolve_scm_base(site),
     }
 
+    workflow_executor = (
+        os.environ.get("MIGRATION_EXECUTOR_APP_NAME") or ""
+    ).strip()
+    if workflow_executor != APP_NAME:
+        raise RuntimeError(
+            "Migration executor workflow target mismatch. "
+            f"expected={APP_NAME!r} actual={workflow_executor!r}"
+        )
+    if APP_NAME == PRIMARY_APP_NAME:
+        raise RuntimeError("Refusing to use the primary application as migration executor.")
     if state["name"] != APP_NAME or state["resource_group"] != RESOURCE_GROUP:
         raise RuntimeError(f"Resolved unexpected App Service target: {state!r}")
     if state["state"] != "Running":
@@ -246,6 +259,21 @@ def ensure_azure_target() -> dict[str, Any]:
         raise RuntimeError(
             "WEBSITE_SKIP_RUNNING_KUDUAGENT=true prevents governed WebJob execution."
         )
+    if settings.get("POSTGRES_HOST", "").strip().lower() != EXPECTED_DB_HOST:
+        raise RuntimeError("Migration executor POSTGRES_HOST drifted.")
+    if settings.get("POSTGRES_DB", "").strip() != EXPECTED_DB_NAME:
+        raise RuntimeError("Migration executor POSTGRES_DB drifted.")
+    if settings.get("POSTGRES_USER", "").strip() != EXPECTED_MIGRATION_DB_USER:
+        raise RuntimeError("Migration executor POSTGRES_USER drifted.")
+    password_reference = settings.get("POSTGRES_PASSWORD", "").strip()
+    if not password_reference.lower().startswith("@microsoft.keyvault("):
+        raise RuntimeError(
+            "Migration executor POSTGRES_PASSWORD must be an Azure Key Vault reference."
+        )
+    state["database_identity_contract"] = {
+        "user": EXPECTED_MIGRATION_DB_USER,
+        "password_source": "azure_key_vault_reference",
+    }
 
     return state
 
@@ -761,10 +789,12 @@ def connect_db():
         raise RuntimeError(f"Unexpected production DB host: {host!r}")
     if db != EXPECTED_DB_NAME:
         raise RuntimeError(f"Unexpected production DB name: {db!r}")
-    if not user or not password:
-        raise RuntimeError("POSTGRES_USER/POSTGRES_PASSWORD are required.")
+    if user != EXPECTED_MIGRATION_DB_USER:
+        raise RuntimeError("Governed migration worker requires exact migration-only DB login.")
+    if not password:
+        raise RuntimeError("POSTGRES_PASSWORD is required.")
 
-    return psycopg2.connect(
+    conn = psycopg2.connect(
         host=host,
         port=port,
         dbname=db,
@@ -774,6 +804,23 @@ def connect_db():
         connect_timeout=15,
         application_name="ElectionPulse-GovernedSchemaMigration",
     )
+    conn.autocommit = False
+    cur = conn.cursor()
+    cur.execute("SELECT session_user, current_user")
+    session_user, current_user = [str(value) for value in cur.fetchone()]
+    if session_user != EXPECTED_MIGRATION_DB_USER:
+        raise RuntimeError(f"Unexpected migration session_user: {session_user!r}")
+    if current_user != EXPECTED_MIGRATION_DB_USER:
+        raise RuntimeError(f"Unexpected migration current_user before SET ROLE: {current_user!r}")
+    cur.execute(f'SET ROLE "{EXPECTED_OWNER_ROLE}"')
+    cur.execute("SELECT session_user, current_user")
+    elevated_session_user, elevated_current_user = [str(value) for value in cur.fetchone()]
+    if elevated_session_user != EXPECTED_MIGRATION_DB_USER:
+        raise RuntimeError("Migration session_user changed unexpectedly.")
+    if elevated_current_user != EXPECTED_OWNER_ROLE:
+        raise RuntimeError(f"SET ROLE did not reach expected owner role: {elevated_current_user!r}")
+    conn.commit()
+    return conn
 
 
 def build_database_url() -> str:
@@ -785,7 +832,15 @@ def build_database_url() -> str:
 
     if host.lower() != EXPECTED_DB_HOST or db != EXPECTED_DB_NAME:
         raise RuntimeError("Refusing Alembic URL for unexpected production database.")
+    if user != EXPECTED_MIGRATION_DB_USER:
+        raise RuntimeError("Refusing Alembic URL for non-migration DB login.")
+    if not password:
+        raise RuntimeError("POSTGRES_PASSWORD is required.")
 
+    query = urllib.parse.urlencode({
+        "sslmode": "require",
+        "options": f"-c role={EXPECTED_OWNER_ROLE}",
+    })
     return (
         "postgresql+psycopg2://"
         + urllib.parse.quote_plus(user)
@@ -797,7 +852,8 @@ def build_database_url() -> str:
         + port
         + "/"
         + urllib.parse.quote_plus(db)
-        + "?sslmode=require"
+        + "?"
+        + query
     )
 
 

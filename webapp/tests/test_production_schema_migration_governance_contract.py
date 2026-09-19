@@ -461,6 +461,35 @@ def test_runner_keeps_canonical_metrics_as_migration_invariants() -> None:
     assert "Canonical publication metrics changed during migration" in text
 
 
+
+def test_migration_controller_targets_dedicated_executor_only() -> None:
+    module = _load_runner()
+    workflow = MIGRATION_WORKFLOW.read_text(encoding="utf-8")
+    main_workflow = MAIN_WORKFLOW.read_text(encoding="utf-8")
+
+    assert module.PRIMARY_APP_NAME == "BallotLens"
+    assert module.APP_NAME == "BallotLens-Migration"
+    assert module.APP_NAME != module.PRIMARY_APP_NAME
+    assert module.EXPECTED_MIGRATION_DB_USER == "electionpulse_migration"
+    assert module.EXPECTED_OWNER_ROLE == "electionpulse_app_owner"
+    assert "MIGRATION_EXECUTOR_APP_NAME: BallotLens-Migration" in workflow
+    assert "BallotLens-Migration" not in main_workflow
+
+
+def test_migration_controller_requires_key_vault_backed_executor_password_setting() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+    assert 'settings.get("POSTGRES_USER", "").strip() != EXPECTED_MIGRATION_DB_USER' in text
+    assert 'password_reference.lower().startswith("@microsoft.keyvault(")' in text
+    assert '"password_source": "azure_key_vault_reference"' in text
+
+
+def test_worker_requires_migration_login_and_explicit_owner_role() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+    assert "user != EXPECTED_MIGRATION_DB_USER" in text
+    assert "SET ROLE" in text
+    assert "EXPECTED_OWNER_ROLE" in text
+    assert '"options": f"-c role={EXPECTED_OWNER_ROLE}"' in text
+
 def test_data_framework_warehouse_status_retires_legacy_workflow_contests() -> None:
     import ast
 
