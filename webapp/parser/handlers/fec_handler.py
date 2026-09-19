@@ -12,6 +12,10 @@ from webapp.parser.utils.fec_utils import (
     money_normalize,
     party_normalize,
 )
+from webapp.parser.contracts.artifact_identity import ArtifactIdentityHandoff
+from webapp.parser.services.workbook_source_derivative_evidence import (
+    observe_workbook_source_derivative_if_requested,
+)
 
 try:
     import pandas as pd  # optional, used for .xlsx/.xls support
@@ -46,12 +50,25 @@ def _party_is_missing(value: Any) -> bool:
     return str(value).strip().upper() == "UNKNOWN"
 
 
-def parse(page, coordinator, context: Dict[str, Any] | None = None, session_id: Optional[str] = None, manual_file: Optional[str] = None, **kwargs) -> Optional[Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]]:
+def parse(
+    page,
+    coordinator,
+    context: Dict[str, Any] | None = None,
+    session_id: Optional[str] = None,
+    manual_file: Optional[str] = None,
+    *,
+    artifact_identity: ArtifactIdentityHandoff | None = None,
+    **kwargs,
+) -> Optional[Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]]:
     """Parse FEC-style CSV or Excel exported candidate summary. Returns (headers, rows, contest, metadata).
 
     Accepts `manual_file` pointing to a CSV or Excel (.xlsx/.xls). If pandas is unavailable
     and an Excel file is provided, the function will return None.
     """
+    workbook_source_observation_emit_func = kwargs.pop(
+        "workbook_source_observation_emit_func",
+        None,
+    )
     if not manual_file or not os.path.exists(manual_file):
         return None
 
@@ -63,6 +80,17 @@ def parse(page, coordinator, context: Dict[str, Any] | None = None, session_id: 
                 return None
             # Read first sheet
             df = pd.read_excel(manual_file, sheet_name=0, dtype=str)
+            observe_workbook_source_derivative_if_requested(
+                emit_func=workbook_source_observation_emit_func,
+                decoded_frame=df,
+                producer="fec_handler.parse",
+                sheet_name=0,
+                source_document_sha256=(
+                    artifact_identity.document_sha256
+                    if artifact_identity is not None
+                    else None
+                ),
+            )
             raw_headers = list(df.columns.astype(str).tolist())
             canonical_order, mapping = canonicalize_headers(raw_headers)
             for _, r in df.iterrows():

@@ -34,6 +34,10 @@ from ...utils.table_builder import build_table_noninteractive_result
 from ...services.parser_observation_callback import (
     emit_parser_observation_bundle_if_requested,
 )
+from ...contracts.artifact_identity import ArtifactIdentityHandoff
+from ...services.workbook_source_derivative_evidence import (
+    observe_workbook_source_derivative_if_requested,
+)
 from ...utils.table_core import robust_table_extraction
 
 _HANDLER_NAME = "xlsx_handler"
@@ -74,6 +78,8 @@ def parse_xlsx_election_results(
     html_context: Optional[Dict[str, Any]] = None,
     *,
     parser_observation_emit_func=None,
+    workbook_source_sha256=None,
+    workbook_source_observation_emit_func=None,
 ) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
     html_context = dict(html_context or {})
     if pd is None:
@@ -102,6 +108,14 @@ def parse_xlsx_election_results(
         first_sheet = next(iter(df.keys()))
         df = df[first_sheet]
         sheet_name = first_sheet
+
+    observe_workbook_source_derivative_if_requested(
+        emit_func=workbook_source_observation_emit_func,
+        decoded_frame=df,
+        producer="xlsx_handler.parse_xlsx_election_results",
+        sheet_name=sheet_name if sheet_name is not None else 0,
+        source_document_sha256=workbook_source_sha256,
+    )
 
     if df is None or df.empty:
         logger.error({
@@ -362,6 +376,8 @@ def parse(
     html_context: Dict[str, Any] | None = None,
     manual_file: str | None = None,
     session_id: Optional[str] = None,
+    *,
+    artifact_identity: ArtifactIdentityHandoff | None = None,
     **kwargs: Any,
 ) -> Tuple[List[str] | None, List[Dict[str, Any]] | None, str | None, Dict[str, Any]]:
     html_context = html_context or {}
@@ -369,7 +385,20 @@ def parse(
         "parser_observation_emit_func",
         None,
     )
+    workbook_source_observation_emit_func = kwargs.pop(
+        "workbook_source_observation_emit_func",
+        None,
+    )
     provided_tables = html_context.get("provided_tables")
+    if (
+        isinstance(provided_tables, list)
+        and provided_tables
+        and workbook_source_observation_emit_func is not None
+    ):
+        raise RuntimeError(
+            "workbook source derivative observation callback is unavailable "
+            "for provided_tables wrapper path"
+        )
     if (
         isinstance(provided_tables, list)
         and provided_tables
@@ -491,6 +520,12 @@ def parse(
         sheet=sheet,
         html_context=html_context,
         parser_observation_emit_func=parser_observation_emit_func,
+        workbook_source_sha256=(
+            artifact_identity.document_sha256
+            if artifact_identity is not None
+            else None
+        ),
+        workbook_source_observation_emit_func=workbook_source_observation_emit_func,
     )
     result_any = cast(Any, result)
     if not (isinstance(result_any, tuple) and len(result_any) == 4):

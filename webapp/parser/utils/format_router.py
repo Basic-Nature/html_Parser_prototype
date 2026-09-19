@@ -12,6 +12,9 @@ from ..config import ALLOW_GOOGLE_DOCS, DISABLE_HTML_FALLBACK, SUPPORTED_FORMATS
 from ..Context_Integration.Context_Library.constants import CONTEST_KEYWORDS
 from ..handlers import fec_handler
 from ..handlers.formats import csv_handler, json_handler, pdf_handler, txt_handler, xlsx_handler
+from ..services.workbook_source_derivative_evidence import (
+    observe_workbook_source_derivative_if_requested,
+)
 from .browser_utils import (
     safe_click_with_retry,
     safe_content,
@@ -549,6 +552,9 @@ def prompt_and_handle_download(
     Returns (result, handled) where handled=True if a format was selected and processed.
     """
     from .user_prompt import PromptCancelled
+    workbook_source_observation_emit_func = handler_kwargs.get(
+        "workbook_source_observation_emit_func"
+    )
     if rejected_downloads is None:
         rejected_downloads = set()
 
@@ -1158,6 +1164,13 @@ def prompt_and_handle_download(
                     try:
                         import pandas as _pd
                         df = _pd.read_excel(local_file_path, sheet_name=0, nrows=0)
+                        observe_workbook_source_derivative_if_requested(
+                            emit_func=workbook_source_observation_emit_func,
+                            decoded_frame=df,
+                            producer="format_router.prompt_and_handle_download",
+                            sheet_name=0,
+                            source_document_sha256=None,
+                        )
                         cols = [str(c).lower() for c in list(df.columns)]
                         hay = " ".join(cols)
                     except Exception:
