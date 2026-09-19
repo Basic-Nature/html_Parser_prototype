@@ -15,6 +15,10 @@ from ...services.parser_observation_callback import (
 from ...services.parser_result_observation_adapter import (
     adapt_final_parser_result_for_observation,
 )
+from ...services.json_source_derivative_evidence import (
+    JsonSourceDerivativeObservationError,
+    observe_json_source_derivative_if_requested,
+)
 from ...config import ENABLE_PARALLEL
 from ...Context_Integration.Context_Library.constants import (
     BALLOT_TYPES,
@@ -981,6 +985,29 @@ def _fastpath_county_results(
 
     return headers_final, data_final, contest_name, metadata
 
+
+def _observe_json_source_derivative_path_if_requested(
+    *,
+    json_path: str,
+    emit_func,
+    source_document_sha256: str | None,
+):
+    if emit_func is None:
+        return None
+    if not callable(emit_func):
+        raise JsonSourceDerivativeObservationError(
+            "json source derivative observer must be callable."
+        )
+    with open(json_path, "rb") as handle:
+        decoded_json = orjson.loads(handle.read())
+    return observe_json_source_derivative_if_requested(
+        emit_func=emit_func,
+        decoded_json=decoded_json,
+        producer="json_handler.parse",
+        source_document_sha256=source_document_sha256,
+    )
+
+
 def parse_json_election_results(
     json_path: str,
     session_id: Optional[str] = None,
@@ -1373,8 +1400,21 @@ def parse(
         "parser_observation_emit_func",
         None,
     )
+    json_source_observation_emit_func = kwargs.pop(
+        "json_source_observation_emit_func",
+        None,
+    )
     # Parity guard: allow provided_tables + skip_pivot without manual_file
     provided_tables = html_context.get("provided_tables")
+    if (
+        isinstance(provided_tables, list)
+        and provided_tables
+        and json_source_observation_emit_func is not None
+    ):
+        raise RuntimeError(
+            "json source derivative observation callback is unavailable "
+            "for provided_tables wrapper path"
+        )
     if (
         isinstance(provided_tables, list)
         and provided_tables
@@ -1478,6 +1518,17 @@ def parse(
         "message": f"[INFO] Using JSON file: {manual_file}",
         "session_id": session_id
     })
+
+    if json_source_observation_emit_func is not None:
+        _observe_json_source_derivative_path_if_requested(
+            json_path=manual_file,
+            emit_func=json_source_observation_emit_func,
+            source_document_sha256=(
+                artifact_identity.document_sha256
+                if artifact_identity is not None
+                else None
+            ),
+        )
 
     result = parse_json_election_results(manual_file, session_id=session_id, coordinator=coordinator)
 
