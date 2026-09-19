@@ -9858,285 +9858,100 @@ def api_election_data_states_counties():
 
 def api_assign_dl_owner(race_id):
     """
-    Assign DL1 or DL2 owner to a race.
-    
-    Body: {'dl': 'DL1'|'DL2', 'assigned_to': 'username}
+    Retired legacy election-data workflow mutation surface.
+
+    The production legacy workflow tables are absent. This endpoint therefore
+    fails closed and directs authenticated callers to governed Workflow v1
+    authority without attempting race_id -> workflow-item adaptation.
     """
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
         return jsonify({"error": "Unauthorized"}), 403
+    return jsonify({
+        "success": False,
+        "error": "Legacy workflow assignment route retired.",
+        "code": "legacy_workflow_mutation_route_retired",
+        "contract": "election_data_legacy_mutation_retirement_v1",
+        "authority": "workflow_v1",
+        "legacy_route": "/api/election_data/worklist/<race_id>/assign",
+        "race_id": str(race_id),
+        "retry_legacy_route": False,
+        "replacement": {
+            "kind": "workflow_v1_pass_claim",
+            "workflow_item_identifier": "uuid",
+            "routes": [
+                "/api/workflow/v1/contributor/items/<uuid:item_id>/passes/1/claim",
+                "/api/workflow/v1/contributor/items/<uuid:item_id>/passes/2/claim",
+            ],
+            "automatic_race_id_adapter": False,
+        },
+    }), 410
 
-    try:
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-
-        from webapp.parser.models.election_data import DownloadRecord
-
-        data = request.get_json() or {}
-        dl = data.get('dl', '').upper()  # DL1 or DL2
-        assigned_to = data.get('assigned_to', principal)
-
-        if dl not in ('DL1', 'DL2'):
-            return jsonify({'success': False, 'error': 'dl must be DL1 or DL2'}), 400
-
-        db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
-        engine = create_engine(db_url)
-        Session = sessionmaker(bind=engine)
-        session = Session()
-
-        try:
-            record = session.query(DownloadRecord).filter(DownloadRecord.race_id == race_id).first()
-
-            if not record:
-                return jsonify({'success': False, 'error': f'Race {race_id} not found'}), 404
-
-            # Enforce role separation: DL1 ≠ DL2
-            if dl == 'DL1':
-                if record.dl2_assigned_to and record.dl2_assigned_to == assigned_to:
-                    return jsonify({
-                        'success': False,
-                        'error': f'{assigned_to} is already assigned to DL2 - cannot also assign to DL1'
-                    }), 400
-                record.dl1_assigned_to = assigned_to
-                record.dl1_status = 'pending'
-            else:  # DL2
-                if record.dl1_assigned_to and record.dl1_assigned_to == assigned_to:
-                    return jsonify({
-                        'success': False,
-                        'error': f'{assigned_to} is already assigned to DL1 - cannot also assign to DL2'
-                    }), 400
-                record.dl2_assigned_to = assigned_to
-                record.dl2_status = 'pending'
-
-            record.updated_at = datetime.utcnow()
-            session.commit()
-
-            return jsonify({
-                'success': True,
-                'message': f'{assigned_to} assigned to {dl} for race {race_id}'
-            }), 200
-
-        finally:
-            session.close()
-
-    except Exception as e:
-        logger.error(f"Error assigning DL owner: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 def api_preqc_check(race_id):
     """
-    Run Pre-QC Auto-check: strict equality + fuzzy matching between DL1 and DL2.
-    
-    Returns discrepancy report for QC1 review.
+    Retired legacy election-data workflow mutation surface.
+
+    The production legacy workflow tables are absent. This endpoint therefore
+    fails closed and directs authenticated callers to governed Workflow v1
+    authority without attempting race_id -> workflow-item adaptation.
     """
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
         return jsonify({"error": "Unauthorized"}), 403
+    return jsonify({
+        "success": False,
+        "error": "Legacy Pre-QC mutation route retired.",
+        "code": "legacy_workflow_mutation_route_retired",
+        "contract": "election_data_legacy_mutation_retirement_v1",
+        "authority": "workflow_v1",
+        "legacy_route": "/api/election_data/preqc/<race_id>",
+        "race_id": str(race_id),
+        "retry_legacy_route": False,
+        "replacement": {
+            "kind": "workflow_v1_pre_qc_and_comparison",
+            "workflow_item_identifier": "uuid",
+            "service_contracts": [
+                "workflow_pre_qc_pass_validation_v1",
+                "workflow_strict_comparison_execution_v1",
+            ],
+            "automatic_race_id_adapter": False,
+        },
+    }), 410
 
-    try:
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-
-        from webapp.parser.data_standardization.election_data_standardizer import (
-            PreQCComparisonEngine,
-        )
-        from webapp.parser.models.election_data import (
-            DownloadRecord,
-            PreQCComparison,
-            ValidationRecord_DL1,
-            ValidationRecord_DL2,
-        )
-
-        db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
-        engine = create_engine(db_url)
-        Session = sessionmaker(bind=engine)
-        session = Session()
-
-        try:
-            # Get DL1 and DL2 records
-            dl1 = session.query(ValidationRecord_DL1).filter(
-                ValidationRecord_DL1.race_id == race_id
-            ).first()
-            dl2 = session.query(ValidationRecord_DL2).filter(
-                ValidationRecord_DL2.race_id == race_id
-            ).first()
-
-            if not dl1 or not dl2:
-                return jsonify({
-                    'success': False,
-                    'error': 'Both DL1 and DL2 records required for Pre-QC comparison'
-                }), 400
-
-            # Convert to dict for comparison
-            dl1_dict = {
-                'race_id': dl1.race_id,
-                'standardized_candidate_name': dl1.standardized_candidate_name,
-                'ballot_party': dl1.ballot_party,
-                'fec_party': dl1.fec_party,
-                'fec_id': dl1.fec_id,
-                'total_votes': dl1.total_votes,
-                'is_write_in': dl1.is_write_in,
-            }
-            dl2_dict = {
-                'race_id': dl2.race_id,
-                'standardized_candidate_name': dl2.standardized_candidate_name,
-                'ballot_party': dl2.ballot_party,
-                'fec_party': dl2.fec_party,
-                'fec_id': dl2.fec_id,
-                'total_votes': dl2.total_votes,
-                'is_write_in': dl2.is_write_in,
-            }
-
-            # Run Pre-QC comparison
-            preqc_result = PreQCComparisonEngine.compare_records(dl1_dict, dl2_dict)
-
-            # Store result
-            preqc = PreQCComparison(
-                race_id=race_id,
-                dl1_record_id=dl1.id,
-                dl2_record_id=dl2.id,
-                strict_equality_passed=preqc_result.strict_passed,
-                fuzzy_match_confidence=preqc_result.fuzzy_confidence,
-                fuzzy_candidate_confidence=preqc_result.candidate_confidence,
-                fuzzy_party_confidence=preqc_result.party_confidence,
-                fuzzy_fec_id_confidence=preqc_result.fec_id_confidence,
-                discrepancy_count=preqc_result.discrepancy_count,
-                discrepancy_fields=json.dumps(preqc_result.discrepancies),
-                comparison_status=preqc_result.status,
-                comparison_summary=preqc_result.summary,
-                checked_by=principal,
-            )
-            session.add(preqc)
-
-            # Update DownloadRecord
-            download = session.query(DownloadRecord).filter(
-                DownloadRecord.race_id == race_id
-            ).first()
-            if download:
-                download.preqc_auto_check_completed = True
-                download.preqc_result = preqc_result.status
-                download.preqc_strict_passed = preqc_result.strict_passed
-                download.preqc_fuzzy_score = preqc_result.fuzzy_confidence
-                download.preqc_discrepancy_count = preqc_result.discrepancy_count
-                download.preqc_checked_at = datetime.utcnow()
-
-            session.commit()
-
-            return jsonify({
-                'success': True,
-                'preqc_result': {
-                    'race_id': preqc_result.race_id,
-                    'strict_passed': preqc_result.strict_passed,
-                    'fuzzy_confidence': round(preqc_result.fuzzy_confidence, 3),
-                    'status': preqc_result.status,
-                    'summary': preqc_result.summary,
-                    'discrepancy_count': preqc_result.discrepancy_count,
-                    'discrepancies': preqc_result.discrepancies,
-                }
-            }), 200
-
-        finally:
-            session.close()
-
-    except Exception as e:
-        logger.error(f"Error running Pre-QC check for {race_id}: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 def api_qc1_submit(race_id):
     """
-    Submit QC1 form and approve/reject data for QC2.
-    
-    Body: {
-      'selected_dl': 'DL1'|'DL2',
-      'inspection_result': 'pass'|'fail',
-      'checklist_results': {...},
-      'notes': 'optional notes'
-    }
+    Retired legacy election-data workflow mutation surface.
+
+    The production legacy workflow tables are absent. This endpoint therefore
+    fails closed and directs authenticated callers to governed Workflow v1
+    authority without attempting race_id -> workflow-item adaptation.
     """
     principal, _, _ = get_request_principal()
     if not principal and not ALLOW_DEV_NO_PRINCIPAL:
         return jsonify({"error": "Unauthorized"}), 403
+    return jsonify({
+        "success": False,
+        "error": "Legacy QC1 mutation route retired.",
+        "code": "legacy_workflow_mutation_route_retired",
+        "contract": "election_data_legacy_mutation_retirement_v1",
+        "authority": "workflow_v1",
+        "legacy_route": "/api/election_data/qc1/<race_id>/submit",
+        "race_id": str(race_id),
+        "retry_legacy_route": False,
+        "replacement": {
+            "kind": "workflow_v1_qc1_review",
+            "workflow_item_identifier": "uuid",
+            "routes": [
+                "/api/workflow/v1/reviewer/items/<uuid:item_id>/reviews/qc1",
+            ],
+            "automatic_race_id_adapter": False,
+        },
+    }), 410
 
-    try:
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-
-        from webapp.parser.models.election_data import (
-            DownloadRecord,
-            PreQCComparison,
-            QC1Checkpoint,
-        )
-
-        data = request.get_json() or {}
-        selected_dl = data.get('selected_dl', '').upper()
-
-        if selected_dl not in ('DL1', 'DL2'):
-            return jsonify({'success': False, 'error': 'selected_dl must be DL1 or DL2'}), 400
-
-        db_url = os.getenv('DATABASE_URL', 'sqlite:///election_data.db')
-        engine = create_engine(db_url)
-        Session = sessionmaker(bind=engine)
-        session = Session()
-
-        try:
-            download = session.query(DownloadRecord).filter(
-                DownloadRecord.race_id == race_id
-            ).first()
-
-            if not download:
-                return jsonify({'success': False, 'error': f'Race {race_id} not found'}), 404
-
-            # Enforce role separation: QC1 cannot be DL1 or DL2 owner
-            if principal in (download.dl1_assigned_to, download.dl2_assigned_to):
-                return jsonify({
-                    'success': False,
-                    'error': 'QC1 designee cannot also be DL1 or DL2 owner'
-                }), 400
-
-            # Get Pre-QC results
-            preqc = session.query(PreQCComparison).filter(
-                PreQCComparison.race_id == race_id
-            ).order_by(PreQCComparison.checked_at.desc()).first()
-
-            # Create QC1 checkpoint
-            qc1 = QC1Checkpoint(
-                download_record_id=download.id,
-                preqc_comparison_id=preqc.id if preqc else None,
-                reviewed_by=principal,
-                reviewed_at=datetime.utcnow(),
-                qc1_checklist_results=json.dumps(data.get('checklist_results', {})),
-                data_inspection_result=data.get('inspection_result', 'pending'),
-                data_inspection_notes=data.get('notes', ''),
-                selected_dl_source=selected_dl,
-                approval_status='approved' if data.get('inspection_result') == 'pass' else 'rejected',
-            )
-            session.add(qc1)
-
-            # Update DownloadRecord
-            download.qc1_assigned_to = principal
-            download.qc1_status = 'completed'
-            download.qc1_selected_dl = selected_dl
-            download.qc1_completed_at = datetime.utcnow()
-            download.qc1_data_inspection_result = data.get('inspection_result')
-            download.workflow_status = 'step_3' if data.get('inspection_result') == 'pass' else 'step_2_review'
-
-            session.commit()
-
-            return jsonify({
-                'success': True,
-                'message': f'QC1 review completed for {race_id}',
-                'qc1_id': qc1.id,
-                'workflow_status': download.workflow_status,
-            }), 200
-
-        finally:
-            session.close()
-
-    except Exception as e:
-        logger.error(f"Error submitting QC1 for {race_id}: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 def api_election_data_stats():
