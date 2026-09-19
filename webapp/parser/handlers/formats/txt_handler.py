@@ -22,6 +22,13 @@ from ...utils.location_helpers import (
     collect_location_headers,
 )
 from ...utils.logger_singleton import logger
+from ...contracts.artifact_identity import ArtifactIdentityHandoff
+from ...services.parser_observation_callback import (
+    emit_parser_observation_bundle_if_requested,
+)
+from ...services.txt_source_derivative_evidence import (
+    observe_txt_source_derivative_if_requested,
+)
 from ...utils.output_utils import finalize_election_output
 from ...utils.pivot import expand_single_rawjson_row
 from ...utils.shared_logic import (
@@ -31,6 +38,7 @@ from ...utils.shared_logic import (
     safe_slug,
 )
 from ...utils.table_builder import build_table_noninteractive
+from ...utils.table_builder import build_table_noninteractive_result
 from ...utils.table_core import robust_table_extraction
 
 _HANDLER_NAME = "txt_handler"
@@ -41,17 +49,28 @@ _DELIMITER_CANDIDATES = ",\t;|:"
 # Use shared contest regex + detection helpers
 
 
-def _read_delimited_file(txt_path: str) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """Read a delimited text file with dialect sniffing and conservative cleanup."""
+def _read_delimited_file_with_metadata(
+    txt_path: str,
+) -> Tuple[
+    List[str],
+    List[Dict[str, Any]],
+    str | None,
+    str | None,
+]:
+    """Read a delimited text file and retain decode/dialect metadata."""
     for encoding in ("utf-8", "latin-1"):
         try:
             with open(txt_path, mode="r", encoding=encoding, newline="") as handle:
                 sample = handle.read(4096)
                 handle.seek(0)
                 try:
-                    dialect = csv.Sniffer().sniff(sample or "", delimiters=_DELIMITER_CANDIDATES)
+                    dialect = csv.Sniffer().sniff(
+                        sample or "",
+                        delimiters=_DELIMITER_CANDIDATES,
+                    )
                 except Exception:
                     dialect = csv.excel
+                delimiter = str(getattr(dialect, "delimiter", ",") or ",")
                 reader = csv.DictReader(handle, dialect=dialect)
                 headers = [str(h).strip() for h in (reader.fieldnames or []) if h]
                 rows: List[Dict[str, Any]] = []
@@ -64,12 +83,22 @@ def _read_delimited_file(txt_path: str) -> Tuple[List[str], List[Dict[str, Any]]
                     }
                     if any(str(val).strip() for val in clean.values()):
                         rows.append(clean)
-                return headers, rows
+                return headers, rows, encoding, delimiter
         except UnicodeDecodeError:
             continue
         except FileNotFoundError:
             break
-    return [], []
+    return [], [], None, None
+
+
+def _read_delimited_file(
+    txt_path: str,
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """Preserve the existing decoded TXT reader contract."""
+    headers, rows, _encoding, _delimiter = _read_delimited_file_with_metadata(
+        txt_path
+    )
+    return headers, rows
 
 
 def parse_txt_election_results(
@@ -77,9 +106,18 @@ def parse_txt_election_results(
     session_id: Optional[str] = None,
     coordinator: Any = None,
     html_context: Optional[Dict[str, Any]] = None,
+    *,
+    parser_observation_emit_func=None,
+    txt_source_sha256=None,
+    txt_source_observation_emit_func=None,
 ) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
     html_context = dict(html_context or {})
-    headers, data = _read_delimited_file(txt_path)
+    (
+        headers,
+        data,
+        txt_encoding,
+        txt_delimiter,
+    ) = _read_delimited_file_with_metadata(txt_path)
     if not headers and not data:
         logger.error({
             "level": "ERROR",
@@ -88,6 +126,16 @@ def parse_txt_election_results(
             "session_id": session_id,
         })
         return [], [], "", {"error": "Unparseable TXT file"}
+
+    observe_txt_source_derivative_if_requested(
+        emit_func=txt_source_observation_emit_func,
+        decoded_headers=headers,
+        decoded_rows=data,
+        encoding=txt_encoding,
+        delimiter=txt_delimiter,
+        producer="txt_handler.parse_txt_election_results",
+        source_document_sha256=txt_source_sha256,
+    )
 
     contest_column = None
     possible_contest_cols = [col for col in headers if _CONTEST_RX.search((col or "").lower())]
@@ -241,7 +289,7 @@ def parse_txt_election_results(
         context["candidate_party_detection"] = party_diag
     headers, data = expand_single_rawjson_row(headers, data, context=context)
 
-    headers_final, data_final, _entity_info = build_table_noninteractive(
+    _txt_table_result = build_table_noninteractive_result(
         domain=domain,
         headers=headers,
         data=data,
@@ -249,7 +297,15 @@ def parse_txt_election_results(
         context=context,
         pivot_to_wide=True,
         debug=False,
+        source_type="txt",
     )
+    emit_parser_observation_bundle_if_requested(
+        _txt_table_result,
+        parser_observation_emit_func=parser_observation_emit_func,
+    )
+    headers_final = list(_txt_table_result.headers)
+    data_final = [dict(row) for row in _txt_table_result.rows]
+    _entity_info = _txt_table_result.semantic_annotations.get("entity_info")
 
     finalize_context = {
         "handler": _HANDLER_NAME,
@@ -330,10 +386,37 @@ def parse(
     html_context: Dict[str, Any] | None = None,
     manual_file: str | None = None,
     session_id: Optional[str] = None,
+    *,
+    artifact_identity: ArtifactIdentityHandoff | None = None,
     **kwargs: Any,
 ) -> Tuple[List[str] | None, List[Dict[str, Any]] | None, str | None, Dict[str, Any]]:
     html_context = html_context or {}
+    parser_observation_emit_func = kwargs.pop(
+        "parser_observation_emit_func",
+        None,
+    )
+    txt_source_observation_emit_func = kwargs.pop(
+        "txt_source_observation_emit_func",
+        None,
+    )
     provided_tables = html_context.get("provided_tables")
+    if (
+        isinstance(provided_tables, list)
+        and provided_tables
+        and txt_source_observation_emit_func is not None
+    ):
+        raise RuntimeError(
+            "TXT source derivative observation callback is unavailable "
+            "for provided_tables wrapper path"
+        )
+    if (
+        isinstance(provided_tables, list)
+        and provided_tables
+        and parser_observation_emit_func is not None
+    ):
+        raise RuntimeError(
+            "parser observation callback is unavailable for provided_tables wrapper path"
+        )
     if isinstance(provided_tables, list) and provided_tables:
         ctx = dict(html_context)
         ctx.update({
@@ -428,6 +511,13 @@ def parse(
         session_id=session_id,
         coordinator=coordinator,
         html_context=html_context,
+        parser_observation_emit_func=parser_observation_emit_func,
+        txt_source_sha256=(
+            artifact_identity.document_sha256
+            if artifact_identity is not None
+            else None
+        ),
+        txt_source_observation_emit_func=txt_source_observation_emit_func,
     )
     result_any = cast(Any, result)
     if not (isinstance(result_any, tuple) and len(result_any) == 4):
