@@ -56,6 +56,10 @@ env:
   # Contract tests import the Flask app at module load time; provide a safe CI fallback.
   FLASK_SECRET_KEY: ${{ secrets.FLASK_SECRET_KEY || 'ci-nonprod-flask-secret-key' }}
   # Contract tests import the Flask app at module load time; provide a safe CI fallback.
+  # Production application DB identity. Keep the password as an App Service
+  # Key Vault reference so deployments never need the runtime credential value.
+  PRODUCTION_RUNTIME_DB_USER: "electionpulse_app_runtime"
+  PRODUCTION_RUNTIME_DB_PASSWORD_REFERENCE: "@Microsoft.KeyVault(VaultName=ballotlens-guardian;SecretName=electionpulse-runtime-postgres-password)"
   GUARDED_INGESTION_KEY: ${{ secrets.GUARDED_INGESTION_KEY || 'ci-nonprod-guarded-ingestion-key' }}
 
 jobs:
@@ -660,6 +664,24 @@ jobs:
           # Also set a best-effort app setting to hint redirect behavior (some platforms use this)
           az webapp config appsettings set --name BallotLens --resource-group BallotLens_group --settings WEBSITE_REDIRECT_HTTP_TO_HTTPS=1
 
+      - name: Guard production runtime database identity contract
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ env.PRODUCTION_RUNTIME_DB_USER }}" != "electionpulse_app_runtime" ]; then
+            echo "::error::Production runtime DB user contract drifted."
+            exit 1
+          fi
+
+          EXPECTED_REF='@Microsoft.KeyVault(VaultName=ballotlens-guardian;SecretName=electionpulse-runtime-postgres-password)'
+          if [ "${{ env.PRODUCTION_RUNTIME_DB_PASSWORD_REFERENCE }}" != "$EXPECTED_REF" ]; then
+            echo "::error::Production runtime DB Key Vault reference contract drifted."
+            exit 1
+          fi
+
+          echo "Production runtime DB identity contract verified; no credential value is present in workflow source."
+
       - name: Set Azure App Settings (Environment Variables)
         run: |
           az webapp config appsettings set \
@@ -672,8 +694,8 @@ jobs:
               POSTGRES_DB="ballotlens-database" \
               POSTGRES_PORT="5432" \
               POSTGRES_AAD_USER="ballotlens" \
-              POSTGRES_USER="${{ secrets.POSTGRES_USER }}" \
-              POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" \
+              POSTGRES_USER="${{ env.PRODUCTION_RUNTIME_DB_USER }}" \
+              POSTGRES_PASSWORD="${{ env.PRODUCTION_RUNTIME_DB_PASSWORD_REFERENCE }}" \
               ENABLE_OCR="True" \
               ENABLE_OCR_FORCE="False" \
               LOG_LEVEL="DEBUG" \
@@ -732,6 +754,66 @@ jobs:
               GOOGLE_SHEETS_SA_CLIENT_CERT_URL="${{ secrets.GOOGLE_SHEETS_SA_CLIENT_CERT_URL }}" \
               GOOGLE_SHEETS_SA_UNIVERSE_DOMAIN="googleapis.com" \
               SCM_DO_BUILD_DURING_DEPLOYMENT="false"
+
+      - name: Verify runtime database Key Vault reference resolved
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_ID="$(
+            az webapp show               --name BallotLens               --resource-group BallotLens_group               --query id               --output tsv               --only-show-errors
+          )"
+
+          if [ -z "$APP_ID" ]; then
+            echo "::error::BallotLens resource ID was empty."
+            exit 1
+          fi
+
+          REF_URL="https://management.azure.com${APP_ID}/config/configreferences/appsettings/POSTGRES_PASSWORD?api-version=2026-03-15"
+          STATUS=""
+
+          for i in {1..12}; do
+            STATUS="$(
+              az rest                 --method get                 --url "$REF_URL"                 --query properties.status                 --output tsv                 --only-show-errors
+            )"
+            echo "Key Vault reference resolution attempt $i/12: status=${STATUS:-empty}"
+            if [ "$STATUS" = "Resolved" ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          if [ "$STATUS" != "Resolved" ]; then
+            echo "::error::POSTGRES_PASSWORD Key Vault reference did not resolve."
+            exit 1
+          fi
+
+          VAULT_NAME="$(
+            az rest               --method get               --url "$REF_URL"               --query properties.vaultName               --output tsv               --only-show-errors
+          )"
+          SECRET_NAME="$(
+            az rest               --method get               --url "$REF_URL"               --query properties.secretName               --output tsv               --only-show-errors
+          )"
+          ACTIVE_VERSION="$(
+            az rest               --method get               --url "$REF_URL"               --query properties.activeVersion               --output tsv               --only-show-errors
+          )"
+
+          if [ "$VAULT_NAME" != "ballotlens-guardian" ]; then
+            echo "::error::POSTGRES_PASSWORD resolved from an unexpected Key Vault."
+            exit 1
+          fi
+
+          if [ "$SECRET_NAME" != "electionpulse-runtime-postgres-password" ]; then
+            echo "::error::POSTGRES_PASSWORD resolved from an unexpected secret."
+            exit 1
+          fi
+
+          if [ -z "$ACTIVE_VERSION" ]; then
+            echo "::error::POSTGRES_PASSWORD Key Vault reference has no active version."
+            exit 1
+          fi
+
+          echo "Runtime DB Key Vault reference is Resolved with a non-empty active version."
 
       - name: Restart Web App
         run: az webapp restart --name BallotLens --resource-group BallotLens_group
