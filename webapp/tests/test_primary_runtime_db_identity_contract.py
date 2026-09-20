@@ -72,9 +72,16 @@ def test_key_vault_reference_resolution_gate_precedes_explicit_restart() -> None
     assert '[ "$STATUS" = "Resolved" ]' in text
     assert "--query properties.vaultName" in text
     assert "--query properties.secretName" in text
-    assert "--query properties.activeVersion" in text
+    assert "--query properties.activeVersion" not in text
+    assert 'if [ -z "$ACTIVE_VERSION" ]; then' not in text
+    assert "Key Vault reference has no active version." not in text
+    assert (
+        "Reference contract is intentionally unversioned; "
+        "activeVersion metadata is not required."
+    ) in text
     assert '[ "$VAULT_NAME" != "ballotlens-guardian" ]' in text
     assert '[ "$SECRET_NAME" != "electionpulse-runtime-postgres-password" ]' in text
+    assert "SecretVersion=" not in RUNTIME_PASSWORD_REFERENCE
 
 
 def test_application_code_consumes_standard_password_env_contract() -> None:

@@ -794,10 +794,6 @@ jobs:
           SECRET_NAME="$(
             az rest               --method get               --url "$REF_URL"               --query properties.secretName               --output tsv               --only-show-errors
           )"
-          ACTIVE_VERSION="$(
-            az rest               --method get               --url "$REF_URL"               --query properties.activeVersion               --output tsv               --only-show-errors
-          )"
-
           if [ "$VAULT_NAME" != "ballotlens-guardian" ]; then
             echo "::error::POSTGRES_PASSWORD resolved from an unexpected Key Vault."
             exit 1
@@ -808,12 +804,8 @@ jobs:
             exit 1
           fi
 
-          if [ -z "$ACTIVE_VERSION" ]; then
-            echo "::error::POSTGRES_PASSWORD Key Vault reference has no active version."
-            exit 1
-          fi
-
-          echo "Runtime DB Key Vault reference is Resolved with a non-empty active version."
+          echo "Runtime DB Key Vault reference is Resolved for the expected vault and secret."
+          echo "Reference contract is intentionally unversioned; activeVersion metadata is not required."
 
       - name: Restart Web App
         run: az webapp restart --name BallotLens --resource-group BallotLens_group
