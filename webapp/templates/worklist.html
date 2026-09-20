@@ -369,5 +369,13 @@
         nonce="{{ g.csp_nonce }}"
         src="{{ url_for('static', filename='js/workflow_public.js') }}?v={{ static_version }}"
     ></script>
+    {% if workflow_operator_access
+          and workflow_operator_access.get('authenticated')
+          and 'workflow.dl1.claim' in workflow_operator_access.get('capabilities', []) %}
+    <script
+        nonce="{{ g.csp_nonce }}"
+        src="{{ url_for('static', filename='js/workflow_operator.js') }}?v={{ static_version }}"
+    ></script>
+    {% endif %}
 </body>
 </html>

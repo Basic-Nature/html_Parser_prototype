@@ -556,6 +556,20 @@ def finalize_election_output(
         headers = transformed_headers
         data = transformed_rows
 
+    # W23B: in governed worklist mode, capture the exact finalized Smart
+    # Elections row shape before CSV blank-filling can collapse null/missing.
+    if checkpoint_runtime is not None and public_runtime is None:
+        capture_finalized = getattr(
+            checkpoint_runtime,
+            "capture_finalized_output",
+            None,
+        )
+        if callable(capture_finalized):
+            capture_finalized(
+                headers=headers,
+                rows=data,
+            )
+
     # Normalize headers and rows
     headers_final = _coerce_headers(headers or [], data or [])
     fill_with_na = bool(context.get("fill_blanks_with_na", False))
@@ -942,5 +956,17 @@ def finalize_election_output(
             pass
     except Exception:
         pass
+
+    if checkpoint_runtime is not None and public_runtime is None:
+        capture_persisted = getattr(
+            checkpoint_runtime,
+            "capture_persisted_output",
+            None,
+        )
+        if callable(capture_persisted):
+            capture_persisted(
+                csv_path=csv_path,
+                metadata_path=meta_path,
+            )
 
     return {"csv_path": csv_path, "metadata_path": meta_path}

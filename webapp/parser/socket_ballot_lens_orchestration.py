@@ -648,6 +648,21 @@ def _make_parser_observation_emitter(
                 "parser observation payload must not add timestamps"
             )
 
+        # W23B: the same trusted worklist runtime that owns parser completion
+        # captures the already-validated W22 observation. Public registry runs
+        # never supply this private emitter.
+        from webapp.parser.services.ballot_lens_checkpoint_runtime import (
+            current_ballot_lens_checkpoint_runtime,
+        )
+        checkpoint_runtime = current_ballot_lens_checkpoint_runtime()
+        capture_observation = getattr(
+            checkpoint_runtime,
+            "capture_parser_observation",
+            None,
+        )
+        if callable(capture_observation):
+            capture_observation(payload)
+
         envelope = {
             "contract": "parser_observation_socket_v1",
             "authority": {
@@ -819,7 +834,44 @@ def _start_pipeline_worker(
                         h,
                     ),
                     artifact_identity=artifact_identity,
-    )
+                )
+
+                # W23B remains dormant unless the existing contributor mutation
+                # boundary is explicitly enabled. When enabled, only a current
+                # DL1 worklist pass is completed; DL2 is deliberately skipped
+                # for a later W23 tranche.
+                if (
+                    trusted_run_mode == "worklist"
+                    and str(
+                        h["os"].environ.get(
+                            "WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED",
+                            "false",
+                        )
+                    ).strip().lower() in {"1", "true", "yes", "on"}
+                ):
+                    from webapp.parser.config import OUTPUT_DIR, URL_LIST_FILE
+                    from webapp.parser.services.workflow_dl1_runtime_bridge import (
+                        complete_governed_dl1_from_trusted_run,
+                    )
+                    from webapp.parser.utils.db_utils import SessionLocal
+
+                    workflow_meta = (
+                        h["session_manager"].get_metadata(session_id) or {}
+                    )
+                    completion = complete_governed_dl1_from_trusted_run(
+                        session_factory=SessionLocal,
+                        workflow_item_id=workflow_meta.get("workflow_item_id"),
+                        workflow_pass_id=workflow_meta.get("workflow_pass_id"),
+                        principal=principal,
+                        expected_row_version=workflow_meta.get(
+                            "workflow_row_version"
+                        ),
+                        capture=trusted_runtime.workflow_completion_capture(),
+                        registry_path=URL_LIST_FILE,
+                        output_root=OUTPUT_DIR,
+                    )
+                    if completion.get("skipped") is not True:
+                        trusted_runtime.record_workflow_completion(completion)
             h["logger"].info(
                 {
                     "level": "INFO",

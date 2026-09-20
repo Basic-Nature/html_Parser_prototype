@@ -8661,6 +8661,9 @@ def api_workflow_v1_contributor_source(item_id):
         db_session.close()
 
 
+_WORKFLOW_DL1_CLAIM_REQUEST_KEYS = frozenset({"expected_row_version"})
+
+
 def api_workflow_v1_claim_first_pass(item_id):
     principal, denied = _workflow_contributor_authority(CAP_DL1_CLAIM)
     if denied is not None:
@@ -8680,6 +8683,20 @@ def api_workflow_v1_claim_first_pass(item_id):
             {
                 "success": False,
                 "error": "expected_row_version_required",
+            }
+        ), 400
+    body_keys = frozenset(body.keys())
+    if body_keys != _WORKFLOW_DL1_CLAIM_REQUEST_KEYS:
+        return jsonify(
+            {
+                "success": False,
+                "error": "workflow_dl1_claim_request_invalid",
+                "missing_keys": sorted(
+                    _WORKFLOW_DL1_CLAIM_REQUEST_KEYS - body_keys
+                ),
+                "unexpected_keys": sorted(
+                    body_keys - _WORKFLOW_DL1_CLAIM_REQUEST_KEYS
+                ),
             }
         ), 400
 

@@ -693,6 +693,7 @@
             for (const task of rows) {
                 const scope = task?.scope || {};
                 const tr = document.createElement('tr');
+                tr.dataset.workflowItemId = String(task?.id || '');
                 tr.innerHTML = `
                     <td>${this.escapeHtml(scope.election_year ?? '—')}</td>
                     <td>${this.escapeHtml(scope.state ?? '—')}</td>
@@ -721,6 +722,11 @@
                 tbody.appendChild(tr);
             }
 
+            document.dispatchEvent(
+                new CustomEvent('workflow:public-items-rendered', {
+                    detail: {items: rows}
+                })
+            );
             this.renderPagination(payload);
         }
 
