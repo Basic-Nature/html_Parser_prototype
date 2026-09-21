@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_IMAGE="${{ SOURCE_ACR_LOGIN_SERVER }}/${{ IMAGE_REPOSITORY }}:${{ IMAGE_TAG }}"
+          SOURCE_IMAGE="$SOURCE_ACR_LOGIN_SERVER/$IMAGE_REPOSITORY:$IMAGE_TAG"
           SOURCE_MANIFEST_JSON="$(docker buildx imagetools inspect "$SOURCE_IMAGE" --format '{{json .Manifest}}')"
           SOURCE_DIGEST="$(printf '%s' "$SOURCE_MANIFEST_JSON" | jq -r '.digest')"
           if [[ ! "$SOURCE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
@@ -66,7 +66,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ROLE_MODE="$(az acr show             --name "${{ DESTINATION_ACR_NAME }}"             --resource-group "BallotLens_group"             --query roleAssignmentMode -o tsv             --only-show-errors)"
+          ROLE_MODE="$(az acr show             --name "$DESTINATION_ACR_NAME"             --resource-group "BallotLens_group"             --query roleAssignmentMode -o tsv             --only-show-errors)"
           if [[ "$ROLE_MODE" != "AbacRepositoryPermissions" ]]; then
             echo "::error::Unexpected destination roleAssignmentMode: $ROLE_MODE"
             exit 1
@@ -77,15 +77,15 @@ jobs:
         run: |
           set -euo pipefail
           set +x
-          SOURCE_BY_DIGEST="${{ SOURCE_ACR_LOGIN_SERVER }}/${{ IMAGE_REPOSITORY }}@${{ SOURCE_DIGEST }}"
-          az acr import             --name "${{ DESTINATION_ACR_NAME }}"             --resource-group "BallotLens_group"             --source "$SOURCE_BY_DIGEST"             --image "${{ IMAGE_REPOSITORY }}:${{ IMAGE_TAG }}"             --username "${{ SOURCE_ACR_USERNAME }}"             --password "${{ SOURCE_ACR_PASSWORD }}"             --only-show-errors
+          SOURCE_BY_DIGEST="$SOURCE_ACR_LOGIN_SERVER/$IMAGE_REPOSITORY@$SOURCE_DIGEST"
+          az acr import             --name "$DESTINATION_ACR_NAME"             --resource-group "BallotLens_group"             --source "$SOURCE_BY_DIGEST"             --image "$IMAGE_REPOSITORY:$IMAGE_TAG"             --username "$SOURCE_ACR_USERNAME"             --password "$SOURCE_ACR_PASSWORD"             --only-show-errors
 
       - name: Emit non-secret source digest evidence
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p evidence
-          jq -n             --arg revision "W23ZAD_ELECTIONPULSE_OWNED_MIRROR_ACR_ONE_SHOT_IMPORT_WORKFLOW_REV1"             --arg source_commit "9e7c25a7f299a1e413c0e3749229cbda181d4529"             --arg repository "${{ IMAGE_REPOSITORY }}"             --arg tag "${{ IMAGE_TAG }}"             --arg source_digest "${{ SOURCE_DIGEST }}"             '{revision:$revision,source_commit:$source_commit,repository:$repository,tag:$tag,source_digest:$source_digest}'             > evidence/w23-owned-acr-source-digest.json
+          jq -n             --arg revision "W23ZAD_ELECTIONPULSE_OWNED_MIRROR_ACR_ONE_SHOT_IMPORT_WORKFLOW_REV1"             --arg source_commit "9e7c25a7f299a1e413c0e3749229cbda181d4529"             --arg repository "$IMAGE_REPOSITORY"             --arg tag "$IMAGE_TAG"             --arg source_digest "$SOURCE_DIGEST"             '{revision:$revision,source_commit:$source_commit,repository:$repository,tag:$tag,source_digest:$source_digest}'             > evidence/w23-owned-acr-source-digest.json
 
       - name: Upload digest evidence
         uses: actions/upload-artifact@v4
