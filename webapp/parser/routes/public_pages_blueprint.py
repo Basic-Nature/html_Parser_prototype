@@ -4,7 +4,6 @@ from flask import Blueprint, current_app, jsonify
 
 from .route_monitor import record_route_monitor_event
 
-
 def _call_handler(handler_name: str, *args, **kwargs):
     handlers = current_app.config.get("_PUBLIC_PAGES_ROUTE_HANDLERS")
     if not isinstance(handlers, dict):
@@ -21,7 +20,6 @@ def _call_handler(handler_name: str, *args, **kwargs):
     except Exception:
         record_route_monitor_event("public_pages", handler_name, "failure")
         raise
-
 
 def create_public_pages_blueprint() -> Blueprint:
     bp = Blueprint("public_pages_routes", __name__)
@@ -46,17 +44,20 @@ def create_public_pages_blueprint() -> Blueprint:
     def auth_challenge_route():
         return _call_handler("auth_challenge")
 
-    @bp.route(
-        "/auth/certificate/start",
-        methods=["GET"],
-        endpoint="auth_certificate_start",
-    )
+    @bp.route("/auth/certificate/start", methods=["GET"], endpoint="auth_certificate_start")
     def auth_certificate_start_route():
-        from webapp.parser.auth.trusted_access import (
-            begin_trusted_certificate_access,
-        )
-
+        from webapp.parser.auth.trusted_access import begin_trusted_certificate_access
         return begin_trusted_certificate_access()
+
+    @bp.route("/auth/certificate/verify", methods=["GET"], endpoint="auth_certificate_verify")
+    def auth_certificate_verify_route():
+        from webapp.parser.auth.trusted_access_boundary import verify_trusted_certificate_access
+        return verify_trusted_certificate_access()
+
+    @bp.route("/auth/certificate/complete", methods=["GET"], endpoint="auth_certificate_complete")
+    def auth_certificate_complete_route():
+        from webapp.parser.auth.trusted_access_boundary import complete_trusted_certificate_access
+        return complete_trusted_certificate_access()
 
     @bp.route("/ocr_diagnostics", methods=["GET"], endpoint="ocr_diagnostics")
     def ocr_diagnostics_route():
