@@ -15,7 +15,6 @@ jobs:
   mirror:
     name: Import exact published image into ElectionPulse-owned ACR
     runs-on: ubuntu-latest
-    environment: Production
     env:
       SOURCE_ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
       SOURCE_ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
