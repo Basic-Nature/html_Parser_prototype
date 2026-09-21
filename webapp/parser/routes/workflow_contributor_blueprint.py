@@ -61,6 +61,17 @@ def create_workflow_contributor_blueprint() -> Blueprint:
         )
 
     @bp.route(
+        "/api/workflow/v1/contributor/items/<uuid:item_id>/passes/1/release-canary",
+        methods=["POST"],
+        endpoint="api_workflow_v1_release_first_pass_canary",
+    )
+    def release_first_pass_canary_route(item_id):
+        return _call_handler(
+            "api_workflow_v1_release_first_pass_canary",
+            item_id=item_id,
+        )
+
+    @bp.route(
         "/api/workflow/v1/contributor/items/<uuid:item_id>/passes/1/submit",
         methods=["POST"],
         endpoint="api_workflow_v1_submit_first_pass",

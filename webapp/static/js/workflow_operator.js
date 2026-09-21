@@ -15,10 +15,12 @@
     const capabilities = new Set(
         Array.isArray(access.capabilities) ? access.capabilities : []
     );
+    const csrfToken = String(body.dataset.workflowCsrfToken || '').trim();
     if (
         access.contract !== 'workflow_operator_access_v1'
         || access.authenticated !== true
         || !capabilities.has('workflow.dl1.claim')
+        || !csrfToken
     ) {
         return;
     }
@@ -30,7 +32,10 @@
             credentials: 'same-origin',
             headers: {
                 Accept: 'application/json',
-                ...(options.body ? {'Content-Type': 'application/json'} : {}),
+                ...(options.body ? {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                } : {}),
                 ...(options.headers || {})
             },
             ...options

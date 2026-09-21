@@ -13,6 +13,7 @@
     data-workflow-contract="public-readiness-r3"
     data-workflow-operator-access='{{ workflow_operator_access | tojson | forceescape }}'
     data-ballot-lens-url="{{ url_for('ballot_lens') }}"
+    {% if workflow_csrf_token %}data-workflow-csrf-token="{{ workflow_csrf_token }}"{% endif %}
 >
     <a class="workflow-skip-link" href="#workflowMain">Skip to Workflow content</a>
     <nav class="ep-app-nav" aria-label="ElectionPulse primary navigation">
@@ -369,7 +370,9 @@
         nonce="{{ g.csp_nonce }}"
         src="{{ url_for('static', filename='js/workflow_public.js') }}?v={{ static_version }}"
     ></script>
-    {% if workflow_operator_access
+    {% if workflow_dl1_canary_claim_enabled
+          and workflow_csrf_token
+          and workflow_operator_access
           and workflow_operator_access.get('authenticated')
           and 'workflow.dl1.claim' in workflow_operator_access.get('capabilities', []) %}
     <script

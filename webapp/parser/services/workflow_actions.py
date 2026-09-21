@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from webapp.parser.utils.models import (
@@ -227,11 +227,19 @@ def claim_first_workflow_pass(
 
     prior_state = _item_state(item)
 
+    latest_revision = session.execute(
+        select(func.max(WorkflowPass.revision_number)).where(
+            WorkflowPass.workflow_item_id == normalized,
+            WorkflowPass.pass_number == 1,
+        )
+    ).scalar_one()
+    next_revision_number = int(latest_revision or 0) + 1
+
     workflow_pass = WorkflowPass(
         workflow_item_id=item.id,
         pass_number=1,
         pass_label="DL1",
-        revision_number=1,
+        revision_number=next_revision_number,
         is_current=True,
         status="in_progress",
         assigned_principal=actor,
@@ -279,6 +287,7 @@ def claim_first_workflow_pass(
             "contract": WORKFLOW_CLAIM_CONTRACT,
             "pass_number": 1,
             "pass_label": "DL1",
+            "revision_number": workflow_pass.revision_number,
         },
         occurred_at=timestamp,
     )
@@ -293,6 +302,7 @@ def claim_first_workflow_pass(
         "event_id": str(event.id),
         "pass_number": 1,
         "pass_label": "DL1",
+        "revision_number": workflow_pass.revision_number,
         "status": "in_progress",
         "lifecycle_state": item.lifecycle_state,
         "current_stage": item.current_stage,

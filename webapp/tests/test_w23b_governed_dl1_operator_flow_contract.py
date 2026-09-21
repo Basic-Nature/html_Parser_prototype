@@ -323,7 +323,10 @@ def test_server_owns_submit_authority_and_all_mutation_flags_remain_default_off(
     assert '"capture_parser_observation"' in socket
     assert "capture_observation(payload)" in socket
     assert "complete_governed_dl1_from_trusted_run" in socket
-    assert "WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED" in socket
+    assert "WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED" not in socket
+    assert "load_dl1_canary_config" in socket
+    assert "canary_config.completion_enabled" in socket
+    assert "assert_dl1_canary_completion_context(" in socket
     assert "workflow_completion_capture()" in socket
     assert "record_workflow_completion(" in socket
 

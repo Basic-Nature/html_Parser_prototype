@@ -836,27 +836,26 @@ def _start_pipeline_worker(
                     artifact_identity=artifact_identity,
                 )
 
-                # W23B remains dormant unless the existing contributor mutation
-                # boundary is explicitly enabled. When enabled, only a current
-                # DL1 worklist pass is completed; DL2 is deliberately skipped
-                # for a later W23 tranche.
-                if (
-                    trusted_run_mode == "worklist"
-                    and str(
-                        h["os"].environ.get(
-                            "WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED",
-                            "false",
-                        )
-                    ).strip().lower() in {"1", "true", "yes", "on"}
-                ):
+                # W23I completion is independently gated from claim, direct
+                # submit, and DL2, with exact server-owned canary binding.
+                from webapp.parser.services.workflow_dl1_canary_control import (
+                    assert_dl1_canary_completion_context,
+                    load_dl1_canary_config,
+                )
+                canary_config = load_dl1_canary_config()
+                if trusted_run_mode == "worklist" and canary_config.completion_enabled:
                     from webapp.parser.config import OUTPUT_DIR, URL_LIST_FILE
                     from webapp.parser.services.workflow_dl1_runtime_bridge import (
                         complete_governed_dl1_from_trusted_run,
                     )
                     from webapp.parser.utils.db_utils import SessionLocal
 
-                    workflow_meta = (
-                        h["session_manager"].get_metadata(session_id) or {}
+                    workflow_meta = h["session_manager"].get_metadata(session_id) or {}
+                    assert_dl1_canary_completion_context(
+                        workflow_item_id=workflow_meta.get("workflow_item_id"),
+                        principal=principal,
+                        expected_row_version=workflow_meta.get("workflow_row_version"),
+                        config=canary_config,
                     )
                     completion = complete_governed_dl1_from_trusted_run(
                         session_factory=SessionLocal,

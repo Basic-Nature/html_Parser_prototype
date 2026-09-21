@@ -317,6 +317,17 @@ from webapp.parser.services.workflow_actions import (
     submit_first_workflow_pass,
     submit_second_workflow_pass,
 )
+from webapp.parser.services.workflow_dl1_canary_control import (
+    WorkflowDl1CanaryControlError,
+    assert_dl1_canary_claim_binding,
+    load_dl1_canary_config,
+    release_dl1_canary_claim,
+)
+from webapp.parser.auth.workflow_csrf import (
+    WorkflowCsrfError,
+    assert_workflow_csrf_token,
+    issue_workflow_csrf_token,
+)
 from webapp.parser.services.workflow_discrepancy_resolution import (
     WorkflowDiscrepancyResolutionError,
     resolve_workflow_comparison_discrepancies,
@@ -493,10 +504,19 @@ if ENABLE_HEALTH_TASKS and not HEALTH_TASK_TOKEN:
 # Certificate gating for mutation endpoints (always enforced)
 REQUIRE_CERT_FOR_MUTATIONS = True
 
-# W3 contributor claim source exists but production execution remains
-# fail-closed until a later explicit deployment/apply gate.
+# Legacy broad contributor gate retained as an inert compatibility signal.
+# W23 granular mutation paths MUST NOT derive authority from this switch.
 WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED = (
     os.environ.get("WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED", "false")
+    .strip().lower() in {"1", "true", "yes", "on"}
+)
+
+WORKFLOW_DL1_DIRECT_SUBMIT_MUTATIONS_ENABLED = (
+    os.environ.get("WORKFLOW_DL1_DIRECT_SUBMIT_MUTATIONS_ENABLED", "false")
+    .strip().lower() in {"1", "true", "yes", "on"}
+)
+WORKFLOW_DL2_MUTATIONS_ENABLED = (
+    os.environ.get("WORKFLOW_DL2_MUTATIONS_ENABLED", "false")
     .strip().lower() in {"1", "true", "yes", "on"}
 )
 
@@ -6643,10 +6663,23 @@ def worklist():
         workflow_operator_access = _workflow_operator_access_projection(
             principal
         )
+        canary_config = load_dl1_canary_config()
+        workflow_dl1_canary_claim_enabled = bool(
+            canary_config.claim_enabled and canary_config.binding_complete
+        )
+        workflow_csrf_token = None
+        if (
+            workflow_dl1_canary_claim_enabled
+            and workflow_operator_access.get("authenticated") is True
+            and "workflow.dl1.claim" in workflow_operator_access.get("capabilities", [])
+        ):
+            workflow_csrf_token = issue_workflow_csrf_token()
         return render_template(
             "worklist.html",
             static_version=os.environ.get("STATIC_VERSION", "v1"),
             workflow_operator_access=workflow_operator_access,
+            workflow_dl1_canary_claim_enabled=workflow_dl1_canary_claim_enabled,
+            workflow_csrf_token=workflow_csrf_token,
         )
     except Exception:
         import traceback
@@ -8669,13 +8702,16 @@ def api_workflow_v1_claim_first_pass(item_id):
     if denied is not None:
         return denied
 
-    if not WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED:
-        return jsonify(
-            {
-                "success": False,
-                "error": "workflow_contributor_mutations_disabled",
-            }
-        ), 503
+    try:
+        canary_config = load_dl1_canary_config()
+    except WorkflowDl1CanaryControlError as exc:
+        return jsonify({"success": False, "error": exc.code, "detail": str(exc)}), exc.status_code
+    if not canary_config.claim_enabled:
+        return jsonify({"success": False, "error": "workflow_dl1_canary_claim_disabled"}), 503
+    try:
+        assert_workflow_csrf_token(request.headers.get("X-CSRFToken"))
+    except WorkflowCsrfError as exc:
+        return jsonify({"success": False, "error": exc.code}), exc.status_code
 
     body = request.get_json(silent=True)
     if not isinstance(body, dict) or "expected_row_version" not in body:
@@ -8702,6 +8738,11 @@ def api_workflow_v1_claim_first_pass(item_id):
 
     db_session = SessionLocal()
     try:
+        assert_dl1_canary_claim_binding(
+            db_session, item_id, principal=principal,
+            expected_row_version=body["expected_row_version"],
+            registry_path=URL_LIST_FILE, config=canary_config,
+        )
         payload = claim_first_workflow_pass(
             db_session,
             item_id,
@@ -8711,6 +8752,9 @@ def api_workflow_v1_claim_first_pass(item_id):
         db_session.commit()
         payload["committed"] = True
         return jsonify(payload), 200
+    except WorkflowDl1CanaryControlError as exc:
+        db_session.rollback()
+        return jsonify({"success": False, "error": exc.code, "detail": str(exc)}), exc.status_code
     except WorkflowActionError as exc:
         db_session.rollback()
         return jsonify(
@@ -8740,6 +8784,44 @@ def api_workflow_v1_claim_first_pass(item_id):
         db_session.close()
 
 
+_WORKFLOW_DL1_CANARY_RELEASE_REQUEST_KEYS = frozenset({"expected_row_version", "pass_id"})
+
+def api_workflow_v1_release_first_pass_canary(item_id):
+    principal, denied = _workflow_contributor_authority(CAP_DL1_CLAIM)
+    if denied is not None:
+        return denied
+    try:
+        canary_config = load_dl1_canary_config()
+    except WorkflowDl1CanaryControlError as exc:
+        return jsonify({"success": False, "error": exc.code, "detail": str(exc)}), exc.status_code
+    if not canary_config.release_enabled:
+        return jsonify({"success": False, "error": "workflow_dl1_canary_release_disabled"}), 503
+    try:
+        assert_workflow_csrf_token(request.headers.get("X-CSRFToken"))
+    except WorkflowCsrfError as exc:
+        return jsonify({"success": False, "error": exc.code}), exc.status_code
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or frozenset(body.keys()) != _WORKFLOW_DL1_CANARY_RELEASE_REQUEST_KEYS:
+        return jsonify({"success": False, "error": "workflow_dl1_canary_release_request_invalid"}), 400
+    db_session = SessionLocal()
+    try:
+        payload = release_dl1_canary_claim(
+            db_session, item_id, body["pass_id"], principal=principal,
+            expected_row_version=body["expected_row_version"],
+            registry_path=URL_LIST_FILE, config=canary_config,
+        )
+        db_session.commit(); payload["committed"] = True
+        return jsonify(payload), 200
+    except WorkflowDl1CanaryControlError as exc:
+        db_session.rollback()
+        return jsonify({"success": False, "error": exc.code, "detail": str(exc)}), exc.status_code
+    except Exception:
+        db_session.rollback(); logger.exception("DL1 canary claim release failed unexpectedly.")
+        return jsonify({"success": False, "error": "workflow_dl1_canary_release_unavailable"}), 503
+    finally:
+        db_session.close()
+
+
 _WORKFLOW_DL1_SUBMIT_REQUEST_KEYS = frozenset({
     "expected_row_version",
     "pass_id",
@@ -8755,13 +8837,12 @@ def api_workflow_v1_submit_first_pass(item_id):
     if denied is not None:
         return denied
 
-    if not WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED:
-        return jsonify(
-            {
-                "success": False,
-                "error": "workflow_contributor_mutations_disabled",
-            }
-        ), 503
+    if not WORKFLOW_DL1_DIRECT_SUBMIT_MUTATIONS_ENABLED:
+        return jsonify({"success": False, "error": "workflow_dl1_direct_submit_disabled"}), 503
+    try:
+        assert_workflow_csrf_token(request.headers.get("X-CSRFToken"))
+    except WorkflowCsrfError as exc:
+        return jsonify({"success": False, "error": exc.code}), exc.status_code
 
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
@@ -8838,13 +8919,12 @@ def api_workflow_v1_claim_second_pass(item_id):
     if denied is not None:
         return denied
 
-    if not WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED:
-        return jsonify(
-            {
-                "success": False,
-                "error": "workflow_contributor_mutations_disabled",
-            }
-        ), 503
+    if not WORKFLOW_DL2_MUTATIONS_ENABLED:
+        return jsonify({"success": False, "error": "workflow_dl2_mutations_disabled"}), 503
+    try:
+        assert_workflow_csrf_token(request.headers.get("X-CSRFToken"))
+    except WorkflowCsrfError as exc:
+        return jsonify({"success": False, "error": exc.code}), exc.status_code
 
     body = request.get_json(silent=True)
     if not isinstance(body, dict) or set(body) != {"expected_row_version"}:
@@ -8900,13 +8980,12 @@ def api_workflow_v1_submit_second_pass(item_id):
     if denied is not None:
         return denied
 
-    if not WORKFLOW_CONTRIBUTOR_MUTATIONS_ENABLED:
-        return jsonify(
-            {
-                "success": False,
-                "error": "workflow_contributor_mutations_disabled",
-            }
-        ), 503
+    if not WORKFLOW_DL2_MUTATIONS_ENABLED:
+        return jsonify({"success": False, "error": "workflow_dl2_mutations_disabled"}), 503
+    try:
+        assert_workflow_csrf_token(request.headers.get("X-CSRFToken"))
+    except WorkflowCsrfError as exc:
+        return jsonify({"success": False, "error": exc.code}), exc.status_code
 
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
@@ -9262,6 +9341,7 @@ app.config["_WORKFLOW_CONTRIBUTOR_ROUTE_HANDLERS"] = {
         api_workflow_v1_ballot_lens_handoff,
     "api_workflow_v1_contributor_source": api_workflow_v1_contributor_source,
     "api_workflow_v1_claim_first_pass": api_workflow_v1_claim_first_pass,
+    "api_workflow_v1_release_first_pass_canary": api_workflow_v1_release_first_pass_canary,
     "api_workflow_v1_submit_first_pass": api_workflow_v1_submit_first_pass,
     "api_workflow_v1_claim_second_pass": api_workflow_v1_claim_second_pass,
     "api_workflow_v1_submit_second_pass": api_workflow_v1_submit_second_pass,
