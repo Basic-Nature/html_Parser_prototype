@@ -204,6 +204,16 @@ def project_public_registry_sources(
     return list(model.list_public_sources())
 
 
+def list_public_registry_identity_sources(
+    path: str | Path,
+) -> list[PublicRegistrySource]:
+    model = build_source_registry_read_model(path)
+    return [
+        _public_from_mapping(dict(item))
+        for item in model.list_public_identity_sources()
+    ]
+
+
 def resolve_public_registry_source(
     path: str | Path,
     registry_source_id: str,

@@ -32,6 +32,7 @@ class SourceRegistryShadowMismatch(SourceRegistryReadModelError):
 
 class SourceRegistryDbReader(Protocol):
     def list_public_sources(self) -> list[dict[str, object]]: ...
+    def list_public_identity_sources(self) -> list[dict[str, object]]: ...
     def resolve_public_source_alias(self, alias: str) -> dict[str, object] | None: ...
     def resolve_trusted_exact_source(self, source_url: str) -> dict[str, object] | None: ...
     def resolve_workflow_binding(self, source_url: str) -> dict[str, object] | None: ...
@@ -124,6 +125,28 @@ class SourceRegistryReadModel:
         if self.mode == "shadow_db":
             durable = list(self._db().list_public_sources())
             self._compare("list_public_sources", legacy, durable)
+        return legacy
+
+    def list_public_identity_sources(self) -> list[dict[str, object]]:
+        if self.mode == "durable_db":
+            return list(self._db().list_public_identity_sources())
+
+        legacy = [
+            {
+                "registry_source_id": item.registry_source_id,
+                "year": item.year,
+                "contest": item.contest,
+                "state": item.state,
+                "scope": item.registry_scope,
+                "format": item.registry_format,
+                "registry_category": item.registry_category,
+                "url": item.url,
+            }
+            for item in list_public_registry_sources(self.registry_path)
+        ]
+        if self.mode == "shadow_db":
+            durable = list(self._db().list_public_identity_sources())
+            self._compare("list_public_identity_sources", legacy, durable)
         return legacy
 
     def resolve_public_source_alias(self, alias: str) -> dict[str, object] | None:

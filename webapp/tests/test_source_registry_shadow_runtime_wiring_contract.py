@@ -11,10 +11,12 @@ from webapp.parser.services.source_registry_read_model import (
 )
 from webapp.parser.services.source_registry_runtime import (
     build_source_registry_read_model,
+    list_public_registry_identity_sources,
     load_url_registry,
     project_public_registry_sources,
 )
 from webapp.parser.utils.url_registry import (
+    list_public_registry_sources as legacy_list_public_registry_sources,
     load_url_registry as legacy_load_url_registry,
     project_public_registry_sources as legacy_project_public_registry_sources,
 )
@@ -24,11 +26,15 @@ REGISTRY = ROOT / "webapp/parser/urls.txt"
 
 
 class FakeDb:
-    def __init__(self, public):
+    def __init__(self, public, identity=None):
         self.public = list(public)
+        self.identity = list(identity if identity is not None else public)
 
     def list_public_sources(self):
         return list(self.public)
+
+    def list_public_identity_sources(self):
+        return list(self.identity)
 
     def resolve_public_source_alias(self, alias):
         return next(
@@ -64,6 +70,34 @@ def test_runtime_legacy_mode_is_semantically_identical(monkeypatch) -> None:
     assert runtime_entries == legacy_entries
     assert runtime_diag == legacy_diag
 
+    assert list_public_registry_identity_sources(REGISTRY) == (
+        legacy_list_public_registry_sources(REGISTRY)
+    )
+
+
+def test_identity_projection_shadow_returns_legacy_and_fails_on_drift() -> None:
+    legacy_model = SourceRegistryReadModel(
+        REGISTRY,
+        mode="legacy_file",
+    )
+    legacy = legacy_model.list_public_identity_sources()
+
+    model = build_source_registry_read_model(
+        REGISTRY,
+        mode="shadow_db",
+        db_reader=FakeDb([], identity=legacy),
+    )
+    assert model.list_public_identity_sources() == legacy
+
+    drift = list(legacy)
+    drift[0] = {**drift[0], "url": "https://example.invalid/drift"}
+    with pytest.raises(SourceRegistryShadowMismatch):
+        build_source_registry_read_model(
+            REGISTRY,
+            mode="shadow_db",
+            db_reader=FakeDb([], identity=drift),
+        ).list_public_identity_sources()
+
 
 def test_central_builder_shadow_returns_legacy_and_fails_on_drift() -> None:
     legacy = SourceRegistryReadModel(
@@ -90,6 +124,7 @@ def test_central_builder_shadow_returns_legacy_and_fails_on_drift() -> None:
 def test_projected_callsites_use_runtime_seam() -> None:
     expected = {
         "webapp/Smart_Elections_Parser_Webapp.py": {
+            "list_public_registry_identity_sources",
             "load_url_registry",
             "project_public_registry_sources",
         },

@@ -90,6 +90,23 @@ def _public_projection(alias: Any, binding: Any) -> dict[str, object]:
     }
 
 
+def _public_identity_projection(
+    alias: Any,
+    binding: Any,
+    revision: Any,
+) -> dict[str, object]:
+    result = _public_projection(alias, binding)
+    result["url"] = str(revision.exact_url or "")
+    return result
+
+
+def _public_identity_sort_key(item: dict[str, object]) -> tuple[str, ...]:
+    return (
+        *_public_sort_key(item),
+        str(item.get("url") or ""),
+    )
+
+
 def _public_sort_key(item: dict[str, object]) -> tuple[str, ...]:
     return (
         str(item.get("year") or ""),
@@ -175,6 +192,33 @@ class SqlAlchemySourceRegistryDbReader:
             return sorted(
                 [_public_projection(alias, binding) for alias, binding in rows],
                 key=_public_sort_key,
+            )
+
+        return self._read(read)
+
+    def list_public_identity_sources(self) -> list[dict[str, object]]:
+        Alias, Binding, Revision, Source = self._models()
+
+        def read(session: Session) -> list[dict[str, object]]:
+            rows = session.execute(
+                select(Alias, Binding, Revision)
+                .join(Binding, Alias.binding_id == Binding.id)
+                .join(Revision, Binding.current_revision_id == Revision.id)
+                .join(Source, Binding.source_id == Source.id)
+                .where(
+                    Alias.alias_type == "legacy_blsrc_v1",
+                    Alias.active.is_(True),
+                    Binding.public_eligible.is_(True),
+                    Binding.review_state == "approved",
+                    Source.lifecycle_state == "active",
+                )
+            ).all()
+            return sorted(
+                [
+                    _public_identity_projection(alias, binding, revision)
+                    for alias, binding, revision in rows
+                ],
+                key=_public_identity_sort_key,
             )
 
         return self._read(read)

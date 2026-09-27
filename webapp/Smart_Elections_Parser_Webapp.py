@@ -4316,8 +4316,8 @@ def _collect_data_framework_curated(limit: int = 80) -> dict:
     from webapp.parser.services.data_framework_source_identity import (
         resolve_curated_registry_source_id,
     )
-    from webapp.parser.utils.url_registry import (
-        list_public_registry_sources,
+    from webapp.parser.services.source_registry_runtime import (
+        list_public_registry_identity_sources,
     )
 
     scaffold = _collect_data_framework_scaffold(limit=limit * 2)  # Fetch extra for dedup
@@ -4327,7 +4327,7 @@ def _collect_data_framework_curated(limit: int = 80) -> dict:
     # Evidence remains visible if identity authority is unavailable, while
     # shareable identity itself fails closed to null.
     try:
-        public_registry_sources = list_public_registry_sources(URL_LIST_FILE)
+        public_registry_sources = list_public_registry_identity_sources(URL_LIST_FILE)
     except Exception as exc:
         public_registry_sources = []
         logger.warning({
