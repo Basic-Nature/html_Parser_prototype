@@ -51,3 +51,24 @@ def test_workflow_resolver_returns_workflow_projection_not_rich_trusted_projecti
     )
     assert "return _workflow_projection(*rows[0])" in source
     assert "return _trusted_projection(*rows[0])" not in source
+
+
+def test_deprecated_review_state_projects_deprecated_category() -> None:
+    binding = SimpleNamespace(
+        year="2024",
+        contest="President",
+        state="NY",
+        scope="Rockland",
+        format="Enhanced Voting",
+        notes="deprecated",
+        review_state="deprecated",
+        parser_eligible=False,
+    )
+    revision = SimpleNamespace(
+        exact_url="https://example.invalid/deprecated",
+        normalized_url="https://example.invalid/deprecated",
+    )
+
+    trusted = module._trusted_projection(binding, revision)
+    assert trusted["registry_category"] == "deprecated"
+    assert trusted["parser_eligible"] is False

@@ -186,6 +186,51 @@ def test_canonical_bootstrap_is_structured_qc_authority(
     assert URL not in repr(authority.safe_projection())
 
 
+def test_durable_shaped_registry_entry_preserves_trust_state(
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    item, workflow_pass, _, _ = seed(db_session)
+    durable_entry = {
+        "year": "2024",
+        "contest": "President",
+        "state": "Example",
+        "scope": "statewide",
+        "format": "HTML",
+        "notes": "durable",
+        "url": URL,
+        "county": None,
+        "registry_category": "curated",
+        "review_status": "approved",
+        "parser_eligible": True,
+        "normalized_url": URL,
+    }
+
+    monkeypatch.setattr(
+        "webapp.parser.services.workflow_ballot_lens_runtime_context."
+        "list_exact_registry_entries",
+        lambda _path, source_url: (
+            [dict(durable_entry)] if source_url == URL else []
+        ),
+    )
+
+    context = build_workflow_ballot_lens_server_context(
+        db_session,
+        request(item, workflow_pass),
+        registry_path=tmp_path / "unused-legacy-registry.txt",
+    )
+
+    assert context.registry_state["exact_registry_identity"] is True
+    assert context.registry_state["registry_category"] == "curated"
+    assert context.registry_state["review_status"] == "approved"
+    assert context.registry_state["parser_eligible"] is True
+    assert context.registry_state["quarantined"] is False
+    assert context.registry_state["deprecated"] is False
+    assert context.registry_state["registry_line"] is None
+    assert context.registry_state["registry_section"] == ""
+
+
 def test_bare_verified_status_without_structured_event_is_denied(
     db_session,
     tmp_path,

@@ -336,6 +336,74 @@ def lookup_exact_registry_entry(
     return _contributor_from_mapping(comparable[0])
 
 
+def list_exact_registry_entries(
+    path: str | Path,
+    source_url: str,
+    *,
+    db_reader: object | None = None,
+) -> list[dict[str, Any]]:
+    """Return exact-URL entries through the configured Source Registry authority."""
+    wanted = str(source_url or "").strip()
+    if not wanted:
+        return []
+
+    mode = _legacy_registry.source_registry_authority_mode()
+    if mode == "durable_db":
+        model = build_source_registry_read_model(
+            path,
+            mode=mode,
+            db_reader=db_reader,
+        )
+        reader = model.db_reader
+        if reader is None or not hasattr(reader, "list_trusted_exact_sources"):
+            raise SourceRegistryReadModelError(
+                "durable Source Registry exact-source reader is unavailable"
+            )
+        return [
+            dict(item)
+            for item in reader.list_trusted_exact_sources(wanted)
+        ]
+
+    entries, _ = _legacy_registry.load_url_registry(path)
+    legacy_exact = [
+        dict(item)
+        for item in entries
+        if str(item.get("url") or "").strip() == wanted
+    ]
+
+    if mode == "shadow_db":
+        model = build_source_registry_read_model(
+            path,
+            mode=mode,
+            db_reader=db_reader,
+        )
+        reader = model.db_reader
+        if reader is None or not hasattr(reader, "list_trusted_exact_sources"):
+            raise SourceRegistryReadModelError(
+                "durable Source Registry exact-source reader is unavailable"
+            )
+        durable_exact = [
+            dict(item)
+            for item in reader.list_trusted_exact_sources(wanted)
+        ]
+        legacy_semantic = sorted(
+            (_semantic_legacy_entry(item) for item in legacy_exact),
+            key=_trusted_key,
+        )
+        durable_semantic = sorted(
+            durable_exact,
+            key=_trusted_key,
+        )
+        _compare(
+            "list_exact_registry_entries",
+            legacy_semantic,
+            durable_semantic,
+            model.mismatch_recorder or _default_mismatch_recorder,
+        )
+
+    return legacy_exact
+
+
 def load_url_registry(
     path: str | Path,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:

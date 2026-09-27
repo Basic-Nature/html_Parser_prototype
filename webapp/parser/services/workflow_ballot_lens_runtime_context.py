@@ -42,7 +42,9 @@ from webapp.parser.utils.models import (
     WorkflowItem,
     WorkflowPass,
 )
-from webapp.parser.services.source_registry_runtime import load_url_registry
+from webapp.parser.services.source_registry_runtime import (
+    list_exact_registry_entries,
+)
 
 
 WORKFLOW_BALLOT_LENS_RUNTIME_CONTEXT_CONTRACT = (
@@ -118,12 +120,10 @@ def _exact_registry_state(
     if not source_url:
         _deny()
 
-    entries, _ = load_url_registry(registry_path)
-    exact = [
-        entry
-        for entry in entries
-        if _text(entry.get("url")) == source_url
-    ]
+    exact = list_exact_registry_entries(
+        registry_path,
+        source_url,
+    )
     if not exact:
         _deny()
 
@@ -138,10 +138,13 @@ def _exact_registry_state(
         _deny()
 
     section = _text(chosen.get("section"))
-    category = _category(section)
+    category = _text(chosen.get("registry_category")).casefold()
+    if not category:
+        category = _category(section)
     review_status = _text(chosen.get("review_status")).casefold()
     quarantined = (
         review_status == "quarantined"
+        or category == "quarantine"
         or "quarantine" in section.casefold()
     )
     deprecated = (

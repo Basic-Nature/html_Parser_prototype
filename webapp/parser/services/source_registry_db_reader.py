@@ -33,6 +33,8 @@ def _category(review_state: object) -> str:
         return "backlog"
     if value == "quarantined":
         return "quarantine"
+    if value == "deprecated":
+        return "deprecated"
     return "unclassified"
 
 

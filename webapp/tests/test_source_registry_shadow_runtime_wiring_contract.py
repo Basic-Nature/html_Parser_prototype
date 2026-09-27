@@ -9,8 +9,10 @@ from webapp.parser.services.source_registry_read_model import (
     SourceRegistryReadModel,
     SourceRegistryShadowMismatch,
 )
+from webapp.parser.services import source_registry_runtime as runtime_module
 from webapp.parser.services.source_registry_runtime import (
     build_source_registry_read_model,
+    list_exact_registry_entries,
     list_public_registry_identity_sources,
     load_url_registry,
     project_public_registry_sources,
@@ -26,9 +28,10 @@ REGISTRY = ROOT / "webapp/parser/urls.txt"
 
 
 class FakeDb:
-    def __init__(self, public, identity=None):
+    def __init__(self, public, identity=None, exact=None):
         self.public = list(public)
         self.identity = list(identity if identity is not None else public)
+        self.exact = list(exact or [])
 
     def list_public_sources(self):
         return list(self.public)
@@ -41,6 +44,13 @@ class FakeDb:
             (item for item in self.public if item["registry_source_id"] == alias),
             None,
         )
+
+    def list_trusted_exact_sources(self, source_url):
+        return [
+            dict(item)
+            for item in self.exact
+            if str(item.get("url") or "") == str(source_url or "")
+        ]
 
     def resolve_trusted_exact_source(self, source_url):
         return None
@@ -139,7 +149,7 @@ def test_projected_callsites_use_runtime_seam() -> None:
             "lookup_exact_registry_entry",
         },
         "webapp/parser/services/workflow_ballot_lens_runtime_context.py": {
-            "load_url_registry",
+            "list_exact_registry_entries",
         },
     }
     for rel, names in expected.items():
@@ -156,6 +166,75 @@ def test_projected_callsites_use_runtime_seam() -> None:
                 legacy |= imported
         assert names <= runtime
         assert not (names & legacy)
+
+
+def test_durable_exact_entry_list_never_reads_legacy_file(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    source_url = "https://example.invalid/results"
+    durable = [{
+        "year": "2024",
+        "contest": "President",
+        "state": "NY",
+        "scope": "Rockland",
+        "format": "Enhanced Voting",
+        "notes": "durable",
+        "url": source_url,
+        "county": "Rockland",
+        "registry_category": "curated",
+        "review_status": "approved",
+        "parser_eligible": True,
+        "normalized_url": source_url,
+    }]
+    monkeypatch.setenv("SOURCE_REGISTRY_AUTHORITY_MODE", "durable_db")
+
+    def legacy_read_forbidden(*_args, **_kwargs):
+        raise AssertionError("durable exact-entry lookup touched legacy file")
+
+    monkeypatch.setattr(
+        runtime_module._legacy_registry,
+        "load_url_registry",
+        legacy_read_forbidden,
+    )
+
+    assert list_exact_registry_entries(
+        tmp_path / "missing-legacy-registry.txt",
+        source_url,
+        db_reader=FakeDb([], exact=durable),
+    ) == durable
+
+
+def test_shadow_exact_entry_list_compares_semantic_projection(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    source_url = "https://example.invalid/results"
+    registry = tmp_path / "urls.txt"
+    registry.write_text(
+        "# === Curated | test ===\n"
+        "2024\tPresident\tNY\tRockland\tEnhanced Voting\tdurable\t"
+        + source_url
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SOURCE_REGISTRY_AUTHORITY_MODE", "shadow_db")
+    legacy, _ = runtime_module._legacy_registry.load_url_registry(registry)
+    exact = [
+        runtime_module._semantic_legacy_entry(dict(item))
+        for item in legacy
+        if str(item.get("url") or "").strip() == source_url
+    ]
+
+    assert list_exact_registry_entries(
+        registry,
+        source_url,
+        db_reader=FakeDb([], exact=exact),
+    ) == [
+        dict(item)
+        for item in legacy
+        if str(item.get("url") or "").strip() == source_url
+    ]
 
 
 def test_concrete_reader_is_read_only_by_contract() -> None:
