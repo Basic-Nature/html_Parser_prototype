@@ -14,6 +14,7 @@ from webapp.parser.services.source_registry_runtime import (
     build_source_registry_read_model,
     list_exact_registry_entries,
     list_public_registry_identity_sources,
+    load_trusted_url_library_view,
     load_url_registry,
     project_public_registry_sources,
 )
@@ -40,6 +41,12 @@ class FakeDb:
         return list(self.identity)
 
     def resolve_public_source_alias(self, alias):
+        return next(
+            (item for item in self.public if item["registry_source_id"] == alias),
+            None,
+        )
+
+    def resolve_public_execution_source(self, alias):
         return next(
             (item for item in self.public if item["registry_source_id"] == alias),
             None,
@@ -79,6 +86,10 @@ def test_runtime_legacy_mode_is_semantically_identical(monkeypatch) -> None:
     legacy_entries, legacy_diag = legacy_load_url_registry(REGISTRY)
     assert runtime_entries == legacy_entries
     assert runtime_diag == legacy_diag
+    assert load_trusted_url_library_view(REGISTRY) == (
+        legacy_entries,
+        legacy_diag,
+    )
 
     assert list_public_registry_identity_sources(REGISTRY) == (
         legacy_list_public_registry_sources(REGISTRY)
@@ -135,7 +146,7 @@ def test_projected_callsites_use_runtime_seam() -> None:
     expected = {
         "webapp/Smart_Elections_Parser_Webapp.py": {
             "list_public_registry_identity_sources",
-            "load_url_registry",
+            "load_trusted_url_library_view",
             "project_public_registry_sources",
         },
         "webapp/parser/socket_ballot_lens_orchestration.py": {
@@ -166,6 +177,153 @@ def test_projected_callsites_use_runtime_seam() -> None:
                 legacy |= imported
         assert names <= runtime
         assert not (names & legacy)
+
+
+def test_durable_public_resolver_never_reads_legacy_file(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    source_id = "blsrc_test_public"
+    source_url = "https://example.invalid/public-results"
+    durable = {
+        "registry_source_id": source_id,
+        "year": "2024",
+        "contest": "President",
+        "state": "NY",
+        "scope": "Rockland",
+        "format": "Enhanced Voting",
+        "registry_category": "curated",
+        "url": source_url,
+    }
+    fake = FakeDb([durable])
+    monkeypatch.setenv("SOURCE_REGISTRY_AUTHORITY_MODE", "durable_db")
+
+    def legacy_read_forbidden(*_args, **_kwargs):
+        raise AssertionError("durable public resolver touched legacy file")
+
+    monkeypatch.setattr(
+        runtime_module._legacy_registry,
+        "resolve_public_registry_source",
+        legacy_read_forbidden,
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "build_source_registry_read_model",
+        lambda path, *, mode=None, db_reader=None, mismatch_recorder=None: (
+            build_source_registry_read_model(
+                path,
+                mode=mode,
+                db_reader=fake,
+                mismatch_recorder=mismatch_recorder,
+            )
+        ),
+    )
+
+    resolved = runtime_module.resolve_public_registry_source(
+        tmp_path / "missing-legacy-registry.txt",
+        source_id,
+    )
+    assert resolved is not None
+    assert resolved.registry_source_id == source_id
+    assert resolved.url == source_url
+
+
+def test_durable_exact_lookup_never_reads_legacy_file(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    source_url = "https://example.invalid/exact-results"
+    durable = {
+        "year": "2024",
+        "contest": "President",
+        "state": "NY",
+        "scope": "Rockland",
+        "format": "Enhanced Voting",
+        "notes": "durable",
+        "url": source_url,
+        "county": "Rockland",
+        "registry_category": "curated",
+        "review_status": "approved",
+        "parser_eligible": True,
+        "normalized_url": source_url,
+    }
+    fake = FakeDb([], exact=[durable])
+    monkeypatch.setenv("SOURCE_REGISTRY_AUTHORITY_MODE", "durable_db")
+
+    def legacy_read_forbidden(*_args, **_kwargs):
+        raise AssertionError("durable exact lookup touched legacy file")
+
+    monkeypatch.setattr(
+        runtime_module._legacy_registry,
+        "lookup_exact_registry_entry",
+        legacy_read_forbidden,
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "build_source_registry_read_model",
+        lambda path, *, mode=None, db_reader=None, mismatch_recorder=None: (
+            build_source_registry_read_model(
+                path,
+                mode=mode,
+                db_reader=fake,
+                mismatch_recorder=mismatch_recorder,
+            )
+        ),
+    )
+
+    resolved = runtime_module.lookup_exact_registry_entry(
+        source_url,
+        path=tmp_path / "missing-legacy-registry.txt",
+    )
+    assert resolved is not None
+    assert resolved.url == source_url
+    assert resolved.registry_category == "curated"
+
+
+def test_durable_resolver_legacy_calls_are_shadow_only() -> None:
+    source = (
+        ROOT / "webapp/parser/services/source_registry_runtime.py"
+    ).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name in {
+            "resolve_public_registry_source",
+            "lookup_exact_registry_entry",
+        }
+    }
+    assert set(functions) == {
+        "resolve_public_registry_source",
+        "lookup_exact_registry_entry",
+    }
+
+    lines = source.splitlines()
+    for function_name, legacy_symbol in (
+        (
+            "resolve_public_registry_source",
+            "_legacy_registry.resolve_public_registry_source",
+        ),
+        (
+            "lookup_exact_registry_entry",
+            "_legacy_registry.lookup_exact_registry_entry",
+        ),
+    ):
+        node = functions[function_name]
+        segment = "\n".join(lines[node.lineno - 1:node.end_lineno])
+        legacy_mode = segment.index('if mode == "legacy_file":')
+        shadow_mode = segment.index('if mode == "shadow_db":')
+        positions = []
+        start = 0
+        while True:
+            index = segment.find(legacy_symbol, start)
+            if index < 0:
+                break
+            positions.append(index)
+            start = index + 1
+        assert len(positions) == 2
+        assert legacy_mode < positions[0] < shadow_mode < positions[1]
 
 
 def test_durable_exact_entry_list_never_reads_legacy_file(
@@ -251,3 +409,103 @@ def test_concrete_reader_is_read_only_by_contract() -> None:
         "session.flush(",
     )
     assert not any(token in source for token in forbidden)
+
+
+def test_trusted_url_library_view_durable_never_reads_legacy_file(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    durable_entries = [
+        {
+            "year": "2024",
+            "contest": "President",
+            "state": "NY",
+            "scope": "Rockland",
+            "format": "Enhanced Voting",
+            "notes": "approved",
+            "url": "https://example.invalid/approved",
+            "county": "Rockland",
+            "registry_category": "curated",
+            "review_status": "approved",
+            "parser_eligible": True,
+            "normalized_url": "https://example.invalid/approved",
+        },
+        {
+            "year": "2024",
+            "contest": "President",
+            "state": "NY",
+            "scope": "Rockland",
+            "format": "Enhanced Voting",
+            "notes": "quarantined",
+            "url": "https://example.invalid/quarantined",
+            "county": "Rockland",
+            "registry_category": "quarantine",
+            "review_status": "quarantined",
+            "parser_eligible": False,
+            "normalized_url": "https://example.invalid/quarantined",
+        },
+    ]
+    fake = FakeDb([])
+    monkeypatch.setattr(
+        fake,
+        "list_trusted_registry_entries",
+        lambda: [dict(item) for item in durable_entries],
+    )
+    monkeypatch.setenv("SOURCE_REGISTRY_AUTHORITY_MODE", "durable_db")
+
+    def legacy_read_forbidden(*_args, **_kwargs):
+        raise AssertionError("durable trusted URL library touched legacy file")
+
+    monkeypatch.setattr(
+        runtime_module._legacy_registry,
+        "load_url_registry",
+        legacy_read_forbidden,
+    )
+
+    entries, diagnostics = load_trusted_url_library_view(
+        tmp_path / "missing-legacy-registry.txt",
+        db_reader=fake,
+    )
+    assert entries == durable_entries
+    assert diagnostics == {
+        "contract": "trusted_url_library_view_v1",
+        "diagnostics_source": "durable_structured_registry",
+        "file_diagnostics_available": False,
+        "row_count": 2,
+        "malformed_row_count": 0,
+        "quarantine_row_count": 1,
+        "parser_eligible_count": 1,
+    }
+
+
+def test_raw_registry_loader_remains_fail_closed_for_durable_diagnostics() -> None:
+    source = (
+        ROOT / "webapp/parser/services/source_registry_runtime.py"
+    ).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name in {
+            "load_url_registry",
+            "load_trusted_url_library_view",
+        }
+    }
+    assert set(functions) == {
+        "load_url_registry",
+        "load_trusted_url_library_view",
+    }
+    lines = source.splitlines()
+
+    raw = functions["load_url_registry"]
+    raw_segment = "\n".join(lines[raw.lineno - 1:raw.end_lineno])
+    assert "_legacy_registry.load_url_registry(path)" in raw_segment
+    assert "durable_db raw registry diagnostics are not yet an accepted" in raw_segment
+
+    view = functions["load_trusted_url_library_view"]
+    view_segment = "\n".join(lines[view.lineno - 1:view.end_lineno])
+    assert 'if mode != "durable_db":' in view_segment
+    assert "return load_url_registry(path)" in view_segment
+    assert "_legacy_registry.load_url_registry" not in view_segment
+    assert '"file_diagnostics_available": False' in view_segment

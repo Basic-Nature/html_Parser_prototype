@@ -32,14 +32,16 @@ def test_public_registry_endpoint_is_get_only_and_url_free():
     assert "load_url_registry" not in body
 
 
-def test_legacy_raw_url_library_requires_trusted_principal():
+def test_trusted_url_library_requires_principal_and_uses_runtime_view():
     main = _read(MAIN)
     start = main.index("def api_urls():")
     end = main.index('@_rate_limit("60/minute")\ndef api_urls_parse():', start)
     body = main[start:end]
     assert body.index("get_request_principal()") < body.index(
         "trusted_principal_required"
-    ) < body.index("load_url_registry")
+    ) < body.index("load_trusted_url_library_view")
+    assert "load_trusted_url_library_view(URL_LIST_FILE)" in body
+    assert "load_url_registry(URL_LIST_FILE)" not in body
 
 
 def test_anonymous_page_suppresses_server_file_enumeration():

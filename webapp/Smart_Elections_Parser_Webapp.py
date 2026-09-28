@@ -3410,11 +3410,11 @@ def api_urls():
     # Read the reviewed URL registry. GET remains backward compatible through
     # ``urls`` while also returning structured metadata in ``entries``.
     # Direct HTTP registry writes are intentionally retired.
-    from webapp.parser.services.source_registry_runtime import load_url_registry
+    from webapp.parser.services.source_registry_runtime import load_trusted_url_library_view
 
     try:
         if request.method == "GET":
-            entries, diagnostics = load_url_registry(URL_LIST_FILE)
+            entries, diagnostics = load_trusted_url_library_view(URL_LIST_FILE)
 
             public_entries = [
                 {

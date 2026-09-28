@@ -25,6 +25,7 @@ PublicRegistrySource = _legacy_registry.PublicRegistrySource
 
 
 SOURCE_REGISTRY_RUNTIME_CONTRACT = "source_registry_runtime_v1"
+TRUSTED_URL_LIBRARY_VIEW_CONTRACT = "trusted_url_library_view_v1"
 
 
 def _payload_sha(value: object) -> str:
@@ -225,7 +226,6 @@ def resolve_public_registry_source(
     model = build_source_registry_read_model(path, mode=mode)
     model.resolve_public_source_alias(registry_source_id)
 
-    legacy = _legacy_registry.resolve_public_registry_source(path, registry_source_id)
     reader = model.db_reader
     if reader is None or not hasattr(reader, "resolve_public_execution_source"):
         raise SourceRegistryReadModelError(
@@ -234,6 +234,10 @@ def resolve_public_registry_source(
     durable = reader.resolve_public_execution_source(registry_source_id)
 
     if mode == "shadow_db":
+        legacy = _legacy_registry.resolve_public_registry_source(
+            path,
+            registry_source_id,
+        )
         _compare(
             "resolve_public_execution_source",
             _public_execution_projection(legacy),
@@ -292,8 +296,6 @@ def lookup_exact_registry_entry(
         dict(item)
         for item in reader.list_trusted_exact_sources(url)
     ]
-    legacy = _legacy_registry.lookup_exact_registry_entry(url, path=path)
-    legacy_projection = _contributor_projection(legacy)
 
     comparable = [
         {
@@ -310,6 +312,8 @@ def lookup_exact_registry_entry(
     ]
 
     if mode == "shadow_db":
+        legacy = _legacy_registry.lookup_exact_registry_entry(url, path=path)
+        legacy_projection = _contributor_projection(legacy)
         if legacy_projection is None:
             _compare(
                 "lookup_exact_registry_entry",
@@ -441,3 +445,48 @@ def load_url_registry(
         "durable_db raw registry diagnostics are not yet an accepted "
         "replacement for file-specific section/line metadata"
     )
+
+
+def load_trusted_url_library_view(
+    path: str | Path,
+    *,
+    db_reader: object | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    # Trusted /api/urls compatibility projection.
+    # legacy_file and shadow_db preserve the accepted raw-file behavior by
+    # delegating to load_url_registry(). durable_db never reads the legacy file.
+    # Durable rows are structured records rather than parsed file lines.
+    # malformed_row_count=0 means no malformed durable structured records were
+    # returned; file_diagnostics_available=False makes explicit that this is not
+    # evidence of parsing the legacy registry file.
+    mode = _legacy_registry.source_registry_authority_mode()
+    if mode != "durable_db":
+        return load_url_registry(path)
+
+    model = build_source_registry_read_model(
+        path,
+        mode=mode,
+        db_reader=db_reader,
+    )
+    entries = [
+        dict(item)
+        for item in model.list_trusted_registry_entries()
+    ]
+    diagnostics = {
+        "contract": TRUSTED_URL_LIBRARY_VIEW_CONTRACT,
+        "diagnostics_source": "durable_structured_registry",
+        "file_diagnostics_available": False,
+        "row_count": len(entries),
+        "malformed_row_count": 0,
+        "quarantine_row_count": sum(
+            1
+            for entry in entries
+            if str(entry.get("review_status") or "") == "quarantined"
+        ),
+        "parser_eligible_count": sum(
+            1
+            for entry in entries
+            if entry.get("parser_eligible") is True
+        ),
+    }
+    return entries, diagnostics
