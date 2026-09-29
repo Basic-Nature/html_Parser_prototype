@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Random navigation smoke test (navigation-only, no parsing/output).
 
-Runs the navigation runner on a random sample of URLs from urls.txt and reports
-basic outcomes. By default it does not persist navigation feedback logs.
+Runs the navigation runner on a random sample of URLs from the authority-aware
+Source Registry view and reports basic outcomes. By default it does not persist
+navigation feedback logs.
 """
 
 from __future__ import annotations
@@ -16,19 +17,18 @@ from playwright.sync_api import sync_playwright
 from webapp.parser.config import URL_LIST_FILE
 from webapp.parser.Context_Integration.context_coordinator import ContextCoordinator
 from webapp.parser.html_election_parser import NAVIGATION_RUNNER
+from webapp.parser.services.source_registry_runtime import load_trusted_url_library_view
 from webapp.parser.utils.browser_utils import sync_browser_pipeline, sync_safe_browser_close
 from webapp.parser.utils.logger_singleton import logger
-from webapp.parser.utils.misc_utils import extract_url_and_label
 from webapp.parser.utils.shared_logic import infer_state_county_from_url
 
 
 def _load_urls(limit: int | None = None) -> List[str]:
+    entries, _diagnostics = load_trusted_url_library_view(URL_LIST_FILE)
     urls: List[str] = []
-    if not URL_LIST_FILE.exists():
-        return urls
-    for raw in URL_LIST_FILE.read_text(encoding="utf-8").splitlines():
-        url, _ = extract_url_and_label(raw)
-        if url:
+    for entry in entries:
+        url = entry.get("url")
+        if isinstance(url, str) and url:
             urls.append(url)
         if limit and len(urls) >= limit:
             break
@@ -107,7 +107,7 @@ def main() -> None:
 
     urls = _load_urls()
     if not urls:
-        raise SystemExit("No URLs found in urls.txt")
+        raise SystemExit("No URLs found in Source Registry authority view")
 
     if args.seed is not None:
         random.seed(args.seed)

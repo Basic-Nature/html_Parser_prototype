@@ -817,7 +817,7 @@ def _start_pipeline_worker(
                     disable_internal_heartbeat=True,
                     force_parse_input_file=force_parse_input_file,
                     force_parse_format=force_parse_format,
-                    urls=direct_urls if direct_urls else None,
+                    urls=direct_urls,
                     url_reference_hints=url_reference_hints if direct_urls else None,
                     warehouse_override_url=warehouse_override_url or None,
                     principal=principal,

@@ -543,64 +543,23 @@ def _count_dom_table_rows(page) -> int:
 
 
 def load_urls(*, allowlist_bypass: bool = False) -> List[str]:
-    if not URL_LIST_FILE.exists():
-        msg = "No urls.txt found. Please input a URL to append:"
-        payload = {
-            "level": "ERROR",
-            "type": "input",
-            "message": msg,
-        }
-        logger.error(payload)
-        user_input = safe_strip(prompt.prompt_input("URL: "))
-        if user_input:
-            u, lbl = extract_url_and_label(user_input, allowlist_bypass=allowlist_bypass)
-            write_val = u or user_input
-            URL_LIST_FILE.write_text(write_val + "\n")
-            msg = f"Appended URL to urls.txt: {write_val}"
-            payload = {
-                "level": "INFO",
-                "type": "input",
-                "message": msg,
-            }
-            logger.info(payload)
-        return [write_val] if user_input else []
+    from .services.source_registry_runtime import load_trusted_url_library_view
 
-    with URL_LIST_FILE.open('r', encoding='utf-8') as f:
-        lines = []
-        for raw_line in f:
-            line_stripped = safe_strip(raw_line)
-            if not line_stripped or line_stripped.startswith("#"):
-                continue
-            u, lbl = extract_url_and_label(line_stripped, allowlist_bypass=allowlist_bypass)
-            if u:
-                lines.append(u)
-            else:
-                # keep the raw line if no URL extracted (back-compat)
-                lines.append(line_stripped)
-
-    if not lines:
-        msg = "urls.txt has no usable URLs. Please input a URL to append:"
-        payload = {
-            "level": "ERROR",
-            "type": "input",
-            "message": msg,
-        }
-        logger.error(payload)
-        user_input = safe_strip(prompt.prompt_input("URL: "))
-        if user_input:
-            u, lbl = extract_url_and_label(user_input, allowlist_bypass=allowlist_bypass)
-            write_val = u or user_input
-            with URL_LIST_FILE.open('a', encoding='utf-8') as f_append:
-                f_append.write(write_val + "\n")
-            msg = f"Appended URL to urls.txt: {write_val}"
-            payload = {
-                "level": "INFO",
-                "type": "input",
-                "message": msg,
-            }
-            logger.info(payload)
-            return [write_val]
-    return lines
+    del allowlist_bypass
+    entries, _diagnostics = load_trusted_url_library_view(URL_LIST_FILE)
+    urls: List[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise RuntimeError(
+                "Source Registry authority view returned a non-mapping entry."
+            )
+        url = entry.get("url")
+        if not isinstance(url, str) or url == "":
+            raise RuntimeError(
+                "Source Registry authority view returned an invalid URL entry."
+            )
+        urls.append(url)
+    return urls
 
 def mark_url_processed(url, status="success", **metadata) -> None:
     # A1 tracing is observational only. Terminal bookkeeping remains authoritative.
@@ -3069,9 +3028,23 @@ def main(
 
         # --- 3. Load URLs ---
         if urls is None:
-            urls = load_urls(allowlist_bypass=bool(kwargs.get("allowlist_bypass")))
+            from .services.source_registry_runtime import (
+                load_trusted_url_library_view,
+            )
+
+            registry_entries, _registry_diagnostics = (
+                load_trusted_url_library_view(URL_LIST_FILE)
+            )
+            urls = []
+            for registry_entry in registry_entries:
+                registry_url = registry_entry.get("url")
+                if not isinstance(registry_url, str) or not registry_url:
+                    raise RuntimeError(
+                        "Source Registry returned an invalid URL entry."
+                    )
+                urls.append(registry_url)
             if not url_source_label:
-                url_source_label = "urls.txt"
+                url_source_label = "Source Registry"
         else:
             if not isinstance(urls, list):
                 urls = list(urls)

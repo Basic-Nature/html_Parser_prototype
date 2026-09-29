@@ -3,7 +3,7 @@
 URL Status Report Generator
 
 Generates a comprehensive report showing:
-- URLs from urls.txt
+- URLs from the authority-aware Source Registry view
 - Processing status from .processed_urls
 - Production status from Google Sheets/warehouse
 - Side-by-side comparison for gap analysis
@@ -25,48 +25,41 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     from webapp.parser.config import PROCESSED_URLS_FILE, URL_LIST_FILE
+    from webapp.parser.services.source_registry_runtime import load_trusted_url_library_view
     from webapp.parser.utils.database_comparison import check_existing_finalized_data
     from webapp.parser.utils.logger_singleton import logger
-    from webapp.parser.utils.misc_utils import extract_url_and_label, load_processed_urls
+    from webapp.parser.utils.misc_utils import load_processed_urls
 except ImportError as e:
     print(f"Error importing parser modules: {e}")
     print("Make sure you're running from the repository root: python tools/url_status_report.py")
     sys.exit(1)
 
 
-def load_urls_from_file(urls_file: Path) -> List[Tuple[str, Optional[str]]]:
-    """
-    Load URLs from urls.txt, extracting URL and label/metadata.
-    
-    Returns:
-        List of (url, label) tuples
-    """
-    if not urls_file.exists():
-        logger.warning(f"URLs file not found: {urls_file}")
-        return []
-    
-    urls = []
-    with open(urls_file, 'r', encoding='utf-8') as f:
-        for line_num, line in enumerate(f, 1):
-            line = line.strip()
-            
-            # Skip empty lines and comments
-            if not line or line.startswith('#'):
-                continue
-            
-            # Extract URL and label
-            url, label = extract_url_and_label(line, allowlist_bypass=True)
-            
-            if url:
-                urls.append((url, label or line))
-            else:
-                # Try to parse as tab-delimited schema line
-                parts = line.split('\t')
-                if len(parts) >= 7 and parts[6].startswith('http'):
-                    url = parts[6].strip()
-                    label = f"{parts[0]} {parts[1]} {parts[2]}" if parts[0] != 'TBD' else line
-                    urls.append((url, label))
-    
+REGISTRY_LABEL_FIELDS = (
+    "year",
+    "contest",
+    "state",
+    "scope",
+    "format",
+    "notes",
+)
+
+
+def load_urls_from_registry_view(
+    urls_file: Path,
+) -> List[Tuple[str, Optional[str]]]:
+    # Load exact URL values from the authority-aware Source Registry view.
+    entries, _diagnostics = load_trusted_url_library_view(urls_file)
+    urls: List[Tuple[str, Optional[str]]] = []
+    for entry in entries:
+        url = entry.get("url")
+        if not isinstance(url, str) or not url:
+            continue
+        label = "\t".join(
+            str(entry.get(field) or "")
+            for field in REGISTRY_LABEL_FIELDS
+        ).strip()
+        urls.append((url, label or url))
     return urls
 
 
@@ -257,9 +250,9 @@ def main():
     print("URL Status Report Generator")
     print(f"{'='*70}\n")
     
-    # Load URLs from urls.txt
-    print(f"[1/4] Loading URLs from {URL_LIST_FILE}...")
-    urls_list = load_urls_from_file(URL_LIST_FILE)
+    # Load URLs from the authority-aware Source Registry view.
+    print("[1/4] Loading URLs from Source Registry authority view...")
+    urls_list = load_urls_from_registry_view(URL_LIST_FILE)
     print(f"      Found {len(urls_list)} URLs\n")
     
     # Load processed URLs

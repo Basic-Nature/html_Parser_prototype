@@ -22,86 +22,61 @@ def _atomic_write_lines(path, lines: list[str]):
             f.write(ln.rstrip() + "\n")
     os.replace(tmp, path)
 
+def _url_mutation_unavailable(operation: str) -> bool:
+    logger.error(
+        "[DISABLED] URL "
+        f"{operation} is unavailable until the governed Source Registry "
+        "persistence mutation plane is activated."
+    )
+    return False
+
 def load_urls() -> list[str]:
-    if not os.path.exists(URL_LIST_FILE):
-        return []
+    from .services.source_registry_runtime import (
+        load_trusted_url_library_view,
+    )
+
+    registry_entries, _registry_diagnostics = (
+        load_trusted_url_library_view(URL_LIST_FILE)
+    )
     urls: list[str] = []
-    try:
-        with open(URL_LIST_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                s = line.strip()
-                if not s or s.startswith("#"):
-                    continue
-                m = URL_LINE_RE.match(s)
-                urls.append(m.group("url") if m else s)
-    except Exception as e:
-        logger.error(f"[ERROR] Reading urls.txt failed: {e}")
+    for registry_entry in registry_entries:
+        registry_url = registry_entry.get("url")
+        if not isinstance(registry_url, str) or not registry_url:
+            raise RuntimeError(
+                "Source Registry returned an invalid URL entry."
+            )
+        urls.append(registry_url)
     return urls
 
 def save_urls(urls: list[str]) -> None:
-    clean = []
-    seen = set()
-    for u in urls:
-        if not isinstance(u, str):
-            continue
-        s = u.strip()
-        if not s:
-            continue
-        key = s.lower()
-        if key not in seen:
-            seen.add(key)
-            clean.append(s)
-    try:
-        _atomic_write_lines(URL_LIST_FILE, clean)
-        logger.info(f"[SAVED] {len(clean)} URLs to {URL_LIST_FILE.name}")
-    except Exception as e:
-        logger.error(f"[ERROR] Writing urls.txt failed: {e}")
+    del urls
+    _url_mutation_unavailable("save")
 
 def add_url(url: str) -> bool:
-    if not isinstance(url, str):
-        return False
-    u = url.strip()
-    if not u:
-        return False
-    urls = load_urls()
-    if any(u.lower() == existing.lower() for existing in urls):
-        logger.info(f"[SKIP] Duplicate URL: {u}")
-        return False
-    urls.append(u)
-    save_urls(urls)
-    logger.info(f"[ADDED] {u}")
-    return True
+    del url
+    return _url_mutation_unavailable("add")
 
 def remove_url(index_or_value) -> bool:
-    urls = load_urls()
-    if not urls:
-        return False
-    removed = False
-    if isinstance(index_or_value, int):
-        if 0 <= index_or_value < len(urls):
-            popped = urls.pop(index_or_value)
-            logger.info(f"[REMOVED] {popped}")
-            removed = True
-    else:
-        target = str(index_or_value).strip().lower()
-        new_urls = [u for u in urls if u.lower() != target]
-        if len(new_urls) != len(urls):
-            urls = new_urls
-            logger.info(f"[REMOVED] {index_or_value}")
-            removed = True
-    if removed:
-        save_urls(urls)
-    return removed
+    del index_or_value
+    return _url_mutation_unavailable("remove")
 
 def replace_urls(new_urls: list[str]) -> None:
-    save_urls(new_urls)
+    del new_urls
+    _url_mutation_unavailable("replace")
 
 def list_urls_cli() -> list[str]:
-    urls = load_urls()
-    if not urls:
-        logger.info("[INFO] No URLs in urls.txt")
+    try:
+        urls = load_urls()
+    except Exception:
+        logger.error(
+            "[ERROR] Reading the Source Registry authority view failed; "
+            "no legacy fallback was used."
+        )
         return []
-    logger.info(f"\n[{URL_LIST_FILE.name}]")
+    if not urls:
+        logger.info("[INFO] No URLs in the Source Registry authority view")
+        return []
+    logger.info("\n[SOURCE REGISTRY AUTHORITY VIEW]")
     for i, u in enumerate(urls, 1):
         logger.info(f"{i}. {u}")
     return urls
@@ -149,10 +124,10 @@ def run_manager():
     while True:
         menu = (
             "\nOptions:\n"
-            " 1. List urls.txt\n"
-            " 2. Add URL\n"
-            " 3. Remove URL (by number)\n"
-            " 4. Replace entire URL list (comma separated)\n"
+            " 1. List Source Registry URLs\n"
+            " 2. Add URL (unavailable)\n"
+            " 3. Remove URL (unavailable)\n"
+            " 4. Replace URL list (unavailable)\n"
             " 5. List input folder files\n"
             " 6. List output folder files\n"
             " 7. Copy file to input folder\n"
@@ -166,18 +141,11 @@ def run_manager():
         if choice == "1":
             list_urls_cli()
         elif choice == "2":
-            url = prompt.prompt_input("URL: ").strip()
-            add_url(url)
+            _url_mutation_unavailable("add")
         elif choice == "3":
-            urls = list_urls_cli()
-            if urls:
-                sel = prompt.prompt_input("Number to remove: ").strip()
-                if sel.isdigit():
-                    remove_url(int(sel) - 1)
+            _url_mutation_unavailable("remove")
         elif choice == "4":
-            raw = prompt.prompt_input("Enter URLs separated by commas: ")
-            new_urls = [s.strip() for s in raw.split(",") if s.strip()]
-            replace_urls(new_urls)
+            _url_mutation_unavailable("replace")
         elif choice == "5":
             list_files(INPUT_DIR)
         elif choice == "6":

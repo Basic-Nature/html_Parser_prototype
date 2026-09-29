@@ -89,6 +89,7 @@ def main():
             manual_source='uploads',
             force_parse_input_file=rel_forced,
             force_parse_format=ext or 'pdf',
+            continue_on_override_failure=False,
             output_bypass=False,
             skip_url_prompt=True,
             url_source_label='run_pdf_ocr_force',

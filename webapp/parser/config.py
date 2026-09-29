@@ -61,13 +61,6 @@ DOWNLOAD_MANIFEST = INPUT_DIR / ".download_manifest.jsonl"
 # Path to the list of URLs to process
 URL_LIST_FILE = PARSER_DIR / "urls.txt"
 SEED_URLS_IF_EMPTY = os.environ.get("SEED_URLS_IF_EMPTY", "true").lower() in ("1","true","yes")
-if not URL_LIST_FILE.exists():
-    with open(URL_LIST_FILE, "w", encoding="utf-8") as f:
-        f.write("# Add your URLs here, one per line.\n")
-elif URL_LIST_FILE.stat().st_size == 0 and SEED_URLS_IF_EMPTY:
-    # Only seed if env allows; otherwise leave truly empty so we don't “overwrite”
-    with open(URL_LIST_FILE, "w", encoding="utf-8") as f:
-        f.write("# Add your URLs here, one per line.\n")
 
 # Path to the file tracking processed URLs (used for deduplication/caching)
 PROCESSED_URLS_FILE = CONTEXT_DB_PATH.parent / ".processed_urls"

@@ -1,13 +1,19 @@
 import argparse
 import csv
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-URLS_PATH = Path("webapp/parser/urls.txt")
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from webapp.parser.config import URL_LIST_FILE
+from webapp.parser.services.source_registry_runtime import load_trusted_url_library_view
+
+URLS_PATH = URL_LIST_FILE
 OUT_DIR = Path("output")
 CSV_OUT = OUT_DIR / "vendor_url_report.csv"
 MD_OUT = OUT_DIR / "vendor_url_report.md"
@@ -75,6 +81,28 @@ def parse_urls(path: Path) -> List[UrlRow]:
                 fmt=fmt.strip(),
                 notes=notes.strip(),
                 url=url.strip(),
+            )
+        )
+    return rows
+
+
+def parse_authority_rows(path: Path = URL_LIST_FILE) -> List[UrlRow]:
+    # Project exact URL values from the authority-aware Source Registry view.
+    entries, _diagnostics = load_trusted_url_library_view(path)
+    rows: List[UrlRow] = []
+    for entry in entries:
+        url = entry.get("url")
+        if not isinstance(url, str) or not url:
+            continue
+        rows.append(
+            UrlRow(
+                year=str(entry.get("year") or ""),
+                contest=str(entry.get("contest") or ""),
+                state=str(entry.get("state") or ""),
+                scope=str(entry.get("scope") or ""),
+                fmt=str(entry.get("format") or ""),
+                notes=str(entry.get("notes") or ""),
+                url=url,
             )
         )
     return rows
@@ -242,8 +270,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Verify vendor-related URLs.")
     parser.add_argument(
         "--input",
-        default=str(URLS_PATH),
-        help="Path to a tab-delimited URL list (year, contest, state, scope, format, notes, url).",
+        default=None,
+        help=(
+            "Optional explicit noncanonical tab-delimited URL-list file. "
+            "When omitted, the authority-aware Source Registry view is used."
+        ),
     )
     parser.add_argument("--csv", default=str(CSV_OUT), help="CSV output path.")
     parser.add_argument("--md", default=str(MD_OUT), help="Markdown output path.")
@@ -260,15 +291,24 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    input_path = Path(args.input)
     csv_path = Path(args.csv)
     md_path = Path(args.md)
 
-    if not input_path.exists():
-        print(f"Missing urls file: {input_path}")
-        return 1
+    if args.input is None:
+        rows = parse_authority_rows(URL_LIST_FILE)
+    else:
+        input_path = Path(args.input)
+        if input_path.resolve() == URL_LIST_FILE.resolve():
+            print(
+                "Canonical urls.txt is not a direct file-input authority. "
+                "Omit --input to use the Source Registry authority view."
+            )
+            return 2
+        if not input_path.exists():
+            print(f"Missing explicit input file: {input_path}")
+            return 1
+        rows = parse_urls(input_path)
 
-    rows = parse_urls(input_path)
     rows = dedupe_rows(rows)
     checks = build_report(
         rows,

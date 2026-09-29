@@ -3125,123 +3125,64 @@ def _handle_global_exception(e):
         return jsonify({"error": "internal"}), 500
 
 # Data Management Utilities
+def _load_source_registry_authority_entries() -> list[dict]:
+    from webapp.parser.services.source_registry_runtime import (
+        load_trusted_url_library_view,
+    )
+
+    entries, _diagnostics = load_trusted_url_library_view(URL_LIST_FILE)
+    validated = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise RuntimeError(
+                "Source Registry authority view returned a non-mapping entry."
+            )
+        url = entry.get("url")
+        if not isinstance(url, str) or url == "":
+            raise RuntimeError(
+                "Source Registry authority view returned an invalid URL entry."
+            )
+        validated.append(entry)
+    return validated
+
+
+def _load_source_registry_url_values() -> list[str]:
+    return [
+        entry["url"]
+        for entry in _load_source_registry_authority_entries()
+    ]
+
+
+def _load_source_registry_status_rows() -> list[tuple[str, str]]:
+    rows = []
+    for entry in _load_source_registry_authority_entries():
+        url = entry["url"]
+        label = "\t".join(
+            str(entry.get(field) or "")
+            for field in (
+                "year",
+                "contest",
+                "state",
+                "scope",
+                "format",
+                "notes",
+            )
+        ).strip() or url
+        rows.append((url, label))
+    return rows
+
+
 def add_url() -> None:
-    raw_url = input("Enter new URL to add: ").strip()
-    if not raw_url:
-        return
-    if len(raw_url) > 2048 or any(ord(ch) < 32 for ch in raw_url):
-        log_flagged_url({
-            "event": "url_invalid",
-            "url": raw_url,
-            "reason": "invalid_chars_or_length",
-            "source": "cli",
-        })
-        logger.warning({"level": "WARNING", "type": "status", "message": "URL too long or invalid.", "session_id": None})
-        return
-    url, lbl = extract_url_and_label(raw_url)
-    if not url:
-        logger.warning({"level": "WARNING", "type": "status", "message": "No valid http(s) URL found.", "session_id": None})
-        return
-    if len(url) > 2048:
-        log_flagged_url({
-            "event": "url_invalid",
-            "url": url,
-            "reason": "url_too_long",
-            "source": "cli",
-        })
-        logger.warning({"level": "WARNING", "type": "status", "message": "URL too long.", "session_id": None})
-        return
-    parsed = urlparse(url)
-    if parsed.username or parsed.password:
-        log_flagged_url({
-            "event": "url_invalid",
-            "url": url,
-            "reason": "credentials_in_url",
-            "source": "cli",
-        })
-        logger.warning({"level": "WARNING", "type": "status", "message": "URLs with credentials are not allowed.", "session_id": None})
-        return
-    if parsed.fragment:
-        url = urlunparse(parsed._replace(fragment=""))
-        parsed = urlparse(url)
-    host = (parsed.hostname or "").lower()
-    allowed, reason = safe_validate_external_url(
-        url,
-        allowlist_suffixes=URL_ALLOWLIST_SUFFIXES,
-        allowlist_hosts=URL_ALLOWLIST_HOSTS,
-        enforce_allowlist=URL_ENFORCE_ALLOWLIST,
-        block_private_ips=URL_BLOCK_PRIVATE_IPS,
-    )
-    if not allowed:
-        log_flagged_url({
-            "event": "url_blocked",
-            "url": url,
-            "reason": reason,
-            "source": "cli",
-        })
-        logger.warning({"level": "WARNING", "type": "status", "message": f"URL blocked: {reason}", "session_id": None})
-        return
-    suspicious_tokens = (
-        "dropbox.com",
-        "drive.google",
-        "docs.google",
-        "googleusercontent.com",
-        "storage.googleapis",
-        "amazonaws.com",
-        "s3.amazonaws.com",
-        "digitaloceanspaces.com",
-        "box.com",
-        "onedrive",
-        "sharepoint",
-        "github.com",
-        "raw.githubusercontent",
-        "gitlab",
-        "pastebin",
-        "notion.so",
-        "cloudfront.net",
-    )
-    if ALLOW_GOOGLE_DOCS:
-        suspicious_tokens = tuple(
-            tok for tok in suspicious_tokens
-            if tok not in {"drive.google", "docs.google", "googleusercontent.com"}
-        )
-    if parsed.scheme not in {"http", "https"} or not host:
-        log_flagged_url({
-            "event": "url_invalid",
-            "url": url,
-            "reason": "invalid_url",
-            "source": "cli",
-        })
-        logger.warning({"level": "WARNING", "type": "status", "message": "Only http/https URLs with a host are accepted.", "session_id": None})
-        return
-    if any(tok in host for tok in suspicious_tokens):
-        log_flagged_url({
-            "event": "url_blocked",
-            "url": url,
-            "reason": "suspicious_host",
-            "host": host,
-            "source": "cli",
-        })
-        logger.warning({"level": "WARNING", "type": "status", "message": "Host requires manual review; URL logged for safety.", "session_id": None})
-        return
-    if url_already_listed(str(URL_LIST_FILE), url):
-        logger.info({"level": "INFO", "type": "status", "message": f"[ALREADY PRESENT] {url}", "session_id": None})
-        return
-    with open(URL_LIST_FILE, "a", encoding="utf-8") as f:
-        f.write(url + "\n")
-    logger.info({
-        "level": "INFO",
-        "type": "status",
-        "message": f"[ADDED] {url}",
+    logger.warning({
+        "level": "WARNING",
+        "type": "source_registry",
+        "message": (
+            "Source Registry mutation is unavailable until a proven governed "
+            "persistence mutation plane is active."
+        ),
         "session_id": None,
     })
-    if ENABLE_URL_INGESTION_AUDIT:
-        log_flagged_url({
-            "event": "url_ingested",
-            "url": url,
-            "label": lbl,
-            "source": "cli",
-        })
+    return
 
 def allowed_file(filename) -> bool:
     if not filename or len(filename) >= 128:
@@ -3254,36 +3195,14 @@ def allowed_file(filename) -> bool:
 
 
 def get_url_list() -> list[str]:
-    if not os.path.exists(URL_LIST_FILE):
-        return []
-    urls_out = []
-    with open(URL_LIST_FILE, "r", encoding="utf-8") as f:
-        for raw in f:
-            s = safe_strip(raw)
-            if not s or s.startswith('#'):
-                continue
-            u, lbl = extract_url_and_label(s)
-            if u:
-                urls_out.append(u)
-            else:
-                urls_out.append(s)
-    return urls_out
+    return _load_source_registry_url_values()
 
 def list_urls() -> list[str]:
-    if not os.path.exists(URL_LIST_FILE):
-        logger.info({
-            "level": "INFO",
-            "type": "status",
-            "message": "No urls.txt found.",
-            "session_id": None
-        })
-        return []
-    with open(URL_LIST_FILE, "r", encoding="utf-8") as f:
-        urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+    urls = _load_source_registry_url_values()
     logger.info({
         "level": "INFO",
         "type": "status",
-        "message": "[URLS.TXT ENTRIES]",
+        "message": "[SOURCE REGISTRY AUTHORITY VIEW]",
         "session_id": None
     })
     for i, url in enumerate(urls, 1):
@@ -3654,7 +3573,7 @@ def api_urls_training_data():
 @_rate_limit("10/hour")
 def api_urls_parse_all():
     """
-    Parse all URLs from url_library (urls.txt) and store to training file.
+    Parse all URLs from the Source Registry authority view and store to training file.
     
     This is a batch operation that may take time for large URL lists.
     
@@ -3667,23 +3586,7 @@ def api_urls_parse_all():
         }
     """
     try:
-        urls_file = str(URL_LIST_FILE)
-        if not os.path.exists(urls_file):
-            return jsonify({
-                "success": False,
-                "error": "URL library file not found"
-            }), 404
-
-        # Read all URLs
-        urls_to_parse = []
-        with open(urls_file, "r", encoding="utf-8") as f:
-            for raw in f:
-                s = safe_strip(raw)
-                if not s or s.startswith('#'):
-                    continue
-                u, _ = extract_url_and_label(s)
-                if u:
-                    urls_to_parse.append(u)
+        urls_to_parse = _load_source_registry_url_values()
 
         if not urls_to_parse:
             return jsonify({
@@ -6875,24 +6778,8 @@ def api_url_status():
                 }
                 return jsonify(response_payload), 200
 
-        # Load URLs from urls.txt
-        urls_list = []
-        if URL_LIST_FILE.exists():
-            with open(URL_LIST_FILE, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith('#'):
-                        continue
-
-                    url, label = extract_url_and_label(line, allowlist_bypass=True)
-                    if url:
-                        urls_list.append((url, label or line))
-                    else:
-                        parts = line.split('\t')
-                        if len(parts) >= 7 and parts[6].startswith('http'):
-                            url = parts[6].strip()
-                            label = f"{parts[0]} {parts[1]} {parts[2]}" if parts[0] != 'TBD' else line
-                            urls_list.append((url, label))
+        # Load exact URL values from the Source Registry authority view.
+        urls_list = _load_source_registry_status_rows()
 
         processed_map = load_processed_urls()
 

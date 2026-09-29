@@ -14,7 +14,7 @@ from .config import (
     SLOW_NLP_AUDIT_THRESHOLD,
     URL_LIST_FILE,
 )
-from .html_election_parser import main
+from .html_election_parser import load_urls as load_authority_urls, main
 from .utils.logger_singleton import logger, prompt
 from .utils.shared_logic import safe_clear, safe_is_set, safe_set
 
@@ -431,6 +431,21 @@ def process_urls_for_web(
 
     try:
         urls = kwargs.pop("urls", None)
+        authority_urls = None
+        if urls is None:
+            try:
+                authority_urls = load_authority_urls()
+            except Exception as e:
+                logger.error({
+                    "level": "ERROR",
+                    "type": "exception",
+                    "message": f"Failed loading Source Registry authority view: {e}",
+                    "session_id": session_id,
+                    "error": str(e),
+                    "traceback": traceback.format_exc()
+                })
+                cancellation_manager.remove(session_id)
+                return
 
         # Progress watcher: emit periodic run_progress events based on .processed_urls
         progress_stop = threading.Event()
@@ -453,13 +468,7 @@ def process_urls_for_web(
                     if isinstance(urls, list):
                         total_expected = len(urls)
                     else:
-                        # try to infer from URL_LIST_FILE when interactive
-                        try:
-                            if os.path.exists(URL_LIST_FILE):
-                                with open(URL_LIST_FILE, 'r', encoding='utf-8') as fh:
-                                    total_expected = sum(1 for ln in fh if ln.strip() and not ln.strip().startswith('#'))
-                        except Exception:
-                            total_expected = 0
+                        total_expected = len(authority_urls or [])
                     if emit_func:
                         try:
                             emit_func({
@@ -498,38 +507,16 @@ def process_urls_for_web(
 
         if urls is None:
             # Interactive / internal URL selection path (main() handles listing & prompts)
-            try:
-                if os.path.exists(URL_LIST_FILE):
-                    with open(URL_LIST_FILE, "r", encoding="utf-8") as f:
-                        raw_urls = [
-                            ln.strip() for ln in f
-                            if ln.strip() and not ln.strip().startswith("#")
-                        ]
-                else:
-                    raw_urls = []
-                if not raw_urls:
-                    logger.error({
-                        "level": "ERROR",
-                        "type": "input",
-                        "message": "urls.txt has no usable URLs (aborting before interactive main()).",
-                        "session_id": session_id
-                    })
-                    logger.info({
-                        "level": "INFO",
-                        "type": "input",
-                        "message": f"Edit file at: {URL_LIST_FILE}",
-                        "session_id": session_id
-                    })
-                    cancellation_manager.remove(session_id)
-                    return
-            except Exception as e:
+            raw_urls = list(authority_urls or [])
+            if not raw_urls:
                 logger.error({
                     "level": "ERROR",
-                    "type": "exception",
-                    "message": f"Failed preparing URL list: {e}",
-                    "session_id": session_id,
-                    "error": str(e),
-                    "traceback": traceback.format_exc()
+                    "type": "input",
+                    "message": (
+                        "Source Registry authority view has no usable URLs "
+                        "(aborting before interactive main())."
+                    ),
+                    "session_id": session_id
                 })
                 cancellation_manager.remove(session_id)
                 return
