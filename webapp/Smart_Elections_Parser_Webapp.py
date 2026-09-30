@@ -8328,6 +8328,13 @@ def rerun_prior(run_id):
     return redirect(url_for("ballot_lens", source=source))
 
 
+def runtime_generation_marker():
+    return {
+        "status": "ok",
+        "runtime_generation_marker": "w24-source-registry-runtime-f0dd078bc3b6fe15b92366fee0fea929",
+    }
+
+
 app.config["_FILE_IO_ROUTE_HANDLERS"] = {
     "download_fs": download_fs,
     "view_csv": view_csv,
@@ -8345,6 +8352,7 @@ app.config["_FILE_IO_ROUTE_HANDLERS"] = {
     "clear_history": clear_history,
     "history": history,
     "rerun_prior": rerun_prior,
+    "runtime_generation_marker": runtime_generation_marker,
 }
 
 

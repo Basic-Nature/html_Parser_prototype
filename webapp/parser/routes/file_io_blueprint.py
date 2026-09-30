@@ -94,4 +94,8 @@ def create_file_io_blueprint() -> Blueprint:
     def rerun_prior_route(run_id: str):
         return _call_handler("rerun_prior", run_id)
 
+    @bp.route("/_electionpulse/runtime-generation", methods=["GET"], endpoint="runtime_generation_marker")
+    def runtime_generation_marker_route():
+        return _call_handler("runtime_generation_marker")
+
     return bp
