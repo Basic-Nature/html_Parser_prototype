@@ -100,6 +100,19 @@ function replaceSourceQueryIntent(registrySourceId: string | null): void {
   }
 }
 
+function buildDataFrameworkSourceReturnHref(
+  registrySourceId: string | null | undefined,
+): string {
+  const normalized = normalizeSourceQueryIntent(registrySourceId);
+  if (!normalized || typeof window === 'undefined') return '';
+
+  const target = new URL('/data_framework', window.location.origin);
+  if (target.origin !== window.location.origin) return '';
+
+  target.searchParams.set(SHAREABLE_SOURCE_QUERY_KEY, normalized);
+  return `${target.pathname}${target.search}${target.hash}`;
+}
+
 export function AppShell({
   bootstrap,
 }: {
@@ -401,6 +414,12 @@ export function AppShell({
     };
   }, [dispatch, socket]);
 
+  const dataFrameworkSourceReturnHref =
+    buildDataFrameworkSourceReturnHref(
+      selectedSource?.registry_source_id ?? null,
+    );
+
+
   return (
     <div
       className="blf2-app"
@@ -409,6 +428,16 @@ export function AppShell({
     >
       <CosmicBackdrop />
       <HeaderBar bootstrap={bootstrap} runState={runState} />
+      {dataFrameworkSourceReturnHref ? (
+        <nav
+          className="blf2-source-return-nav"
+          aria-label="Cross-surface source navigation"
+        >
+          <a className="blf2-help-link" href={dataFrameworkSourceReturnHref}>
+            Open selected evidence in Data Framework
+          </a>
+        </nav>
+      ) : null}
       <main className="blf2-shell">
         <SourcePanel
           trustedControls={bootstrap.trustedControls}

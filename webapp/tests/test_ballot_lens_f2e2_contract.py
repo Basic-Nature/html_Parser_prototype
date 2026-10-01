@@ -116,3 +116,28 @@ def test_f2e2_source_query_intent_is_registry_resolved_and_never_auto_executes()
     assert "submitApprovedRegistrySource" not in receiver
     assert "SUBMIT_REQUESTED" not in receiver
 
+def test_f2e2_source_evidence_return_navigation_is_selector_only():
+    app = _read(APP_SHELL)
+
+    assert "function buildDataFrameworkSourceReturnHref(" in app
+    assert "normalizeSourceQueryIntent(registrySourceId)" in app
+    assert "new URL('/data_framework', window.location.origin)" in app
+    assert "target.origin !== window.location.origin" in app
+    assert "target.searchParams.set(SHAREABLE_SOURCE_QUERY_KEY, normalized)" in app
+    assert "selectedSource?.registry_source_id ?? null" in app
+    assert "href={dataFrameworkSourceReturnHref}" in app
+    assert "Open selected evidence in Data Framework" in app
+
+    helper = app.split(
+        "function buildDataFrameworkSourceReturnHref(",
+        1,
+    )[1].split(
+        "export function AppShell",
+        1,
+    )[0]
+    assert "source_url" not in helper
+    assert "workflow_item_id" not in helper
+    assert "workflow_pass_id" not in helper
+    assert "expected_row_version" not in helper
+    assert "canonical_record_id" not in helper
+    assert "parser" not in helper.lower()
