@@ -930,3 +930,102 @@
         new WorkflowPublicSurface();
     }
 })();
+/* ELECTIONPULSE_UI_STATE_CONTRACT_V1
+ * Presentation-only state contract.
+ * This helper does not fetch data, grant capability, establish canonicality,
+ * establish lineage, mutate workflow, or create server authority.
+ */
+(() => {
+  "use strict";
+
+  if (window.ElectionPulseUIState) {
+    return;
+  }
+
+  const VALID_STATES = Object.freeze([
+    "initial",
+    "loading",
+    "ready",
+    "empty",
+    "restricted",
+    "error",
+  ]);
+
+  const DEFAULT_MESSAGES = Object.freeze({
+    initial: "",
+    loading: "Loading…",
+    ready: "",
+    empty: "No records are available for this view.",
+    restricted: "This view is restricted for the current access context.",
+    error: "This view could not be loaded.",
+  });
+
+  function isValidState(state) {
+    return VALID_STATES.includes(state);
+  }
+
+  function statusNodeFor(root) {
+    if (!(root instanceof Element)) {
+      return null;
+    }
+    if (root.matches("[data-ep-state-status]")) {
+      return root;
+    }
+    return root.querySelector("[data-ep-state-status]");
+  }
+
+  function setState(root, state, options = {}) {
+    if (!(root instanceof Element)) {
+      throw new TypeError("ElectionPulseUIState.setState requires an Element root.");
+    }
+    if (!isValidState(state)) {
+      throw new TypeError(`Unsupported ElectionPulse UI state: ${String(state)}`);
+    }
+
+    root.dataset.epState = state;
+
+    if (state === "loading") {
+      root.setAttribute("aria-busy", "true");
+    } else {
+      root.removeAttribute("aria-busy");
+    }
+
+    const statusNode = statusNodeFor(root);
+    if (statusNode) {
+      statusNode.setAttribute("role", "status");
+      statusNode.setAttribute("aria-live", "polite");
+      statusNode.setAttribute("aria-atomic", "true");
+
+      const message =
+        typeof options.message === "string"
+          ? options.message
+          : DEFAULT_MESSAGES[state];
+
+      statusNode.textContent = message;
+      statusNode.hidden = message.length === 0;
+    }
+
+    return state;
+  }
+
+  function classifyHttpStatus(status, hasRecords) {
+    const numericStatus = Number(status);
+
+    if (numericStatus === 401 || numericStatus === 403) {
+      return "restricted";
+    }
+    if (!Number.isFinite(numericStatus) || numericStatus < 200 || numericStatus >= 300) {
+      return "error";
+    }
+    if (hasRecords === false) {
+      return "empty";
+    }
+    return "ready";
+  }
+
+  window.ElectionPulseUIState = Object.freeze({
+    states: VALID_STATES,
+    setState,
+    classifyHttpStatus,
+  });
+})();

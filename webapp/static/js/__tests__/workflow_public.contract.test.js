@@ -767,3 +767,106 @@ describe('Workflow public readiness contract', () => {
   });
 
 });
+// ELECTIONPULSE_UI_STATE_CONTRACT_TEST_V1
+describe('ElectionPulse shared UI state helper contract', () => {
+  const HELPER_MARKER = '/* ELECTIONPULSE_UI_STATE_CONTRACT_V1';
+
+  function loadElectionPulseUIStateHelper() {
+    delete window.ElectionPulseUIState;
+
+    const source = require('fs').readFileSync(SCRIPT, 'utf8');
+    const helperStart = source.lastIndexOf(HELPER_MARKER);
+
+    expect(helperStart).toBeGreaterThanOrEqual(0);
+
+    const helperSource = source.slice(helperStart);
+    window.eval(helperSource);
+
+    expect(window.ElectionPulseUIState).toBeDefined();
+    return { helper: window.ElectionPulseUIState, helperSource };
+  }
+
+  beforeEach(() => {
+    delete window.ElectionPulseUIState;
+    document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    delete window.ElectionPulseUIState;
+    document.body.innerHTML = '';
+  });
+
+  test('exports exact six states and distinguishes restricted, empty, error, and ready', () => {
+    const { helper } = loadElectionPulseUIStateHelper();
+
+    expect([...helper.states]).toEqual([
+      'initial',
+      'loading',
+      'ready',
+      'empty',
+      'restricted',
+      'error',
+    ]);
+
+    expect(helper.classifyHttpStatus(401, false)).toBe('restricted');
+    expect(helper.classifyHttpStatus(403, true)).toBe('restricted');
+    expect(helper.classifyHttpStatus(200, false)).toBe('empty');
+    expect(helper.classifyHttpStatus(204, false)).toBe('empty');
+    expect(helper.classifyHttpStatus(200, true)).toBe('ready');
+    expect(helper.classifyHttpStatus(200, undefined)).toBe('ready');
+    expect(helper.classifyHttpStatus(500, true)).toBe('error');
+    expect(helper.classifyHttpStatus('not-a-status', true)).toBe('error');
+  });
+
+  test('setState applies presentation and accessibility semantics without creating authority', () => {
+    document.body.innerHTML = `
+      <section id="state-root">
+        <p data-ep-state-status></p>
+      </section>
+    `;
+
+    const { helper } = loadElectionPulseUIStateHelper();
+    const root = document.getElementById('state-root');
+    const status = root.querySelector('[data-ep-state-status]');
+
+    expect(helper.setState(root, 'loading')).toBe('loading');
+    expect(root.dataset.epState).toBe('loading');
+    expect(root.getAttribute('aria-busy')).toBe('true');
+    expect(status.getAttribute('role')).toBe('status');
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    expect(status.getAttribute('aria-atomic')).toBe('true');
+    expect(status.textContent).toBe('Loading…');
+    expect(status.hidden).toBe(false);
+
+    expect(helper.setState(root, 'restricted')).toBe('restricted');
+    expect(root.dataset.epState).toBe('restricted');
+    expect(root.hasAttribute('aria-busy')).toBe(false);
+    expect(status.textContent).toBe('This view is restricted for the current access context.');
+    expect(status.hidden).toBe(false);
+
+    expect(helper.setState(root, 'empty')).toBe('empty');
+    expect(status.textContent).toBe('No records are available for this view.');
+
+    expect(helper.setState(root, 'ready')).toBe('ready');
+    expect(status.textContent).toBe('');
+    expect(status.hidden).toBe(true);
+
+    expect(() => helper.setState(root, 'certified')).toThrow(TypeError);
+    expect(() => helper.setState(null, 'ready')).toThrow(TypeError);
+  });
+
+  test('helper surface remains presentation-only and contains no network or authority primitive', () => {
+    const { helperSource } = loadElectionPulseUIStateHelper();
+
+    expect(helperSource).not.toContain('fetch(');
+    expect(helperSource).not.toContain('XMLHttpRequest');
+    expect(helperSource).not.toContain('axios');
+    expect(helperSource).not.toContain('WebSocket');
+    expect(helperSource).not.toContain('localStorage');
+    expect(helperSource).not.toContain('sessionStorage');
+    expect(helperSource).not.toContain('document.cookie');
+    expect(helperSource).not.toContain('canonical =');
+    expect(helperSource).not.toContain('lineage =');
+    expect(helperSource).not.toContain('capability =');
+  });
+});
