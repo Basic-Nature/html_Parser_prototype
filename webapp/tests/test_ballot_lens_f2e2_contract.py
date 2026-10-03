@@ -141,3 +141,54 @@ def test_f2e2_source_evidence_return_navigation_is_selector_only():
     assert "expected_row_version" not in helper
     assert "canonical_record_id" not in helper
     assert "parser" not in helper.lower()
+
+def test_o4d_workflow_handoff_refetches_server_authority_from_selector_only():
+    app = APP_SHELL.read_text(encoding="utf-8")
+    helper = (
+        ROOT / "webapp/frontend/ballot-lens/services/workflowHandoff.ts"
+    ).read_text(encoding="utf-8")
+
+    assert "registry_source_id" in app
+    assert "resolveWorkflowHandoffSelection," in app
+    assert "const workflowItemId = intent.workflowItemId;" in app
+    assert "|| !workflowItemId" in app
+    assert "await resolveWorkflowHandoffSelection(" in app
+    assert "intent.workflowItemId,\n      );" not in app
+    assert "handleTrustedSelection(selection);" in app
+    assert "handleTrustedSelection(intent.selection);" not in app
+    assert "initialSourceQueryIntentRef.current?.present" in app
+    assert "!bootstrap.trustedControls" in app
+
+    selector_keys = helper.split(
+        "export const WORKFLOW_HANDOFF_QUERY_KEYS = Object.freeze([",
+        1,
+    )[1].split("] as const);", 1)[0]
+    assert "'workflow_item_id'" in selector_keys
+    assert "'workflow_pass_id'" not in selector_keys
+    assert "'expected_row_version'" not in selector_keys
+
+    cleanup_keys = helper.split(
+        "export const WORKFLOW_HANDOFF_QUERY_CLEANUP_KEYS = Object.freeze([",
+        1,
+    )[1].split("] as const);", 1)[0]
+    assert "'workflow_item_id'" in cleanup_keys
+    assert "'workflow_pass_id'" in cleanup_keys
+    assert "'expected_row_version'" in cleanup_keys
+    assert "for (const key of WORKFLOW_HANDOFF_QUERY_CLEANUP_KEYS)" in helper
+
+    assert "params.get('workflow_item_id')" in helper
+    assert "params.get('workflow_pass_id')" not in helper
+    assert "params.get('expected_row_version')" not in helper
+    assert "credentials: 'same-origin'" in helper
+    assert "/api/workflow/v1/contributor/items/" in helper
+    assert "/ballot-lens-handoff" in helper
+    assert "method: 'GET'" in helper
+    assert "candidate.toLowerCase()" in helper
+    assert "WORKFLOW_HANDOFF_BROWSER_RESPONSE_KEYS" in helper
+    assert "WORKFLOW_HANDOFF_BROWSER_PAYLOAD_KEYS" in helper
+    assert "workflow_ballot_lens_handoff_v1" in helper
+    assert "value.success !== true" in helper
+    assert "value.can_execute_ballot_lens !== true" in helper
+    assert "value.principal_disclosed !== false" in helper
+    assert "value.source_url_disclosed !== false" in helper
+    assert "value.execution_mode" not in helper

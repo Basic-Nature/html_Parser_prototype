@@ -870,3 +870,14 @@ describe('ElectionPulse shared UI state helper contract', () => {
     expect(helperSource).not.toContain('capability =');
   });
 });
+
+describe('O4D selector-only Workflow to Ballot Lens navigation contract', () => {
+  test('serializes only workflow_item_id while preserving public GET-only reads', () => {
+    const src = fs.readFileSync(SCRIPT, 'utf8');
+    expect(src).toMatch(/target\.searchParams\.set\(\s*['"]workflow_item_id['"]/);
+    expect(src).not.toMatch(/target\.searchParams\.set\(\s*['"]workflow_pass_id['"]/);
+    expect(src).not.toMatch(/target\.searchParams\.set\(\s*['"]expected_row_version['"]/);
+    expect(src).toContain('window.location.origin');
+    expect(src).toContain('/api/workflow/v1/public/items?');
+  });
+});

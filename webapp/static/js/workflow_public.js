@@ -199,14 +199,6 @@
                     'workflow_item_id',
                     handoff.workflow_item_id
                 );
-                target.searchParams.set(
-                    'workflow_pass_id',
-                    handoff.workflow_pass_id
-                );
-                target.searchParams.set(
-                    'expected_row_version',
-                    String(handoff.expected_row_version)
-                );
                 window.location.assign(target.toString());
             } catch (error) {
                 if (button) button.disabled = false;

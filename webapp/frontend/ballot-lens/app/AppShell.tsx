@@ -32,6 +32,7 @@ import {
 import {
   clearWorkflowHandoffQuery,
   readWorkflowHandoffQueryIntent,
+  resolveWorkflowHandoffSelection,
   type WorkflowHandoffQueryIntent,
 } from '../services/workflowHandoff';
 import {
@@ -301,20 +302,36 @@ export function AppShell({
       return;
     }
 
+    const workflowItemId = intent.workflowItemId;
     if (
       initialSourceQueryIntentRef.current?.present
       || !bootstrap.trustedControls
-      || !intent.selection
+      || !workflowItemId
     ) {
       clearWorkflowHandoffQuery();
       return;
     }
 
-    setActiveMode('worklist');
-    setSelectedSource(null);
-    selectedSourceRef.current = null;
-    replaceSourceQueryIntent(null);
-    handleTrustedSelection(intent.selection);
+    let cancelled = false;
+    void (async () => {
+      const selection = await resolveWorkflowHandoffSelection(
+        workflowItemId,
+      );
+      if (cancelled) return;
+
+      clearWorkflowHandoffQuery();
+      if (!selection) return;
+
+      setActiveMode('worklist');
+      setSelectedSource(null);
+      selectedSourceRef.current = null;
+      replaceSourceQueryIntent(null);
+      handleTrustedSelection(selection);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     bootstrap.trustedControls,
     handleTrustedSelection,
