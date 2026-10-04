@@ -10,7 +10,7 @@ import re
 import time
 from typing import Any, Callable, Dict, List, Tuple
 
-from selectolax.parser import HTMLParser
+from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
 from ..Context_Integration.Context_Library.constants import (
     LOCATION_KEYWORDS,

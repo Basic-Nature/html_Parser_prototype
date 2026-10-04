@@ -27,7 +27,7 @@ except Exception:
     torch = None  # type: ignore[assignment]
     nn = None     # type: ignore[assignment]
     F = None      # type: ignore[assignment]
-from selectolax.parser import HTMLParser
+from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
 from ..config import MODEL_DIR, PROJECT_ROOT, TABLE_MODEL_PATH, VOCAB_DIR
 from ..Context_Integration.librarian import load_context_library

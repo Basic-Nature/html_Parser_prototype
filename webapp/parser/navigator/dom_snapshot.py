@@ -19,7 +19,7 @@ import time
 from typing import Any, Dict, List, Tuple
 
 try:
-    from selectolax.parser import HTMLParser
+    from selectolax.lexbor import LexborHTMLParser as HTMLParser
     HAS_SELECTOLAX = True
 except ImportError:
     HAS_SELECTOLAX = False

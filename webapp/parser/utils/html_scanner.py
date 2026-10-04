@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Pattern, Set
 
 import numpy as np
 import orjson
-from selectolax.parser import HTMLParser
+from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
 from ..Context_Integration.context_write_policy import (
     ContextWriteKind,

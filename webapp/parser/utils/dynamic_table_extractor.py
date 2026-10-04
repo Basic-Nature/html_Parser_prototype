@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import dateutil.parser
 import numpy as np
 import orjson
-from selectolax.parser import HTMLParser
+from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
 from ..config import ENTITY_LINKING_THRESHOLD
 from ..Context_Integration.Context_Library.constants import (

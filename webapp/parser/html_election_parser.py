@@ -1302,7 +1302,7 @@ def _extract_text_blocks(html_text: str, max_rows: int = 200) -> tuple[list[str]
         return headers, normalized_rows
 
     try:
-        from selectolax.parser import HTMLParser
+        from selectolax.lexbor import LexborHTMLParser as HTMLParser
     except ImportError:
         return [], []
     if not html_text:

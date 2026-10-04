@@ -31,7 +31,7 @@ from playwright.sync_api import ElementHandle as SyncElementHandle
 from playwright.sync_api import Locator as SyncLocator
 from playwright.sync_api import Page as SyncPage
 from playwright.sync_api import sync_playwright
-from selectolax.parser import Node as SelectolaxNode
+from selectolax.lexbor import LexborNode as SelectolaxNode
 
 if TYPE_CHECKING:  # pragma: no cover - import only used for type hints
     from selenium.webdriver.remote.webelement import (
