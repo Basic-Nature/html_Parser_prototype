@@ -40,7 +40,7 @@
 
             <nav class="workflow-nav" aria-label="ElectionPulse workflow navigation">
                 <a href="{{ url_for('ballot_lens') }}" class="workflow-link">← Ballot Lens</a>
-                <a href="{{ url_for('data_framework') }}" class="workflow-link workflow-link-primary">
+                <a href="{{ url_for('data_framework') }}" class="workflow-link workflow-link-primary" data-o4e-context-nav="/data_framework">
                     Explore Published Data →
                 </a>
                 <a
@@ -366,6 +366,7 @@
         </section>
     </main>
 
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/cross_surface_context.js') }}" defer></script>
     <script
         nonce="{{ g.csp_nonce }}"
         src="{{ url_for('static', filename='js/workflow_public.js') }}?v={{ static_version }}"

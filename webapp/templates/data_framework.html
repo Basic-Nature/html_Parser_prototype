@@ -31,7 +31,7 @@
             <a href="{{ url_for('index') }}" class="ep-app-nav__link" title="ElectionPulse Observatory">Observatory</a>
             <a href="{{ url_for('data_framework') }}" class="ep-app-nav__link is-active" aria-current="page" title="Published and governed election data">Data Framework</a>
             <a href="{{ url_for('ballot_lens') }}" class="ep-app-nav__link" title="Investigate governed election data">Ballot Lens</a>
-            <a href="{{ url_for('worklist') }}" class="ep-app-nav__link" title="Review public verification workflow">Workflow</a>
+            <a href="{{ url_for('worklist') }}" class="ep-app-nav__link" title="Review public verification workflow" data-o4e-context-nav="/worklist">Workflow</a>
             <a href="{{ url_for('quality_dashboard') }}" class="ep-app-nav__link" title="Quality dashboard">Quality</a>
             <a href="{{ url_for('auth_welcome', next=request.url) }}" class="ep-app-nav__link" title="Governed operator access">Access</a>
         </div>
@@ -504,6 +504,7 @@
 
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/cross_surface_context.js') }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='10953b91576b4db2') }}" defer></script>
 </body>
 </html>
