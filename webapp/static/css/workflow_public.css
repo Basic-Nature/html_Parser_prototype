@@ -818,3 +818,28 @@ body {
         forced-color-adjust: auto;
     }
 }
+
+/* W24O4E pre-O5 mobile responsive repair.
+ * Presentation/layout only: no route, selector, lineage, or authority semantics.
+ */
+@media (max-width: 620px) {
+  .workflow-shell {
+    width: min(1500px, calc(100% - 20px));
+  }
+
+  .workflow-shell,
+  .workflow-shell > *,
+  .workflow-shell .workflow-nav,
+  .workflow-shell .workflow-context,
+  .workflow-shell .workflow-context > div,
+  .workflow-shell .workflow-link {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .workflow-shell .workflow-link {
+    width: 100%;
+    white-space: normal;
+  }
+}

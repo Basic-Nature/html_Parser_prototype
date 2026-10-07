@@ -3247,3 +3247,29 @@ body[data-page="data-framework"] .warehouse-priority-controls > * {
     forced-color-adjust:auto;
   }
 }
+
+/* W24O4E pre-O5 mobile responsive repair.
+ * Presentation/layout only: no route, selector, lineage, or authority semantics.
+ */
+@media (max-width: 620px) {
+  .container-main.data-workbench-shell {
+    width: min(1560px, calc(100% - 1rem));
+  }
+
+  .data-workbench-shell .framework-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "left"
+      "middle"
+      "right";
+  }
+
+  .data-workbench-shell .framework-column,
+  .data-workbench-shell .framework-panel,
+  .data-workbench-shell .workbench-hero,
+  .data-workbench-shell .evidence-context-bar {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
