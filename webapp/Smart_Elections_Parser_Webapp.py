@@ -5959,6 +5959,29 @@ def api_ballotlens_database():
     })
 
 
+
+def api_ballotlens_database_record(record_id):
+    """Public current canonical-record INSTANCE detail, not a permalink."""
+    assert_public_read_surface("ballotlens_canonical", request.method)
+    from webapp.parser.services.canonical_election_reader import (
+        query_canonical_record_by_id,
+    )
+    try:
+        item = query_canonical_record_by_id(get_engine(), record_id)
+    except Exception:
+        logger.exception("Canonical record-instance lookup failed")
+        return jsonify({"error": "Canonical record query failed"}), 500
+    if item is None:
+        return jsonify({"error": "Canonical record unavailable"}), 404
+    return jsonify({
+        "item": item,
+        "contract": "canonical_record_instance_v1",
+        "data_source": "canonical",
+        "authority": "canonical_production",
+        "identity_semantics": "current_record_instance_only",
+        "cross_republication_permalink": False,
+    })
+
 def api_warehouse_election_results():
     """
     Query election results from warehouse and/or fixtures.
@@ -10051,6 +10074,7 @@ app.config["_ELECTION_DATA_ROUTE_HANDLERS"] = {
     "api_qc1_submit": api_qc1_submit,
     "api_election_data_stats": api_election_data_stats,
     "api_ballotlens_database": api_ballotlens_database,
+    "api_ballotlens_database_record": api_ballotlens_database_record,
     "api_warehouse_election_results": api_warehouse_election_results,
 }
 

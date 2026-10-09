@@ -111,6 +111,14 @@ def create_election_data_blueprint() -> Blueprint:
     def api_ballotlens_database_route():
         return _call_handler("api_ballotlens_database")
 
+    @bp.route(
+        "/api/ballotlens-database/records/<uuid:record_id>",
+        methods=["GET"],
+        endpoint="api_ballotlens_database_record",
+    )
+    def api_ballotlens_database_record_route(record_id):
+        return _call_handler("api_ballotlens_database_record", record_id)
+
     @bp.route("/api/warehouse_election_results", methods=["GET"], endpoint="api_warehouse_election_results")
     def api_warehouse_election_results_route():
         return _call_handler("api_warehouse_election_results")

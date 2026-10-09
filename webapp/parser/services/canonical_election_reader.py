@@ -121,7 +121,9 @@ def _serialize_result(row: Any) -> dict[str, Any]:
     }
 
 
-def _build_result_statement(filters: CanonicalResultFilters) -> Select:
+def _build_result_statement(
+    filters: CanonicalResultFilters, *, exact_result_id: UUID | None = None
+) -> Select:
     result = CanonicalElectionResult
     race = CanonicalElectionRace
 
@@ -160,6 +162,9 @@ def _build_result_statement(filters: CanonicalResultFilters) -> Select:
         )
         .join(race, result.race_id == race.id)
     )
+
+    if exact_result_id is not None:
+        return stmt.where(result.id == exact_result_id)
 
     if filters.state:
         stmt = stmt.where(func.lower(race.state) == filters.state.strip().lower())
@@ -397,4 +402,42 @@ def query_canonical_results(
             return items
         finally:
             # The publication adapter never commits.
+            transaction.rollback()
+
+
+# O4F canonical record INSTANCE lookup only: IDs are not republication permalinks.
+_CANONICAL_RECORD_PUBLIC_FIELDS = (
+    "id", "state", "year", "election_date", "date_precision", "contest",
+    "jurisdiction_name", "jurisdiction_type", "aggregation_scope", "precinct",
+    "candidate", "party", "is_write_in", "total_votes",
+)
+
+
+def _project_public_canonical_record(item: dict[str, Any]) -> dict[str, Any]:
+    """Explicit detail allowlist; keep internal provenance out of direct lookup."""
+    projected = {name: item[name] for name in _CANONICAL_RECORD_PUBLIC_FIELDS}
+    projected["vote_components"] = [
+        {"vote_method": entry["vote_method"], "votes": entry["votes"]}
+        for entry in item["vote_components"]
+    ]
+    return projected
+
+
+def query_canonical_record_by_id(engine: Engine, record_id: UUID) -> dict[str, Any] | None:
+    """Resolve a current canonical row by exact PK in a rollback-only transaction."""
+    stmt = _build_result_statement(
+        CanonicalResultFilters(), exact_result_id=record_id
+    )
+    with engine.connect() as conn:
+        transaction = conn.begin()
+        try:
+            if conn.dialect.name == "postgresql":
+                conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+            row = conn.execute(stmt).one_or_none()
+            if row is None:
+                return None
+            items = [_serialize_result(row)]
+            _attach_components(conn, items)
+            return _project_public_canonical_record(items[0])
+        finally:
             transaction.rollback()
