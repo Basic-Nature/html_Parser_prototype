@@ -16,6 +16,7 @@ import {
 import type { PublicRuntimeResult } from '../contracts/publicRuntime';
 import type { RunEvent, RunMode } from '../contracts/runtime';
 import { HeaderBar } from '../components/common/HeaderBar';
+import {readProjectQuerySelector, resolveProjectReturn} from '../services/projectContext';
 import { CheckpointRail } from '../components/checkpoints/CheckpointRail';
 import { DiagnosticsDrawer } from '../components/diagnostics/DiagnosticsDrawer';
 import { SourcePanel } from '../components/source/SourcePanel';
@@ -135,6 +136,7 @@ export function AppShell({
     useState<SessionHistory>(EMPTY_SESSION_HISTORY);
   const [diagnosticSessionId, setDiagnosticSessionId] =
     useState<string | null>(null);
+  const [projectReturnHref, setProjectReturnHref] = useState<string | null>(null);
   const [runState, dispatchRunEvent] = useReducer(
     reduceRunState,
     undefined,
@@ -431,6 +433,16 @@ export function AppShell({
     };
   }, [dispatch, socket]);
 
+  useEffect(() => {
+    const selector = readProjectQuerySelector();
+    if (!selector) return;
+    const controller = new AbortController();
+    void resolveProjectReturn(selector, controller.signal).then((href) => {
+      if (!controller.signal.aborted) setProjectReturnHref(href);
+    });
+    return () => controller.abort();
+  }, []);
+
   const dataFrameworkSourceReturnHref =
     buildDataFrameworkSourceReturnHref(
       selectedSource?.registry_source_id ?? null,
@@ -445,6 +457,15 @@ export function AppShell({
     >
       <CosmicBackdrop />
       <HeaderBar bootstrap={bootstrap} runState={runState} />
+      <nav className="blf2-source-return-nav" aria-label="ElectionPulse workspace navigation">
+        <a className="blf2-help-link" href="/">Observatory</a>
+        <a className="blf2-help-link" href="/projects">Projects</a>
+        <a className="blf2-help-link" href="/worklist">Workflow</a>
+        <a className="blf2-help-link" href="/data_framework">Data Framework</a>
+        {projectReturnHref ? (
+          <a className="blf2-help-link" href={projectReturnHref}>Back to Project</a>
+        ) : null}
+      </nav>
       {dataFrameworkSourceReturnHref ? (
         <nav
           className="blf2-source-return-nav"

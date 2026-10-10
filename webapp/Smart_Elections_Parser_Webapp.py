@@ -301,6 +301,7 @@ from webapp.parser.routes.workflow_reviewer_blueprint import (
 from webapp.parser.routes.workflow_publication_blueprint import (
     create_workflow_publication_blueprint,
 )
+from webapp.parser.routes.election_projects_blueprint import create_election_projects_blueprint
 from webapp.parser.services.workflow_reader import (
     WORKFLOW_AUTHORITY,
     WorkflowReadValidationError,
@@ -1515,6 +1516,21 @@ except Exception as exc:
         "message": f"Workflow publication route blueprint registration failed: {exc}",
         "session_id": None,
     })
+
+# J1 private Project context (no Source Registry or parser mutation authority).
+# Feature-gated and fail-closed until exact schema and identity key are provisioned.
+try:
+    app.register_blueprint(create_election_projects_blueprint(
+        principal_resolver=lambda: get_request_principal(),
+        session_factory=SessionLocal,
+    ))
+except Exception as exc:
+    logger.error({
+        "level": "ERROR", "type": "status",
+        "message": f"Election Projects blueprint registration failed: {exc}",
+        "session_id": None,
+    })
+    raise
 
 # Register protected Workflow contributor authority routes.
 try:

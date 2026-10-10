@@ -19,6 +19,14 @@
   const lensCopy = document.getElementById("observatoryLensCopy");
   const phrase = document.getElementById("observatoryPhrase");
   const pathways = Array.from(document.querySelectorAll("[data-observatory-pathway]"));
+  const projectLink = document.getElementById("observatoryProjectLink");
+  function updateProjectPrefill() {
+    if (!projectLink) return;
+    // Geography is a UI prefill, never project, registry or canonical authority.
+    const state = selectedJurisdiction && selectedJurisdiction.abbr;
+    projectLink.setAttribute("href", state && /^[A-Z]{2}$/.test(state)
+      ? `/projects?state=${encodeURIComponent(state)}` : "/projects");
+  }
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   const phrases = [
@@ -219,6 +227,7 @@
     selectedPath = null;
     selectedFeature = null;
     selectedJurisdiction = null;
+    updateProjectPrefill();
     delete shell.dataset.selectedGeoid;
     mapStage.classList.remove("has-selection");
     setSignal(null, false);
@@ -259,6 +268,7 @@
     selectedPath = path;
     selectedFeature = feature;
     selectedJurisdiction = jurisdiction;
+    updateProjectPrefill();
     path.classList.add("is-selected");
     feature.classList.add("is-selected-feature");
     shell.dataset.selectedGeoid = jurisdiction.geoid;

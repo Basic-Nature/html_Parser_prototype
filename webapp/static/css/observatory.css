@@ -1237,3 +1237,8 @@ body.observatory-page::before {
 .observatory-map-feature.has-pointer-assist .observatory-map-hit-target {
   cursor: pointer;
 }
+
+/* J1: bounded geography-to-project context entry; no evidence availability claim. */
+.observatory-project-entry{margin:1.1rem 0;padding:1.1rem 1.4rem;border:1px solid #53778c;border-radius:12px;display:flex;gap:1.2rem;align-items:center;justify-content:space-between;flex-wrap:wrap;background:rgba(13,40,61,.85);color:#e5f5ff}
+.observatory-project-entry p{margin:.3rem 0;color:#b6cedd}.observatory-project-entry a{color:#b4eaff;font-weight:650}
+.observatory-project-entry a:focus-visible{outline:3px solid #e6b765;outline-offset:4px}

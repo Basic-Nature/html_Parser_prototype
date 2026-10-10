@@ -20,7 +20,7 @@ export function HeaderBar({ bootstrap, runState }: HeaderBarProps) {
       case 'terminal':
         return 'Run complete';
       default:
-        return 'Submit ready';
+        return 'No active run';
     }
   })();
 
@@ -32,7 +32,7 @@ export function HeaderBar({ bootstrap, runState }: HeaderBarProps) {
           <span>ElectionPulse workspace</span>
           <strong>Ballot Lens</strong>
         </div>
-        <span className="blf2-phase-badge">F2-E3/E4 runtime</span>
+
       </div>
 
       <div className="blf2-header-status" aria-label="Ballot Lens status">

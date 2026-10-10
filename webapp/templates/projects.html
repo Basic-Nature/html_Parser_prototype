@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ElectionPulse Projects</title>
+  <link rel="stylesheet" href="{{ url_for('static',filename='css/projects.css') }}">
+</head>
+<body>
+  <header class="project-top"><a href="/">← Observatory</a><h1>Projects</h1><nav aria-label="ElectionPulse"><a href="/data_framework">Data Framework</a><a href="/worklist">Workflow</a><a href="/ballot_lens">Ballot Lens</a><a href="/auth/welcome">Access</a></nav></header>
+  <main id="projectWorkspace" data-csrf="{{ csrf_token }}">
+    <p class="project-caption">Private investigation context. Creating a project never authorizes parsing, reviewing or publishing election results.</p>
+    <p id="projectNotice" role="status" aria-live="polite">Loading your projects…</p>
+    <section class="project-layout" aria-label="Investigation workspace">
+      <aside>
+        <h2>My projects</h2>
+        <ul id="projectList"></ul>
+        <form id="projectCreateForm" hidden>
+          <h3>Create project</h3>
+          <label>Project title<input name="title" maxlength="160" required></label>
+          <label>Description<textarea name="description" maxlength="2000"></textarea></label>
+          <button type="submit">Create project</button>
+        </form>
+        <p id="projectAccessHelp" hidden>Project editing requires authorized contributor access. <a href="/auth/welcome">Open Access</a>.</p>
+      </aside>
+      <div id="projectDetail" hidden>
+        <h2 id="projectTitle"></h2><p id="projectMeta"></p>
+        <div class="project-actions"><a id="projectBallotLens" href="/ballot_lens">Open Ballot Lens</a><a href="/">Observatory</a><a href="/worklist">Workflow</a><a href="/data_framework">Data Framework</a></div>
+        <section><h3>Election scope groups</h3><p>Each row is a related set of dimensions. Separate rows do not create an implicit Cartesian product.</p>
+          <form id="projectScopeForm"><div id="projectScopes"></div><button type="button" id="projectAddScope">Add another scope</button><button type="submit">Save scopes</button></form>
+        </section>
+        <section><h3>Approved source references</h3><p>Saving a reference does not grant source execution authority.</p>
+          <ul id="projectSources"></ul>
+          <form id="projectSourceForm"><label>Approved registry source<select id="projectSourceSelect" required><option value="">Select approved source metadata</option></select></label><button type="submit">Associate source</button></form>
+        </section>
+      </div>
+    </section>
+  </main>
+  <script src="{{ url_for('static',filename='js/projects.js') }}" defer></script>
+</body>
+</html>
