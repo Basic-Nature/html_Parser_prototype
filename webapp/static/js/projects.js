@@ -13,6 +13,11 @@
   // Retain the idempotency token across uncertain network failures. A changed
   // draft is a new operation and must receive its own token.
   let pendingCreate = null;
+  let preflightEpoch = 0;
+  function resetRunPreflight() {
+    preflightEpoch += 1;
+    byId('projectRunPreflightResult').textContent = 'No eligibility review requested. No run was started.';
+  }
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const states = new Set('AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC PR VI AS GU MP'.split(' '));
   function msg(s) { notice.textContent = s; }
@@ -62,6 +67,7 @@
   }
   function renderDetail(data) {
     active=data;detail.hidden=false;
+    resetRunPreflight();
     byId('projectTitle').textContent=data.title;
     byId('projectMeta').textContent=`${data.lifecycle} · version ${data.row_version} · Project ${data.id}`;
     byId('projectBallotLens').href=`/ballot_lens?project_id=${encodeURIComponent(data.id)}`;
@@ -69,6 +75,11 @@
     for (const item of data.scopes) scopes.appendChild(scopeRow(item));
     if (!data.scopes.length) scopes.appendChild(scopeRow({state_code:draftState()}));
     const sourceList=byId('projectSources');sourceList.replaceChildren();
+    const runRefSelect=byId('projectRunSourceRefSelect');
+    runRefSelect.replaceChildren(node('option','Select a saved source reference',{value:''}));
+    for (const ref of data.source_refs) {
+      runRefSelect.appendChild(node('option',`Binding ${ref.registry_binding_id} · revision ${ref.registry_revision_id}`,{value:ref.id}));
+    }
     for (const ref of data.source_refs) {
       const li=node('li',null);
       li.appendChild(node('span',`Registry binding ${ref.registry_binding_id} · revision ${ref.registry_revision_id} · reference only`));
@@ -139,6 +150,42 @@
     try{await openAfter(()=>api(`/api/projects/v1/${active.id}/source-refs`,'POST',
       {registry_binding_id,expected_version:active.row_version}));}
     catch(e){msg(`Could not associate source: ${e.message}`);}
+  });
+  byId('projectRunPreflightForm').addEventListener('input', resetRunPreflight);
+  byId('projectRunPreflightForm').addEventListener('submit', async(event) => {
+    event.preventDefault();
+    if (!active || active.lifecycle !== 'active') return;
+    const sourceRefId=byId('projectRunSourceRefSelect').value;
+    const workflowItemId=byId('projectRunWorkflowItem').value.trim().toLowerCase();
+    const output=byId('projectRunPreflightResult');
+    const epoch=++preflightEpoch;
+    const projectId=active.id;
+    const projectVersion=active.row_version;
+    if (!UUID.test(sourceRefId) || !UUID.test(workflowItemId) ||
+        !active.source_refs.some(ref => ref.id === sourceRefId)) {
+      output.textContent='Select a saved source reference and enter a valid Workflow item UUID. No run was started.';
+      return;
+    }
+    output.textContent='Reviewing current Project, Workflow, and Registry eligibility. No run was started.';
+    const params=new URLSearchParams({source_ref_id:sourceRefId,
+      workflow_item_id:workflowItemId,expected_project_version:String(projectVersion)});
+    try {
+      const preview=await api(`/api/projects/v1/${encodeURIComponent(projectId)}/run-preflight?${params}`);
+      if (epoch!==preflightEpoch || !active || active.id!==projectId || active.row_version!==projectVersion) return;
+      if (preview.contract!=='project_run_preflight_v1' || preview.project_id!==projectId ||
+          preview.source_ref_id!==sourceRefId || preview.workflow_item_id!==workflowItemId ||
+          preview.eligible_for_confirmation_review!==true || preview.confirmation_enabled!==false ||
+          preview.execution_authorized!==false || preview.run_dispatched!==false ||
+          preview.source_url_disclosed!==false) throw new Error('Unexpected preflight response');
+      const label=preview.source_label;
+      if (!label || !['year','state','contest','scope','format'].every(key => typeof label[key]==='string')) {
+        throw new Error('Invalid source label');
+      }
+      output.textContent=`Eligible to review: ${label.year} · ${label.state} · ${label.contest} · ${label.scope} · ${label.format}. Confirmation and execution are not enabled in J2A. No run was started.`;
+    } catch(e) {
+      if (epoch!==preflightEpoch) return;
+      output.textContent=`Eligibility not available (${e.message}). No run was started.`;
+    }
   });
   (async()=>{
     try{

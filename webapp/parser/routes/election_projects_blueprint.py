@@ -31,16 +31,16 @@ def create_election_projects_blueprint(*, principal_resolver, session_factory) -
                                   minimum_tier=PrivilegeTier.STANDARD_USER)
         except CapabilityPolicyError:
             raise svc.ProjectError("contributor_access_required", 403)
-        return svc.owner_key(principal)
+        return svc.owner_key(principal), principal
 
-    def operation(fn, *, write=False):
+    def operation(fn, *, write=False, include_principal=False):
         db = None
         try:
-            key = actor()
+            key, principal = actor()
             if write:
                 assert_workflow_csrf_token(request.headers.get("X-CSRFToken"))
             db = session_factory()
-            payload = fn(db, key)
+            payload = fn(db, key, principal) if include_principal else fn(db, key)
             if write: db.commit()
             else: db.rollback()
             response = jsonify(payload)
@@ -99,4 +99,37 @@ def create_election_projects_blueprint(*, principal_resolver, session_factory) -
     @bp.delete("/api/projects/v1/<uuid:project_id>/source-refs/<uuid:association_id>")
     def remove_source_ref(project_id,association_id):
         return operation(lambda db,key: svc.remove_source_ref(db,project_id,key,association_id,body()),write=True)
+    @bp.get("/api/projects/v1/<uuid:project_id>/run-preflight")
+    def project_run_preflight_route(project_id):
+        # GET produces a non-executable preview. A future J2B mutation must
+        # independently reauthorize and consume a durable human intent.
+        def review(db, owner, principal):
+            if os.getenv("ELECTION_PROJECT_RUN_PREFLIGHT_ENABLED", "").lower() not in ("1", "true"):
+                raise svc.ProjectError("project_run_preflight_disabled", 503)
+            required = {"source_ref_id", "workflow_item_id", "expected_project_version"}
+            if set(request.args.keys()) != required or any(
+                len(request.args.getlist(key)) != 1 for key in required
+            ):
+                raise svc.ProjectError("invalid_preflight_selectors")
+            def canonical_id(key):
+                raw = request.args.get(key, "")
+                parsed = svc.parse_uuid(raw)
+                if str(parsed) != raw.lower():
+                    raise svc.ProjectError("invalid_preflight_selectors")
+                return parsed
+            version = request.args.get("expected_project_version", "")
+            if (len(version) > 10 or not version.isascii() or not version.isdigit()
+                or str(int(version)) != version or not 1 <= int(version) <= 2147483647):
+                raise svc.ProjectError("invalid_project_version")
+            from webapp.parser.services.project_run_preflight import project_run_preflight
+            from webapp.parser.config import URL_LIST_FILE
+            return project_run_preflight(
+                db, project_id=project_id,
+                source_ref_id=canonical_id("source_ref_id"),
+                workflow_item_id=canonical_id("workflow_item_id"),
+                expected_project_version=int(version), owner_key=owner,
+                principal=principal, registry_path=URL_LIST_FILE,
+            )
+        return operation(review, include_principal=True)
+
     return bp

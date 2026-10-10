@@ -33,6 +33,21 @@
           <ul id="projectSources"></ul>
           <form id="projectSourceForm"><label>Approved registry source<select id="projectSourceSelect" required><option value="">Select approved source metadata</option></select></label><button type="submit">Associate source</button></form>
         </section>
+        <section aria-label="Project run eligibility review">
+          <h3>Run eligibility review (J2A)</h3>
+          <p>Checking a saved source and assigned Workflow item never starts a parser or issues execution authority.</p>
+          <form id="projectRunPreflightForm">
+            <label>Saved Project source reference
+              <select id="projectRunSourceRefSelect" required><option value="">Select a saved source reference</option></select>
+            </label>
+            <label>Assigned Workflow item UUID
+              <input id="projectRunWorkflowItem" type="text" autocomplete="off" required maxlength="36" placeholder="Current Workflow item UUID">
+            </label>
+            <button type="submit">Review eligibility</button>
+          </form>
+          <p id="projectRunPreflightResult" role="status" aria-live="polite">No eligibility review requested. No run was started.</p>
+          <p>Run confirmation, parser dispatch, and Evidence linking are not enabled in J2A.</p>
+        </section>
       </div>
     </section>
   </main>

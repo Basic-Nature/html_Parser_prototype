@@ -1670,8 +1670,28 @@ def _handle_workflow_ballot_lens_authority_split(
         h,
     )
 
+PROJECT_RUN_FORBIDDEN_KEYS = frozenset({
+    "project_id", "project_run_id", "project_source_ref_id",
+    "source_ref_id", "project_confirmation_token", "project_run_confirmation",
+})
+
+
 def run_ballot_lens_socket_handler(data=None, *, hooks: dict[str, Any]) -> None:
     payload = _normalize_payload(data)
+
+    # J2A has no execution intent. Reject all Project-shaped socket payloads
+    # *before* public, Workflow or legacy trusted execution can dispatch.
+    if PROJECT_RUN_FORBIDDEN_KEYS.intersection(payload):
+        try:
+            hooks["logger"].warning({
+                "level": "WARNING", "type": "project_run_authority",
+                "reason_code": "project_run_execution_not_enabled",
+                "message": "Project-scoped parser execution is unavailable.",
+                "source_url_disclosed": False,
+            })
+        except Exception:
+            pass
+        return
 
     # Public anonymous execution remains its own exact registry_source_id
     # intent. Mixed public payloads are rejected by the existing public
