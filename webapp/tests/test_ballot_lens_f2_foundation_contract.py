@@ -218,8 +218,20 @@ def test_f2c_app_shell_is_componentized_presentation_only_and_honest():
     assert "CheckpointRail" in shell
     assert "DiagnosticsDrawer" in shell
 
-    assert "F2-E3/E4 runtime" in header
-    assert "Submit ready" in header
+    # The active header must report the actual runtime state. It must not
+    # advertise unconditional submit readiness or a historical phase badge.
+    assert 'aria-label="Ballot Lens status"' in header
+    assert 'className="blf2-mode-badge"' in header
+    assert "No active run" in header
+    for status in (
+        "Submitting",
+        "Command accepted",
+        "Parser running",
+        "Connection interrupted",
+        "Run complete",
+    ):
+        assert status in header
+    assert "Approved source only" in header
     assert "Approved public sources" in source
     assert "PublicRegistryBrowser" in source
     assert "No parser result yet" in workspace
