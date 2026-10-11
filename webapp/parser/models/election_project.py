@@ -55,3 +55,30 @@ class ElectionProjectSourceRef(Base):
         UniqueConstraint("project_id", "registry_binding_id", "registry_revision_id", name="uq_election_project_ref_revision"),
         Index("ix_election_project_refs_project", "project_id"),
     )
+
+
+class ElectionProjectRun(Base):
+    """An admitted, NOT dispatched, Project run request. No source URL exposed."""
+    __tablename__ = "election_project_runs"
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(Uuid(as_uuid=True), ForeignKey("election_projects.id", ondelete="RESTRICT"), nullable=False)
+    owner_key = Column(String(64), nullable=False)
+    idempotency_key = Column(Uuid(as_uuid=True), nullable=False)
+    request_fingerprint = Column(String(64), nullable=False)
+    source_ref_id = Column(Uuid(as_uuid=True), ForeignKey("election_project_source_refs.id", ondelete="RESTRICT"), nullable=False)
+    registry_binding_id = Column(Uuid(as_uuid=True), nullable=False)
+    registry_revision_id = Column(Uuid(as_uuid=True), nullable=False)
+    workflow_item_id = Column(Uuid(as_uuid=True), nullable=False)
+    workflow_pass_id = Column(Uuid(as_uuid=True), nullable=False)
+    project_row_version = Column(Integer, nullable=False)
+    workflow_row_version = Column(Integer, nullable=False)
+    status = Column(String(24), nullable=False, default="admitted")
+    row_version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    __table_args__ = (
+        UniqueConstraint("project_id", "owner_key", "idempotency_key", name="uq_election_project_run_intent"),
+        CheckConstraint("status = 'admitted'", name="ck_election_project_run_status"),
+        CheckConstraint("row_version >= 1 AND project_row_version >= 1 AND workflow_row_version >= 0", name="ck_election_project_run_versions"),
+        Index("ix_election_project_runs_project_created", "project_id", "created_at"),
+    )

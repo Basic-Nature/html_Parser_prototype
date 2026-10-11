@@ -14,8 +14,19 @@
   // draft is a new operation and must receive its own token.
   let pendingCreate = null;
   let preflightEpoch = 0;
+  let admissionReady = null;
+  let pendingAdmission = null;
+  let admissionFeatureAvailable = false;
+  function clearAdmissionReview() {
+    admissionReady = null;
+    pendingAdmission = null;
+    byId('projectAdmission').hidden = true;
+    byId('projectRunAdmit').disabled = true;
+  }
+
   function resetRunPreflight() {
     preflightEpoch += 1;
+    clearAdmissionReview();
     byId('projectRunPreflightResult').textContent = 'No eligibility review requested. No run was started.';
   }
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -67,7 +78,9 @@
   }
   function renderDetail(data) {
     active=data;detail.hidden=false;
+    admissionFeatureAvailable=false;
     resetRunPreflight();
+    void refreshProjectRuns();
     byId('projectTitle').textContent=data.title;
     byId('projectMeta').textContent=`${data.lifecycle} · version ${data.row_version} · Project ${data.id}`;
     byId('projectBallotLens').href=`/ballot_lens?project_id=${encodeURIComponent(data.id)}`;
@@ -181,10 +194,87 @@
       if (!label || !['year','state','contest','scope','format'].every(key => typeof label[key]==='string')) {
         throw new Error('Invalid source label');
       }
-      output.textContent=`Eligible to review: ${label.year} · ${label.state} · ${label.contest} · ${label.scope} · ${label.format}. Confirmation and execution are not enabled in J2A. No run was started.`;
+      output.textContent=`Eligible to review: ${label.year} · ${label.state} · ${label.contest} · ${label.scope} · ${label.format}. J2A does not enable confirmation or execution; separately gated request admission may be available. No run was started.`;
+      admissionReady={epoch,project_id:projectId,source_ref_id:sourceRefId,
+        workflow_item_id:workflowItemId,expected_project_version:projectVersion};
+      if (admissionFeatureAvailable) {
+        byId('projectAdmission').hidden=false;
+        byId('projectRunAdmit').disabled=false;
+      }
     } catch(e) {
       if (epoch!==preflightEpoch) return;
       output.textContent=`Eligibility not available (${e.message}). No run was started.`;
+    }
+  });
+
+  async function refreshProjectRuns() {
+    const recordList=byId('projectRunRecords');
+    recordList.replaceChildren();
+    if (!active) return;
+    const id=active.id;
+    const version=active.row_version;
+    try {
+      const result=await api(`/api/projects/v1/${encodeURIComponent(id)}/runs`);
+      if (!active || active.id!==id || active.row_version!==version) return;
+      if (result.contract!=='project_run_admission_v1' || !Array.isArray(result.runs)) throw new Error('Invalid run response');
+      admissionFeatureAvailable = true;
+      // An earlier preflight may have completed while feature discovery was
+      // pending. Enable only that still-current, separately reviewed intent.
+      if (admissionReady && admissionReady.epoch===preflightEpoch &&
+          admissionReady.project_id===id && admissionReady.expected_project_version===version) {
+        byId('projectAdmission').hidden=false;
+        byId('projectRunAdmit').disabled=false;
+      }
+      for (const run of result.runs) {
+        if (!UUID.test(run.run_id) || run.project_id!==id || run.status!=='admitted' ||
+            run.execution_authorized!==false || run.run_dispatched!==false ||
+            run.evidence_available!==false || run.source_url_disclosed!==false)
+          throw new Error('Invalid run projection');
+        recordList.appendChild(node('li',`Request ${run.run_id} · ${run.status} · no parser dispatched`));
+      }
+      if (!result.runs.length) recordList.appendChild(node('li','No admitted requests.'));
+    }catch(e){
+      if (!active || active.id!==id || active.row_version!==version) return;
+      admissionFeatureAvailable = false;
+      byId('projectAdmission').hidden=true;
+      byId('projectRunAdmit').disabled=true;
+      recordList.replaceChildren(node('li',`Requests unavailable (${e.message}).`));
+    }
+  }
+  byId('projectRefreshRuns').addEventListener('click',refreshProjectRuns);
+  byId('projectRunAdmit').addEventListener('click',async()=>{
+    if (!admissionReady || !active || active.id!==admissionReady.project_id ||
+        active.row_version!==admissionReady.expected_project_version) return;
+    const button=byId('projectRunAdmit');
+    if (button.disabled) return;
+    if (!pendingAdmission || pendingAdmission.epoch!==admissionReady.epoch) {
+      pendingAdmission={...admissionReady,idempotency_key:crypto.randomUUID()};
+    }
+    button.disabled=true;
+    const request=pendingAdmission;
+    const out=byId('projectAdmissionStatus');
+    out.textContent='Recording authorized request. This does not dispatch a parser.';
+    try {
+      const result=await api(`/api/projects/v1/${encodeURIComponent(request.project_id)}/runs`,'POST',{
+        source_ref_id:request.source_ref_id,
+        workflow_item_id:request.workflow_item_id,
+        expected_project_version:request.expected_project_version,
+        idempotency_key:request.idempotency_key,
+      });
+      if (!active || active.id!==request.project_id || request.epoch!==preflightEpoch) return;
+      if(result.contract!=='project_run_admission_v1' || !UUID.test(result.run_id) ||
+         result.status!=='admitted' || result.execution_authorized!==false ||
+         result.run_dispatched!==false || result.evidence_available!==false ||
+         result.source_url_disclosed!==false) throw new Error('Invalid admission response');
+      out.textContent=`Request ${result.run_id} recorded. Parser not started; no evidence yet.`;
+      await refreshProjectRuns();
+      admissionReady=null;
+      pendingAdmission=null;
+    }catch(e) {
+      if(active && active.id===request.project_id && request.epoch===preflightEpoch){
+        out.textContent=`Request could not be confirmed (${e.message}). Retry preserves the same request key.`;
+        button.disabled=false;
+      }
     }
   });
   (async()=>{

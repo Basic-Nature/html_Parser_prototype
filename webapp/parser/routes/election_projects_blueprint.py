@@ -132,4 +132,35 @@ def create_election_projects_blueprint(*, principal_resolver, session_factory) -
             )
         return operation(review, include_principal=True)
 
+
+    def admission_enabled():
+        if os.getenv("ELECTION_PROJECT_RUN_ADMISSION_ENABLED", "").lower() not in ("1", "true"):
+            raise svc.ProjectError("project_run_admission_disabled", 503)
+
+    @bp.post("/api/projects/v1/<uuid:project_id>/runs")
+    def admit_project_run(project_id):
+        def admit(db, owner, principal):
+            admission_enabled()
+            from webapp.parser.services.project_run_admission import admit as admit_run
+            from webapp.parser.config import URL_LIST_FILE
+            return admit_run(db,project_id=project_id,owner_key=owner,
+                principal=principal,body=body(),registry_path=URL_LIST_FILE)
+        return operation(admit,write=True,include_principal=True)
+
+    @bp.get("/api/projects/v1/<uuid:project_id>/runs")
+    def list_project_runs(project_id):
+        def listing(db, owner):
+            admission_enabled()
+            from webapp.parser.services.project_run_admission import list_runs
+            return list_runs(db,project_id=project_id,owner_key=owner)
+        return operation(listing)
+
+    @bp.get("/api/projects/v1/<uuid:project_id>/runs/<uuid:run_id>")
+    def get_project_run(project_id,run_id):
+        def get(db, owner):
+            admission_enabled()
+            from webapp.parser.services.project_run_admission import get_run
+            return get_run(db,project_id=project_id,run_id=run_id,owner_key=owner)
+        return operation(get)
+
     return bp

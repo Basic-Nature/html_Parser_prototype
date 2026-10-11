@@ -46,7 +46,17 @@
             <button type="submit">Review eligibility</button>
           </form>
           <p id="projectRunPreflightResult" role="status" aria-live="polite">No eligibility review requested. No run was started.</p>
-          <p>Run confirmation, parser dispatch, and Evidence linking are not enabled in J2A.</p>
+
+          <div id="projectAdmission" hidden>
+            <button type="button" id="projectRunAdmit" disabled>Confirm and record request (does not execute)</button>
+            <p id="projectAdmissionStatus" role="status" aria-live="polite">No request recorded.</p>
+          </div>
+          <section aria-label="Recorded Project requests">
+            <h4>Recorded requests</h4>
+            <button type="button" id="projectRefreshRuns">Refresh requests</button>
+            <ul id="projectRunRecords"></ul>
+          </section>
+          <p>Admission is separate from parser execution; no parser is started by this request.</p>
         </section>
       </div>
     </section>
