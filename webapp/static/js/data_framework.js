@@ -4358,6 +4358,144 @@ document.addEventListener('DOMContentLoaded', () => {
     bootstrapProtectedFeeds();
   }
 
+  // J2B1NH-A: an independent public canonical coverage read, not a registry join.
+  function initCanonicalCoverageExplorer() {
+    const root = document.getElementById('canonicalCoverageExplorer');
+    if (!root) return;
+    const fields = {
+      state: document.getElementById('coverageState'),
+      year: document.getElementById('coverageYear'),
+      contest: document.getElementById('coverageContest'),
+      reset: document.getElementById('coverageReset'),
+      status: document.getElementById('coverageStatus'),
+      cards: document.getElementById('coverageCards'),
+      prev: document.getElementById('coveragePrev'),
+      next: document.getElementById('coverageNext'),
+      page: document.getElementById('coveragePageText')
+    };
+    const endpoint = cfgEl?.dataset?.canonicalCoverageUrl || '/api/data_framework/canonical_coverage';
+    let offset = 0;
+    const limit = 20;
+    let sequence = 0;
+    let pendingInitial = true;
+    const saved = new URLSearchParams(window.location.search);
+    const starting = {
+      state: saved.get('state') || '',
+      year: saved.get('year') || '',
+      contest: saved.get('contest') || ''
+    };
+    function state(text, kind) {
+      root.dataset.uiState = kind;
+      fields.status.dataset.uiState = kind;
+      fields.status.textContent = text;
+    }
+    function option(select, value, caption) {
+      const el = document.createElement('option');
+      el.value = String(value); el.textContent = String(caption);
+      select.appendChild(el);
+    }
+    function listOptions(select, items, label, desired) {
+      select.replaceChildren(); option(select, '', label);
+      for (const item of items) option(select, item, item);
+      select.value = items.map(String).includes(String(desired)) ? String(desired) : '';
+    }
+    function filters() {
+      return {state: fields.state.value, year: fields.year.value, contest: fields.contest.value};
+    }
+    function urlFor(path, filter, paging = false) {
+      const target = new URL(path, window.location.origin);
+      if (target.origin !== window.location.origin) throw new Error('Cross-origin coverage endpoint');
+      for (const [key,value] of Object.entries(filter)) if (value) target.searchParams.set(key, value);
+      if (paging) {target.searchParams.set('limit', String(limit)); target.searchParams.set('offset', String(offset));}
+      return target;
+    }
+    async function facets(request) {
+      const current = pendingInitial ? starting : filters();
+      const target = urlFor(canonicalFacetsUrl, {state:current.state,year:current.year});
+      const response = await fetch(target.toString(), {method:'GET',credentials:'same-origin',headers:{Accept:'application/json'}});
+      if (!response.ok) throw new Error('Canonical facet availability failed');
+      const payload = await response.json();
+      if (!isCanonicalFacetPayload(payload)) throw new Error('Canonical facet authority rejected');
+      if (request !== sequence) return;
+      listOptions(fields.state, payload.states, 'All states', current.state);
+      listOptions(fields.year, payload.years, 'All years', current.year);
+      listOptions(fields.contest, payload.contests, 'All contests', current.contest);
+      pendingInitial = false;
+    }
+    function addText(parent, name, content) {
+      const node = document.createElement(name);
+      node.textContent = String(content);
+      parent.appendChild(node);
+      return node;
+    }
+    function display(payload) {
+      fields.cards.replaceChildren();
+      const page = payload.pagination;
+      fields.prev.disabled = page.offset === 0;
+      fields.next.disabled = page.has_more !== true;
+      fields.page.textContent = `${page.total_races} published races · showing ${page.offset + (payload.items.length ? 1 : 0)}–${page.offset + payload.items.length}`;
+      for (const item of payload.items) {
+        const card = document.createElement('article');
+        card.className = 'coverage-explorer__card'; card.setAttribute('role','listitem');
+        addText(card,'h3',`${item.contest} · ${item.state} · ${item.year}`);
+        const meta = document.createElement('div'); meta.className = 'coverage-explorer__meta';
+        for (const text of [
+          `${item.result_count} candidate-result rows`,
+          `${item.jurisdiction_count} jurisdiction identities`,
+          `${item.jurisdiction_scope_rows} jurisdiction-scope rows`,
+          `${item.precinct_scope_rows} precinct-scope rows`
+        ]) addText(meta, 'span', text);
+        card.appendChild(meta);
+        addText(card, 'p', `Recorded verification status: ${item.verification_status}. Selected payload lane: ${item.selected_dl_source || 'unavailable'}.`);
+        addText(card, 'p', 'Official-source relationship not established. Precinct-level completeness is not implied.');
+        const link = addText(card,'a','View canonical results for this scope');
+        const linkUrl = urlFor(window.location.pathname, {state:item.state,year:String(item.year),contest:item.contest});
+        linkUrl.hash = 'warehouseTableSection';
+        link.href = `${linkUrl.pathname}${linkUrl.search}${linkUrl.hash}`;
+        link.title = 'Contextual query; not an exact race permalink';
+        fields.cards.appendChild(card);
+      }
+      state(payload.items.length ? `${payload.items.length} canonical races shown.` :
+        'No canonical races are published for these filters. This does not mean zero votes.',
+        payload.items.length ? 'ready' : 'empty');
+    }
+    async function load(refreshFacets = false) {
+      const request = ++sequence;
+      state('Loading published race coverage…', 'loading');
+      fields.prev.disabled = true; fields.next.disabled = true;
+      try {
+        if (refreshFacets) await facets(request);
+        if (request !== sequence) return;
+        const response = await fetch(urlFor(endpoint, filters(), true).toString(), {
+          method:'GET', credentials:'same-origin', headers:{Accept:'application/json'}
+        });
+        if (!response.ok) throw new Error('Coverage endpoint returned an error');
+        const payload = await response.json();
+        if (request !== sequence) return;
+        if (payload.contract !== 'canonical_coverage_v1' || payload.authority !== 'canonical_production'
+            || payload.data_source !== 'canonical' || payload.semantic_contract?.lineage !== 'not_inferred'
+            || !Array.isArray(payload.items) || !payload.pagination) {
+          throw new Error('Coverage authority contract rejected');
+        }
+        display(payload);
+      } catch (_) {
+        if (request === sequence) {fields.cards.replaceChildren();state('Canonical race coverage is unavailable. No fallback data was substituted.', 'error');}
+      }
+    }
+    for (const key of ['state','year','contest']) fields[key].addEventListener('change', () => {
+      offset = 0; load(key !== 'contest');
+    });
+    fields.reset.addEventListener('click', () => {
+      fields.state.value = '';fields.year.value = '';fields.contest.value = '';
+      offset = 0;load(true);
+    });
+    fields.prev.addEventListener('click', () => {offset = Math.max(0,offset-limit);load();});
+    fields.next.addEventListener('click', () => {offset += limit;load();});
+    // Initial query values are not authority; server facets validate the scope.
+    load(true);
+  }
+
   // Canonical publication rows are the sole election-result Analysis feed.
   bootstrapInitialAnalysisRead();
+  initCanonicalCoverageExplorer();
 });  

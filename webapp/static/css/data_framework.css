@@ -3273,3 +3273,28 @@ body[data-page="data-framework"] .warehouse-priority-controls > * {
     box-sizing: border-box;
   }
 }
+
+/* J2B1NH-A: responsive public canonical race coverage, isolated from table styling. */
+.coverage-explorer{min-width:0;margin:1rem 0 1.5rem;padding:clamp(1rem,2vw,1.6rem);border:1px solid rgba(125,211,252,.35);border-radius:16px;background:rgba(20,30,40,.94);color:#eaf4ff}
+.coverage-explorer__heading{display:flex;flex-wrap:wrap;align-items:start;justify-content:space-between;gap:1rem}
+.coverage-explorer__heading h2{font-size:clamp(1.25rem,2.5vw,1.9rem);margin:.35rem 0}
+.coverage-explorer__heading p{max-width:68ch;line-height:1.55;color:#d4e2ee}
+.coverage-explorer__filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;align-items:end;gap:.75rem;margin:1.2rem 0}
+.coverage-explorer__filters label{min-width:0;display:grid;gap:.3rem;font-weight:650}
+.coverage-explorer__filters select{width:100%;min-width:0;min-height:44px;padding:.5rem;border:1px solid #7e9aae;border-radius:8px;background:#122434;color:#f5faff}
+.coverage-explorer__filters button{min-height:44px}
+.coverage-explorer__cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem;margin-top:.85rem}
+.coverage-explorer__card{min-width:0;padding:1rem;border:1px solid #627d92;border-radius:11px;background:#132c3b;overflow-wrap:anywhere}
+.coverage-explorer__card h3{font-size:1.07rem;line-height:1.35;margin:0 0 .45rem}
+.coverage-explorer__meta{display:flex;flex-wrap:wrap;gap:.4rem .7rem;margin:.35rem 0;font-size:.88rem}
+.coverage-explorer__meta span{background:#244154;border-radius:6px;padding:.2rem .45rem}
+.coverage-explorer__card p{font-size:.88rem;line-height:1.5;margin:.65rem 0}
+.coverage-explorer__card a{display:inline-block;margin-top:.3rem;color:#83e9e2;text-decoration:underline;text-underline-offset:.2em}
+.coverage-explorer__pager{display:flex;gap:.75rem;align-items:center;justify-content:flex-end;margin-top:1rem}
+.coverage-explorer button:disabled{opacity:.5;cursor:not-allowed}
+.coverage-explorer__disclaimer{font-size:.82rem;color:#d4e2ee;margin:1rem 0 0;line-height:1.55}
+#coverageStatus{min-height:2rem;padding:.5rem 0}
+.coverage-explorer :focus-visible{outline:3px solid #e9d06b;outline-offset:3px}
+@media(max-width:1024px){.coverage-explorer__filters{grid-template-columns:repeat(2,minmax(0,1fr))}.coverage-explorer__cards{grid-template-columns:1fr}}
+@media(max-width:620px){.coverage-explorer__filters{grid-template-columns:minmax(0,1fr)}.coverage-explorer__heading,.coverage-explorer__pager{align-items:stretch;flex-direction:column}.coverage-explorer__card{padding:.8rem}}
+@media(forced-colors:active){.coverage-explorer,.coverage-explorer__card,.coverage-explorer__filters select{forced-color-adjust:auto;border-color:CanvasText;color:CanvasText;background:Canvas}}

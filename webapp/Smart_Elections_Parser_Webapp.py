@@ -5064,6 +5064,40 @@ def api_health_socket_test():
         return jsonify({"error": f"Socket test failed: {str(e)}"}), 500
 
 
+def api_data_framework_canonical_coverage():
+    """Public bounded canonical race-coverage read; never executes a parser."""
+    assert_public_read_surface("data_framework_canonical_coverage", request.method)
+    allowed = {"state", "year", "contest", "limit", "offset"}
+    unknown = set(request.args.keys()) - allowed
+    if unknown:
+        return jsonify({"error": "unsupported coverage query parameter"}), 400
+    try:
+        state = _validate_filter_value("state", request.args.get("state"), max_len=64)
+        contest = _validate_filter_value("contest", request.args.get("contest"), max_len=140)
+        raw_year = safe_strip(request.args.get("year", ""))
+        year = int(raw_year) if raw_year else None
+        if year is not None and not 1600 <= year <= 2100:
+            raise ValueError("year outside permitted range")
+        limit = int(request.args.get("limit") or "20")
+        offset = int(request.args.get("offset") or "0")
+        if not (1 <= limit <= 50 and 0 <= offset <= 5000):
+            raise ValueError("coverage pagination outside permitted bounds")
+    except (TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    from webapp.parser.services.canonical_coverage_reader import (
+        CoverageFilters, query_canonical_coverage,
+    )
+    try:
+        return jsonify(query_canonical_coverage(
+            get_engine(),
+            CoverageFilters(state=state, year=year, contest=contest, limit=limit, offset=offset),
+        ))
+    except Exception:
+        logger.exception("Canonical public coverage read failed")
+        return jsonify({"error": "Canonical race coverage unavailable"}), 500
+
+
 def api_data_framework_canonical_facets():
     """Return complete self-excluding canonical scope facets for the Data Framework."""
     assert_public_read_surface("data_framework_canonical_facets", request.method)
@@ -5131,6 +5165,7 @@ app.config["_DATA_FRAMEWORK_ROUTE_HANDLERS"] = {
     "api_data_framework_curated": api_data_framework_curated,
     "api_data_framework_warehouse_status": api_data_framework_warehouse_status,
     "api_data_framework_canonical_facets": api_data_framework_canonical_facets,
+    "api_data_framework_canonical_coverage": api_data_framework_canonical_coverage,
     "api_data_framework_exports": api_data_framework_exports,
 }
 

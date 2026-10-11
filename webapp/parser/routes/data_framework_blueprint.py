@@ -54,6 +54,10 @@ def create_data_framework_blueprint() -> Blueprint:
     def api_data_framework_canonical_facets_route():
         return _call_handler("api_data_framework_canonical_facets")
 
+    @bp.route("/api/data_framework/canonical_coverage", methods=["GET"], endpoint="api_data_framework_canonical_coverage", provide_automatic_options=False)
+    def api_data_framework_canonical_coverage_route():
+        return _call_handler("api_data_framework_canonical_coverage")
+
     @bp.route("/api/data_framework/exports", methods=["GET"], endpoint="api_data_framework_exports")
     def api_data_framework_exports_route():
         return _call_handler("api_data_framework_exports")

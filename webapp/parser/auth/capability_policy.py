@@ -22,6 +22,7 @@ PUBLIC_READ_SURFACES = frozenset(
         "data_framework_curated",
         "data_framework_warehouse_status",
         "data_framework_canonical_facets",
+        "data_framework_canonical_coverage",
         "election_data_states_counties",
         "election_data_stats",
         "election_data_worklist_public_projection",

@@ -13,12 +13,13 @@
           data-curated-url="{{ url_for('api_data_framework_curated') }}"
           data-ballot-lens-url="{{ url_for('ballot_lens') }}"
           data-canonical-facets-url="{{ url_for('api_data_framework_canonical_facets') }}"
+          data-canonical-coverage-url="{{ url_for('data_framework_routes.api_data_framework_canonical_coverage') }}"
           data-priority-url="{{ url_for('api_data_framework_warehouse_status') }}"
           data-operator-access='{{ data_framework_operator_access | tojson | forceescape }}'
           {% if csrf_token %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
     <!-- Bootstrap -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css', v='fecb701b464ce783') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css', v='68438c2deb1aab39') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_app_nav.css', v='d61e3a233f0a9ed5') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_surface_theme.css', v='r3b') }}">
 </head>
@@ -62,6 +63,44 @@
             <span class="status-pill">Jurisdiction scope preserved</span>
           </div>
         </header>
+
+        <!-- J2B1NH-A: bounded canonical race coverage; not Source Registry lineage. -->
+        <section id="canonicalCoverageExplorer" class="coverage-explorer" aria-labelledby="canonicalCoverageHeading"
+                 data-ui-state="idle">
+          <div class="coverage-explorer__heading">
+            <div>
+              <span class="workbench-eyebrow">Published election coverage</span>
+              <h2 id="canonicalCoverageHeading">Find published election coverage</h2>
+              <p>Browse currently published canonical races by state, year, and contest. A missing race here
+                means not published in this view—not zero votes or evidence that an election did not occur.</p>
+            </div>
+            <span class="status-pill">Canonical PostgreSQL · Read only</span>
+          </div>
+          <div class="coverage-explorer__filters" role="group" aria-label="Race coverage filters">
+            <label for="coverageState">State
+              <select id="coverageState"><option value="">All states</option></select>
+            </label>
+            <label for="coverageYear">Election year
+              <select id="coverageYear"><option value="">All years</option></select>
+            </label>
+            <label for="coverageContest">Contest
+              <select id="coverageContest"><option value="">All contests</option></select>
+            </label>
+            <button id="coverageReset" type="button" class="btn action">Clear filters</button>
+          </div>
+          <div id="coverageStatus" data-ui-state="idle" role="status" aria-live="polite" aria-atomic="true">
+            Select an available election scope to inspect race coverage.
+          </div>
+          <div id="coverageCards" class="coverage-explorer__cards" role="list" aria-label="Published canonical races"></div>
+          <nav class="coverage-explorer__pager" aria-label="Race coverage pages">
+            <button id="coveragePrev" type="button" class="btn action" disabled>Previous</button>
+            <span id="coveragePageText" aria-live="polite">No page loaded</span>
+            <button id="coverageNext" type="button" class="btn action" disabled>Next</button>
+          </nav>
+          <p class="coverage-explorer__disclaimer">The selected DL1/DL2 lane identifies the accepted production payload;
+            it does not establish agreement between independent download observers. Official-source relationships
+            are not established by this explorer. Race IDs refer only to the current publication instance.</p>
+        </section>
 
         <section class="framework-authority-rail" aria-label="Data Framework evidence-to-authority flow">
           <div class="authority-step" data-flow-step="source" data-flow-state="idle">
@@ -505,6 +544,6 @@
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/cross_surface_context.js') }}" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='10953b91576b4db2') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='71e5cb7ebfad2079') }}" defer></script>
 </body>
 </html>
