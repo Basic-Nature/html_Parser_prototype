@@ -277,6 +277,12 @@
       }
     }
   });
+  // Public landing is not proof that its private APIs are enabled or reachable.
+  function projectEntryState(status, code) {
+    if (status === 503 && code === 'projects_not_enabled') return 'disabled';
+    if (status === 401 || status === 403) return 'restricted';
+    return 'unavailable';
+  }
   (async()=>{
     try{
       await reloadList();
@@ -285,8 +291,13 @@
       const pathMatch=location.pathname.match(/^\/projects\/([a-zA-Z0-9-]+)$/);
       if(pathMatch)await loadDetail(pathMatch[1]);
       else msg('Create a project or reopen an existing investigation.');
-    }catch(e){form.hidden=true;byId('projectAccessHelp').hidden=false;
-      msg(e.status===503?'Projects are not yet enabled in this environment.':
-        'You need authorized contributor access to create or resume projects.');}
+    }catch(e){
+      form.hidden=true;
+      const entryState=projectEntryState(e.status,e.message);
+      byId('projectAccessHelp').hidden=(entryState!=='restricted');
+      msg(entryState==='disabled' ? 'Projects are not yet enabled in this environment.' :
+        entryState==='restricted' ? 'You need authorized contributor access to create or resume projects.' :
+        'Projects could not be loaded. Please try again later.');
+    }
   })();
 })();
