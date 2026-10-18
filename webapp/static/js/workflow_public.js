@@ -190,11 +190,22 @@
                     `/api/workflow/v1/contributor/items/${encodeURIComponent(taskId)}/ballot-lens-handoff`;
                 const raw = await this.fetchJson(endpoint);
                 const handoff = this.validateHandoff(raw);
+                // The public row's UUID is selector intent, never authority.
+                // Reject a response for a different row before navigating.
+                if (
+                    handoff.workflow_item_id.toLowerCase()
+                    !== String(taskId).trim().toLowerCase()
+                ) {
+                    throw new Error('Workflow handoff item did not match the selected task.');
+                }
 
                 const target = new URL(
                     this.ballotLensUrl,
                     window.location.origin
                 );
+                if (target.origin !== window.location.origin) {
+                    throw new Error('Ballot Lens destination must be same-origin.');
+                }
                 target.searchParams.set(
                     'workflow_item_id',
                     handoff.workflow_item_id

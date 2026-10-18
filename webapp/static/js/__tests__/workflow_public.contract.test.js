@@ -881,3 +881,56 @@ describe('O4D selector-only Workflow to Ballot Lens navigation contract', () => 
     expect(src).toContain('/api/workflow/v1/public/items?');
   });
 });
+
+
+describe('UIR2B Worklist handoff navigation fail-closed contract', () => {
+  const itemId = '11111111-1111-1111-1111-111111111111';
+  const otherId = '33333333-3333-3333-3333-333333333333';
+  const handoff = (overrides = {}) => ({
+    browser_payload_keys: [
+      'workflow_item_id', 'workflow_pass_id', 'expected_row_version',
+    ],
+    can_execute_ballot_lens: true,
+    contract: 'workflow_ballot_lens_handoff_v1',
+    expected_row_version: 3,
+    principal_disclosed: false,
+    source_url_disclosed: false,
+    success: true,
+    workflow_item_id: itemId,
+    workflow_pass_id: '22222222-2222-2222-2222-222222222222',
+    ...overrides,
+  });
+
+  function buildSurface(target, payload) {
+    buildDom();
+    window.history.replaceState(null, '', '/worklist');
+    global.fetch = jest.fn(async () => response(items(0)));
+    loadScript();
+    const surface = Object.create(window.WorkflowPublicSurface.prototype);
+    surface.operatorAccess = { canExecuteBallotLens: true };
+    surface.ballotLensUrl = target;
+    surface.fetchJson = jest.fn(async () => payload);
+    surface.setState = jest.fn();
+    return surface;
+  }
+
+  test('rejects a different item before changing location', async () => {
+    const surface = buildSurface('/ballot_lens', handoff({ workflow_item_id: otherId }));
+    const button = { disabled: false };
+    await surface.openBallotLensHandoff(itemId, button);
+    expect(button.disabled).toBe(false);
+    expect(surface.setState).toHaveBeenCalledWith(
+      'error', expect.stringContaining('did not match the selected task'),
+    );
+  });
+
+  test('rejects an external destination before changing location', async () => {
+    const surface = buildSurface('https://external.example/ballot_lens', handoff());
+    const button = { disabled: false };
+    await surface.openBallotLensHandoff(itemId, button);
+    expect(button.disabled).toBe(false);
+    expect(surface.setState).toHaveBeenCalledWith(
+      'error', expect.stringContaining('same-origin'),
+    );
+  });
+});
