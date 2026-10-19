@@ -26,6 +26,10 @@ on:
       - '.github/workflows/main_ballotlens.yml'
   workflow_dispatch:
     inputs:
+      release_commit:
+        description: "Exact 40-character commit SHA to deploy (must equal this workflow run's github.sha)"
+        required: true
+        type: string
       post_deploy_db_confirm_strict:
         description: "Fail workflow when post-deploy live DB confirmation finds issues"
         required: false
@@ -246,6 +250,29 @@ jobs:
             echo "- Next phase: tighten to blocking once stability and pass-rate are sustained"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  worklist-handoff-contract:
+    name: "Pre-Deploy QA: Worklist handoff regression (blocking)"
+    needs: qa-dl-compare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js for Worklist contract
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Install locked root Jest dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Enforce Worklist to Ballot Lens handoff regression
+        run: |
+          npx --no-install jest --config=jest.config.js --runInBand \
+            --runTestsByPath webapp/static/js/__tests__/workflow_public.contract.test.js
+
   f2-frontend-foundation:
     name: "Pre-Deploy QA: Ballot Lens F2 frontend (blocking)"
     needs: qa-dl-compare
@@ -275,11 +302,15 @@ jobs:
 
   build-and-deploy:
     name: Azure Deploy (dynamic webapp)
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release_commit == github.sha }}
     needs:
       - qa-dl-compare
       - contract-checks-nonblocking
+      - worklist-handoff-contract
       - f2-frontend-foundation
     runs-on: ubuntu-latest
+    environment:
+      name: electionpulse-production-deploy
     permissions:
       id-token: write
       contents: read
