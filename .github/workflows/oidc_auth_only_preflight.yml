@@ -1,0 +1,101 @@
+name: ElectionPulse - Production OIDC Authentication-Only Preflight
+
+# Deliberately no push, pull_request, schedule or reusable-workflow trigger.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: electionpulse-oidc-auth-only
+  cancel-in-progress: false
+
+jobs:
+  oidc-auth-only:
+    name: Authenticate only (no deployment)
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: electionpulse-production-deploy
+      deployment: false
+    permissions:
+      id-token: write
+    timeout-minutes: 10
+    steps:
+      - name: OIDC login using the exact production deployment secrets
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
+
+      - name: Read-only verification of identity and target resource
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PYCODE'
+          import base64
+          import json
+          import subprocess
+
+          CLIENT = 'd8345b0f-5aab-428c-82b3-cfe2975260e6'
+          SP_OBJECT = 'c2b32919-c22d-45e9-9a0b-c5a72d5413c0'
+          TENANT = '3d8dc260-97eb-40b0-9f27-2710a667332a'
+          SUBSCRIPTION = 'b7c33dc1-8b76-4267-88b6-d3bf87e92bd6'
+          APP_RESOURCE = (
+              f'/subscriptions/{SUBSCRIPTION}/resourceGroups/BallotLens_group/'
+              'providers/Microsoft.Web/sites/BallotLens'
+          )
+
+          def az_json(*args):
+              p = subprocess.run(
+                  ['az', *args, '--output', 'json', '--only-show-errors'],
+                  text=True, capture_output=True, timeout=45, check=False,
+              )
+              if p.returncode != 0:
+                  raise SystemExit('S3PG6F_AZURE_READ_FAILED')
+              try:
+                  return json.loads(p.stdout)
+              except (ValueError, TypeError):
+                  raise SystemExit('S3PG6F_AZURE_JSON_INVALID')
+
+          def same(a, b):
+              return isinstance(a, str) and a.casefold() == b.casefold()
+
+          # Caller identity and subscription, without printing any token or secret.
+          account = az_json('account', 'show')
+          if not same(account.get('id'), SUBSCRIPTION) or not same(account.get('tenantId'), TENANT):
+              raise SystemExit('S3PG6F_AZURE_CONTEXT_MISMATCH')
+          print('S3PG6F_SUBSCRIPTION_AND_TENANT=PASS')
+
+          # Verify the actual Azure-issued token belongs to this service principal.
+          # Decoding claims is NOT independent signature verification: it only
+          # checks what azure/login + Azure CLI actually obtained from Entra.
+          issued = az_json('account', 'get-access-token', '--resource', 'https://management.azure.com/')
+          token = issued.get('accessToken') if isinstance(issued, dict) else None
+          if not isinstance(token, str) or token.count('.') != 2:
+              raise SystemExit('S3PG6F_ACCESS_TOKEN_FORMAT_INVALID')
+          encoded = token.split('.')[1]
+          try:
+              claims = json.loads(base64.urlsafe_b64decode(encoded + '=' * (-len(encoded) % 4)))
+          except (ValueError, TypeError, UnicodeError):
+              raise SystemExit('S3PG6F_TOKEN_CLAIMS_UNREADABLE')
+          actual_client = claims.get('appid') or claims.get('azp')
+          if not (same(actual_client, CLIENT) and same(claims.get('oid'), SP_OBJECT)
+                  and same(claims.get('tid'), TENANT)):
+              raise SystemExit('S3PG6F_TOKEN_PRINCIPAL_MISMATCH')
+          print('S3PG6F_AZURE_TOKEN_PRINCIPAL=PASS')
+
+          # Azure Resource Manager GET only. No app configuration, image, or
+          # database changes are allowed in this workflow.
+          app_id = az_json('webapp', 'show', '--name', 'BallotLens',
+                           '--resource-group', 'BallotLens_group', '--query', 'id')
+          if not same(app_id, APP_RESOURCE):
+              raise SystemExit('S3PG6F_APP_RESOURCE_ID_MISMATCH')
+          print('S3PG6F_APP_SERVICE_RESOURCE_READ=PASS')
+          print('S3PG6F_OIDC_AUTHENTICATION=PASS')
+          print('S3PG6F_APP_SERVICE_MUTATION=NONE')
+          print('S3PG6F_CONTAINER_PUSH=NONE')
+          print('S3PG6F_PRODUCTION_DEPLOYMENT=NONE')
+          print('S3PG7_RELEASE=HOLD')
+          PYCODE
