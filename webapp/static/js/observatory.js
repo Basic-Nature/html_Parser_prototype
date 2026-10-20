@@ -45,6 +45,22 @@
   let selectedJurisdiction = null;
   let signalTrace = null;
 
+  function syncPublicLocation(state) {
+    const code = window.ElectionPulsePublicCoverage?.normalizeState(state);
+    const url = new URL(window.location.href);
+    if (code) url.searchParams.set('geo_state', code);
+    else url.searchParams.delete('geo_state');
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next !== current) window.history.replaceState(window.history.state, '', next);
+  }
+
+  function selectPublicCoverage(state) {
+    const control = window.ElectionPulsePublicGeoControl;
+    if (control) void control.select(state);
+  }
+
+
   function setText(node, value) {
     if (node) {
       node.textContent = value;
@@ -228,6 +244,8 @@
     selectedFeature = null;
     selectedJurisdiction = null;
     updateProjectPrefill();
+    syncPublicLocation(null);
+    window.ElectionPulsePublicGeoControl?.clear();
     delete shell.dataset.selectedGeoid;
     mapStage.classList.remove("has-selection");
     setSignal(null, false);
@@ -269,6 +287,8 @@
     selectedFeature = feature;
     selectedJurisdiction = jurisdiction;
     updateProjectPrefill();
+    syncPublicLocation(jurisdiction.abbr);
+    selectPublicCoverage(jurisdiction.abbr);
     path.classList.add("is-selected");
     feature.classList.add("is-selected-feature");
     shell.dataset.selectedGeoid = jurisdiction.geoid;
@@ -446,6 +466,16 @@
         data.jurisdictions.filter(needsPointerAssist).length
       );
       setGeographicContext(null, false);
+      // Restore display intent after route changes/back/reload; server data is revalidated.
+      const urlState = window.ElectionPulsePublicCoverage?.normalizeState(
+        new URLSearchParams(window.location.search).get('geo_state')
+      );
+      const initial = data.jurisdictions.find((item) => item.abbr === urlState);
+      if (initial) {
+        const path = Array.from(mapPaths.querySelectorAll('path[data-abbr]'))
+          .find((item) => item.dataset.abbr === urlState);
+        if (path) selectJurisdiction(path.parentNode, path, initial);
+      }
     } catch (error) {
       console.error("ElectionPulse Observatory geography load failed.", error);
       mapStage.classList.add("map-error");

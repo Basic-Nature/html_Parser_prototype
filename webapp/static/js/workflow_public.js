@@ -380,7 +380,18 @@
             window.history.replaceState(null, '', next);
         }
 
+        updatePublicGeoLink() {
+            const link = this.byId('workflowPublicGeoBallotLink');
+            if (!link) return;
+            const raw = this.byId('workflow-filter-state')?.value;
+            const normalized = typeof raw === 'string' ? raw.trim().toUpperCase() : '';
+            link.setAttribute('href', /^[A-Z]{2}$/.test(normalized)
+                ? `/ballot_lens?geo_state=${encodeURIComponent(normalized)}`
+                : '/ballot_lens');
+        }
+
         renderFilterSummary() {
+            this.updatePublicGeoLink();
             const summary = this.byId('workflow-filter-summary');
             if (!summary) return;
 
@@ -917,6 +928,7 @@
             this.hydrateFiltersFromLocation();
             this.setupEvents();
             this.renderFilterSummary();
+            this.byId('workflow-filter-state')?.addEventListener('change', () => this.updatePublicGeoLink());
             this.load();
         }
     }

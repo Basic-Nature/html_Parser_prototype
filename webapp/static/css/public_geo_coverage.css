@@ -1,0 +1,59 @@
+/* W24 public-only canonical coverage panel; scoped to avoid existing app layout. */
+.ep-public-coverage {
+  box-sizing: border-box;
+  max-width: 1120px;
+  margin: 1.25rem auto;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--ep-border, #5c7185);
+  border-radius: 0.85rem;
+  background: var(--ep-panel-bg, #182433);
+  color: var(--ep-text, #f0f3f7);
+}
+.ep-public-coverage[hidden] { display: none; }
+.ep-public-coverage h2 { margin: 0 0 0.65rem; font-size: 1.2rem; }
+.ep-public-coverage p { line-height: 1.5; }
+.ep-public-coverage ul { padding-left: 1.5rem; line-height: 1.5; }
+.ep-public-coverage li + li { margin-top: 0.4rem; }
+.ep-public-coverage nav { display: flex; gap: 1rem; flex-wrap: wrap; }
+.ep-public-coverage a { color: var(--ep-link, #a8d8ff); text-decoration: underline; }
+.ep-public-coverage a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.ep-public-coverage[data-ui-state="error"],
+.ep-public-coverage[data-ui-state="restricted"] { border-style: dashed; }
+.ep-public-coverage__note { font-size: 0.88rem; opacity: 0.85; }
+@media (max-width: 480px) { .ep-public-coverage { margin: 0.75rem; padding: 0.9rem; } }
+
+/* S2: canonical jurisdiction browse. Never a complete geographic county directory. */
+.ep-public-coverage__jurisdictions { margin-top: 1rem; padding-top: 0.85rem; border-top: 1px solid var(--ep-border, #5c7185); }
+.ep-public-coverage__jurisdictions h3 { font-size: 1rem; margin: 0 0 0.35rem; }
+.ep-public-coverage__jurisdictions label { display: block; font-weight: 600; margin: 0.8rem 0 0.3rem; }
+.ep-public-coverage__jurisdictions button, .ep-public-coverage__jurisdictions select {
+  font: inherit; max-width: 100%; border-radius: 0.45rem; padding: 0.55rem 0.75rem;
+  border: 1px solid var(--ep-border, #5c7185);
+}
+.ep-public-coverage__jurisdictions select { display: block; width: 100%; background: var(--ep-panel-bg, #182433); color: var(--ep-text, #f0f3f7); }
+.ep-public-coverage__jurisdictions button { background: #244b6a; color: #fff; cursor: pointer; }
+.ep-public-coverage__jurisdictions button:disabled, .ep-public-coverage__jurisdictions select:disabled { opacity: 0.58; cursor: not-allowed; }
+.ep-public-coverage__jurisdictions a { display: inline-block; margin-top: 0.75rem; }
+.ep-public-coverage__jurisdictions a[hidden] { display: none; }
+.ep-public-coverage__jurisdictions :is(button,select,a):focus-visible { outline: 3px solid #a8d8ff; outline-offset: 3px; }
+
+/* S2P: search-first jurisdiction browse and collapsed, auditable race details. */
+.ep-public-coverage__jurisdictions { border-top: 0; padding: 0.75rem 0 0.9rem; margin-top: 0.35rem; }
+.ep-public-coverage__jurisdictions h3 { font-size: 1.1rem; }
+.ep-public-coverage__jurisdictions :is(button,input,select) { box-sizing: border-box; min-height: 44px; }
+.ep-public-coverage__jurisdictions :is(input,select) { width: 100%; display: block; background: var(--ep-panel-bg,#182433); color: var(--ep-text,#f0f3f7); }
+.ep-public-coverage__jurisdictions input { border-radius: 0.45rem; padding: .55rem .75rem; border: 1px solid var(--ep-border,#5c7185); font: inherit; }
+.ep-public-coverage__jurisdictions :is(input,select,button)[hidden], .ep-public-coverage__jurisdictions label[hidden], .ep-public-coverage__jurisdictions p[hidden] { display: none; }
+.ep-public-coverage__jurisdictions :is(input,select):focus-visible { outline: 3px solid #a8d8ff; outline-offset: 3px; }
+.ep-public-coverage__jurisdictions .ep-public-coverage__result-count { margin: .35rem 0; font-size: .84rem; opacity: .9; }
+.ep-public-coverage__jurisdictions .ep-public-coverage__selection { margin: .65rem 0 .25rem; line-height: 1.4; font-weight: 550; }
+.ep-public-coverage__jurisdictions a:not([hidden]) { box-sizing: border-box; display: block; padding: .7rem .8rem; border: 1px solid #779dc2; border-radius: .45rem; background: #244b6a; width: fit-content; max-width: 100%; overflow-wrap: anywhere; color: #fff; }
+.ep-public-coverage__details { padding: .7rem 0; margin: .9rem 0; border-top: 1px solid var(--ep-border,#5c7185); }
+.ep-public-coverage__details[hidden] { display: none; }
+.ep-public-coverage__details summary { cursor: pointer; padding: .5rem 0; font-weight: 600; }
+.ep-public-coverage__details summary:focus-visible { outline: 3px solid #a8d8ff; outline-offset: 3px; }
+.ep-public-coverage__details ul { margin: .5rem 0 0; }
+@media (max-width: 480px) {
+  .ep-public-coverage__jurisdictions button { width: 100%; }
+  .ep-public-coverage__jurisdictions a:not([hidden]) { width: 100%; }
+}

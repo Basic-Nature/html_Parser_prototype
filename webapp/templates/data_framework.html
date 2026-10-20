@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css', v='68438c2deb1aab39') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_app_nav.css', v='d61e3a233f0a9ed5') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_surface_theme.css', v='r3b') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/public_canonical_explore.css') }}?v={{ static_version|default('w24s3') }}">
 </head>
 <body data-page="data-framework" data-workbench-contract="db-first-g241">
     <a class="df-skip-link" href="#dataFrameworkMain">Skip to Data Framework content</a>
@@ -39,6 +40,20 @@
       </div>
     </nav>
     <main class="container-main data-workbench-shell" id="dataFrameworkMain" tabindex="-1">
+        <section class="ep-s3-panel" data-ep-canonical-explorer aria-labelledby="epS3Title" hidden>
+          <div class="ep-s3-eyebrow">Published records · Read-only</div>
+          <h2 id="epS3Title">Candidate results for <span data-ep-s3-location></span></h2>
+          <p class="ep-s3-disclaimer">Showing individual stored canonical records for the selected reporting unit. A recorded reporting unit is not automatically a county or precinct. These records do not independently attest official-source lineage or complete election coverage.</p>
+          <p class="ep-s3-status" data-ep-s3-status role="status" aria-live="polite">Checking published records…</p>
+          <div data-ep-s3-results hidden>
+            <div class="ep-s3-control">
+              <label for="epS3Contest">Contest within fetched rows</label>
+              <select id="epS3Contest" data-ep-s3-contest></select>
+            </div>
+            <p class="ep-s3-limit" data-ep-s3-limit></p>
+            <div class="ep-s3-cards" data-ep-s3-records aria-label="Published candidate records"></div>
+          </div>
+        </section>
         <header class="workbench-hero">
           <div class="workbench-eyebrow">ElectionPulse &middot; Data Operations</div>
           <div class="workbench-title-row">
@@ -544,6 +559,7 @@
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/cross_surface_context.js') }}" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='71e5cb7ebfad2079') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='25cce71d40a70052') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/public_canonical_explore.js') }}?v={{ static_version|default('w24s3') }}" defer></script>
 </body>
 </html>

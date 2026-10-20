@@ -9,8 +9,21 @@
   {% for stylesheet in ballot_lens_f2_assets.styles %}
   <link rel="stylesheet" href="{{ url_for('static', filename=stylesheet) }}">
   {% endfor %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/public_geo_coverage.css') }}?v={{ static_version|default('g132') }}">
 </head>
 <body data-page="ballot-lens-f2">
+  <section id="epPublicGeoCoverage" class="ep-public-coverage" data-ui-state="idle"
+           data-hide-when-unselected="true" aria-labelledby="epPublicGeoCoverageTitle" hidden>
+    <h2 id="epPublicGeoCoverageTitle" data-ep-coverage-title>Published coverage</h2>
+    <p data-ep-coverage-status role="status" aria-live="polite" aria-atomic="true">No geographic context selected.</p>
+    <ul data-ep-coverage-list aria-label="Published race summaries"></ul>
+    <p class="ep-public-coverage__note">This is a public read-only canonical coverage view, separate from parser execution. Exact official-source lineage is not established by this view.</p>
+    <nav aria-label="Public election-data journey">
+      <a data-ep-worklist-link href="/worklist">Public Worklist</a>
+      <a data-ep-lens-link href="/ballot_lens">Ballot Lens</a>
+    </nav>
+  </section>
+
   <div
     id="ballotLensF2Root"
     data-mode="{{ 'trusted' if ballot_lens_trusted_controls else 'public' }}"
@@ -24,6 +37,7 @@
     <noscript>Ballot Lens F2 requires JavaScript.</noscript>
   </div>
 
+  <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/public_geo_coverage.js') }}?v={{ static_version|default('g132') }}" defer></script>
   <script
     type="module"
     src="{{ url_for('static', filename=ballot_lens_f2_assets.script) }}"

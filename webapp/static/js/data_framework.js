@@ -1667,6 +1667,8 @@ document.addEventListener('DOMContentLoaded', () => {
       `${window.location.pathname}${window.location.search}${window.location.hash}`;
     if (nextLocation !== currentLocation) {
       window.history.replaceState(window.history.state, '', nextLocation);
+      // Presentation-only scope notification; grants no fetch or action authority.
+      window.dispatchEvent(new Event('electionpulse:canonical-scope-changed'));
     }
   }
 
@@ -1681,6 +1683,8 @@ document.addEventListener('DOMContentLoaded', () => {
       `${window.location.pathname}${window.location.search}${window.location.hash}`;
     if (nextLocation !== currentLocation) {
       window.history.replaceState(window.history.state, '', nextLocation);
+      // Presentation-only scope notification; grants no fetch or action authority.
+      window.dispatchEvent(new Event('electionpulse:canonical-scope-changed'));
     }
   }
 
