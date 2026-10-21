@@ -57,6 +57,14 @@
                 <p class="observatory-panel-note">Geography is authoritative. Election evidence remains governed separately.</p>
             </header>
 
+            <div class="observatory-geo-picker">
+                <label for="observatoryJurisdictionPicker">Choose a state or territory</label>
+                <select id="observatoryJurisdictionPicker" disabled>
+                    <option value="">Loading geographic choices…</option>
+                </select>
+                <p>Geographic focus only; selection does not imply published election coverage.</p>
+            </div>
+
             <div class="observatory-map-shell" id="observatoryMapStage">
                 <svg
                     class="observatory-map"
@@ -129,6 +137,7 @@
             <ul data-ep-coverage-list aria-label="Published race summaries"></ul>
             <p class="ep-public-coverage__note">Canonical race summaries are not proof of official-source lineage or complete precinct coverage. Verification statuses are recorded publication fields, not independent audit certificates.</p>
             <nav aria-label="Public election-data journey">
+                <a data-ep-framework-link href="{{ url_for('data_framework') }}">Explore published data</a>
                 <a data-ep-worklist-link href="/worklist">Public Worklist</a>
                 <a data-ep-lens-link href="/ballot_lens">Explore Ballot Lens</a>
             </nav>

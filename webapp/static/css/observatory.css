@@ -1242,3 +1242,32 @@ body.observatory-page::before {
 .observatory-project-entry{margin:1.1rem 0;padding:1.1rem 1.4rem;border:1px solid #53778c;border-radius:12px;display:flex;gap:1.2rem;align-items:center;justify-content:space-between;flex-wrap:wrap;background:rgba(13,40,61,.85);color:#e5f5ff}
 .observatory-project-entry p{margin:.3rem 0;color:#b6cedd}.observatory-project-entry a{color:#b4eaff;font-weight:650}
 .observatory-project-entry a:focus-visible{outline:3px solid #e6b765;outline-offset:4px}
+
+/* W24UI3B candidate only: geographic selection alternative to compact SVG targets. */
+.observatory-geo-picker {
+  display: grid;
+  gap: .45rem;
+  padding: .9rem 1rem;
+  margin: .75rem 0;
+  border: 1px solid rgba(115, 199, 217, .35);
+  border-radius: 12px;
+  background: rgba(9, 34, 51, .88);
+}
+.observatory-geo-picker label { font-weight: 650; color: #e8faff; }
+.observatory-geo-picker select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: .55rem .65rem;
+  border-radius: 8px;
+  background: #112c3d;
+  border: 1px solid #739cae;
+  color: #f0ffff;
+  font: inherit;
+}
+.observatory-geo-picker select:focus-visible { outline: 3px solid #93edfa; outline-offset: 3px; }
+.observatory-geo-picker select:disabled { opacity: .6; }
+.observatory-geo-picker p { margin: 0; color: #b9d3dc; font-size: .88rem; line-height: 1.45; }
+@media (max-width: 700px) {
+  .observatory-geo-picker { margin: .65rem 0; padding: .8rem; }
+}

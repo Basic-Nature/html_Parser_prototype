@@ -472,6 +472,7 @@
     const list = section.querySelector('[data-ep-coverage-list]');
     const worklistLink = section.querySelector('[data-ep-worklist-link]');
     const lensLink = section.querySelector('[data-ep-lens-link]');
+    const frameworkLink = section.querySelector('[data-ep-framework-link]');
     const title = section.querySelector('[data-ep-coverage-title]');
     if (!status || !list || !worklistLink || !lensLink || !title) return null;
     let sequence = 0;
@@ -500,6 +501,11 @@
       title.textContent = state ? `Published coverage — ${canonicalStateLabel(state)} (${state})` : 'Published coverage';
       worklistLink.setAttribute('href', worklistUrl(state));
       lensLink.setAttribute('href', ballotLensUrl(state));
+      if (frameworkLink) {
+        const label = canonicalStateLabel(state);
+        frameworkLink.setAttribute('href', label
+          ? `/data_framework?state=${encodeURIComponent(label)}` : '/data_framework');
+      }
       section.hidden = Boolean(section.dataset.hideWhenUnselected === 'true' && !state);
       if (jurisdictions) jurisdictions.reset(state);
     }

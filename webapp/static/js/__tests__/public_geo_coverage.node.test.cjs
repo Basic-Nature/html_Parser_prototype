@@ -72,7 +72,7 @@ function mockDOM(fetchImpl) {
     };
   }
   const selectors=['[data-ep-coverage-status]','[data-ep-coverage-list]',
-    '[data-ep-worklist-link]','[data-ep-lens-link]','[data-ep-coverage-title]'];
+    '[data-ep-worklist-link]','[data-ep-lens-link]','[data-ep-framework-link]','[data-ep-coverage-title]'];
   const nodes=Object.fromEntries(selectors.map(k=>[k,element()]));
   const section={dataset:{hideWhenUnselected:'false'},hidden:false,children:[],
     appendChild(child){this.children.push(child);},querySelector(k){return nodes[k]}};
@@ -94,10 +94,12 @@ test('mount only GETs, renders genuine response as text, links preserve state',a
   assert.equal(dom.nodes['[data-ep-coverage-list]'].children.length,1);
   assert.equal(dom.nodes['[data-ep-worklist-link]'].attrs.href,'/worklist?state=TX');
   assert.equal(dom.nodes['[data-ep-lens-link]'].attrs.href,'/ballot_lens?geo_state=TX');
+  assert.equal(dom.nodes['[data-ep-framework-link]'].attrs.href,'/data_framework?state=Texas');
   await control.select('TX');
   assert.equal(calls.length,1,'same-state cache avoids a repeat database read');
   control.clear();
   assert.equal(dom.section.dataset.uiState,'idle');
+  assert.equal(dom.nodes['[data-ep-framework-link]'].attrs.href,'/data_framework');
   assert.equal(dom.nodes['[data-ep-coverage-list]'].children.length,0);
 });
 test('restricted status is not mislabeled as no election coverage',async()=>{

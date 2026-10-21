@@ -9,6 +9,7 @@
   const map = document.getElementById("observatoryNationalMap");
   const mapPaths = document.getElementById("observatoryMapPaths");
   const mapLoading = document.getElementById("observatoryMapLoading");
+  const jurisdictionPicker = document.getElementById("observatoryJurisdictionPicker");
   const mapSignal = document.getElementById("observatoryMapSignal");
   const contextPanel = document.querySelector(".observatory-context");
   const contextTitle = document.getElementById("observatoryContextTitle");
@@ -44,6 +45,11 @@
   let selectedFeature = null;
   let selectedJurisdiction = null;
   let signalTrace = null;
+  let jurisdictionPickerEntries = new Map();
+
+  function syncJurisdictionPicker(code) {
+    if (jurisdictionPicker) jurisdictionPicker.value = code || "";
+  }
 
   function syncPublicLocation(state) {
     const code = window.ElectionPulsePublicCoverage?.normalizeState(state);
@@ -243,6 +249,7 @@
     selectedPath = null;
     selectedFeature = null;
     selectedJurisdiction = null;
+    syncJurisdictionPicker(null);
     updateProjectPrefill();
     syncPublicLocation(null);
     window.ElectionPulsePublicGeoControl?.clear();
@@ -286,6 +293,7 @@
     selectedPath = path;
     selectedFeature = feature;
     selectedJurisdiction = jurisdiction;
+    syncJurisdictionPicker(jurisdiction.abbr);
     updateProjectPrefill();
     syncPublicLocation(jurisdiction.abbr);
     selectPublicCoverage(jurisdiction.abbr);
@@ -450,12 +458,41 @@
       }
 
       const fragment = document.createDocumentFragment();
+      const pickerEntries = new Map();
 
       data.jurisdictions.forEach((jurisdiction) => {
-        fragment.appendChild(createJurisdictionFeature(jurisdiction));
+        const feature = createJurisdictionFeature(jurisdiction);
+        fragment.appendChild(feature);
+        if (jurisdictionPicker) {
+          const code = jurisdiction.abbr;
+          if (typeof code !== "string" || !/^[A-Z]{2}$/.test(code) || pickerEntries.has(code)) {
+            throw new Error("Geographic selector codes must be unique two-letter values.");
+          }
+          pickerEntries.set(code, {
+            jurisdiction,
+            feature,
+            path: feature.querySelector("path[data-abbr]")
+          });
+        }
       });
 
       mapPaths.replaceChildren(fragment);
+      if (jurisdictionPicker) {
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Select a state or territory";
+        const options = Array.from(pickerEntries.entries())
+          .sort((a, b) => a[1].jurisdiction.name.localeCompare(b[1].jurisdiction.name))
+          .map(([code, entry]) => {
+            const option = document.createElement("option");
+            option.value = code;
+            option.textContent = `${entry.jurisdiction.name} (${code})`;
+            return option;
+          });
+        jurisdictionPicker.replaceChildren(placeholder, ...options);
+        jurisdictionPickerEntries = pickerEntries;
+        jurisdictionPicker.disabled = false;
+      }
       mapStage.classList.add("map-ready");
       mapStage.dataset.orientation = "north-up";
       mapStage.dataset.instrumentMode = "geographic-focus";
@@ -550,6 +587,18 @@
   }
 
   function init() {
+    if (jurisdictionPicker) {
+      jurisdictionPicker.addEventListener("change", () => {
+        const entry = jurisdictionPickerEntries.get(jurisdictionPicker.value);
+        if (!entry) {
+          clearSelection();
+          return;
+        }
+        if (selectedPath !== entry.path) {
+          selectJurisdiction(entry.feature, entry.path, entry.jurisdiction);
+        }
+      });
+    }
     initPathwayFocus();
     initFocusWeight();
     initMapInstrumentControls();
