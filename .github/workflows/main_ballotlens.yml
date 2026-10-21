@@ -579,7 +579,6 @@ jobs:
           push: true
           tags: |
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
           platforms: linux/amd64
           cache-from: type=gha,scope=ballotlens
           cache-to: type=gha,mode=max,scope=ballotlens
