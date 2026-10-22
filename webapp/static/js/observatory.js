@@ -415,6 +415,19 @@
     return feature;
   }
 
+  function showGeographyUnavailable(message) {
+    mapStage.classList.add("map-error");
+    if (jurisdictionPicker) {
+      const unavailable = document.createElement("option");
+      unavailable.value = "";
+      unavailable.textContent = "Geographic choices unavailable";
+      jurisdictionPicker.replaceChildren(unavailable);
+      jurisdictionPicker.disabled = true;
+      jurisdictionPickerEntries = new Map();
+    }
+    setText(mapLoading, message);
+  }
+
   async function loadNationalGeography() {
     if (!map || !mapStage || !mapPaths) {
       return;
@@ -422,7 +435,7 @@
 
     const source = map.dataset.mapSource;
     if (!source) {
-      setText(mapLoading, "National geography source is not configured.");
+      showGeographyUnavailable("National geography source is not configured.");
       return;
     }
 
@@ -515,9 +528,7 @@
       }
     } catch (error) {
       console.error("ElectionPulse Observatory geography load failed.", error);
-      mapStage.classList.add("map-error");
-      setText(
-        mapLoading,
+      showGeographyUnavailable(
         "Governed national geography could not be resolved. Election values remain unavailable."
       );
     }
