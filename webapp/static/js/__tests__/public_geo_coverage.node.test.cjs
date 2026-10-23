@@ -387,3 +387,125 @@ test('S2P preserves selected context only while entry remains selected', async()
   assert.equal(ctrl.jurisdictions.elements.search.hidden,true);
   assert.equal(ctrl.jurisdictions.elements.search.value,'');
 });
+
+// W24UI5B: bounded canonical-coverage request completion regressions
+function coverageControlledClock(dom) {
+  const pending = new Map();
+  let cursor = 0;
+  dom.win.setTimeout = (fn, milliseconds) => {
+    assert.equal(milliseconds, 12000, 'coverage request deadline is bounded');
+    const id = ++cursor;
+    pending.set(id, fn);
+    return id;
+  };
+  dom.win.clearTimeout = (id) => { pending.delete(id); };
+  return {
+    size: () => pending.size,
+    expireNext: () => {
+      const first = pending.entries().next().value;
+      assert.ok(first, 'expected a pending coverage deadline');
+      pending.delete(first[0]);
+      first[1]();
+    },
+  };
+}
+
+test('UI5B unresolved fetch exits loading at deadline without inventing zero', async () => {
+  let sent;
+  const dom = mockDOM((_url, options) => {
+    sent = options;
+    return new Promise(() => {}); // intentionally ignores abort
+  });
+  const clock = coverageControlledClock(dom);
+  const control = geo.mount(dom.section, dom.win);
+  const pending = control.select('TX');
+  assert.equal(dom.section.dataset.uiState, 'loading');
+  assert.equal(clock.size(), 1);
+  clock.expireNext();
+  await pending;
+  assert.equal(sent.method, 'GET');
+  assert.equal(sent.credentials, 'same-origin');
+  assert.equal(sent.signal.aborted, true);
+  assert.equal(dom.section.dataset.uiState, 'unavailable');
+  assert.match(dom.nodes['[data-ep-coverage-status]'].textContent, /timed out.*unknown/i);
+  assert.equal(dom.nodes['[data-ep-coverage-status]'].attrs['aria-busy'], 'false');
+  assert.equal(dom.nodes['[data-ep-worklist-link]'].attrs.href, '/worklist?state=TX');
+  assert.equal(dom.nodes['[data-ep-coverage-list]'].children.length, 0);
+  assert.equal(clock.size(), 0);
+});
+
+test('UI5B response body stall also exits loading at deadline', async () => {
+  let sent;
+  const dom = mockDOM(async (_url, options) => {
+    sent = options;
+    return { ok: true, status: 200, json: () => new Promise(() => {}) };
+  });
+  const clock = coverageControlledClock(dom);
+  const control = geo.mount(dom.section, dom.win);
+  const pending = control.select('TX');
+  await Promise.resolve(); // fetch resolves, body never resolves
+  clock.expireNext();
+  await pending;
+  assert.equal(sent.signal.aborted, true);
+  assert.equal(dom.section.dataset.uiState, 'unavailable');
+  assert.equal(clock.size(), 0);
+});
+
+test('UI5B ignored abort from older request cannot repaint a newer state', async () => {
+  const dom = mockDOM((url) => url.includes('state=Texas')
+    ? new Promise(() => {})
+    : Promise.resolve({ ok: true, status: 200, json: async () => payload('Arizona') }));
+  const clock = coverageControlledClock(dom);
+  const control = geo.mount(dom.section, dom.win);
+  const old = control.select('TX');
+  await control.select('AZ');
+  await old;
+  assert.equal(clock.size(), 0);
+  assert.equal(dom.section.dataset.uiState, 'ready');
+  assert.match(dom.nodes['[data-ep-coverage-title]'].textContent, /Arizona/);
+  assert.equal(dom.nodes['[data-ep-worklist-link]'].attrs.href, '/worklist?state=AZ');
+});
+
+test('UI5B clear cancels even an abort-ignoring read, stays idle', async () => {
+  const dom = mockDOM(() => new Promise(() => {}));
+  const clock = coverageControlledClock(dom);
+  const control = geo.mount(dom.section, dom.win);
+  const pending = control.select('TX');
+  control.clear();
+  await pending;
+  assert.equal(clock.size(), 0);
+  assert.equal(dom.section.dataset.uiState, 'idle');
+  assert.equal(dom.nodes['[data-ep-worklist-link]'].attrs.href, '/worklist');
+});
+
+test('UI5B a late parsed response cannot repaint timeout status', async () => {
+  let finishBody;
+  const dom = mockDOM(async () => ({
+    ok: true, status: 200, json: () => new Promise(resolve => { finishBody = resolve; }),
+  }));
+  const clock = coverageControlledClock(dom);
+  const control = geo.mount(dom.section, dom.win);
+  const pending = control.select('TX');
+  await Promise.resolve();
+  clock.expireNext();
+  await pending;
+  finishBody(payload());
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(dom.section.dataset.uiState, 'unavailable');
+  assert.equal(dom.nodes['[data-ep-coverage-list]'].children.length, 0);
+  assert.equal(clock.size(), 0);
+});
+
+test('UI5B successful and restricted reads clean the deadline timer', async () => {
+  for (const [status, expected] of [[200, 'ready'], [403, 'restricted']]) {
+    const dom = mockDOM(async () => status === 200
+      ? {ok: true, status, json: async () => payload()}
+      : {ok: false, status});
+    const clock = coverageControlledClock(dom);
+    const control = geo.mount(dom.section, dom.win);
+    await control.select('TX');
+    assert.equal(dom.section.dataset.uiState, expected);
+    assert.equal(clock.size(), 0);
+  }
+});

@@ -560,29 +560,63 @@
       setUi('loading', `Loading published canonical coverage for ${canonicalStateLabel(normalized)} (${normalized})…`);
       const controller = new AbortController();
       active = controller;
+      // Cover fetch AND body decoding. A fetch that ignores AbortSignal must
+      // not strand the panel in Loading or allow a late response to repaint it.
+      const schedule = typeof env.setTimeout === 'function'
+        ? env.setTimeout.bind(env) : setTimeout;
+      const unschedule = typeof env.clearTimeout === 'function'
+        ? env.clearTimeout.bind(env) : clearTimeout;
+      let timeout = null;
+      let onAbort = null;
       try {
-        const response = await env.fetch(coverageUrl(normalized), {
-          method: 'GET', credentials: 'same-origin', redirect: 'error',
-          headers: { Accept: 'application/json' }, signal: controller.signal,
+        const deadline = new Promise((_, reject) => {
+          onAbort = () => {
+            const error = new Error('Published coverage read canceled.');
+            error.name = 'AbortError';
+            reject(error);
+          };
+          controller.signal.addEventListener('abort', onAbort, { once: true });
+          timeout = schedule(() => {
+            const error = new Error('Published coverage read timed out.');
+            error.name = 'TimeoutError';
+            reject(error);
+            controller.abort();
+          }, 12000);
         });
+        const read = (async () => {
+          const response = await env.fetch(coverageUrl(normalized), {
+            method: 'GET', credentials: 'same-origin', redirect: 'error',
+            headers: { Accept: 'application/json' }, signal: controller.signal,
+          });
+          if (response.status === 401 || response.status === 403) {
+            return { kind: 'restricted' };
+          }
+          if (!response.ok) {
+            return { kind: 'http-error', status: response.status };
+          }
+          const data = await response.json();
+          return { kind: 'ready', parsed: parseCoverage(data, normalized) };
+        })();
+        const result = await Promise.race([read, deadline]);
         if (ticket !== sequence) return;
-        if (response.status === 401 || response.status === 403) {
+        if (result.kind === 'restricted') {
           setUi('restricted', 'Published coverage read is restricted for this access context.');
-          return;
+        } else if (result.kind === 'http-error') {
+          setUi('unavailable', `Published coverage could not be retrieved (HTTP ${result.status}). No result availability can be inferred.`);
+        } else {
+          cached.set(normalized, result.parsed);
+          present(result.parsed);
         }
-        if (!response.ok) {
-          setUi('unavailable', `Published coverage could not be retrieved (HTTP ${response.status}). No result availability can be inferred.`);
-          return;
-        }
-        const data = await response.json();
-        if (ticket !== sequence) return;
-        const parsed = parseCoverage(data, normalized);
-        cached.set(normalized, parsed);
-        present(parsed);
       } catch (error) {
         if (ticket !== sequence || error?.name === 'AbortError') return;
-        setUi('error', 'Published coverage could not be validated or loaded. No results have been inferred.');
+        if (error?.name === 'TimeoutError') {
+          setUi('unavailable', 'Published coverage read timed out. Data availability remains unknown.');
+        } else {
+          setUi('error', 'Published coverage could not be validated or loaded. No results have been inferred.');
+        }
       } finally {
+        if (timeout !== null) unschedule(timeout);
+        if (onAbort) controller.signal.removeEventListener('abort', onAbort);
         if (ticket === sequence) active = null;
       }
     }
