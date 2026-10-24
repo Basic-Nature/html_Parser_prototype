@@ -282,6 +282,42 @@
             return payload;
         }
 
+        // Only the public queue uses this bounded wrapper. Contributor handoff
+        // still uses fetchJson directly and keeps server-side authority checks.
+        async fetchJsonBounded(path, signal, timeoutMs = 12000) {
+            if (signal?.aborted) {
+                throw new DOMException('Workflow public read cancelled.', 'AbortError');
+            }
+            const controller = new AbortController();
+            let rejectDeadline;
+            const deadline = new Promise((_, reject) => {
+                rejectDeadline = reject;
+            });
+            let finished = false;
+            const onAbort = () => {
+                if (finished) return;
+                rejectDeadline(new DOMException('Workflow public read cancelled.', 'AbortError'));
+                controller.abort();
+            };
+            signal?.addEventListener('abort', onAbort, { once: true });
+            const timer = setTimeout(() => {
+                if (finished) return;
+                rejectDeadline(new Error('Workflow public read timed out.'));
+                controller.abort();
+            }, timeoutMs);
+            try {
+                // Timeout also bounds a stalled JSON body or an abort-ignoring GET.
+                return await Promise.race([
+                    this.fetchJson(path, controller.signal),
+                    deadline
+                ]);
+            } finally {
+                finished = true;
+                clearTimeout(timer);
+                signal?.removeEventListener('abort', onAbort);
+            }
+        }
+
         buildParams() {
             const params = new URLSearchParams();
             const state = this.byId('workflow-filter-state')?.value?.trim();
@@ -767,15 +803,15 @@
             try {
                 const [statsResult, facetsResult, itemsResult] =
                     await Promise.allSettled([
-                        this.fetchJson(
+                        this.fetchJsonBounded(
                             `/api/workflow/v1/stats?${query}`,
                             controller.signal
                         ),
-                        this.fetchJson(
+                        this.fetchJsonBounded(
                             `/api/workflow/v1/facets?${query}`,
                             controller.signal
                         ),
-                        this.fetchJson(
+                        this.fetchJsonBounded(
                             `/api/workflow/v1/public/items?${itemQuery}`,
                             controller.signal
                         )

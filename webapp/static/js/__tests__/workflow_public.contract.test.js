@@ -934,3 +934,130 @@ describe('UIR2B Worklist handoff navigation fail-closed contract', () => {
     );
   });
 });
+
+/* W24UI6B bounded public Worklist GET regressions.
+ * Synthetic task fixtures below are test-only; they are not election data.
+ */
+describe('W24UI6B bounded public Worklist reads', () => {
+  const never = () => new Promise(() => {});
+  const settle = async () => {
+    for (let i = 0; i < 30; i += 1) await Promise.resolve();
+  };
+
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    jest.useFakeTimers();
+    buildDom();
+    window.history.replaceState(null, '', '/worklist');
+    delete window.WorkflowPublicSurface;
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  test('unsettled auxiliary stats fetch ends as partial with genuine items preserved', async () => {
+    global.fetch = jest.fn((url, options = {}) => {
+      expect(options.method).toBe('GET');
+      if (String(url).includes('/stats?')) return never(); // deliberately ignores abort
+      if (String(url).includes('/facets?')) return Promise.resolve(response(baseFacets()));
+      if (String(url).includes('/public/items?')) return Promise.resolve(response(items(1)));
+      throw new Error('Unexpected endpoint');
+    });
+
+    loadScript();
+    await settle();
+    expect(document.getElementById('workflow-state').dataset.uiState).toBe('loading');
+    await jest.advanceTimersByTimeAsync(12000);
+    await settle();
+    expect(document.getElementById('workflow-state').dataset.uiState).toBe('partial');
+    expect(document.querySelectorAll('#workflow-items-body tr')).toHaveLength(1);
+    expect(document.getElementById('workflow-stat-total').textContent).toBe('—');
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('unsettled auxiliary facets JSON body ends as partial', async () => {
+    global.fetch = jest.fn((url) => {
+      if (String(url).includes('/stats?')) return Promise.resolve(response(stats(1)));
+      if (String(url).includes('/facets?')) {
+        return Promise.resolve({ ok: true, status: 200, json: never });
+      }
+      if (String(url).includes('/public/items?')) return Promise.resolve(response(items(1)));
+      throw new Error('Unexpected endpoint');
+    });
+    loadScript();
+    await settle();
+    await jest.advanceTimersByTimeAsync(12000);
+    await settle();
+    expect(document.getElementById('workflow-state').dataset.uiState).toBe('partial');
+    expect(document.querySelectorAll('#workflow-items-body tr')).toHaveLength(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('unsettled required items body ends as error, never false empty', async () => {
+    global.fetch = jest.fn((url) => {
+      if (String(url).includes('/stats?')) return Promise.resolve(response(stats(1)));
+      if (String(url).includes('/facets?')) return Promise.resolve(response(baseFacets()));
+      if (String(url).includes('/public/items?')) {
+        return Promise.resolve({ ok: true, status: 200, json: never });
+      }
+      throw new Error('Unexpected endpoint');
+    });
+    loadScript();
+    await settle();
+    await jest.advanceTimersByTimeAsync(12000);
+    await settle();
+    expect(document.getElementById('workflow-state').dataset.uiState).toBe('error');
+    expect(document.getElementById('workflow-empty-state').dataset.uiState).toBe('error');
+    expect(document.getElementById('workflow-stat-total').textContent).not.toBe('0');
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('older abort-ignoring responses cannot overwrite a newer empty-state selection', async () => {
+    let resolveOldItems;
+    global.fetch = jest.fn((url) => {
+      const target = String(url);
+      if (target.includes('year=2022')) {
+        if (target.includes('/stats?')) return Promise.resolve(response(stats(0)));
+        if (target.includes('/facets?')) return Promise.resolve(response(baseFacets()));
+        if (target.includes('/public/items?')) return Promise.resolve(response(items(0)));
+      }
+      if (target.includes('/stats?')) return never();
+      if (target.includes('/facets?')) return Promise.resolve(response(baseFacets()));
+      if (target.includes('/public/items?')) {
+        return new Promise((resolve) => { resolveOldItems = resolve; });
+      }
+      throw new Error('Unexpected endpoint');
+    });
+    loadScript();
+    await settle();
+    expect(typeof resolveOldItems).toBe('function');
+    document.getElementById('workflow-filter-year').value = '2022';
+    document.getElementById('workflow-filter-apply').click();
+    await settle();
+    expect(document.getElementById('workflow-state').dataset.uiState).toBe('empty');
+    resolveOldItems(response(items(1)));
+    await settle();
+    await jest.advanceTimersByTimeAsync(12000);
+    await settle();
+    expect(document.getElementById('workflow-state').dataset.uiState).toBe('empty');
+    expect(document.querySelectorAll('#workflow-items-body tr')).toHaveLength(0);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('normal successful and unavailable reads clear every deadline without changing public GET authority', async () => {
+    global.fetch = jest.fn((url, options = {}) => {
+      expect(options.method).toBe('GET');
+      expect(options.credentials).toBe('same-origin');
+      if (String(url).includes('/stats?')) return Promise.resolve(response(stats(1)));
+      if (String(url).includes('/facets?')) return Promise.resolve(response(baseFacets()));
+      if (String(url).includes('/public/items?')) return Promise.resolve(response(items(1)));
+      throw new Error('Unexpected endpoint');
+    });
+    loadScript();
+    await settle();
+    expect(document.getElementById('workflow-state').dataset.uiState).toBe('ready');
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
