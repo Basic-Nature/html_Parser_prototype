@@ -1271,3 +1271,99 @@ body.observatory-page::before {
 @media (max-width: 700px) {
   .observatory-geo-picker { margin: .65rem 0; padding: .8rem; }
 }
+
+/* W24UI8A: independently authored public Observer Companion guidance. */
+.observatory-observer-guide {
+  display: grid;
+  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+  gap: 22px;
+  margin: 20px 0;
+  padding: clamp(20px, 3vw, 30px);
+  color: var(--obs-text);
+  border: 1px solid var(--obs-line);
+  border-radius: 24px;
+  background: linear-gradient(125deg, rgba(11, 34, 52, .97), rgba(5, 16, 29, .97));
+  box-shadow: 0 16px 42px rgba(0, 0, 0, .25);
+}
+.observatory-observer-guide__intro h2 {
+  margin: 0 0 14px;
+  font-size: clamp(1.55rem, 2.5vw, 2.15rem);
+  line-height: 1.2;
+}
+.observatory-observer-guide__intro > p:not(.observatory-kicker),
+.observatory-observer-guide__details li span,
+.observatory-observer-guide__disclaimer {
+  color: var(--obs-muted);
+  line-height: 1.6;
+}
+.observatory-observer-guide__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 12px;
+  padding: 8px 15px;
+  border: 1px solid rgba(77, 231, 239, .52);
+  border-radius: 12px;
+  color: var(--obs-cyan);
+  font-weight: 750;
+  text-decoration: none;
+}
+.observatory-observer-guide__link:hover,
+.observatory-observer-guide__link:focus-visible {
+  color: #fff;
+  background: rgba(77, 231, 239, .12);
+  border-color: var(--obs-cyan);
+}
+.observatory-observer-guide__link:focus-visible {
+  outline: 3px solid var(--obs-amber);
+  outline-offset: 3px;
+}
+.observatory-observer-guide__details {
+  border-left: 1px solid var(--obs-line);
+  padding-left: 22px;
+}
+.observatory-observer-guide__details h3 {
+  margin: 6px 0 14px;
+  font-size: 1.13rem;
+}
+.observatory-observer-guide__details ol {
+  padding-left: 24px;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+.observatory-observer-guide__details li {
+  padding-left: 3px;
+}
+.observatory-observer-guide__details li strong,
+.observatory-observer-guide__details li span {
+  display: block;
+}
+.observatory-observer-guide__details li strong {
+  color: var(--obs-text);
+}
+.observatory-observer-guide__states,
+.observatory-observer-guide__disclaimer {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: .92rem;
+}
+.observatory-observer-guide__states {
+  padding: 13px 16px;
+  border-radius: 12px;
+  background: rgba(242, 181, 98, .075);
+  border: 1px solid rgba(242, 181, 98, .26);
+}
+@media (max-width: 760px) {
+  .observatory-observer-guide {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+    padding: 20px 16px;
+    border-radius: 20px;
+  }
+  .observatory-observer-guide__details {
+    border-left: 0;
+    border-top: 1px solid var(--obs-line);
+    padding: 18px 0 0;
+  }
+}
