@@ -69,7 +69,7 @@ env:
 jobs:
   qa-dl-compare:
     name: "Pre-Deploy QA: Synthetic DL fixture compare"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
@@ -186,7 +186,7 @@ jobs:
   contract-checks-nonblocking:
     name: "Pre-Deploy QA: Contract checks (non-blocking)"
     needs: qa-dl-compare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     env:
       # Keep critical app-import requirements local to this job so collection doesn't fail.
@@ -253,7 +253,7 @@ jobs:
   worklist-handoff-contract:
     name: "Pre-Deploy QA: Worklist handoff regression (blocking)"
     needs: qa-dl-compare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
@@ -276,7 +276,7 @@ jobs:
   f2-frontend-foundation:
     name: "Pre-Deploy QA: Ballot Lens F2 frontend (blocking)"
     needs: qa-dl-compare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
@@ -308,7 +308,7 @@ jobs:
       - contract-checks-nonblocking
       - worklist-handoff-contract
       - f2-frontend-foundation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: electionpulse-production-deploy
     permissions:
@@ -971,7 +971,7 @@ jobs:
   postdeploy-live-db-confirmation:
     name: "Post-Deploy Validation: Live app + data confirmation"
     needs: build-and-deploy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
