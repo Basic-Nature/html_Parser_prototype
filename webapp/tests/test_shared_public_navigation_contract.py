@@ -66,7 +66,12 @@ def test_workflow_keeps_contextual_actions_and_public_authority():
 
     assert 'class="workflow-nav"' in workflow
     assert "Explore Published Data" in workflow
-    assert "← Ballot Lens" in workflow
+    assert (
+        'id="workflowPublicGeoBallotLink" '
+        'href="{{ url_for(\'ballot_lens\') }}"'
+        in workflow
+    )
+    assert "Explore Ballot Lens public coverage" in workflow
     assert "public surface remains view-only" in workflow.lower()
     assert "Governed Workflow Plane" in workflow
 
