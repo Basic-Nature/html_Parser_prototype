@@ -11,6 +11,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/observatory.css') }}?v={{ static_version|default('g132') }}">
+    {% if config.get('EP_SUPPORT_LOCAL_PREVIEW_ENABLED') is sameas true %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/support_edge.css') }}">
+    {% endif %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_geo_coverage.css') }}?v={{ static_version|default('g132') }}">
 </head>
 <body class="observatory-page">
@@ -262,6 +265,9 @@
 
         <footer class="observatory-footer">
             <a href="mailto:smartelectionsact@gmail.com">Contact: smartelectionsact@gmail.com</a>
+        {% if config.get('EP_SUPPORT_LOCAL_PREVIEW_ENABLED') is sameas true %}
+            <a href="/support">Support &amp; transparent costs</a>
+        {% endif %}
         </footer>
     </main>
 
@@ -274,7 +280,21 @@
     </div>
     <div id="popup" class="popup-hidden"></div>
 
+    {% if config.get('EP_SUPPORT_LOCAL_PREVIEW_ENABLED') is sameas true %}
+    <aside class="ep-support-edge" id="epSupportEdge" hidden aria-label="Optional project support">
+      <button type="button" class="ep-support-edge__trigger" id="epSupportEdgeTrigger" aria-label="Learn how to support ElectionPulse" aria-expanded="false" aria-controls="epSupportEdgeCard"><span class="ep-support-edge__glimmer" aria-hidden="true"></span></button>
+      <div class="ep-support-edge__card" id="epSupportEdgeCard" hidden>
+        <button type="button" class="ep-support-edge__close" id="epSupportEdgeClose" aria-label="Close support information">&times;</button>
+        <h2>Support public election data</h2>
+        <p>See ElectionPulse's operating costs and how voluntary contributions would be accounted for.</p>
+        <a href="/support">Explore project funding</a>
+      </div>
+    </aside>
+    {% endif %}
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
+    {% if config.get('EP_SUPPORT_LOCAL_PREVIEW_ENABLED') is sameas true %}
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/support_edge.js') }}" defer></script>
+    {% endif %}
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/main.js') }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/public_geo_coverage.js') }}?v={{ static_version|default('g132') }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/observatory.js') }}?v=3fe2fc6955cab042" defer></script>

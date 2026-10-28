@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, abort, current_app, jsonify, render_template
 
 from .route_monitor import record_route_monitor_event
 
@@ -27,6 +27,13 @@ def create_public_pages_blueprint() -> Blueprint:
     @bp.route("/", methods=["GET"], endpoint="index")
     def index_route():
         return _call_handler("index")
+
+    @bp.route("/support", methods=["GET"], endpoint="support")
+    def support_route():
+        # Offline review only. A deployed copy stays 404 unless deliberately configured.
+        if current_app.config.get("EP_SUPPORT_LOCAL_PREVIEW_ENABLED") is not True:
+            abort(404)
+        return render_template("support.html")
 
     @bp.route("/ballot_lens", methods=["GET", "POST"], endpoint="ballot_lens")
     def ballot_lens_route():
