@@ -389,3 +389,41 @@ test('S3P-R1 browser scope event synchronizes only changed scopes and popstate',
     if(originalRemove===undefined)delete globalThis.removeEventListener;else globalThis.removeEventListener=originalRemove;
   }
 });
+
+// W24UI9A: these are synthetic test cases, never real election previews.
+for (const statusCode of [429, 500, 503]) {
+  test('W24UI9A unsuccessful HTTP ' + statusCode + ' is unavailable, never empty', async () => {
+    const {root,controls}=fixture();
+    await api.mount(root,{search:'?state=Texas&jurisdiction=Jeff+Davis',
+      fetchImpl:async()=>({ok:false,status:statusCode})});
+    const state=controls.get('[data-ep-s3-status]');
+    assert.equal(state.dataset.state,'unavailable');
+    assert.match(state.textContent,/unknown/i);
+    assert.equal(controls.get('[data-ep-s3-results]').hidden,true);
+    assert.equal(controls.get('[data-ep-s3-records]').children.length,0);
+  });
+}
+test('W24UI9A rejected network request is unavailable, not a validation error', async () => {
+  const {root,controls}=fixture();
+  await api.mount(root,{search:'?state=Texas&jurisdiction=Jeff+Davis',
+    fetchImpl:async()=>{throw new TypeError('Synthetic network failure');}});
+  assert.equal(controls.get('[data-ep-s3-status]').dataset.state,'unavailable');
+  assert.equal(controls.get('[data-ep-s3-results]').hidden,true);
+});
+test('W24UI9A malformed canonical payload is still error, never empty', async () => {
+  const {root,controls}=fixture();
+  await api.mount(root,{search:'?state=Texas&jurisdiction=Jeff+Davis',
+    fetchImpl:async()=>({ok:true,status:200,json:async()=>payload([],{authority:'untrusted'})})});
+  assert.equal(controls.get('[data-ep-s3-status]').dataset.state,'error');
+  assert.equal(controls.get('[data-ep-s3-results]').hidden,true);
+});
+test('W24UI9A restricted and genuine empty retain distinct states', async () => {
+  for (const [response,expected] of [
+    [{ok:false,status:403},'restricted'],
+    [{ok:true,status:200,json:async()=>payload([])},'empty']
+  ]) {
+    const {root,controls}=fixture();
+    await api.mount(root,{search:'?state=Texas&jurisdiction=Jeff+Davis',fetchImpl:async()=>response});
+    assert.equal(controls.get('[data-ep-s3-status]').dataset.state,expected);
+  }
+});

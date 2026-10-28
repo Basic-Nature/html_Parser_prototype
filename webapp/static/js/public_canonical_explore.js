@@ -275,6 +275,7 @@
     status.dataset.state = 'loading';
     resultSection.hidden = true;
     const timer = global.setTimeout ? global.setTimeout(() => attempt.controller.abort(), timeoutMs) : null;
+    let phase = 'transport';
     try {
       const doFetch = fetchImpl ?? global.fetch?.bind(global);
       if (!doFetch) throw new Error('Fetch is unavailable');
@@ -288,7 +289,12 @@
         status.textContent = 'Published rows are restricted by the current endpoint response.';
         return true;
       }
-      if (!response.ok) throw new Error('Canonical result read unavailable (HTTP ' + response.status + ')');
+      if (!response.ok) {
+        status.dataset.state = 'unavailable';
+        status.textContent = 'Published candidate rows are temporarily unavailable (HTTP ' + response.status + '). Data availability remains unknown.';
+        return true;
+      }
+      phase = 'validation';
       const parsed = parsePayload(await response.json(), scope);
       if (activeRequests.get(root) !== attempt) return false;
       if (!parsed.rows.length) {
@@ -302,8 +308,11 @@
       status.textContent = 'Published candidate-result records loaded. These are stored canonical rows, not independently verified official-source totals.';
     } catch (_error) {
       if (activeRequests.get(root) !== attempt) return false;
-      status.dataset.state = 'error';
-      status.textContent = 'Published candidate rows could not be verified or loaded for this selection. No results are being inferred.';
+      const unavailable = phase === 'transport' || attempt.controller.signal.aborted;
+      status.dataset.state = unavailable ? 'unavailable' : 'error';
+      status.textContent = unavailable
+        ? 'Published candidate rows are temporarily unavailable for this selection. Data availability remains unknown.'
+        : 'Published candidate rows could not be verified or loaded for this selection. No results are being inferred.';
     } finally {
       if (timer !== null && global.clearTimeout) global.clearTimeout(timer);
     }
