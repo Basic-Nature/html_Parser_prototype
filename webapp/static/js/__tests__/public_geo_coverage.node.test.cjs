@@ -509,3 +509,53 @@ test('UI5B successful and restricted reads clean the deadline timer', async () =
     assert.equal(clock.size(), 0);
   }
 });
+
+
+// W24UI10A: network transport errors are not malformed canonical data.
+test('UI10A rejected transport read is unavailable without asserting absent election data', async () => {
+  let requests = 0;
+  const dom = mockDOM(async () => { requests++; throw new TypeError('simulated network disconnection'); });
+  const control = geo.mount(dom.section, dom.win);
+  await control.select('TX');
+  assert.equal(requests, 1);
+  assert.equal(dom.section.dataset.uiState, 'unavailable');
+  assert.match(dom.nodes['[data-ep-coverage-status]'].textContent, /availability remains unknown/i);
+  assert.equal(dom.nodes['[data-ep-coverage-status]'].attrs['aria-busy'], 'false');
+  assert.equal(dom.nodes['[data-ep-coverage-list]'].children.length, 0);
+  assert.equal(dom.nodes['[data-ep-worklist-link]'].attrs.href, '/worklist?state=TX');
+});
+
+test('UI10A network failure is not cached and visitor can retry same geographic focus', async () => {
+  let attempts = 0;
+  const dom = mockDOM(async () => {
+    attempts++;
+    if (attempts === 1) throw new TypeError('simulated network disconnection');
+    return {ok:true,status:200,json:async()=>payload()};
+  });
+  const control = geo.mount(dom.section, dom.win);
+  await control.select('TX');
+  assert.equal(dom.section.dataset.uiState, 'unavailable');
+  await control.select('TX');
+  assert.equal(attempts, 2);
+  assert.equal(dom.section.dataset.uiState, 'ready');
+  assert.equal(dom.nodes['[data-ep-coverage-list]'].children.length, 1);
+});
+
+test('UI10A malformed canonical response remains error, never unavailable or empty', async () => {
+  const dom = mockDOM(async () => ({ok:true,status:200,json:async()=>({contract:'wrong'})}));
+  const control = geo.mount(dom.section, dom.win);
+  await control.select('TX');
+  assert.equal(dom.section.dataset.uiState, 'error');
+  assert.match(dom.nodes['[data-ep-coverage-status]'].textContent, /could not be validated/i);
+  assert.equal(dom.nodes['[data-ep-coverage-list]'].children.length, 0);
+});
+
+test('UI10A HTTP service and rate failures remain unavailable, access remains restricted', async () => {
+  for (const [code, expected] of [[429,'unavailable'],[503,'unavailable'],[403,'restricted']]) {
+    const dom = mockDOM(async () => ({ok:false,status:code}));
+    const control = geo.mount(dom.section, dom.win);
+    await control.select('AZ');
+    assert.equal(dom.section.dataset.uiState, expected, `status ${code}`);
+    assert.equal(dom.nodes['[data-ep-coverage-list]'].children.length, 0);
+  }
+});

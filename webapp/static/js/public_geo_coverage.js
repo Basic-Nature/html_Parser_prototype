@@ -584,10 +584,18 @@
           }, 12000);
         });
         const read = (async () => {
-          const response = await env.fetch(coverageUrl(normalized), {
-            method: 'GET', credentials: 'same-origin', redirect: 'error',
-            headers: { Accept: 'application/json' }, signal: controller.signal,
-          });
+          // Only transport failure is unavailable; malformed canonical data
+          // must still fail validation as an error (never as empty coverage).
+          let response;
+          try {
+            response = await env.fetch(coverageUrl(normalized), {
+              method: 'GET', credentials: 'same-origin', redirect: 'error',
+              headers: { Accept: 'application/json' }, signal: controller.signal,
+            });
+          } catch (error) {
+            if (error?.name === 'AbortError') throw error;
+            return { kind: 'network-error' };
+          }
           if (response.status === 401 || response.status === 403) {
             return { kind: 'restricted' };
           }
@@ -603,6 +611,8 @@
           setUi('restricted', 'Published coverage read is restricted for this access context.');
         } else if (result.kind === 'http-error') {
           setUi('unavailable', `Published coverage could not be retrieved (HTTP ${result.status}). No result availability can be inferred.`);
+        } else if (result.kind === 'network-error') {
+          setUi('unavailable', 'Published coverage request failed before a response was received. Coverage availability remains unknown.');
         } else {
           cached.set(normalized, result.parsed);
           present(result.parsed);
