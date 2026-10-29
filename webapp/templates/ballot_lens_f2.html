@@ -9,7 +9,7 @@
   {% for stylesheet in ballot_lens_f2_assets.styles %}
   <link rel="stylesheet" href="{{ url_for('static', filename=stylesheet) }}">
   {% endfor %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/public_geo_coverage.css') }}?v={{ static_version|default('g132') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/public_geo_coverage.css') }}?v={{ static_version|default('g132') }}-w24ui10-5819f95be7ba">
 </head>
 <body data-page="ballot-lens-f2">
   <section id="epPublicGeoCoverage" class="ep-public-coverage" data-ui-state="idle"
@@ -37,7 +37,7 @@
     <noscript>Ballot Lens F2 requires JavaScript.</noscript>
   </div>
 
-  <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/public_geo_coverage.js') }}?v={{ static_version|default('g132') }}" defer></script>
+  <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/public_geo_coverage.js') }}?v={{ static_version|default('g132') }}-w24ui10-c4107d5efa0b" defer></script>
   <script
     type="module"
     src="{{ url_for('static', filename=ballot_lens_f2_assets.script) }}"

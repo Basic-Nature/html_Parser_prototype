@@ -46,6 +46,29 @@
   let selectedJurisdiction = null;
   let signalTrace = null;
   let jurisdictionPickerEntries = new Map();
+  let geographySequence = 0;
+  let geographyActive = null;
+  // Insert recovery controls alongside the existing selector, without replacing
+  // the homepage template (which the donation stream is editing in parallel).
+  const geographyActions = document.createElement('div');
+  geographyActions.className = 'observatory-geo-actions';
+  const clearButton = document.createElement('button');
+  clearButton.type = 'button';
+  clearButton.textContent = 'Clear selection';
+  clearButton.hidden = true;
+  const retryButton = document.createElement('button');
+  retryButton.type = 'button';
+  retryButton.textContent = 'Retry national geography';
+  retryButton.hidden = true;
+  geographyActions.appendChild(clearButton);
+  geographyActions.appendChild(retryButton);
+  const geographyActionHost = jurisdictionPicker?.parentNode || stage;
+  if (geographyActionHost?.appendChild) geographyActionHost.appendChild(geographyActions);
+  clearButton.addEventListener('click', () => {
+    clearSelection();
+    if (typeof jurisdictionPicker?.focus === 'function') jurisdictionPicker.focus();
+  });
+  retryButton.addEventListener('click', () => { void loadNationalGeography({ force: true }); });
 
   function syncJurisdictionPicker(code) {
     if (jurisdictionPicker) jurisdictionPicker.value = code || "";
@@ -249,6 +272,7 @@
     selectedPath = null;
     selectedFeature = null;
     selectedJurisdiction = null;
+    clearButton.hidden = true;
     syncJurisdictionPicker(null);
     updateProjectPrefill();
     syncPublicLocation(null);
@@ -293,6 +317,7 @@
     selectedPath = path;
     selectedFeature = feature;
     selectedJurisdiction = jurisdiction;
+    clearButton.hidden = false;
     syncJurisdictionPicker(jurisdiction.abbr);
     updateProjectPrefill();
     syncPublicLocation(jurisdiction.abbr);
@@ -416,7 +441,12 @@
   }
 
   function showGeographyUnavailable(message) {
+    mapStage.classList.remove('map-ready');
     mapStage.classList.add("map-error");
+    retryButton.hidden = false;
+    retryButton.disabled = false;
+    clearButton.hidden = true;
+    mapLoading?.setAttribute('aria-busy', 'false');
     if (jurisdictionPicker) {
       const unavailable = document.createElement("option");
       unavailable.value = "";
@@ -428,29 +458,46 @@
     setText(mapLoading, message);
   }
 
-  async function loadNationalGeography() {
-    if (!map || !mapStage || !mapPaths) {
-      return;
-    }
-
+  async function loadNationalGeography({ force = false } = {}) {
+    if (!map || !mapStage || !mapPaths) return;
+    geographySequence += 1;
+    const ticket = geographySequence;
+    if (geographyActive) geographyActive.abort();
+    const controller = new AbortController();
+    geographyActive = controller;
+    retryButton.hidden = true;
+    retryButton.disabled = true;
+    mapStage.classList.remove('map-error');
+    mapLoading?.setAttribute('aria-busy', 'true');
+    setText(mapLoading, 'Loading governed national geography…');
     const source = map.dataset.mapSource;
     if (!source) {
+      geographyActive = null;
       showGeographyUnavailable("National geography source is not configured.");
       return;
     }
 
+    let timer = null;
     try {
-      const response = await fetch(source, {
-        method: "GET",
-        credentials: "same-origin",
-        cache: "force-cache"
+      const deadline = new Promise((_, reject) => {
+        timer = window.setTimeout(() => {
+          const error = new Error('Geography read timed out');
+          error.name = 'TimeoutError';
+          reject(error);
+          controller.abort();
+        }, 12000);
       });
-
-      if (!response.ok) {
-        throw new Error(`Geography request failed (${response.status})`);
-      }
-
-      const data = await response.json();
+      const read = (async () => {
+        const response = await fetch(source, {
+          method: 'GET', credentials: 'same-origin', redirect: 'error',
+          cache: force ? 'reload' : 'force-cache', signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) throw new Error(`Geography request failed (${response.status})`);
+        return await response.json();
+      })();
+      const data = await Promise.race([read, deadline]);
+      if (ticket !== geographySequence) return;
 
       if (
         data.jurisdiction_count !== 56 ||
@@ -489,6 +536,9 @@
         }
       });
 
+      if (ticket !== geographySequence) return;
+      // Remove stale selection references before replacing the map paths.
+      if (selectedJurisdiction) clearSelection();
       mapPaths.replaceChildren(fragment);
       if (jurisdictionPicker) {
         const placeholder = document.createElement("option");
@@ -507,6 +557,10 @@
         jurisdictionPicker.disabled = false;
       }
       mapStage.classList.add("map-ready");
+      retryButton.hidden = true;
+      retryButton.disabled = false;
+      mapLoading?.setAttribute('aria-busy', 'false');
+      if (force && typeof jurisdictionPicker?.focus === 'function') jurisdictionPicker.focus();
       mapStage.dataset.orientation = "north-up";
       mapStage.dataset.instrumentMode = "geographic-focus";
       mapStage.dataset.microHitTargets = String(
@@ -527,10 +581,14 @@
         if (path) selectJurisdiction(path.parentNode, path, initial);
       }
     } catch (error) {
+      if (ticket !== geographySequence) return;
       console.error("ElectionPulse Observatory geography load failed.", error);
-      showGeographyUnavailable(
-        "Governed national geography could not be resolved. Election values remain unavailable."
-      );
+      showGeographyUnavailable(error?.name === 'TimeoutError'
+        ? 'Governed national geography timed out. No election values are inferred.'
+        : 'Governed national geography could not be resolved. Election values remain unavailable.');
+    } finally {
+      if (timer !== null) window.clearTimeout(timer);
+      if (ticket === geographySequence) geographyActive = null;
     }
   }
 

@@ -263,6 +263,11 @@
     const browse = doc.createElement('button');
     browse.type = 'button';
     browse.textContent = 'Browse published reporting units';
+    const refresh = doc.createElement('button');
+    refresh.type = 'button';
+    refresh.textContent = 'Refresh published reporting units';
+    refresh.hidden = true;
+    refresh.disabled = true;
     const status = doc.createElement('p');
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
@@ -300,6 +305,7 @@
     wrapper.appendChild(heading);
     wrapper.appendChild(note);
     wrapper.appendChild(browse);
+    wrapper.appendChild(refresh);
     wrapper.appendChild(status);
     wrapper.appendChild(searchLabel);
     wrapper.appendChild(search);
@@ -351,7 +357,10 @@
     function cancel() {
       if (active) active.abort();
       active = null;
-      if (pendingTimer !== null && typeof env.clearTimeout === 'function') env.clearTimeout(pendingTimer);
+      if (pendingTimer !== null) {
+        const unschedule = typeof env.clearTimeout === 'function' ? env.clearTimeout.bind(env) : clearTimeout;
+        unschedule(pendingTimer);
+      }
       pendingTimer = null;
     }
     function reset(next) {
@@ -373,6 +382,8 @@
       link.hidden = true;
       link.setAttribute('href', '/data_framework');
       browse.disabled = !state;
+      refresh.disabled = !state;
+      refresh.hidden = true;
       status.textContent = state
         ? `Jurisdictions for ${canonicalStateLabel(state)} are available on request. This is not a census county listing.`
         : 'Select a state to browse jurisdictions recorded in published data.';
@@ -387,6 +398,8 @@
       select.hidden = items.length === 0;
       countNote.hidden = items.length === 0;
       renderOptions();
+      refresh.hidden = false;
+      refresh.disabled = false;
       const variants = parsed.caseVariantEntries || 0;
       const note = variants
         ? ` ${variants} capitalization-variant entr${variants === 1 ? 'y is' : 'ies are'} preserved; variants may lead to the same results.`
@@ -395,7 +408,7 @@
         ? `${items.length} jurisdiction entries for ${parsed.canonicalState}.${note} Search a published name below.`
         : `No jurisdictions appear in this canonical facet view for ${parsed.canonicalState}. This does not mean no election occurred.`;
     }
-    async function load() {
+    async function load({ force = false } = {}) {
       if (!state) return;
       seq += 1;
       const ticket = seq;
@@ -403,42 +416,60 @@
       select.disabled = true;
       search.disabled = true;
       link.hidden = true;
-      if (cached.has(state)) { show(cached.get(state)); return; }
+      if (!force && cached.has(state)) { show(cached.get(state)); return; }
+      // Only an explicit visitor action refreshes the state-scoped cache.
+      if (force) cached.delete(state);
       browse.disabled = true;
+      refresh.disabled = true;
       status.textContent = `Loading published jurisdiction facets for ${canonicalStateLabel(state)}…`;
       const controller = new AbortController();
       active = controller;
-      if (typeof env.setTimeout === 'function') {
-        pendingTimer = env.setTimeout(() => controller.abort(), 12000);
-      }
+      const schedule = typeof env.setTimeout === 'function' ? env.setTimeout.bind(env) : setTimeout;
+      const unschedule = typeof env.clearTimeout === 'function' ? env.clearTimeout.bind(env) : clearTimeout;
       try {
-        const response = await env.fetch(facetUrl(state), {
-          method: 'GET', credentials: 'same-origin', redirect: 'error',
-          headers: { Accept: 'application/json' }, signal: controller.signal,
+        // Race BOTH transport and JSON decoding against the deadline. Merely
+        // aborting fetch cannot terminate an implementation that ignores abort.
+        const deadline = new Promise((_, reject) => {
+          pendingTimer = schedule(() => {
+            const error = new Error('Jurisdiction read exceeded its deadline');
+            error.name = 'TimeoutError';
+            reject(error);
+            controller.abort();
+          }, 12000);
         });
+        const read = (async () => {
+          const response = await env.fetch(facetUrl(state), {
+            method: 'GET', credentials: 'same-origin', redirect: 'error',
+            headers: { Accept: 'application/json' }, signal: controller.signal,
+            cache: force ? 'reload' : 'default',
+          });
+          if (response.status === 401 || response.status === 403) return { kind: 'restricted' };
+          if (!response.ok) return { kind: 'unavailable', status: response.status };
+          const parsed = parseJurisdictionFacets(await response.json(), state);
+          return { kind: 'ready', parsed };
+        })();
+        const result = await Promise.race([read, deadline]);
         if (ticket !== seq) return;
-        if (response.status === 401 || response.status === 403) {
+        if (result.kind === 'restricted') {
           status.textContent = 'Jurisdiction facets are restricted in this access context.';
-          return;
+        } else if (result.kind === 'unavailable') {
+          status.textContent = `Jurisdiction facets unavailable (HTTP ${result.status}); no absence of data inferred.`;
+        } else {
+          cached.set(state, result.parsed);
+          show(result.parsed);
         }
-        if (!response.ok) {
-          status.textContent = `Jurisdiction facets unavailable (HTTP ${response.status}); no absence of data inferred.`;
-          return;
-        }
-        const raw = await response.json();
-        if (ticket !== seq) return;
-        const parsed = parseJurisdictionFacets(raw, state);
-        cached.set(state, parsed);
-        show(parsed);
       } catch (error) {
         if (ticket !== seq) return;
-        status.textContent = error?.name === 'AbortError'
+        status.textContent = error?.name === 'TimeoutError' || error?.name === 'AbortError'
           ? 'Jurisdiction read timed out. Data availability remains unknown.'
           : 'Jurisdiction facets could not be validated or loaded; data availability remains unknown.';
       } finally {
         if (ticket === seq) {
-          cancel();
+          if (pendingTimer !== null) unschedule(pendingTimer);
+          pendingTimer = null;
+          active = null;
           browse.disabled = false;
+          refresh.disabled = false;
         }
       }
     }
@@ -460,10 +491,11 @@
         : '';
     }
     browse.addEventListener('click', () => { void load(); });
+    refresh.addEventListener('click', () => { void load({ force: true }); });
     search.addEventListener('input', () => { renderOptions(); });
     select.addEventListener('change', () => { choose(select.value); });
     reset(null);
-    return Object.freeze({ reset, load, choose, elements: Object.freeze({browse,status,search,select,countNote,selection,link}) });
+    return Object.freeze({ reset, load, choose, elements: Object.freeze({browse,refresh,status,search,select,countNote,selection,link}) });
   }
 
   function mount(section, env = root) {
@@ -479,6 +511,29 @@
     let active = null;
     const cached = new Map();
     const jurisdictions = createJurisdictionBrowser(section, env);
+    const actions = env.document.createElement('div');
+    actions.className = 'ep-public-coverage__actions';
+    const retry = env.document.createElement('button');
+    retry.type = 'button';
+    retry.textContent = 'Retry published coverage';
+    retry.hidden = true;
+    const refresh = env.document.createElement('button');
+    refresh.type = 'button';
+    refresh.textContent = 'Refresh published coverage';
+    refresh.hidden = true;
+    actions.appendChild(retry);
+    actions.appendChild(refresh);
+    const targetList = section.querySelector?.('[data-ep-coverage-list]');
+    if (targetList && typeof section.insertBefore === 'function') section.insertBefore(actions, targetList);
+    else section.appendChild(actions);
+    let selectedState = null;
+    let lastDisplayedState = null;
+    const statistics = env.document.createElement('p');
+    statistics.className = 'ep-public-coverage__counts';
+    statistics.hidden = true;
+    statistics.setAttribute('aria-live', 'polite');
+    if (targetList && typeof section.insertBefore === 'function') section.insertBefore(statistics, targetList);
+    else section.appendChild(statistics);
     // Keep every canonical race visible on demand, not as seven expanded paragraphs
     // before the primary geographic controls on mobile.
     const raceDetails = env.document.createElement('details');
@@ -495,6 +550,11 @@
       section.dataset.uiState = state;
       status.textContent = message;
       status.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
+      statistics.hidden = state !== 'ready' && state !== 'empty';
+      retry.hidden = state !== 'unavailable' && state !== 'error';
+      refresh.hidden = state !== 'ready' && state !== 'empty';
+      retry.disabled = !selectedState || state === 'loading';
+      refresh.disabled = !selectedState || state === 'loading';
     }
 
     function setSelected(state) {
@@ -507,10 +567,12 @@
           ? `/data_framework?state=${encodeURIComponent(label)}` : '/data_framework');
       }
       section.hidden = Boolean(section.dataset.hideWhenUnselected === 'true' && !state);
-      if (jurisdictions) jurisdictions.reset(state);
+      if (jurisdictions && lastDisplayedState !== state) jurisdictions.reset(state);
+      lastDisplayedState = state;
     }
 
     function clear() {
+      selectedState = null;
       sequence += 1;
       if (active) active.abort();
       active = null;
@@ -526,6 +588,7 @@
       raceDetails.open = false;
       raceDetails.hidden = summary.items.length === 0;
       if (!summary.items.length) {
+        statistics.textContent = '0 published race summaries in this validated view. No conclusion about whether elections occurred follows.';
         setUi('empty', 'No canonical race publications appear in this filtered view. This does not mean no election occurred.');
         return;
       }
@@ -536,6 +599,12 @@
         list.appendChild(li);
       }
       const shown = summary.items.length;
+      const resultRows = summary.items.reduce((sum, item) => sum + item.resultCount, 0);
+      const jurisdictionRows = summary.items.reduce((sum, item) => sum + item.jurisdictionRows, 0);
+      const shownPrecinctRows = summary.items.reduce((sum, item) => sum + item.precinctRows, 0);
+      statistics.textContent = `Published race summaries: ${shown} of ${summary.totalRaces}` +
+        (summary.hasMore ? ' (first page only)' : '') +
+        `. Within displayed summaries: ${resultRows} result rows, ${jurisdictionRows} jurisdiction-scope rows, ${shownPrecinctRows} precinct-scope rows. These are record counts, not vote totals, independent certifications, or a completeness claim.`;
       raceSummary.textContent = `View ${shown} published race summar${shown === 1 ? 'y' : 'ies'}` +
         (summary.hasMore ? ' (first page only)' : '');
       const precinctRows = summary.items.reduce((sum, item) => sum + item.precinctRows, 0);
@@ -545,9 +614,10 @@
       setUi('ready', `Showing ${shown} of ${summary.totalRaces} published race records for ${summary.canonicalState} (${summary.state}). ${scopeWarning} Independent official-source lineage is not established by this view.`);
     }
 
-    async function select(state) {
+    async function select(state, { force = false } = {}) {
       const normalized = normalizeState(state);
       if (!normalized) { clear(); return; }
+      selectedState = normalized;
       sequence += 1;
       const ticket = sequence;
       if (active) active.abort();
@@ -556,6 +626,7 @@
       raceDetails.hidden = true;
       raceDetails.open = false;
       setSelected(normalized);
+      if (force) cached.delete(normalized);
       if (cached.has(normalized)) { present(cached.get(normalized)); return; }
       setUi('loading', `Loading published canonical coverage for ${canonicalStateLabel(normalized)} (${normalized})…`);
       const controller = new AbortController();
@@ -591,6 +662,7 @@
             response = await env.fetch(coverageUrl(normalized), {
               method: 'GET', credentials: 'same-origin', redirect: 'error',
               headers: { Accept: 'application/json' }, signal: controller.signal,
+              cache: force ? 'reload' : 'default',
             });
           } catch (error) {
             if (error?.name === 'AbortError') throw error;
@@ -630,8 +702,10 @@
         if (ticket === sequence) active = null;
       }
     }
+    retry.addEventListener('click', () => { if (selectedState) void select(selectedState, { force: true }); });
+    refresh.addEventListener('click', () => { if (selectedState) void select(selectedState, { force: true }); });
     clear();
-    return Object.freeze({ select, clear, jurisdictions });
+    return Object.freeze({ select, clear, jurisdictions, actions: Object.freeze({ retry, refresh }) });
   }
 
   const api = Object.freeze({ normalizeState, canonicalStateLabel, coverageUrl, worklistUrl, ballotLensUrl, facetUrl, dataFrameworkJurisdictionUrl, parseCoverage, parseJurisdictionFacets, recordedStatusLabel, mount });

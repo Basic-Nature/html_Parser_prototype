@@ -24,7 +24,7 @@ function element(tag = 'div') {
   };
 }
 
-async function run({sourceName='configured', fetchCase='unavailable'}) {
+async function run({sourceName='configured', fetchCase='unavailable', deadlineMs=12000}) {
   const nodes = Object.fromEntries([
     'observatoryShell','observatoryStage','observatoryMapStage','observatoryNationalMap',
     'observatoryMapPaths','observatoryMapLoading','observatoryJurisdictionPicker',
@@ -44,6 +44,7 @@ async function run({sourceName='configured', fetchCase='unavailable'}) {
     createElement:element,
   };
   const window = {
+    setTimeout:(fn)=>setTimeout(fn,deadlineMs), clearTimeout,
     matchMedia:()=>({matches:true}),
     ElectionPulsePublicCoverage:{normalizeState:()=>null},
     location:{href:'http://127.0.0.1:5000/',search:'',pathname:'/',hash:''},
@@ -51,12 +52,13 @@ async function run({sourceName='configured', fetchCase='unavailable'}) {
   };
   const fetch = async (url,options) => {
     requests.push({url,method:options?.method});
+    if(fetchCase==='never') return new Promise(()=>{});
     if(fetchCase==='http-error') return {ok:false,status:503};
     if(fetchCase==='invalid-contract') return {ok:true,status:200,json:async()=>({jurisdiction_count:0,jurisdictions:[],semantics:{}})};
     throw new Error('simulated geography failure');
   };
   const console = {error:()=>{}};
-  vm.runInNewContext(source,{document,window,fetch,console,URL,URLSearchParams}, {filename:path.basename(sourcePath), timeout:3000});
+  vm.runInNewContext(source,{document,window,fetch,console,URL,URLSearchParams,AbortController}, {filename:path.basename(sourcePath), timeout:3000});
   // Flush async response/body parsing without launching a server.
   await new Promise(resolve=>setImmediate(resolve));
   return {nodes,requests};
@@ -70,7 +72,7 @@ function assertUnavailable({nodes,requests},expectedRequests) {
   assert.equal(picker.children[0].value,'','unavailable option cannot represent a state');
   assert.match(picker.children[0].textContent,/unavailable/i,'picker must not remain Loading');
   assert.equal(stage.classList.contains('map-error'),true,'map error state is explicit');
-  assert.match(nodes.observatoryMapLoading.textContent,/could not be resolved|not configured/i);
+  assert.match(nodes.observatoryMapLoading.textContent,/could not be resolved|not configured|timed out/i);
   assert.equal(nodes.observatoryProjectLink.attrs?.href,undefined,'no state/project selection');
 }
 
@@ -87,4 +89,25 @@ test('invalid jurisdiction contract updates BOTH map and disabled picker',async(
 });
 test('network error updates BOTH map and disabled picker',async()=>{
   assertUnavailable(await run({fetchCase:'network-error'}),1);
+});
+
+// W24UI10D: fail-closed recovery must be user-initiated, never automatic.
+test('UI10D map recovery control performs one manual retry with cache reload',async()=>{
+  const x=await run({fetchCase:'http-error'});
+  const actions=x.nodes.observatoryStage.children.find(c=>c.className==='observatory-geo-actions');
+  assert.ok(actions,'recovery controls inserted without changing donation-edited template');
+  const retry=actions.children[1];
+  assert.equal(retry.hidden,false,'retry is visible after HTTP failure');
+  assert.equal(x.requests.length,1);
+  // Runner intentionally does not store implementation-only request options;
+  // assert an additional GET, not a silently triggered automatic loop.
+  retry.listeners.click[0]();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(x.requests.length,2);
+  assertUnavailable({nodes:x.nodes,requests:[x.requests[1]]},1);
+});
+test('UI10D ignored abort cannot keep the geography selector loading forever',async()=>{
+  const x=await run({fetchCase:'never',deadlineMs:1});
+  await new Promise(resolve=>setTimeout(resolve,10));
+  assertUnavailable(x,1);
 });

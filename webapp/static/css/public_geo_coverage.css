@@ -57,3 +57,16 @@
   .ep-public-coverage__jurisdictions button { width: 100%; }
   .ep-public-coverage__jurisdictions a:not([hidden]) { width: 100%; }
 }
+
+/* W24UI10D: user-controlled recovery; no automatic request loop. */
+.ep-public-coverage__actions { display: flex; flex-wrap: wrap; gap: .65rem; margin: .7rem 0; }
+.ep-public-coverage__actions button,
+.ep-public-coverage__jurisdictions button { min-height: 44px; font: inherit; }
+.ep-public-coverage__actions button { background: #244b6a; border: 1px solid #779dc2; border-radius: .45rem; padding: .55rem .85rem; color: #fff; cursor: pointer; }
+.ep-public-coverage__actions button[hidden], .ep-public-coverage__jurisdictions button[hidden] { display: none; }
+.ep-public-coverage__actions button:focus-visible { outline: 3px solid #a8d8ff; outline-offset: 3px; }
+.ep-public-coverage__actions button:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 480px) { .ep-public-coverage__actions { flex-direction: column; } .ep-public-coverage__actions button { width: 100%; } }
+
+.ep-public-coverage__counts { padding: .7rem .8rem; border-left: 3px solid #779dc2; background: rgba(119,157,194,.08); font-size: .92rem; line-height: 1.5; }
+.ep-public-coverage__counts[hidden] { display: none; }

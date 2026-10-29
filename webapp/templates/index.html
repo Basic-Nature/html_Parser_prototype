@@ -10,11 +10,11 @@
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}?v={{ static_version|default('g132') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/observatory.css') }}?v={{ static_version|default('g132') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/observatory.css') }}?v={{ static_version|default('g132') }}-w24ui10-54b1f89a22b5">
     {% if config.get('EP_SUPPORT_LOCAL_PREVIEW_ENABLED') is sameas true %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/support_edge.css') }}">
     {% endif %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/public_geo_coverage.css') }}?v={{ static_version|default('g132') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/public_geo_coverage.css') }}?v={{ static_version|default('g132') }}-w24ui10-5819f95be7ba">
 </head>
 <body class="observatory-page">
     <nav class="observatory-topbar" aria-label="ElectionPulse external navigation">
@@ -296,7 +296,7 @@
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/support_edge.js') }}" defer></script>
     {% endif %}
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/main.js') }}" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/public_geo_coverage.js') }}?v={{ static_version|default('g132') }}" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/observatory.js') }}?v=3fe2fc6955cab042" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/public_geo_coverage.js') }}?v={{ static_version|default('g132') }}-w24ui10-c4107d5efa0b" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/observatory.js') }}?v=w24ui10-09ab5f5e9a3a" defer></script>
 </body>
 </html>

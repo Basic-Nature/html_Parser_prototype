@@ -1367,3 +1367,11 @@ body.observatory-page::before {
     padding: 18px 0 0;
   }
 }
+
+/* W24UI10D: map recovery and explicit reset. */
+.observatory-geo-actions { display: flex; flex-wrap: wrap; gap: .65rem; }
+.observatory-geo-actions button { min-height: 44px; padding: .55rem .9rem; background: #15485e; color: #f0ffff; border: 1px solid #85c2d0; border-radius: 8px; font: inherit; cursor: pointer; }
+.observatory-geo-actions button[hidden] { display: none; }
+.observatory-geo-actions button:focus-visible { outline: 3px solid #93edfa; outline-offset: 3px; }
+.observatory-geo-actions button:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 700px) { .observatory-geo-actions { flex-direction: column; } .observatory-geo-actions button { width: 100%; } }

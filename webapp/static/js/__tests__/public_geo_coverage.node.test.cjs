@@ -559,3 +559,76 @@ test('UI10A HTTP service and rate failures remain unavailable, access remains re
     assert.equal(dom.nodes['[data-ep-coverage-list]'].children.length, 0);
   }
 });
+
+// W24UI10D: explicit user controls never create background request loops.
+test('UI10D retry appears for network unavailability and returns to valid state',async()=>{
+  let calls=0;
+  const dom=mockDOM(async()=>{
+    calls++;
+    if(calls===1) throw new Error('offline');
+    return {ok:true,status:200,json:async()=>payload()};
+  });
+  const control=geo.mount(dom.section,dom.win);
+  await control.select('TX');
+  assert.equal(dom.section.dataset.uiState,'unavailable');
+  assert.equal(control.actions.retry.hidden,false);
+  assert.equal(calls,1);
+  control.actions.retry.listeners.click();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls,2);
+  assert.equal(dom.section.dataset.uiState,'ready');
+  assert.equal(control.actions.retry.hidden,true);
+  assert.equal(control.actions.refresh.hidden,false);
+});
+test('UI10D refresh bypasses successful cache, then preserves state and count wording',async()=>{
+  const requests=[];
+  const dom=mockDOM(async(url,options)=>{
+    requests.push({url,options});
+    return {ok:true,status:200,json:async()=>payload()};
+  });
+  const control=geo.mount(dom.section,dom.win);
+  await control.select('TX');
+  const stats=dom.section.children.find(v=>v.className==='ep-public-coverage__counts');
+  assert.match(stats.textContent,/Published race summaries: 1 of 1/);
+  assert.match(stats.textContent,/record counts, not vote totals/);
+  control.actions.refresh.listeners.click();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(requests.length,2);
+  assert.equal(requests[1].options.cache,'reload');
+  assert.equal(dom.nodes['[data-ep-coverage-title]'].textContent,'Published coverage — Texas (TX)');
+  control.clear();
+  assert.equal(stats.hidden,true,'clearing geography hides stale statistics');
+});
+test('UI10D facets refresh is manually initiated and uses cache reload',async()=>{
+  const requests=[];
+  const dom=mockDOM(async(url,options)=>{requests.push({url,options});
+    return {ok:true,status:200,json:async()=>url.includes('canonical_facets')?facets():payload()};});
+  const control=geo.mount(dom.section,dom.win);
+  await control.select('TX');
+  await control.jurisdictions.load();
+  assert.equal(control.jurisdictions.elements.refresh.hidden,false);
+  await control.jurisdictions.load();
+  assert.equal(requests.filter(v=>v.url.includes('canonical_facets')).length,1);
+  control.jurisdictions.elements.refresh.listeners.click();
+  await new Promise(resolve=>setImmediate(resolve));
+  const facetRequests=requests.filter(v=>v.url.includes('canonical_facets'));
+  assert.equal(facetRequests.length,2);
+  assert.equal(facetRequests[1].options.cache,'reload');
+});
+test('UI10D facet JSON stall cannot evade 12 second deadline or repaint selection',async()=>{
+  let timeoutAction;
+  const dom=mockDOM(async(url)=>({ok:true,status:200,json:async()=>
+    url.includes('canonical_facets')?new Promise(()=>{}):payload()}));
+  dom.win.setTimeout=(fn)=>{timeoutAction=fn;return 73;};
+  dom.win.clearTimeout=()=>{};
+  const control=geo.mount(dom.section,dom.win);
+  await control.select('TX');
+  const promise=control.jurisdictions.load();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(typeof timeoutAction,'function');
+  timeoutAction();
+  await promise;
+  assert.match(control.jurisdictions.elements.status.textContent,/timed out/);
+  assert.equal(control.jurisdictions.elements.browse.disabled,false);
+  assert.equal(control.jurisdictions.elements.select.disabled,true);
+});
