@@ -14,6 +14,17 @@ function payload(state = 'Texas') {
       official_source_relationship:'not_established'}],
   };
 }
+test('full canonical labels and geographic codes share one 56-option identity mapping',()=>{
+  assert.equal(geo.canonicalStateCode(' Texas '),'TX');
+  assert.equal(geo.canonicalStateCode('Arizona'),'AZ');
+  assert.equal(geo.canonicalStateCode('VI'),'VI');
+  assert.equal(geo.canonicalStateCode('U.S. Virgin Islands'),'VI');
+  assert.equal(geo.canonicalStateCode('ZZ'),null);
+  assert.equal(geo.canonicalStateCode('Unknown'),null);
+  for (const code of ['TX','AZ','CA','DC','PR','VI']) {
+    assert.equal(geo.canonicalStateCode(geo.canonicalStateLabel(code)),code);
+  }
+});
 test('valid state selector is one normalized 2-letter code',()=>{
   assert.equal(geo.normalizeState('tx'),'TX');
   assert.equal(geo.normalizeState(' TX '),'TX');

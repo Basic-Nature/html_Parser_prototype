@@ -17,7 +17,7 @@ describe('O4E cross-surface presentation context contract', () => {
 
   test('copies state and year Data Framework -> Workflow and nothing else', () => {
     const href = buildContextHref(
-      `${origin}/data_framework?state=TX&year=2024&registry_source_id=source-1&workflow_item_id=item-1&search=Senate`,
+      `${origin}/data_framework?state=Texas&year=2024&registry_source_id=source-1&workflow_item_id=item-1&search=Senate`,
       '/worklist',
       '/worklist',
       origin
@@ -35,10 +35,34 @@ describe('O4E cross-surface presentation context contract', () => {
       '/data_framework',
       origin
     );
-    expect(href).toBe('/data_framework?state=AZ&year=2026');
+    expect(href).toBe('/data_framework?state=Arizona&year=2026');
     expect(href).not.toContain('workflow_pass_id');
     expect(href).not.toContain('expected_row_version');
     expect(href).not.toContain('contest=');
+  });
+
+  test('round trips full-name state back to workflow code without leaking authority', () => {
+    const href = buildContextHref(
+      `${origin}/data_framework?state=Arizona&year=2026&workflow_pass_id=private`,
+      '/worklist', '/worklist', origin
+    );
+    expect(href).toBe('/worklist?state=AZ&year=2026');
+  });
+
+  test('invalid state is omitted without converting it to another geography', () => {
+    const href = buildContextHref(
+      `${origin}/worklist?state=ZZ&year=2024`,
+      '/data_framework', '/data_framework', origin
+    );
+    expect(href).toBe('/data_framework?year=2024');
+  });
+
+  test('canonical state label translation works for territories', () => {
+    const href = buildContextHref(
+      `${origin}/worklist?state=PR&year=2024`,
+      '/data_framework', '/data_framework', origin
+    );
+    expect(href).toBe('/data_framework?state=Puerto+Rico&year=2024');
   });
 
   test('omits absent or empty approved values', () => {

@@ -366,7 +366,8 @@
         </section>
     </main>
 
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/cross_surface_context.js') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/public_geo_coverage.js') }}?v={{ static_version|default('g132') }}-w24ui11-69fd3ac68bfe" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/cross_surface_context.js') }}?v={{ static_version|default('g132') }}-w24ui11-7095347e889b" defer></script>
     <script
         nonce="{{ g.csp_nonce }}"
         src="{{ url_for('static', filename='js/workflow_public.js') }}?v=a7dec248a414270a"

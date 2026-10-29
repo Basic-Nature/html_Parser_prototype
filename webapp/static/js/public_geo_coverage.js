@@ -76,6 +76,20 @@
     return code ? CANONICAL_STATE_LABELS[code] : null;
   }
 
+  // The canonical publication API uses full labels, while public navigation
+  // uses geographic codes. This is presentation-only normalization; the
+  // canonical facet universe remains responsible for query authority.
+  function canonicalStateCode(input) {
+    if (typeof input !== 'string') return null;
+    const value = input.trim();
+    const code = normalizeState(value);
+    if (code) return code;
+    if (!value) return null;
+    const match = Object.entries(CANONICAL_STATE_LABELS)
+      .find(([, label]) => label.toLowerCase() === value.toLowerCase());
+    return match ? match[0] : null;
+  }
+
   function matchesCanonicalState(value, expected) {
     return typeof value === 'string' && typeof expected === 'string'
       && value.trim().toLowerCase() === expected.toLowerCase();
@@ -708,7 +722,7 @@
     return Object.freeze({ select, clear, jurisdictions, actions: Object.freeze({ retry, refresh }) });
   }
 
-  const api = Object.freeze({ normalizeState, canonicalStateLabel, coverageUrl, worklistUrl, ballotLensUrl, facetUrl, dataFrameworkJurisdictionUrl, parseCoverage, parseJurisdictionFacets, recordedStatusLabel, mount });
+  const api = Object.freeze({ normalizeState, canonicalStateLabel, canonicalStateCode, coverageUrl, worklistUrl, ballotLensUrl, facetUrl, dataFrameworkJurisdictionUrl, parseCoverage, parseJurisdictionFacets, recordedStatusLabel, mount });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root && root.document) {
     root.ElectionPulsePublicCoverage = api;

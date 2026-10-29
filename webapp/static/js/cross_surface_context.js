@@ -1,7 +1,11 @@
 (function (root, factory) {
   'use strict';
 
-  const api = factory();
+  // Reuse the existing 56-code public mapping instead of duplicating labels.
+  const geography = typeof module !== 'undefined' && module.exports
+    ? require('./public_geo_coverage.js')
+    : root?.ElectionPulsePublicCoverage;
+  const api = factory(geography);
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
@@ -30,7 +34,7 @@
   } else {
     apply();
   }
-})(typeof window !== 'undefined' ? window : null, function () {
+})(typeof window !== 'undefined' ? window : null, function (geography) {
   'use strict';
 
   const CONTEXT_KEYS = Object.freeze(['state', 'year']);
@@ -57,10 +61,26 @@
         return null;
       }
 
+      // A missing shared geography contract must not silently publish a
+      // misleading state-specific link. The original href remains available.
+      const inputState = source.searchParams.get('state');
+      if (inputState?.trim() && (
+        !geography
+        || typeof geography.canonicalStateCode !== 'function'
+        || typeof geography.canonicalStateLabel !== 'function'
+      )) return null;
+
       CONTEXT_KEYS.forEach((key) => {
         const value = source.searchParams.get(key);
         if (value === null || value.trim() === '') {
           target.searchParams.delete(key);
+        } else if (key === 'state') {
+          const code = geography.canonicalStateCode(value);
+          const resolved = code && markerPath === '/data_framework'
+            ? geography.canonicalStateLabel(code)
+            : code;
+          if (resolved) target.searchParams.set(key, resolved);
+          else target.searchParams.delete(key);
         } else {
           target.searchParams.set(key, value);
         }
