@@ -302,6 +302,19 @@
     const countNote = doc.createElement('p');
     countNote.className = 'ep-public-coverage__result-count';
     countNote.setAttribute('aria-live', 'polite');
+    const pager = doc.createElement('nav');
+    pager.setAttribute('aria-label', 'Published jurisdiction results pages');
+    pager.hidden = true;
+    const previousPage = doc.createElement('button');
+    previousPage.type = 'button';
+    previousPage.textContent = 'Previous reporting units';
+    const pageStatus = doc.createElement('span');
+    pageStatus.setAttribute('role', 'status');
+    pageStatus.setAttribute('aria-live', 'polite');
+    const nextPage = doc.createElement('button');
+    nextPage.type = 'button';
+    nextPage.textContent = 'Next reporting units';
+    pager.append(previousPage, pageStatus, nextPage);
     const selection = doc.createElement('p');
     selection.className = 'ep-public-coverage__selection';
     const link = doc.createElement('a');
@@ -326,6 +339,7 @@
     wrapper.appendChild(labelNode);
     wrapper.appendChild(select);
     wrapper.appendChild(countNote);
+    wrapper.appendChild(pager);
     wrapper.appendChild(selection);
     wrapper.appendChild(link);
     // The actual templates place the race list before the public-page links.
@@ -340,6 +354,7 @@
     let pendingTimer = null;
     let items = [];
     const MAX_VISIBLE_OPTIONS = 40;
+    let page = 0;
     const cached = new Map();
     function renderOptions() {
       select.replaceChildren();
@@ -354,19 +369,26 @@
       const matches = items.map((item, index) => ({ item, index }))
         .filter(({ item }) => !needle || item.name.toLocaleLowerCase().includes(needle)
           || jurisdictionTypeLabel(item.type).toLocaleLowerCase().includes(needle));
-      matches.slice(0, MAX_VISIBLE_OPTIONS).forEach(({ item, index }) => {
+      const pageCount = Math.max(1, Math.ceil(matches.length / MAX_VISIBLE_OPTIONS));
+      page = Math.max(0, Math.min(page, pageCount - 1));
+      const start = page * MAX_VISIBLE_OPTIONS;
+      const stop = Math.min(start + MAX_VISIBLE_OPTIONS, matches.length);
+      matches.slice(start, stop).forEach(({ item, index }) => {
         const option = doc.createElement('option');
-        // Preserve index into the COMPLETE validated array; never confuse filtered positions.
+        // Keep the index of the validated full array, not the filtered page position.
         option.value = String(index);
         option.textContent = `${item.name} — ${jurisdictionTypeLabel(item.type)}`;
         select.appendChild(option);
       });
       select.value = '';
       select.disabled = matches.length === 0;
+      pager.hidden = matches.length <= MAX_VISIBLE_OPTIONS;
+      previousPage.disabled = page === 0;
+      nextPage.disabled = page >= pageCount - 1;
+      pageStatus.textContent = `Page ${page + 1} of ${pageCount}`;
       countNote.textContent = matches.length === 0
         ? 'No matching published names. Try another search; no missing-election conclusion follows.'
-        : `Showing ${Math.min(matches.length, MAX_VISIBLE_OPTIONS)} of ${matches.length} matching entries` +
-          (matches.length > MAX_VISIBLE_OPTIONS ? '. Refine the search for more.' : '.');
+        : `Showing ${start + 1}–${stop} of ${matches.length} matching entries`;
     }
     function cancel() {
       if (active) active.abort();
@@ -382,6 +404,8 @@
       cancel();
       state = normalizeState(next);
       items = [];
+      page = 0;
+      pager.hidden = true;
       search.value = '';
       search.disabled = true;
       search.hidden = true;
@@ -404,6 +428,7 @@
     }
     function show(parsed) {
       items = parsed.items;
+      page = 0;
       search.value = '';
       search.disabled = items.length === 0;
       search.hidden = items.length === 0;
@@ -497,19 +522,27 @@
         return;
       }
       const entry = items[Number(normalized)];
-      const href = entry ? dataFrameworkJurisdictionUrl(state, entry.name) : null;
+      // The current Data Framework URL carries a name but no type or durable ID.
+      // Do not claim that same-name facets select a unique published jurisdiction.
+      const ambiguity = entry && items.some((candidate) =>
+        candidate !== entry && candidate.name.toLocaleLowerCase() === entry.name.toLocaleLowerCase());
+      const href = entry && !ambiguity ? dataFrameworkJurisdictionUrl(state, entry.name) : null;
       link.hidden = !href;
       link.setAttribute('href', href || '/data_framework');
-      selection.textContent = href && entry
-        ? `Selected: ${entry.name} (${jurisdictionTypeLabel(entry.type)}). Data Framework filters by published jurisdiction name; capitalization variants can lead to the same results.`
-        : '';
+      selection.textContent = ambiguity
+        ? `Ambiguous published name: ${entry.name} (${jurisdictionTypeLabel(entry.type)}). Multiple recorded entries share this name. The name-only Data Framework link is withheld until the selected identity can be resolved safely.`
+        : href && entry
+          ? `Selected: ${entry.name} (${jurisdictionTypeLabel(entry.type)}). Data Framework filters by published jurisdiction name; this is not geographic verification.`
+          : '';
     }
     browse.addEventListener('click', () => { void load(); });
     refresh.addEventListener('click', () => { void load({ force: true }); });
-    search.addEventListener('input', () => { renderOptions(); });
+    search.addEventListener('input', () => { page = 0; renderOptions(); });
+    previousPage.addEventListener('click', () => { if (page > 0) { page -= 1; renderOptions(); } });
+    nextPage.addEventListener('click', () => { page += 1; renderOptions(); });
     select.addEventListener('change', () => { choose(select.value); });
     reset(null);
-    return Object.freeze({ reset, load, choose, elements: Object.freeze({browse,refresh,status,search,select,countNote,selection,link}) });
+    return Object.freeze({ reset, load, choose, elements: Object.freeze({browse,refresh,status,search,select,countNote,pager,previousPage,nextPage,pageStatus,selection,link}) });
   }
 
   function mount(section, env = root) {
