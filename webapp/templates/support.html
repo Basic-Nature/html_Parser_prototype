@@ -4,15 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="description" content="Local preview of ElectionPulse project support and historical operating cost transparency.">
-  <title>Support &amp; Transparency — ElectionPulse (Local Preview — Unpublished)</title>
+  <meta name="description" content="ElectionPulse project support and financial-transparency methodology. Verified financial figures require separate publication approval.">
+  <title>Support &amp; Transparency — ElectionPulse</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/support_page.css') }}">
+  {% if not support_is_public %}
   <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/support_snapshot.js') }}" defer></script>
+  {% endif %}
+  <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/support_snapshot_contract.js') }}" defer></script>
   <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/support_page.js') }}" defer></script>
 </head>
-<body data-page="support">
+<body data-page="support" data-support-public="{{ 'true' if support_is_public else 'false' }}" data-financial-approved="{{ 'true' if support_financial_publication_enabled else 'false' }}">
   <a class="skip-link" href="#main">Skip to main content</a>
-  <div class="preview-stripe">PRIVATE PREVIEW ONLY <span aria-hidden="true">·</span> Not approved for publication <span aria-hidden="true">·</span> No donations accepted</div>
+  {% if not support_is_public %}
+  <div class="preview-stripe">PRIVATE PREVIEW ONLY <span aria-hidden="true">·</span> Not approved for publication <span aria-hidden="true">·</span> No payments accepted</div>
+  {% else %}
+  <div class="preview-stripe">PUBLIC INFORMATION ONLY <span aria-hidden="true">·</span> Figures available only after documented approval <span aria-hidden="true">·</span> Payments disabled</div>
+  {% endif %}
   <header class="site-header">
     <div class="site-header-inner">
       <a class="wordmark" href="/" aria-label="Return to ElectionPulse Observatory"><span class="brand-emblem" aria-hidden="true"><span></span><span></span><span></span></span><span>Election<span class="brand-accent">Pulse</span></span></a>
@@ -28,20 +35,20 @@
         <div class="hero-copy">
           <div class="eyebrow light">PROJECT SUPPORT <span class="eyebrow-divider" aria-hidden="true"></span> FINANCIAL ACCOUNTABILITY</div>
           <h1 id="hero-title">Public election data.<br><em>Visible project costs.</em></h1>
-          <p>ElectionPulse is an independently maintained effort to make election results easier to access, inspect, and compare. This page is being built to show what it takes to operate—and what voluntary support actually pays for.</p>
+          <p>ElectionPulse is an independently maintained effort to make election results easier to access, inspect, and compare. This page explains how operating costs and future voluntary support will be documented.</p>
           <div class="hero-actions">
             <a class="button button-mint" href="#funding">Explore funding transparency <span aria-hidden="true">↗</span></a>
             <a class="text-link inverse" href="#costs">Review expenses <span aria-hidden="true">→</span></a>
           </div>
         </div>
         <div class="hero-side" aria-label="Historical cost preview">
-          <span class="micro-label">HISTORICAL PAYMENT RECORDS</span>
+          <span class="micro-label">DOCUMENTED OPERATING COSTS</span>
           <div class="hero-figure" id="hero-provider-total">—</div>
-          <div class="hero-caption">Documented provider-payment subtotal</div>
+          <div class="hero-caption">Provider-payment subtotal, if publication-approved</div>
           <div class="hero-line"></div>
-          <div class="micro-label amber-label">PROVISIONAL · NOT BANK-VERIFIED</div>
-          <p>Provider records are reconciled where available. This is not yet a certified lifetime founder-investment total.</p>
-          <span class="cover-tag">May 2025 – Oct 2026</span>
+          <div class="micro-label amber-label">VERIFICATION REQUIRED</div>
+          <p>Expense history remains unpublished until reconciliation, attribution, and independent approval are documented.</p>
+          <span class="cover-tag">Period coverage pending review</span>
         </div>
       </div>
       <div class="hero-noise" aria-hidden="true"></div>
@@ -59,7 +66,7 @@
       <div class="max-width">
         <div class="section-header">
           <div><span class="eyebrow">01 / FUNDING</span><h2 id="funding-title">Where contributions would go</h2><p class="section-lede">Five separate measures. No fictional balances, no invented funding goals, and no implied payments.</p></div>
-          <span class="review-pill">Awaiting verified contribution ledger</span>
+          <span class="review-pill">Contribution ledger publication controlled separately</span>
         </div>
         <div class="meter-grid">
           <article class="meter-card featured-card">
@@ -105,7 +112,7 @@
           <article class="meter-card explanation-card">
             <span class="eyebrow">WHY NO METER FILL?</span>
             <h3>An empty record is not a zero balance.</h3>
-            <p>There is no verified contribution ledger available yet. A blank meter is deliberate: its percentage would be misleading without a known total.</p>
+            <p>When a figure is not approved for publication, a blank meter means unavailable, not zero. No totals are implied.</p>
             <a class="text-link" href="#methodology">Our accounting rules <span aria-hidden="true">→</span></a>
           </article>
         </div>
@@ -115,28 +122,28 @@
     <section id="costs" class="section" aria-labelledby="costs-title">
       <div class="max-width">
         <div class="section-header">
-          <div><span class="eyebrow">02 / HISTORICAL COSTS</span><h2 id="costs-title">What operating the project has cost</h2><p class="section-lede">A verified cost history takes more than adding usage charts. These figures use provider-specific payment evidence and remain under final attribution review.</p></div>
+          <div><span class="eyebrow">02 / HISTORICAL COSTS</span><h2 id="costs-title">What operating the project has cost</h2><p class="section-lede">Provider records require reconciliation, attribution, and explicit financial-publication authorization before amounts are shown.</p></div>
         </div>
         <div class="summary-grid">
-          <article class="summary-tile primary-tile"><div class="micro-label">DOCUMENTED PROVIDER PAYMENTS</div><div class="stat-value" id="provider-total">—</div><p>Provisional combined record subtotal, not final personal cash spending.</p><span class="stat-bottom">Review pending</span></article>
-          <article class="summary-tile"><div class="micro-label">AZURE</div><div class="stat-value" id="azure-total">—</div><p>Invoices marked Paid, Oct 2025–Sep 2026.</p><span class="stat-bottom">12 billing periods</span></article>
-          <article class="summary-tile"><div class="micro-label">GITHUB</div><div class="stat-value" id="github-total">—</div><p>Applied invoice payments, including Oct 27 receipt.</p><span class="stat-bottom">Historical plan + usage invoices</span></article>
-          <article class="summary-tile"><div class="micro-label">GODADDY</div><div class="stat-value" id="godaddy-total">—</div><p>One confirmed domain and protection payment.</p><span class="stat-bottom">Jan 16, 2026</span></article>
+          <article class="summary-tile primary-tile"><div class="micro-label">DOCUMENTED PROVIDER PAYMENTS</div><div class="stat-value" id="provider-total">—</div><p>A combined amount is withheld until the approved data reconciles.</p><span class="stat-bottom">Review pending</span></article>
+          <article class="summary-tile"><div class="micro-label">AZURE</div><div class="stat-value" id="azure-total">—</div><p>Published paid-invoice evidence, when approved.</p><span class="stat-bottom">Coverage not yet established</span></article>
+          <article class="summary-tile"><div class="micro-label">GITHUB</div><div class="stat-value" id="github-total">—</div><p>Approved provider payment records only.</p><span class="stat-bottom">Coverage not yet established</span></article>
+          <article class="summary-tile"><div class="micro-label">GODADDY</div><div class="stat-value" id="godaddy-total">—</div><p>Approved domain and service payment records only.</p><span class="stat-bottom">Coverage not yet established</span></article>
         </div>
         <div class="founder-note"><div><span class="eyebrow">LIFETIME FOUNDER INVESTMENT</span><strong>Final amount pending attribution</strong><p>The provider-payment subtotal above helps document project history, but it cannot yet be certified as the founder’s complete unreimbursed out-of-pocket spending.</p></div><span class="status-tag">Not yet certified</span></div>
         <div class="chart-surface">
-          <div class="chart-heading"><div><h3>Provider payment history</h3><p>Grouped by recorded billing month. Each bar uses distinct provider categories.</p></div><label class="filter-label" for="year-filter">View period <select id="year-filter"><option value="all">All months</option><option value="2025">2025</option><option value="2026">2026</option></select></label></div>
+          <div class="chart-heading"><div><h3>Provider payment history</h3><p>Verified records are grouped by billing month only when financial publication is approved.</p></div><label class="filter-label" for="year-filter">View period <select id="year-filter"><option value="all">All months</option><option value="2025">2025</option><option value="2026">2026</option></select></label></div>
           <p id="support-filter-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
           <div class="chart-legend" aria-label="Cost categories"><span><i class="legend-color azure" aria-hidden="true"></i>Azure</span><span><i class="legend-color github" aria-hidden="true"></i>GitHub</span><span><i class="legend-color godaddy" aria-hidden="true"></i>GoDaddy</span></div>
           <div id="monthly-chart" class="bar-chart" aria-label="Monthly provider payment values; detailed accessible values are in the table below"></div>
-          <p class="chart-note">Monthly data is shown for historical context, not as a donation allocation. October 2026 is incomplete because Azure billing is not finalized.</p>
+          <p class="chart-note">Unavailable months and partial provider evidence must remain distinguishable from zero. Expenses are separate from contributions.</p>
         </div>
         <div class="table-surface">
-          <div class="chart-heading table-heading"><div><h3>Monthly expense detail</h3><p>Values are provider payments or invoices marked paid, not duplicated usage exports.</p></div><span class="review-pill neutral">USD · Historical / provisional</span></div>
+          <div class="chart-heading table-heading"><div><h3>Monthly expense detail</h3><p>Approved entries are provider payments or paid invoices, not duplicated usage exports.</p></div><span class="review-pill neutral">USD · Verified only when authorized</span></div>
           <div class="table-scroll"><table id="expense-table"><caption class="sr-only">Historical monthly provider-payment evidence for ElectionPulse</caption><thead><tr><th scope="col">Billing month</th><th scope="col" class="align-right">Azure</th><th scope="col" class="align-right">GitHub</th><th scope="col" class="align-right">GoDaddy</th><th scope="col" class="align-right">Subtotal</th><th scope="col">Coverage</th></tr></thead><tbody id="expense-body"></tbody><tfoot id="expense-foot"></tfoot></table></div>
           <p class="table-note">“—” means no value is displayed for this provider/period. The subtotal only adds documented payments present, and must not be interpreted as an exhaustive amount for incomplete periods.</p>
         </div>
-        <details class="reconciliation"><summary>Review outstanding billing reconciliations <span aria-hidden="true">+</span></summary><div><ul><li>Azure February and March 2026 usage detail differs from replacement invoices. The latter are marked paid, but adjustment mechanisms remain under review.</li><li>GitHub invoices include historical developer tooling. Allocation between project costs and personal tooling is not yet certified.</li><li>The October 27, 2026 GitHub receipt and updated invoice confirm that the $6.32 charge was settled; it is included once.</li><li>October 2026 Azure charges are not finalized. No amount has been fabricated to fill the gap.</li><li>Public founder-funded totals will require final expense attribution, credit treatment, and reimbursement policy approval.</li></ul></div></details>
+        <details class="reconciliation"><summary>Financial-data publication requirements <span aria-hidden="true">+</span></summary><div><ul><li>Provider payment and invoice evidence must be reconciled without double counting.</li><li>Founder-paid costs must be separately attributed from reimbursed expenses and any other personal tooling.</li><li>Processing fees, refunds, partial billing periods, and commitments must be recorded with their effective dates.</li><li>Unknown amounts remain unpublished rather than being displayed as zero.</li><li>Publication requires an approved, redacted snapshot in the private server instance directory.</li></ul></div></details>
       </div>
     </section>
 
@@ -145,8 +152,14 @@
       <div class="rules-list"><div class="rule"><span>01</span><div><h3>Separate expenses from funding</h3><p>A $20 operating bill does not become $20 in donations. Costs and contributions remain separate records.</p></div></div><div class="rule"><span>02</span><div><h3>Track funds through their lifecycle</h3><p>Received, settled, spent, committed, and available amounts cannot be counted in two buckets at once.</p></div></div><div class="rule"><span>03</span><div><h3>Publish corrections and uncertainty</h3><p>Partial months, invoice adjustments, missing data, and revisions remain visible. Unknown is never silently replaced with zero.</p></div></div><div class="rule"><span>04</span><div><h3>Protect independent election analysis</h3><p>Financial contributions cannot influence data processing, reported results, or discrepancy findings.</p></div></div></div>
     </div></section>
 
-    <section class="support-cta section" aria-labelledby="cta-title"><div class="max-width cta-panel"><div><span class="eyebrow light">VOLUNTARY SUPPORT</span><h2 id="cta-title">Help build a sustainable public-data project.</h2><p>Payment processing is not activated in this preview. When eligibility, independent accounting, and a provider are verified, contributors will be directed to a secure hosted checkout.</p></div><div class="cta-box"><span class="status-tag dark-tag">Payments currently disabled</span><p>No account, routing, or payment-card information will be accepted on this page.</p><a href="/" class="button button-ghost">Back to Observatory <span aria-hidden="true">↗</span></a></div></div></section>
+    <section class="support-cta section" aria-labelledby="cta-title"><div class="max-width cta-panel"><div><span class="eyebrow light">VOLUNTARY SUPPORT</span><h2 id="cta-title">Help build a sustainable public-data project.</h2><p>Payments are not activated. Optional support may become available only after provider eligibility, public-contact privacy, and financial-publication reviews are complete. There is no checkout on this page.</p></div><div class="cta-box"><span class="status-tag dark-tag">Payments currently disabled</span><p>No account, routing, or payment-card information will be accepted on this page.</p><a href="/" class="button button-ghost">Back to Observatory <span aria-hidden="true">↗</span></a></div></div></section>
+    <section class="section" id="support-policies" aria-labelledby="support-policies-title"><div class="max-width">
+      <h2 id="support-policies-title">Contact, refunds, and privacy</h2>
+      <p>For project questions, use the contact link on the <a href="/">ElectionPulse Observatory</a>. A dedicated payment-support channel and the applicable refund procedure must be verified and published before any contributions are enabled.</p>
+      <p>ElectionPulse is independently operated; it is not a registered tax-exempt charity. No tax-deductibility is claimed. Contributions cannot influence election findings, source approval, or audit outcomes.</p>
+      <p>This page does not collect or process payment-card details. Personal operator verification details must not appear in public financial snapshots. Customer-facing provider receipts and statements require separate privacy verification.</p>
+    </div></section>
   </main>
-  <footer class="site-footer"><div class="max-width footer-grid"><div><div class="footer-brand">Election<span>Pulse</span></div><p>Independent election-data infrastructure and public accountability.</p></div><div><a href="#funding">Funding</a><a href="#costs">Operating costs</a><a href="#methodology">Transparency policy</a></div><div><strong>Publication status</strong><span>Offline local preview, not an official published financial statement.</span></div></div><div class="max-width footer-last"><span>Source snapshot: October 27, 2026 · Local review only</span><span>Currency: USD · No third-party tracking · No live payment integration</span></div></footer>
+  <footer class="site-footer"><div class="max-width footer-grid"><div><div class="footer-brand">Election<span>Pulse</span></div><p>Independent election-data infrastructure and public accountability.</p></div><div><a href="#funding">Funding</a><a href="#costs">Operating costs</a><a href="#methodology">Transparency policy</a></div><div><strong>Publication status</strong><span>{% if support_is_public %}Public project information; figures only if independently approved.{% else %}Offline local preview, not an official published financial statement.{% endif %}</span></div></div><div class="max-width footer-last"><span>Financial snapshot: pending reconciliation and publication approval</span><span>Currency: USD · No third-party tracking · No live payment integration</span></div></footer>
 </body>
 </html>

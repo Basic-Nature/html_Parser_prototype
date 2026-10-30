@@ -1,16 +1,41 @@
 'use strict';
 (function(){
-  const snapshot=window.EP_SUPPORT_SNAPSHOT;
+  const privatePreview=window.EP_SUPPORT_SNAPSHOT;
   const $=(id)=>document.getElementById(id);
   const currency=(amount)=>amount===null||amount===undefined?'—':new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(amount);
   const clear=(node)=>{while(node.firstChild)node.removeChild(node.firstChild)};
   const label=(p)=>{const [y,m]=p.split('-');return new Date(Date.UTC(Number(y),Number(m)-1,1)).toLocaleDateString('en-US',{month:'short',year:'numeric',timeZone:'UTC'})};
-  function render(){
-    if(!snapshot || snapshot.publish_approved!==false || !Array.isArray(snapshot.monthly) || snapshot.monthly.length===0){
-      document.querySelector('.hero-figure').textContent='Unavailable';
+  async function render(){
+    const isPublic=document.body && document.body.dataset.supportPublic==='true';
+    const serverFinancial=document.body && document.body.dataset.financialApproved==='true';
+    const contract=window.ElectionPulseSupportSnapshotContract;
+    let snapshot=null;
+    const unavailable=()=>{
+      const hero=document.querySelector('.hero-figure');
+      if(hero)hero.textContent='Unavailable';
       const s=document.getElementById('support-filter-status');
-      if(s)s.textContent='Financial snapshot awaits publication review.';
-      return;
+      if(s)s.textContent='Financial figures are not approved or are unavailable.';
+    };
+    if(isPublic){
+      // Never consult window.EP_SUPPORT_SNAPSHOT for public numbers. The server
+      // checks publication flags, independent approval record, and a private file.
+      if(!serverFinancial || !contract || typeof contract.validateForPublication!=='function'){
+        unavailable();return;
+      }
+      try{
+        const response=await fetch('/support/financial-snapshot',{
+          method:'GET',credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}
+        });
+        if(!response.ok){unavailable();return;}
+        const payload=await response.json();
+        if(!contract.validateForPublication(payload).ok){unavailable();return;}
+        snapshot=payload;
+      }catch(_error){unavailable();return;}
+    }else{
+      snapshot=privatePreview;
+      if(!snapshot || snapshot.publish_approved!==false || !Array.isArray(snapshot.monthly) || snapshot.monthly.length===0){
+        unavailable();return;
+      }
     }
     const totals=snapshot.founder;
     $('hero-provider-total').textContent=currency(totals.provider_record_payment_subtotal_usd);
@@ -50,7 +75,7 @@
       }
       if(status) status.textContent=`Showing ${rows.length} billing months for ${year==='all'?'all periods':year}.`;
       const tr=document.createElement('tr');
-      const v=[year==='all'?'Selected periods total':year+' provider payments',...['azure_paid_invoice_usd','github_applied_payments_usd','godaddy_paid_receipt_usd','provider_payment_sum_usd'].map(key=>currency(rows.reduce((s,r)=>s+(r[key]??0),0))),'Mixed evidence'];
+      const v=[year==='all'?'Selected periods total':year+' provider payments',...['azure_paid_invoice_usd','github_applied_payments_usd','godaddy_paid_receipt_usd','provider_payment_sum_usd'].map(key=>currency(rows.reduce((s,r)=>s+(r[key]??0),0))),'Reconciled provider records'];
       v.forEach((s,i)=>{const td=document.createElement('td');td.textContent=s;if(i>=1&&i<=4)td.className='align-right';tr.appendChild(td)});foot.appendChild(tr);
     }
     $('year-filter').addEventListener('change',draw);draw();
