@@ -1594,13 +1594,23 @@ document.addEventListener('DOMContentLoaded', () => {
     return normalized;
   }
 
+  function canonicalStateLabelFromUrlIntent(raw) {
+    const value = sanitizeCanonicalQueryValue(raw);
+    if (!value) return '';
+    const geo = window.ElectionPulsePublicCoverage;
+    if (!geo || typeof geo.canonicalStateCode !== 'function'
+      || typeof geo.canonicalStateLabel !== 'function') return value;
+    const code = geo.canonicalStateCode(value);
+    return code ? (geo.canonicalStateLabel(code) || value) : value;
+  }
+
   function readCanonicalQueryScopeFromLocation() {
     const params = new URLSearchParams(window.location.search || '');
     return {
       year: sanitizeCanonicalQueryValue(
         params.get(SHAREABLE_CANONICAL_QUERY_KEYS.year)
       ),
-      state: sanitizeCanonicalQueryValue(
+      state: canonicalStateLabelFromUrlIntent(
         params.get(SHAREABLE_CANONICAL_QUERY_KEYS.state)
       ),
       jurisdiction: sanitizeCanonicalQueryValue(
@@ -1643,6 +1653,13 @@ document.addEventListener('DOMContentLoaded', () => {
     return true;
   }
 
+  function refreshPublicStateNavigationLinks() {
+    const navigator = window.ElectionPulseCrossSurfaceContext;
+    if (navigator && typeof navigator.applyContextNavigation === 'function') {
+      navigator.applyContextNavigation(document, window.location.href, window.location.origin);
+    }
+  }
+
   function replaceCanonicalQueryScopeInLocation(
     filters = getCanonicalScopeFilters()
   ) {
@@ -1669,6 +1686,7 @@ document.addEventListener('DOMContentLoaded', () => {
       window.history.replaceState(window.history.state, '', nextLocation);
       // Presentation-only scope notification; grants no fetch or action authority.
       window.dispatchEvent(new Event('electionpulse:canonical-scope-changed'));
+      refreshPublicStateNavigationLinks();
     }
   }
 
@@ -1685,6 +1703,7 @@ document.addEventListener('DOMContentLoaded', () => {
       window.history.replaceState(window.history.state, '', nextLocation);
       // Presentation-only scope notification; grants no fetch or action authority.
       window.dispatchEvent(new Event('electionpulse:canonical-scope-changed'));
+      refreshPublicStateNavigationLinks();
     }
   }
 
@@ -4382,9 +4401,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const limit = 20;
     let sequence = 0;
     let pendingInitial = true;
+    let externalStateIntent = null;
     const saved = new URLSearchParams(window.location.search);
     const starting = {
-      state: saved.get('state') || '',
+      state: canonicalStateLabelFromUrlIntent(saved.get('state') || ''),
       year: saved.get('year') || '',
       contest: saved.get('contest') || ''
     };
@@ -4414,7 +4434,9 @@ document.addEventListener('DOMContentLoaded', () => {
       return target;
     }
     async function facets(request) {
-      const current = pendingInitial ? starting : filters();
+      const current = externalStateIntent !== null
+        ? { ...(pendingInitial ? starting : filters()), state: externalStateIntent }
+        : (pendingInitial ? starting : filters());
       const target = urlFor(canonicalFacetsUrl, {state:current.state,year:current.year});
       const response = await fetch(target.toString(), {method:'GET',credentials:'same-origin',headers:{Accept:'application/json'}});
       if (!response.ok) throw new Error('Canonical facet availability failed');
@@ -4424,6 +4446,7 @@ document.addEventListener('DOMContentLoaded', () => {
       listOptions(fields.state, payload.states, 'All states', current.state);
       listOptions(fields.year, payload.years, 'All years', current.year);
       listOptions(fields.contest, payload.contests, 'All contests', current.contest);
+      externalStateIntent = null;
       pendingInitial = false;
     }
     function addText(parent, name, content) {
@@ -4486,7 +4509,35 @@ document.addEventListener('DOMContentLoaded', () => {
         if (request === sequence) {fields.cards.replaceChildren();state('Canonical race coverage is unavailable. No fallback data was substituted.', 'error');}
       }
     }
+    // Receive only authoritative, canonical-label state intent. Coverage keeps
+    // ownership of its own year/contest and never synthesizes a change event.
+    window.addEventListener('electionpulse:canonical-scope-changed', () => {
+      if (!isCanonicalFacetPayload(canonicalFacetUniversePayload)) return;
+      const stateIntent = canonicalStateLabelFromUrlIntent(
+        new URLSearchParams(window.location.search).get('state')
+      );
+      if (stateIntent && !canonicalFacetUniversePayload.states.includes(stateIntent)) return;
+      if (stateIntent === (externalStateIntent !== null ? externalStateIntent : fields.state.value)) return;
+      externalStateIntent = stateIntent;
+      offset = 0;
+      load(true);
+    });
     for (const key of ['state','year','contest']) fields[key].addEventListener('change', () => {
+      if (key === 'state' && isCanonicalFacetPayload(canonicalFacetUniversePayload)) {
+        const selected = fields.state.value;
+        if (!selected || canonicalFacetUniversePayload.states.includes(selected)) {
+          vizState = selected;
+          if (el.vizState instanceof HTMLSelectElement
+            && Array.from(el.vizState.options).some(option => option.value === selected)) {
+            el.vizState.value = selected;
+          }
+          enterVizExploreMode('coverage state selected');
+          canonicalQueryScopeHydrated = true;
+          replaceCanonicalQueryScopeInLocation();
+          refreshCanonicalExploreScope();
+          updateVizAutoToggleLabel();
+        }
+      }
       offset = 0; load(key !== 'contest');
     });
     fields.reset.addEventListener('click', () => {
