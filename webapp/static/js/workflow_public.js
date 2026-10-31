@@ -420,9 +420,11 @@
             const link = this.byId('workflowPublicGeoBallotLink');
             if (!link) return;
             const raw = this.byId('workflow-filter-state')?.value;
-            const normalized = typeof raw === 'string' ? raw.trim().toUpperCase() : '';
-            link.setAttribute('href', /^[A-Z]{2}$/.test(normalized)
-                ? `/ballot_lens?geo_state=${encodeURIComponent(normalized)}`
+            // Only known geographic codes/labels may become public navigation context.
+            // Missing mapping is not a reason to guess or grant authority.
+            const code = window.ElectionPulsePublicCoverage?.canonicalStateCode?.(raw ?? '');
+            link.setAttribute('href', code
+                ? `/ballot_lens?geo_state=${encodeURIComponent(code)}`
                 : '/ballot_lens');
         }
 
