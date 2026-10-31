@@ -38,3 +38,16 @@
 .ep-s3-more:disabled{cursor:default;opacity:.7}
 .ep-s3-more[hidden]{display:none!important}
 @media(max-width:560px){.ep-s3-group{padding:.55rem}.ep-s3-groups{gap:.7rem}.ep-s3-more-bar{flex-direction:column;align-items:stretch}.ep-s3-more{width:100%}}
+
+/* O4F6B current published record-instance inspection, no provenance elevation. */
+.ep-s3-inspect-instance{display:inline-block;min-height:2.75rem;padding:.48rem .8rem;
+  margin:.55rem 0 0;border:1px solid #99d0e1;border-radius:.5rem;
+  background:#174d69;color:#fff;font-weight:700;cursor:pointer}
+.ep-s3-inspect-instance:focus-visible{outline:3px solid #f9d477;outline-offset:3px}
+.ep-s3-inspect-instance:disabled{opacity:.7;cursor:wait}
+.ep-s3-instance-status{font-size:.87rem;line-height:1.5;margin:.55rem 0}
+.ep-s3-instance-detail{border-left:3px solid #9bd4e5;padding:.5rem .75rem;
+  margin:.5rem 0 0;background:#102b41;border-radius:.3rem;
+  overflow-wrap:anywhere;font-size:.86rem}
+.ep-s3-instance-detail p{margin:.3rem 0}
+@media(max-width:560px){.ep-s3-inspect-instance{width:100%}}

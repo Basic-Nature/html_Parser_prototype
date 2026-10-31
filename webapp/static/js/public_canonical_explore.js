@@ -11,6 +11,63 @@
   const SCOPE_CHANGED = 'electionpulse:canonical-scope-changed';
   const activeRequests = new WeakMap();
 
+  // O4F6B: a UUID identifies this current published result instance only.
+  // Never interpret it as a durable republication identity or provenance key.
+  const INSTANCE_ID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const INSTANCE_DETAIL_FIELDS = Object.freeze([
+    'id', 'state', 'year', 'election_date', 'date_precision', 'contest',
+    'jurisdiction_name', 'jurisdiction_type', 'aggregation_scope', 'precinct',
+    'candidate', 'party', 'is_write_in', 'total_votes', 'vote_components'
+  ]);
+
+  function recordInstanceUrl(id) {
+    return typeof id === 'string' && INSTANCE_ID_RX.test(id)
+      ? '/api/ballotlens-database/records/' + id.toLowerCase()
+      : null;
+  }
+
+  function parseRecordInstance(payload, expected) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
+        payload.contract !== 'canonical_record_instance_v1' ||
+        payload.authority !== 'canonical_production' ||
+        payload.data_source !== 'canonical' ||
+        payload.identity_semantics !== 'current_record_instance_only' ||
+        payload.cross_republication_permalink !== false ||
+        !payload.item || typeof payload.item !== 'object' || Array.isArray(payload.item)) {
+      throw new Error('Record instance contract rejected');
+    }
+    const item = payload.item;
+    if (!recordInstanceUrl(item.id) || !recordInstanceUrl(expected?.id) ||
+        item.id.toLowerCase() !== expected.id.toLowerCase() ||
+        !INSTANCE_DETAIL_FIELDS.every(key => Object.prototype.hasOwnProperty.call(item, key)) ||
+        Object.keys(item).some(key => !INSTANCE_DETAIL_FIELDS.includes(key)) ||
+        typeof item.state !== 'string' || !comparable(item.state, expected.state) ||
+        typeof item.jurisdiction_name !== 'string' ||
+        !comparable(item.jurisdiction_name, expected.jurisdiction_name) ||
+        String(item.year) !== String(expected.year) ||
+        !comparable(String(item.contest || ''), String(expected.contest || '')) ||
+        !comparable(String(item.candidate || ''), String(expected.candidate || '')) ||
+        item.aggregation_scope !== expected.aggregation_scope ||
+        item.jurisdiction_type !== expected.jurisdiction_type ||
+        item.total_votes !== expected.total_votes ||
+        !validVotes(item.total_votes) ||
+        !Array.isArray(item.vote_components) || item.vote_components.length > 100 ||
+        item.vote_components.some(part => {
+          if (!part || typeof part !== 'object' ||
+              Object.keys(part).some(key => !['vote_method', 'votes'].includes(key)) ||
+              typeof part.vote_method !== 'string' || !part.vote_method ||
+              !Object.prototype.hasOwnProperty.call(part, 'votes')) return true;
+          const value = part.votes;
+          return !(value === null ||
+            (typeof value === 'number' && Number.isSafeInteger(value)) ||
+            (typeof value === 'string' && /^-?(0|[1-9]\d*)$/.test(value)));
+        })) {
+      throw new Error('Record instance identity, scope, or public allowlist rejected');
+    }
+    return item;
+  }
+
+
   function getScope(search) {
     const p = new URLSearchParams(search || '');
     if (p.getAll('state').length !== 1 || p.getAll('jurisdiction').length !== 1) return null;
@@ -133,6 +190,71 @@
       }
     } else {
       add(card, 'p', 'ep-s3-missing', 'No method-level component rows were returned; missing methods are not zero.');
+    }
+    const exactInstancePath = recordInstanceUrl(record.id);
+    if (exactInstancePath) {
+      const inspect = add(card, 'button', 'ep-s3-inspect-instance', 'Inspect current record');
+      inspect.type = 'button';
+      const status = add(card, 'p', 'ep-s3-instance-status', '');
+      status.hidden = true;
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-live', 'polite');
+      const detail = add(card, 'div', 'ep-s3-instance-detail');
+      detail.hidden = true;
+      let sequence = 0;
+      let controller = null;
+      inspect.addEventListener('click', async () => {
+        sequence += 1;
+        const ticket = sequence;
+        if (controller) controller.abort();
+        controller = new AbortController();
+        inspect.disabled = true;
+        detail.hidden = true;
+        detail.replaceChildren();
+        status.hidden = false;
+        status.textContent = 'Checking current published record instance…';
+        const timeout = (global.setTimeout || setTimeout)(() => controller.abort(), 12000);
+        try {
+          if (typeof global.fetch !== 'function') throw new Error('Read unavailable');
+          const response = await global.fetch(exactInstancePath, {
+            method: 'GET', redirect: 'error', credentials: 'same-origin',
+            headers: { Accept: 'application/json' }, signal: controller.signal
+          });
+          if (ticket !== sequence || card.isConnected === false) return;
+          if (response.status === 401 || response.status === 403) {
+            status.textContent = 'This record detail is restricted.';
+            return;
+          }
+          if (response.status === 404) {
+            status.textContent = 'This record instance is no longer available. It is not a permanent identifier.';
+            return;
+          }
+          if (!response.ok || response.redirected === true) {
+            status.textContent = 'Record detail is unavailable; do not infer missing votes.';
+            return;
+          }
+          const item = parseRecordInstance(await response.json(), record);
+          if (ticket !== sequence || card.isConnected === false) return;
+          add(detail, 'p', '', 'Instance ID: ' + item.id);
+          add(detail, 'p', '', 'Published ' + String(item.jurisdiction_type || 'reporting unit') +
+            ': ' + item.jurisdiction_name + ' · Candidate: ' + String(item.candidate || 'Not recorded'));
+          add(detail, 'p', '', 'Recorded votes: ' + voteText(item.total_votes));
+          add(detail, 'p', '', 'Current record instance only; this is not a permanent link or independently verified source lineage.');
+          detail.hidden = false;
+          status.textContent = 'Current record instance checked against the selected published row.';
+        } catch (_error) {
+          if (ticket !== sequence || card.isConnected === false) return;
+          status.textContent = controller.signal.aborted
+            ? 'Record detail request timed out; availability remains unknown.'
+            : 'Record detail could not be validated; no source relationship was inferred.';
+        } finally {
+          (global.clearTimeout || clearTimeout)(timeout);
+          if (ticket === sequence) {
+            inspect.disabled = false;
+            controller = null;
+          }
+        }
+      });
     }
     return card;
   }
@@ -342,7 +464,7 @@
     };
   }
 
-  const api = Object.freeze({ LIMIT, PAGE_SIZE, SCOPE_CHANGED, getScope, requestPath, parsePayload, voteText, mount, renderRecords, watchScope });
+  const api = Object.freeze({ LIMIT, PAGE_SIZE, SCOPE_CHANGED, getScope, requestPath, parsePayload, voteText, mount, renderRecords, watchScope, recordInstanceUrl, parseRecordInstance });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (global.document) {
     const boot = () => {
