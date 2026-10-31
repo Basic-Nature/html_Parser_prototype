@@ -79,6 +79,7 @@ function mockDOM(fetchImpl) {
       setAttribute(name,value){this.attrs[name]=value;},
       replaceChildren(){this.children=[];},
       appendChild(child){this.children.push(child);},
+      append(...children){this.children.push(...children);},
       addEventListener(name,handler){this.listeners ??= {};this.listeners[name]=handler;},
     };
   }
@@ -324,8 +325,9 @@ test('S2R shows an explicit capitalization-variant note and both live-style opti
   assert.ok(control.jurisdictions.elements.select.children.some(x => x.textContent.startsWith('SAMPLE REPORTING UNIT')));
   assert.ok(control.jurisdictions.elements.select.children.some(x => x.textContent.startsWith('Sample Reporting Unit')));
   control.jurisdictions.choose('0');
-  assert.equal(control.jurisdictions.elements.link.hidden, false);
-  assert.match(control.jurisdictions.elements.link.attrs.href, /jurisdiction=/);
+  assert.equal(control.jurisdictions.elements.link.hidden, true, 'ambiguous names must not create a link');
+  assert.match(control.jurisdictions.elements.selection.textContent, /Ambiguous published name/);
+  assert.equal(control.jurisdictions.elements.link.attrs.href, '/data_framework');
 });
 
 // W24 S2P: full source labels remain available behind an intentional disclosure.
@@ -368,16 +370,16 @@ test('S2P filters jurisdiction list without another GET and with correct origina
   const {search,select,countNote,link,selection}=ctrl.jurisdictions.elements;
   assert.equal(facetsCalls,1);
   assert.equal(select.children.length,41,'forty entries plus placeholder, not 102-entry dropdown');
-  assert.match(countNote.textContent,/Showing 40 of 102/);
+  assert.match(countNote.textContent,/Showing 1[–-]40 of 102 matching entries/);
   search.value='jeFF daVis';
   search.listeners.input();
   assert.equal(select.children.length,3,'preserve capitalization variants');
-  assert.match(countNote.textContent,/Showing 2 of 2/);
+  assert.match(countNote.textContent,/Showing 1[–-]2 of 2 matching entries/);
   assert.match(select.children[1].textContent,/Jeff Davis|JEFF DAVIS/);
   ctrl.jurisdictions.choose(select.children[1].value);
-  assert.equal(link.hidden,false);
-  assert.match(selection.textContent,/Selected:/);
-  assert.match(link.attrs.href,/state=Texas/);
+  assert.equal(link.hidden,true,'ambiguous capitalization variants must not generate name-only deep links');
+  assert.match(selection.textContent,/Ambiguous published name/);
+  assert.equal(link.attrs.href, '/data_framework');
   search.value='Not a published name';
   search.listeners.input();
   assert.equal(link.hidden,true,'search changes invalidate prior selection/link');

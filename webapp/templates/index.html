@@ -10,7 +10,7 @@
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}?v={{ static_version|default('g132') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/observatory.css') }}?v={{ static_version|default('g132') }}-w24ui10-54b1f89a22b5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/observatory.css') }}?v={{ static_version|default('g132') }}-w24ui14a-responsive">
     {% if config.get('EP_SUPPORT_LOCAL_PREVIEW_ENABLED') is sameas true or config.get('EP_SUPPORT_PAGE_PUBLICATION_ENABLED') is sameas true %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/support_edge.css') }}">
     {% endif %}

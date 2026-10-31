@@ -1375,3 +1375,30 @@ body.observatory-page::before {
 .observatory-geo-actions button:focus-visible { outline: 3px solid #93edfa; outline-offset: 3px; }
 .observatory-geo-actions button:disabled { opacity: .55; cursor: not-allowed; }
 @media (max-width: 700px) { .observatory-geo-actions { flex-direction: column; } .observatory-geo-actions button { width: 100%; } }
+
+/* W24UI14A: responsive public observatory identity and navigation candidate. */
+@media (max-width: 700px) {
+  .observatory-hero h1 {
+    font-size: clamp(1.3rem, 7vw, 2.85rem);
+    letter-spacing: .08em;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .observatory-topbar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .35rem;
+    padding: .35rem .3rem .55rem;
+    box-sizing: border-box;
+  }
+  .observatory-topbar a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 44px;
+    font-size: clamp(.72rem, 2.8vw, .96rem);
+    line-height: 1.3;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+}
