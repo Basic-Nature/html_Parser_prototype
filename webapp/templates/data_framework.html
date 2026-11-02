@@ -19,7 +19,7 @@
           {% if csrf_token %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
     <!-- Bootstrap -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css', v='68438c2deb1aab39') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css', v='b590c63b0fa9a2d7') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_app_nav.css', v='d61e3a233f0a9ed5') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_surface_theme.css', v='r3b') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_canonical_explore.css') }}?v={{ static_version|default('w24s3') }}">
@@ -396,13 +396,13 @@
                         </div>
                         <div class="right-controls">
                             <button type="button" id="refreshBtn" class="btn action" data-bs-toggle="tooltip" title="Reload data from the API">🔄 Refresh</button>
-                            <button type="button" id="exportCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Export filtered results to CSV">⬇ Export CSV</button>
+                            <button type="button" id="exportCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Export only filtered rows returned by the current API request">⬇ Export CSV</button>
                             <button type="button" id="scaffoldJsonBtn" class="btn action" data-bs-toggle="tooltip" title="Download guarded JSON scaffold">🧱 Scaffold JSON</button>
                             <button type="button" id="scaffoldCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Download scaffold CSV">📄 Scaffold CSV</button>
                             <button id="compactToggleBtn" class="btn action compact-toggle" type="button" aria-pressed="false" data-bs-toggle="tooltip" title="Toggle compact table rows">Dense</button>
                             <button type="button" id="resetFiltersBtn" class="btn action" data-bs-toggle="tooltip" title="Clear search and sorting">↺ Reset</button>
                             <div class="column-chooser">
-                                <button type="button" id="columnChooserBtn" class="btn action" aria-haspopup="true" aria-expanded="false" data-bs-toggle="tooltip" title="Show/hide columns">▦ Columns</button>
+                                <button type="button" id="columnChooserBtn" class="btn action" aria-haspopup="true" aria-expanded="false" data-bs-toggle="tooltip" title="Show/hide loaded-row columns">▦ Columns</button>
                                 <div id="columnChooserMenu" class="column-chooser-menu" role="menu" aria-label="Toggle visible columns"></div>
                             </div>
                             <div class="dropdown">
@@ -434,8 +434,16 @@
                       <select id="priorityYearSelect" aria-label="Priority year">
                         <option value="">All years</option>
                       </select>
+                      <label for="priorityJurisdictionInput" class="sr-only">Canonical Record exact jurisdiction</label>
+                      <input id="priorityJurisdictionInput" type="search" maxlength="240" placeholder="All jurisdictions (exact name)" aria-label="Canonical Record exact jurisdiction">
+                      <label for="priorityContestInput" class="sr-only">Canonical Record contest contains</label>
+                      <input id="priorityContestInput" type="search" maxlength="240" placeholder="All contests (name contains)" aria-label="Canonical Record contest contains">
+                      <button id="applyAnalysisScopeBtn" type="button" class="btn action" title="Apply the validated Analysis filters to Canonical Record">Apply Analysis scope</button>
                       <div class="warehouse-priority-meta" id="warehousePriorityMeta" aria-live="polite"></div>
                     </div>
+
+                    <div id="canonicalRecordScopeNote" class="canonical-record-scope-note" role="status" aria-live="polite">Canonical Record filters are independent from Analysis.</div>
+                    <div id="canonicalSubsetNote" class="canonical-record-subset-note" data-ui-state="idle" role="status" aria-live="polite">This table operates only on the rows returned by the canonical API.</div>
 
                     <table id="data-table" class="neon-grid" aria-live="polite" aria-describedby="tableStatus warehousePriorityMeta">
                         <caption class="sr-only">Canonical election records matching the current filters.</caption>
@@ -560,7 +568,7 @@
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/public_geo_coverage.js') }}?v={{ static_version|default('g132') }}-w24ui11-69fd3ac68bfe" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/cross_surface_context.js') }}?v={{ static_version|default('g132') }}-w24ui11-7095347e889b" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='d20b41a958c3e2ea') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='e3d0c02324e96758') }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/public_canonical_explore.js') }}?v={{ static_version|default('w24s3') }}" defer></script>
 </body>
 </html>

@@ -68,6 +68,11 @@ document.addEventListener('DOMContentLoaded', () => {
     warehousePriorityMeta: document.getElementById('warehousePriorityMeta'),
     priorityStateSelect: document.getElementById('priorityStateSelect'),
     priorityYearSelect: document.getElementById('priorityYearSelect'),
+    priorityJurisdictionInput: document.getElementById('priorityJurisdictionInput'),
+    priorityContestInput: document.getElementById('priorityContestInput'),
+    applyAnalysisScopeBtn: document.getElementById('applyAnalysisScopeBtn'),
+    canonicalRecordScopeNote: document.getElementById('canonicalRecordScopeNote'),
+    canonicalSubsetNote: document.getElementById('canonicalSubsetNote'),
     curatedSearch: document.getElementById('curatedSearch'),
     curatedState: document.getElementById('curatedStateFilter'),
     curatedCounty: document.getElementById('curatedCountyFilter'),
@@ -157,6 +162,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let page = 1;
   let priorityState = '';
   let priorityYear = '';
+  let priorityJurisdiction = '';
+  let priorityContest = '';
+  let canonicalRecordPossiblyTruncated = false;
   let lastPriorityPayload = null;
 
   let curatedItems = [];
@@ -591,6 +599,34 @@ document.addEventListener('DOMContentLoaded', () => {
     setUiState(target, state || stateForTone(type), text);
   }
 
+  function describeCanonicalRecordScope() {
+    return [
+      priorityYear ? `Year ${priorityYear}` : 'All years',
+      priorityState ? `State ${priorityState}` : 'All states',
+      priorityJurisdiction ? `Jurisdiction ${priorityJurisdiction}` : 'All jurisdictions',
+      priorityContest ? `Contest contains ${priorityContest}` : 'All contests',
+    ].join(' · ');
+  }
+
+  function updateCanonicalScopeAndLimitNotes() {
+    if (el.canonicalRecordScopeNote) {
+      el.canonicalRecordScopeNote.textContent =
+        `Canonical Record filters: ${describeCanonicalRecordScope()}. ` +
+        'Independent from Analysis unless you select Apply Analysis scope.';
+    }
+    if (el.canonicalSubsetNote) {
+      const note = canonicalRecordPossiblyTruncated
+        ? `Showing a bounded subset of ${rawData.length} returned Canonical Record rows. ` +
+          'More rows may exist. Search, sorting, page navigation and CSV/copy operate only on loaded rows; ' +
+          'the total publication count is unknown.'
+        : `Showing ${rawData.length} returned Canonical Record rows for this query. ` +
+          'Search, sorting, page navigation and CSV/copy operate on returned rows only; ' +
+          'this is not a completeness attestation.';
+      el.canonicalSubsetNote.textContent = note;
+      setUiState(el.canonicalSubsetNote, canonicalRecordPossiblyTruncated ? 'partial' : 'ready');
+    }
+  }
+
   function setCanonicalRecordBaseStatus(type, text, state = null) {
     canonicalRecordBaseStatus = {
       tone: type,
@@ -802,7 +838,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function formatPrioritySummary(payload) {
     const expected = Number(payload?.expected_total || 0);
     const missing = Number(payload?.missing_total || 0);
-    const parts = [`Missing ${missing} / ${expected} expected`];
+    const parts = [`Priority metadata only — Missing ${missing} / ${expected} expected`];
     const byPriority = Array.isArray(payload?.by_priority) ? payload.by_priority : [];
     const top = byPriority
       .filter(row => row?.priority)
@@ -1829,6 +1865,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // from Analysis' vizYear / vizState / vizJurisdiction / vizContest scope.
     if (priorityYear) url.searchParams.set('year', priorityYear);
     if (priorityState) url.searchParams.set('state', priorityState);
+    if (priorityJurisdiction) url.searchParams.set('jurisdiction', priorityJurisdiction);
+    if (priorityContest) url.searchParams.set('contest', priorityContest);
     return url.toString();
   }
 
@@ -1994,8 +2032,8 @@ document.addEventListener('DOMContentLoaded', () => {
     return {
       year: priorityYear || '',
       state: priorityState || '',
-      jurisdiction: '',
-      contest: '',
+      jurisdiction: priorityJurisdiction || '',
+      contest: priorityContest || '',
     };
   }
 
@@ -3621,8 +3659,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const td = document.createElement('td');
       td.colSpan = Math.max(visibleColumns.length, 1);
       td.textContent = rawData.length
-        ? 'No results match the current filters.'
-        : 'No data to display.';
+        ? (canonicalRecordPossiblyTruncated
+          ? 'No match in the loaded subset; additional Canonical Record rows may exist.'
+          : 'No results match the current filters.')
+        : 'No returned rows to display. This does not mean zero votes.';
       tr.appendChild(td);
       el.tbody.appendChild(tr);
     } else {
@@ -3637,7 +3677,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    el.pageInfo.textContent = `Page ${page} of ${pages} • ${total} rows`;
+    const partialSuffix = canonicalRecordPossiblyTruncated
+      ? ` (within ${rawData.length} loaded records; additional records may exist)`
+      : ' (within returned records)';
+    el.pageInfo.textContent = `Page ${page} of ${pages} • ${total} rows${partialSuffix}`;
     if (el.first instanceof HTMLButtonElement || el.first instanceof HTMLInputElement) el.first.disabled = page <= 1;
     if (el.prev instanceof HTMLButtonElement || el.prev instanceof HTMLInputElement) el.prev.disabled = page <= 1;
     if (el.next instanceof HTMLButtonElement || el.next instanceof HTMLInputElement) el.next.disabled = page >= pages;
@@ -3647,7 +3690,9 @@ document.addEventListener('DOMContentLoaded', () => {
       setStatus(
         el.status,
         'info',
-        'No results match the current filters.',
+        canonicalRecordPossiblyTruncated
+          ? 'No matches within loaded subset; additional rows may exist.'
+          : 'No results match the current filters.',
         'empty'
       );
     } else {
@@ -3671,6 +3716,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function exportCsv() {
     const data = getFilteredSorted();
+    // A browser export is never a full-database export, even below the API limit.
     if (data.length > MAX_ROWS_EXPORT) {
       showErrorToast(`Export capped at ${MAX_ROWS_EXPORT} rows.`);
       return;
@@ -3680,12 +3726,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `export_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
+    a.download = `canonical_returned_rows_only_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    showInfoToast('Export started.');
+    showInfoToast(canonicalRecordPossiblyTruncated
+      ? 'Loaded-subset CSV started. Additional server rows may exist.'
+      : 'Returned-rows-only CSV started. Publication completeness is not implied.');
   }
 
   function copyVisibleCsv(e) {
@@ -3707,7 +3755,7 @@ document.addEventListener('DOMContentLoaded', () => {
               res();
             } catch (er) { rej(er); }
           })
-    ).then(() => showInfoToast('Copied CSV to clipboard.'))
+    ).then(() => showInfoToast('Copied returned Canonical Record rows only; additional rows may exist.'))
      .catch(() => showErrorToast('Copy failed.'));
   }
 
@@ -3806,6 +3854,14 @@ document.addEventListener('DOMContentLoaded', () => {
     colWrap.classList.toggle('open', !expanded);
   });
 
+  // Keep Canonical Record facet and row refresh synchronized for the
+  // extended jurisdiction/contest filters and explicit Analysis scope transfer.
+  // State/year handlers retain their independent priority-status refresh.
+  function refreshCanonicalRecordFacetAndRows() {
+    fetchCanonicalRecordFacets();
+    fetchCanonicalRecordData(true);
+  }
+
   el.priorityStateSelect?.addEventListener('change', e => {
     const tgt = e.target;
     if (tgt instanceof HTMLSelectElement) {
@@ -3824,6 +3880,53 @@ document.addEventListener('DOMContentLoaded', () => {
       fetchPriorityStatus();
       fetchCanonicalRecordData(true);
     }
+  });
+
+  function updateCanonicalRecordTextScope() {
+    priorityJurisdiction = sanitizeCanonicalQueryValue(el.priorityJurisdictionInput?.value || '');
+    priorityContest = sanitizeCanonicalQueryValue(el.priorityContestInput?.value || '');
+    if (el.priorityJurisdictionInput) el.priorityJurisdictionInput.value = priorityJurisdiction;
+    if (el.priorityContestInput) el.priorityContestInput.value = priorityContest;
+    refreshCanonicalRecordFacetAndRows();
+  }
+  el.priorityJurisdictionInput?.addEventListener('change', updateCanonicalRecordTextScope);
+  el.priorityContestInput?.addEventListener('change', updateCanonicalRecordTextScope);
+
+  // The two filter owners remain independent. Copy Analysis only on an explicit click.
+  el.applyAnalysisScopeBtn?.addEventListener('click', () => {
+    const universe = canonicalFacetUniversePayload;
+    if (!isCanonicalFacetPayload(universe)) {
+      if (el.canonicalRecordScopeNote) {
+        el.canonicalRecordScopeNote.textContent =
+          'Analysis scope transfer unavailable until canonical facet authority loads.';
+      }
+      return;
+    }
+    const scope = getCanonicalScopeFilters();
+    const validValues = (entries, value) =>
+      !value || (Array.isArray(entries) && entries.some(entry => String(entry) === String(value)));
+    const validJurisdiction = !scope.jurisdiction ||
+      (Array.isArray(universe.jurisdictions) && universe.jurisdictions.some(entry =>
+        String(entry?.name || '') === String(scope.jurisdiction)));
+    if (!validValues(universe.years, scope.year) ||
+        !validValues(universe.states, scope.state) ||
+        !validValues(universe.contests, scope.contest) || !validJurisdiction) {
+      if (el.canonicalRecordScopeNote) {
+        el.canonicalRecordScopeNote.textContent =
+          'Analysis scope is not validated by the canonical facet universe. No Record request was sent.';
+      }
+      return;
+    }
+    priorityYear = scope.year;
+    priorityState = scope.state;
+    priorityJurisdiction = scope.jurisdiction;
+    priorityContest = scope.contest;
+    if (el.priorityYearSelect) el.priorityYearSelect.value = priorityYear;
+    if (el.priorityStateSelect) el.priorityStateSelect.value = priorityState;
+    if (el.priorityJurisdictionInput) el.priorityJurisdictionInput.value = priorityJurisdiction;
+    if (el.priorityContestInput) el.priorityContestInput.value = priorityContest;
+    refreshCanonicalRecordFacetAndRows();
+    fetchPriorityStatus();
   });
 
   el.curatedSearch?.addEventListener('input', debounce(e => {
@@ -4220,6 +4323,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (r && typeof r === 'object' && !Array.isArray(r)) return r;
         return {};
       });
+      canonicalRecordPossiblyTruncated = rawData.length >= CANONICAL_CLIENT_ROW_LIMIT;
+      updateCanonicalScopeAndLimitNotes();
 
       if (!compactPreferenceSet && rawData.length) {
         setCompactTable(rawData.length >= COMPACT_AUTO_THRESHOLD);
@@ -4231,6 +4336,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const scopeParts = [];
       if (priorityYear) scopeParts.push(`Year ${priorityYear}`);
       if (priorityState) scopeParts.push(`State ${priorityState}`);
+      if (priorityJurisdiction) scopeParts.push(`Jurisdiction ${priorityJurisdiction}`);
+      if (priorityContest) scopeParts.push(`Contest contains ${priorityContest}`);
       const scopeText = scopeParts.length ? ` - ${scopeParts.join(' / ')}` : '';
 
       if (!rawData.length) {
@@ -4239,9 +4346,9 @@ document.addEventListener('DOMContentLoaded', () => {
           `No Canonical Record rows found${scopeText}.`,
           'empty'
         );
-      } else if (rawData.length >= CANONICAL_CLIENT_ROW_LIMIT) {
+      } else if (canonicalRecordPossiblyTruncated) {
         setCanonicalRecordBaseStatus(
-          'ok',
+          'info',
           `Loaded first ${rawData.length} Canonical Record rows${scopeText}; API cap reached, result may be partial.`,
           'partial'
         );
@@ -4261,6 +4368,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       rawData = [];
+      canonicalRecordPossiblyTruncated = false;
+      updateCanonicalScopeAndLimitNotes();
       allowedColumns.clear();
       buildColumns();
       render();
@@ -4475,11 +4584,11 @@ document.addEventListener('DOMContentLoaded', () => {
         card.appendChild(meta);
         addText(card, 'p', `Recorded verification status: ${item.verification_status}. Selected payload lane: ${item.selected_dl_source || 'unavailable'}.`);
         addText(card, 'p', 'Official-source relationship not established. Precinct-level completeness is not implied.');
-        const link = addText(card,'a','View canonical results for this scope');
+        const link = addText(card,'a','Explore this scope in Analysis');
         const linkUrl = urlFor(window.location.pathname, {state:item.state,year:String(item.year),contest:item.contest});
-        linkUrl.hash = 'warehouseTableSection';
+        linkUrl.hash = 'vizPanel';
         link.href = `${linkUrl.pathname}${linkUrl.search}${linkUrl.hash}`;
-        link.title = 'Contextual query; not an exact race permalink';
+        link.title = 'Opens Analysis; use Apply Analysis scope to copy validated filters into Canonical Record';
         fields.cards.appendChild(card);
       }
       state(payload.items.length ? `${payload.items.length} canonical races shown.` :

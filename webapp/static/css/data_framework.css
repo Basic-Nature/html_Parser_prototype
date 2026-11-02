@@ -3298,3 +3298,23 @@ body[data-page="data-framework"] .warehouse-priority-controls > * {
 @media(max-width:1024px){.coverage-explorer__filters{grid-template-columns:repeat(2,minmax(0,1fr))}.coverage-explorer__cards{grid-template-columns:1fr}}
 @media(max-width:620px){.coverage-explorer__filters{grid-template-columns:minmax(0,1fr)}.coverage-explorer__heading,.coverage-explorer__pager{align-items:stretch;flex-direction:column}.coverage-explorer__card{padding:.8rem}}
 @media(forced-colors:active){.coverage-explorer,.coverage-explorer__card,.coverage-explorer__filters select{forced-color-adjust:auto;border-color:CanvasText;color:CanvasText;background:Canvas}}
+
+/* W24UI-PRE2026: Canonical Record query authority and bounded-result disclosures. */
+#warehouseTableSection .canonical-record-scope-note,
+#warehouseTableSection .canonical-record-subset-note {
+  margin: .45rem 0;
+  padding: .6rem .8rem;
+  border-inline-start: 3px solid currentColor;
+  line-height: 1.45;
+  font-size: .86rem;
+  overflow-wrap: anywhere;
+}
+#warehouseTableSection .canonical-record-scope-note { opacity: .88; }
+#warehouseTableSection .canonical-record-subset-note[data-ui-state="partial"] {
+  border-inline-start-width: 5px;
+  font-weight: 600;
+}
+#warehouseTableSection .warehouse-priority-controls input[type="search"] {
+  min-width: 11rem;
+  max-width: 100%;
+}
