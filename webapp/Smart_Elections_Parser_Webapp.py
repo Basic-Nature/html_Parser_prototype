@@ -3451,6 +3451,11 @@ def api_urls_parse():
         urls_list = data.get("urls", [])
         store_results = data.get("store", False)
 
+        # The HTTP metadata parser is not an authorized training ingestion path.
+        # An explicit non-False value is denied, including string/int variants.
+        if store_results is not False:
+            return jsonify({"success": False, "error": "url_training_write_disabled"}), 403
+
         # Determine if single or batch
         if single_url:
             urls_to_parse = [single_url]
@@ -3477,16 +3482,7 @@ def api_urls_parse():
                     "error": str(parse_exc)
                 })
 
-        # Store to training file if requested
-        if store_results:
-            try:
-                training_file = LOG_DIR / "parsed_urls_training.jsonl"
-                with open(training_file, "a", encoding="utf-8") as f:
-                    for result in parsed_results:
-                        if "error" not in result:
-                            f.write(orjson.dumps(result).decode("utf-8") + "\n")
-            except Exception as store_exc:
-                logger.error(f"Failed to store parsed URLs: {store_exc}")
+        # Persistent URL training is reserved for a separately governed workflow.
 
         # Return results
         if is_batch:
@@ -3588,54 +3584,12 @@ def api_urls_training_data():
 
 @_rate_limit("10/hour")
 def api_urls_parse_all():
+    """Disable direct training ingestion pending independent governed approval.
+
+    This route remains registered for compatibility, but cannot execute batch
+    parsing, access registry URLs, or write training data from HTTP requests.
     """
-    Parse all URLs from the Source Registry authority view and store to training file.
-    
-    This is a batch operation that may take time for large URL lists.
-    
-    Response:
-        {
-            "success": true,
-            "parsed_count": N,
-            "failed_count": M,
-            "training_file": "path/to/file.jsonl"
-        }
-    """
-    try:
-        urls_to_parse = _load_source_registry_url_values()
-
-        if not urls_to_parse:
-            return jsonify({
-                "success": False,
-                "error": "No URLs found in library"
-            }), 404
-
-        # Parse all URLs
-        parsed_count = 0
-        failed_count = 0
-        training_file = LOG_DIR / "parsed_urls_training.jsonl"
-
-        with open(training_file, "a", encoding="utf-8") as f:
-            for url in urls_to_parse:
-                try:
-                    parsed = parse_url_simple(url)
-                    f.write(orjson.dumps(parsed).decode("utf-8") + "\n")
-                    parsed_count += 1
-                except Exception as parse_exc:
-                    logger.warning(f"Failed to parse URL {url}: {parse_exc}")
-                    failed_count += 1
-
-        return jsonify({
-            "success": True,
-            "parsed_count": parsed_count,
-            "failed_count": failed_count,
-            "training_file": str(training_file),
-            "total_urls": len(urls_to_parse)
-        }), 200
-
-    except Exception as exc:
-        logger.error({"level": "ERROR", "type": "api", "message": f"api_urls_parse_all failed: {exc}", "session_id": None})
-        return jsonify({"success": False, "error": str(exc)}), 500
+    return jsonify({"success": False, "error": "url_training_write_disabled"}), 403
 
 
 @_rate_limit("60/minute")
