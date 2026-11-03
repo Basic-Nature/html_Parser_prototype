@@ -3504,82 +3504,13 @@ def api_urls_parse():
 
 @_rate_limit("30/minute")
 def api_urls_training_data():
+    """Legacy historical URL training records are not public API authority.
+
+    Keep the existing route registered but deny all reads until an independently
+    authorized, authenticated disclosure workflow is implemented and reviewed.
+    No historical file is opened and no URL metadata is returned.
     """
-    Get parsed URL training data.
-    
-    Query parameters:
-        limit: Max number of records (default: 100, max: 1000)
-        offset: Skip first N records (default: 0)
-        state: Filter by state code/name
-        vendor: Filter by vendor hint
-        has_county: Filter to URLs with county data (true/false)
-    
-    Response:
-        {
-            "success": true,
-            "data": [...],
-            "count": N,
-            "total": M
-        }
-    """
-    try:
-        training_file = LOG_DIR / "parsed_urls_training.jsonl"
-
-        # Parse query parameters
-        limit = min(int(request.args.get("limit", 100)), 1000)
-        offset = int(request.args.get("offset", 0))
-        state_filter = safe_strip(request.args.get("state", "")).upper()
-        vendor_filter = safe_strip(request.args.get("vendor", "")).lower()
-        has_county_filter = request.args.get("has_county", "").lower() in {"true", "1", "yes"}
-
-        if not training_file.exists():
-            return jsonify({
-                "success": True,
-                "data": [],
-                "count": 0,
-                "total": 0,
-                "message": "No training data available yet"
-            }), 200
-
-        # Read and filter data
-        all_records = []
-        with open(training_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = orjson.loads(line)
-
-                    # Apply filters
-                    if state_filter and record.get("state", "").upper() != state_filter:
-                        continue
-                    if vendor_filter and record.get("vendor_hint", "").lower() != vendor_filter:
-                        continue
-                    if has_county_filter and not record.get("county"):
-                        continue
-
-                    all_records.append(record)
-                except Exception:
-                    continue
-
-        total = len(all_records)
-
-        # Apply pagination
-        paginated_records = all_records[offset:offset + limit]
-
-        return jsonify({
-            "success": True,
-            "data": paginated_records,
-            "count": len(paginated_records),
-            "total": total,
-            "offset": offset,
-            "limit": limit
-        }), 200
-
-    except Exception as exc:
-        logger.error({"level": "ERROR", "type": "api", "message": f"api_urls_training_data failed: {exc}", "session_id": None})
-        return jsonify({"success": False, "error": "internal"}), 500
+    return jsonify({"success": False, "error": "url_training_data_access_disabled"}), 403
 
 
 @_rate_limit("10/hour")
