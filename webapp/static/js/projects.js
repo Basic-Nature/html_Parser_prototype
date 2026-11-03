@@ -216,6 +216,38 @@
       detail.appendChild(node('summary','Source revision details'));
       detail.appendChild(node('code',`Binding ${ref.registry_binding_id} · revision ${ref.registry_revision_id}`));
       li.appendChild(detail);
+      // A saved Project reference is NOT an execution authority. Server checks
+      // owner, current revision, source eligibility and public alias on click.
+      const openSource=node('button','Open in Ballot Lens',{type:'button'});
+      openSource.addEventListener('click',async()=>{
+        if (!active || active.id!==data.id || active.row_version!==data.row_version ||
+            !UUID.test(ref.id) || !UUID.test(data.id)) {
+          msg('Project changed. Refresh before opening this source.');return;
+        }
+        openSource.disabled=true;
+        try {
+          const query=new URLSearchParams({expected_project_version:String(data.row_version)});
+          const intent=await api(`/api/projects/v1/${encodeURIComponent(data.id)}/source-refs/${encodeURIComponent(ref.id)}/ballot-lens-handoff?${query}`);
+          if (!active || active.id!==data.id || active.row_version!==data.row_version ||
+              intent.contract!=='project_source_alias_handoff_v1' ||
+              intent.project_id!==data.id || intent.source_ref_id!==ref.id ||
+              intent.project_row_version!==data.row_version ||
+              !/^blsrc_v1_[0-9a-f]{64}$/.test(intent.registry_source_id) ||
+              intent.execution_authorized!==false || intent.run_dispatched!==false ||
+              intent.source_url_disclosed!==false) {
+            throw new Error('source_handoff_invalid_or_stale');
+          }
+          const target=new URL('/ballot_lens',location.origin);
+          if (target.origin!==location.origin) throw new Error('cross_origin_denied');
+          target.searchParams.set('project_id',data.id);
+          target.searchParams.set('source',intent.registry_source_id);
+          location.assign(`${target.pathname}${target.search}`);
+        }catch(_error){
+          msg('This saved source cannot be opened in Ballot Lens right now. It may have changed or become unavailable. No parser was started.');
+          openSource.disabled=false;
+        }
+      });
+      li.appendChild(openSource);
       const remove=node('button','Remove',{type:'button'});
       remove.addEventListener('click',async()=>{
         try{await openAfter(()=>api(`/api/projects/v1/${data.id}/source-refs/${ref.id}`,'DELETE',

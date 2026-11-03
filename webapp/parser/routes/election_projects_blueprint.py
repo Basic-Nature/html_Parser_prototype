@@ -99,6 +99,29 @@ def create_election_projects_blueprint(*, principal_resolver, session_factory) -
     @bp.delete("/api/projects/v1/<uuid:project_id>/source-refs/<uuid:association_id>")
     def remove_source_ref(project_id,association_id):
         return operation(lambda db,key: svc.remove_source_ref(db,project_id,key,association_id,body()),write=True)
+    @bp.get("/api/projects/v1/<uuid:project_id>/source-refs/<uuid:association_id>/ballot-lens-handoff")
+    def project_source_alias_handoff(project_id, association_id):
+        # GET is read-only and owner-gated through operation()/actor().
+        # The selector is not a parser credential or permission grant.
+        def review(db, owner):
+            if set(request.args.keys()) != {"expected_project_version"} or len(
+                request.args.getlist("expected_project_version")
+            ) != 1:
+                raise svc.ProjectError("invalid_handoff_selectors")
+            raw_version = request.args.get("expected_project_version", "")
+            if (len(raw_version) > 10 or not raw_version.isascii() or
+                not raw_version.isdigit() or str(int(raw_version)) != raw_version or
+                not 1 <= int(raw_version) <= 2147483647):
+                raise svc.ProjectError("invalid_project_version")
+            from webapp.parser.services.project_source_alias_bridge import resolve_project_source_alias
+            from webapp.parser.config import URL_LIST_FILE
+            return resolve_project_source_alias(
+                db, project_id=project_id, source_ref_id=association_id,
+                expected_project_version=int(raw_version), owner_key=owner,
+                registry_path=URL_LIST_FILE,
+            )
+        return operation(review)
+
     @bp.get("/api/projects/v1/<uuid:project_id>/run-preflight")
     def project_run_preflight_route(project_id):
         # GET produces a non-executable preview. A future J2B mutation must
