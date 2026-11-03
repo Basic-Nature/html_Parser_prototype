@@ -76,6 +76,118 @@
     const state = new URLSearchParams(location.search).get('state');
     return state && states.has(state.toUpperCase()) ? state.toUpperCase() : null;
   }
+
+  // Public-local draft is intentionally separate from the authenticated Project API.
+  const publicDraftForm = byId('projectDraftForm');
+  const publicDraftJSON = byId('projectDraftJSON');
+  function readPublicDraft() {
+    const f=publicDraftForm.elements;
+    const title=f.namedItem('project_title').value.trim();
+    const state=f.namedItem('state_code').value.trim().toUpperCase();
+    const yearText=f.namedItem('election_year').value.trim();
+    const contest=f.namedItem('contest').value.trim();
+    const source=f.namedItem('source_selection').value;
+    const year=Number(yearText);
+    if (!title || title.length>160 || !states.has(state) || !/^\d{4}$/.test(yearText) ||
+        !Number.isInteger(year) || year<1788 || year>2100 || !contest || contest.length>200 ||
+        !['approved','existing','new_proposal'].includes(source)) return null;
+    return {title,scope:{state_code:state,election_year:year,contest},source_selection:source};
+  }
+  function syncPublicDraft() {
+    const data=readPublicDraft();
+    publicDraftJSON.value=data ? JSON.stringify(data,null,2) : '';
+    byId('projectDraftCopy').disabled=!data;
+    byId('projectDraftToEditor').disabled=!data;
+    byId('projectDraftStatus').textContent=data
+      ? 'Local draft ready. This is not a saved Project or approved parser request.'
+      : 'Enter a title, a recognized state/territory code, a valid year, and a contest.';
+  }
+  const contextDraftState=draftState();
+  if (contextDraftState) publicDraftForm.elements.namedItem('state_code').value=contextDraftState;
+  const contextDraftYear=new URLSearchParams(location.search).get('year');
+  if (contextDraftYear && /^\d{4}$/.test(contextDraftYear) &&
+      Number(contextDraftYear)>=1788 && Number(contextDraftYear)<=2100)
+    publicDraftForm.elements.namedItem('election_year').value=contextDraftYear;
+  publicDraftForm.addEventListener('submit',event=>event.preventDefault());
+  publicDraftForm.addEventListener('input',syncPublicDraft);
+  publicDraftForm.addEventListener('change',syncPublicDraft);
+  byId('projectDraftCopy').addEventListener('click',async()=>{
+    const value=publicDraftJSON.value;
+    if (!readPublicDraft() || !value) return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard_unavailable');
+      await navigator.clipboard.writeText(value);
+      byId('projectDraftStatus').textContent='Project draft copied. It is not saved to ElectionPulse.';
+    }catch(_error){
+      publicDraftJSON.focus();publicDraftJSON.select();
+      byId('projectDraftStatus').textContent='Copy from the selected JSON field. No Project was created.';
+    }
+  });
+  byId('projectDraftToEditor').addEventListener('click',()=>{
+    const data=readPublicDraft();if (!data) return;
+    if (form.hidden) {
+      byId('projectDraftStatus').textContent='Persistent Project editing requires authorized contributor access. Copy the draft or open Access.';
+      return;
+    }
+    form.elements.namedItem('title').value=data.title;
+    pendingCreate=null;
+    form.scrollIntoView({block:'start',behavior:'instant'});
+    form.elements.namedItem('title').focus();
+    byId('projectDraftStatus').textContent='Title copied to the authorized editor. Scope remains a local draft until you explicitly save it after creating the Project.';
+  });
+  syncPublicDraft();
+
+  function renderSourceOptions() {
+    const select=byId('projectSourceSelect');
+    const previous=select.value;
+    const query=byId('projectSourceSearch').value.trim().toLowerCase();
+    const matched=available.filter(src=>[
+      src.year,src.state,src.contest,src.scope,src.format
+    ].some(value=>String(value??'').toLowerCase().includes(query)));
+    select.replaceChildren(node('option','Select approved source metadata',{value:''}));
+    for (const src of matched) {
+      select.appendChild(node('option',`${src.year} · ${src.state} · ${src.contest} · ${src.scope} · ${src.format}`,{value:src.registry_binding_id}));
+    }
+    if (matched.some(src=>src.registry_binding_id===previous)) select.value=previous;
+    byId('projectSourceLibraryStatus').textContent=`Showing ${matched.length} of ${available.length} returned approved public source metadata entries (API limit 100). This is not parser eligibility, and the returned list may be incomplete.`;
+  }
+  byId('projectSourceSearch').addEventListener('input',renderSourceOptions);
+
+  // Feedback stays local. GitHub issue filing is a separately initiated user action.
+  byId('projectFeedbackForm').addEventListener('submit',event=>event.preventDefault());
+  byId('projectFeedbackCopy').addEventListener('click',async()=>{
+    const form=byId('projectFeedbackForm').elements;
+    const expected=form.namedItem('expected').value.trim();
+    const observed=form.namedItem('observed').value.trim();
+    const category=form.namedItem('category').value;
+    const surface=form.namedItem('surface').value;
+    const status=byId('projectFeedbackStatus');
+    if (!expected || !observed || expected.length>1500 || observed.length>1500) {
+      status.textContent='Enter bounded expected and observed behavior before preparing a report.';
+      return;
+    }
+    const sanitizedRoute=/^\/projects\/[0-9a-f-]{36}$/i.test(location.pathname)
+      ? '/projects/:project_id' : '/projects';
+    const report=[
+      'ElectionPulse feedback (unverified observation)',
+      `Surface: ${surface}`,`Category: ${category}`,
+      `Route: ${sanitizedRoute}`,'Build revision: not exposed by this page',
+      `Client timestamp (untrusted): ${new Date().toISOString()}`,
+      `Expected: ${expected}`,`Observed: ${observed}`,
+      'Project/source/run IDs: omitted; never used as authorization',
+      'Disclosure: verify content contains no private or security-sensitive information before filing.'
+    ].join('\n');
+    const draft=byId('projectFeedbackDraft');draft.value=report;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard_unavailable');
+      await navigator.clipboard.writeText(report);
+      status.textContent='Report draft copied locally. Open GitHub Issues and review before filing; nothing was submitted.';
+    }catch(_error){
+      draft.focus();draft.select();
+      status.textContent='Report draft prepared. Copy the selected text manually; nothing was submitted.';
+    }
+  });
+
   function renderDetail(data) {
     active=data;detail.hidden=false;
     admissionFeatureAvailable=false;
@@ -93,17 +205,24 @@
     for (const ref of data.source_refs) {
       runRefSelect.appendChild(node('option',`Binding ${ref.registry_binding_id} · revision ${ref.registry_revision_id}`,{value:ref.id}));
     }
+    byId('projectSourceSummary').textContent=`${data.source_refs.length} saved source reference(s). Up to 50 references can be associated; each parser run requires separate server authorization.`;
     for (const ref of data.source_refs) {
       const li=node('li',null);
-      li.appendChild(node('span',`Registry binding ${ref.registry_binding_id} · revision ${ref.registry_revision_id} · reference only`));
+      const meta=available.find(item=>item.registry_binding_id===ref.registry_binding_id);
+      const label=meta ? `${meta.year} · ${meta.state} · ${meta.contest} · ${meta.scope} · ${meta.format}`
+        : 'Saved source reference (not in the returned metadata list)';
+      li.appendChild(node('span',`${label} · reference only`));
+      const detail=node('details',null);
+      detail.appendChild(node('summary','Source revision details'));
+      detail.appendChild(node('code',`Binding ${ref.registry_binding_id} · revision ${ref.registry_revision_id}`));
+      li.appendChild(detail);
       const remove=node('button','Remove',{type:'button'});
       remove.addEventListener('click',async()=>{
         try{await openAfter(()=>api(`/api/projects/v1/${data.id}/source-refs/${ref.id}`,'DELETE',
           {expected_version:active.row_version}));}catch(e){msg(`Could not remove reference: ${e.message}`);}
       });li.appendChild(remove);sourceList.appendChild(li);
     }
-    const select=byId('projectSourceSelect');select.replaceChildren(node('option','Select approved source metadata',{value:''}));
-    for (const src of available) select.appendChild(node('option',`${src.year} · ${src.state} · ${src.contest} · ${src.scope} · ${src.format}`,{value:src.registry_binding_id}));
+    renderSourceOptions();
     if (location.pathname !== `/projects/${data.id}`) history.replaceState(null,'',`/projects/${data.id}`);
   }
   async function loadDetail(id) {
@@ -114,6 +233,7 @@
   async function openAfter(action) {
     const payload=await action();
     renderDetail(payload);msg('Project changes saved.');await reloadList();
+    return payload;
   }
   async function reloadList() {
     const payload=await api('/api/projects/v1');list.replaceChildren();
@@ -134,7 +254,12 @@
       pendingCreate = {title, description, idempotency_key:crypto.randomUUID()};
     }
     try {
-      await openAfter(()=>api('/api/projects/v1','POST',pendingCreate));
+      const draft=readPublicDraft();
+      const saved=await openAfter(()=>api('/api/projects/v1','POST',pendingCreate));
+      if (draft && draft.title===title && Array.isArray(saved.scopes) && !saved.scopes.length) {
+        byId('projectScopes').replaceChildren(scopeRow(draft.scope));
+        msg('Project created. Scope fields are still a local draft: review them and click Save scopes. No parser started.');
+      }
       pendingCreate = null;
       form.reset();
     } catch(e){msg(`Could not create project: ${e.message}`);}
@@ -286,7 +411,9 @@
   (async()=>{
     try{
       await reloadList();
-      const result=await api('/api/projects/v1/source-options');available=result.sources;
+      const result=await api('/api/projects/v1/source-options');
+      if (!Array.isArray(result.sources)) throw new Error('Invalid source options response');
+      available=result.sources;renderSourceOptions();
       form.hidden=false;
       const pathMatch=location.pathname.match(/^\/projects\/([a-zA-Z0-9-]+)$/);
       if(pathMatch)await loadDetail(pathMatch[1]);

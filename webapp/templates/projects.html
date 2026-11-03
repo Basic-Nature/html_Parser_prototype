@@ -9,6 +9,30 @@
 <body>
   <header class="project-top"><a href="/">← Observatory</a><h1>Projects</h1><nav aria-label="ElectionPulse"><a href="/data_framework">Data Framework</a><a href="/worklist">Workflow</a><a href="/ballot_lens">Ballot Lens</a><a href="/auth/welcome">Access</a></nav></header>
   <main id="projectWorkspace" data-csrf="{{ csrf_token }}">
+
+    <section class="project-quickstart" aria-labelledby="projectQuickstartTitle">
+      <div class="project-step-heading"><span class="project-step-count">01</span><div><h2 id="projectQuickstartTitle">Start an election investigation</h2><p>Draft a Project without signing in. Drafts stay in this browser until you copy them; they are not saved to ElectionPulse.</p></div></div>
+      <form id="projectDraftForm" autocomplete="off">
+        <label>Project title<input name="project_title" maxlength="160" placeholder="Arizona 2024 — Presidential Results" required></label>
+        <div class="project-form-grid">
+          <label>State or territory code<input name="state_code" maxlength="2" placeholder="AZ" autocapitalize="characters" required></label>
+          <label>Election year<input name="election_year" type="number" min="1788" max="2100" step="1" placeholder="2024" required></label>
+        </div>
+        <label>Contest<input name="contest" maxlength="200" placeholder="President" required></label>
+        <label>Source selection
+          <select name="source_selection">
+            <option value="approved">Browse approved Source Library</option>
+            <option value="existing">Find an already registered source</option>
+            <option value="new_proposal">Propose a new source for review only</option>
+          </select>
+        </label>
+        <p class="project-inline-note">Selecting a source category never authorizes a parser. New URLs and independent file uploads do not enter public execution.</p>
+        <label for="projectDraftJSON">Project draft JSON (local only)</label>
+        <textarea id="projectDraftJSON" rows="8" readonly aria-describedby="projectDraftStatus"></textarea>
+        <div class="project-toolbar"><button id="projectDraftCopy" type="button">Copy draft JSON</button><button id="projectDraftToEditor" type="button" class="project-button-secondary">Use title in authorized editor</button></div>
+        <p id="projectDraftStatus" role="status" aria-live="polite">Enter the project details to generate a draft.</p>
+      </form>
+    </section>
     <p class="project-caption">Private investigation context. Creating a project never authorizes parsing, reviewing or publishing election results.</p>
     <p id="projectNotice" role="status" aria-live="polite">Loading your projects…</p>
     <section class="project-layout" aria-label="Investigation workspace">
@@ -29,11 +53,16 @@
         <section><h3>Election scope groups</h3><p>Each row is a related set of dimensions. Separate rows do not create an implicit Cartesian product.</p>
           <form id="projectScopeForm"><div id="projectScopes"></div><button type="button" id="projectAddScope">Add another scope</button><button type="submit">Save scopes</button></form>
         </section>
-        <section><h3>Approved source references</h3><p>Saving a reference does not grant source execution authority.</p>
+        <section id="projectSourceSection"><h3>Approved source references</h3><p>Saving a reference does not grant source execution authority.</p>
+
+          <label for="projectSourceSearch">Search returned approved source metadata</label>
+          <input id="projectSourceSearch" type="search" autocomplete="off" placeholder="State, year, contest, jurisdiction or format">
+          <p id="projectSourceLibraryStatus" role="status" aria-live="polite">Source options require authorized contributor access. A displayed source is not permission to parse.</p>
+          <p id="projectSourceSummary" class="project-inline-note">No Project source associations loaded.</p>
           <ul id="projectSources"></ul>
           <form id="projectSourceForm"><label>Approved registry source<select id="projectSourceSelect" required><option value="">Select approved source metadata</option></select></label><button type="submit">Associate source</button></form>
         </section>
-        <section aria-label="Project run eligibility review">
+        <section id="projectRunReview" aria-label="Project run eligibility review">
           <h3>Run eligibility review (J2A)</h3>
           <p>Checking a saved source and assigned Workflow item never starts a parser or issues execution authority.</p>
           <form id="projectRunPreflightForm">
@@ -59,6 +88,23 @@
           <p>Admission is separate from parser execution; no parser is started by this request.</p>
         </section>
       </div>
+    </section>
+
+    <section class="project-feedback" id="projectFeedback" aria-labelledby="projectFeedbackTitle">
+      <div class="project-step-heading"><span class="project-step-count">04</span><div><h2 id="projectFeedbackTitle">Report an issue</h2><p>Report a broken feature, parser error, source mismatch or possible data discrepancy. Reports are observations, not verified election findings.</p></div></div>
+      <form id="projectFeedbackForm" autocomplete="off">
+        <div class="project-form-grid">
+          <label>Surface<select name="surface"><option value="projects">Projects / Source Library</option><option value="ballot_lens">Ballot Lens</option><option value="data_framework">Data Framework</option><option value="worklist">Worklist</option><option value="observatory">Observatory</option></select></label>
+          <label>Category<select name="category"><option value="navigation">Navigation / layout</option><option value="parser">Parser failure</option><option value="source">Source or Project association</option><option value="accessibility">Accessibility</option><option value="discrepancy">Possible election-data discrepancy</option><option value="other">Other</option></select></label>
+        </div>
+        <label>Expected behavior<textarea name="expected" maxlength="1500" rows="2" required></textarea></label>
+        <label>Observed behavior<textarea name="observed" maxlength="1500" rows="3" required></textarea></label>
+        <p class="project-inline-note">Do not paste credentials, private Project contents, raw URLs, personal files or exploit details. No diagnostics are transmitted by this form.</p>
+        <div class="project-toolbar"><button id="projectFeedbackCopy" type="button">Prepare report for GitHub</button><a href="https://github.com/Basic-Nature/html_Parser_prototype/issues/new" target="_blank" rel="noopener noreferrer">Open public issue (GitHub account required)</a><a href="https://github.com/Basic-Nature/html_Parser_prototype/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer">Report a security issue privately</a></div>
+        <label for="projectFeedbackDraft">Report draft (review before sharing)</label>
+        <textarea id="projectFeedbackDraft" rows="9" readonly></textarea>
+        <p id="projectFeedbackStatus" role="status" aria-live="polite">No report submitted. This is a local draft, not an active feedback backend.</p>
+      </form>
     </section>
   </main>
   <script src="{{ url_for('static',filename='js/projects.js') }}" defer></script>
