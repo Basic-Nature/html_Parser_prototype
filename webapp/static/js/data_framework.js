@@ -608,13 +608,20 @@ document.addEventListener('DOMContentLoaded', () => {
     ].join(' · ');
   }
 
-  function updateCanonicalScopeAndLimitNotes() {
+  function updateCanonicalScopeAndLimitNotes(unavailableState = null) {
     if (el.canonicalRecordScopeNote) {
       el.canonicalRecordScopeNote.textContent =
         `Canonical Record filters: ${describeCanonicalRecordScope()}. ` +
         'Independent from Analysis unless you select Apply Analysis scope.';
     }
     if (el.canonicalSubsetNote) {
+      if (unavailableState === 'error' || unavailableState === 'restricted') {
+        const message = unavailableState === 'restricted'
+          ? 'Canonical Record access is restricted. Returned-row count is unavailable for this request.'
+          : 'Canonical Record request failed. Returned-row count is unavailable for this request.';
+        setUiState(el.canonicalSubsetNote, unavailableState, message);
+        return;
+      }
       const note = canonicalRecordPossiblyTruncated
         ? `Showing a bounded subset of ${rawData.length} returned Canonical Record rows. ` +
           'More rows may exist. Search, sorting, page navigation and CSV/copy operate only on loaded rows; ' +
@@ -4284,6 +4291,23 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // No failed/restricted fetch may be presented as a successful zero-row result.
+  function clearCanonicalRecordRowsForUnavailable(state) {
+    rawData = [];
+    canonicalRecordPossiblyTruncated = false;
+    allowedColumns.clear();
+    buildColumns();
+    page = 1;
+    render();
+    updateCanonicalScopeAndLimitNotes(state);
+    const placeholder = el.tbody?.querySelector('tr:first-child > td');
+    if (placeholder) {
+      placeholder.textContent = state === 'restricted'
+        ? 'Canonical Record access restricted. Returned-row count unavailable.'
+        : 'Canonical Record request failed. Returned-row count unavailable.';
+    }
+  }
+
   function fetchCanonicalRecordData(showLoading = false) {
     const requestSeq = ++canonicalRecordRequestSeq;
     if (canonicalRecordAbortController) canonicalRecordAbortController.abort();
@@ -4297,6 +4321,8 @@ document.addEventListener('DOMContentLoaded', () => {
           'loading'
         );
         renderSkeleton();
+        setUiState(el.canonicalSubsetNote, 'loading',
+          'Loading Canonical Record data; no returned-row count is confirmed yet.');
       }
 
       const result = await fetchJsonWithRetry(buildCanonicalRecordDataUrl(), {
@@ -4306,7 +4332,10 @@ document.addEventListener('DOMContentLoaded', () => {
         signal: canonicalRecordAbortController.signal,
       });
       if (result?.aborted || requestSeq !== canonicalRecordRequestSeq) return;
-      if (result.authBlocked) return;
+      if (result.authBlocked) {
+        clearCanonicalRecordRowsForUnavailable('restricted');
+        return;
+      }
       if (!result.ok || !result.data) {
         throw new Error(`Server error ${result.status || 'unknown'}.`);
       }
@@ -4367,12 +4396,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      rawData = [];
-      canonicalRecordPossiblyTruncated = false;
-      updateCanonicalScopeAndLimitNotes();
-      allowedColumns.clear();
-      buildColumns();
-      render();
+      clearCanonicalRecordRowsForUnavailable('error');
 
       const msg = err?.message || String(err);
       if (/does not exist/i.test(msg)) {
