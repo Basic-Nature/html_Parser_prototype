@@ -18,7 +18,11 @@
   {% if not support_is_public %}
   <div class="preview-stripe">PRIVATE PREVIEW ONLY <span aria-hidden="true">·</span> Not approved for publication <span aria-hidden="true">·</span> No payments accepted</div>
   {% else %}
+  {% if support_sponsors_link_enabled %}
+  <div class="preview-stripe">PUBLIC INFORMATION ONLY <span aria-hidden="true">·</span> Financial figures require separate approval <span aria-hidden="true">·</span> GitHub sponsorship is off-site</div>
+  {% else %}
   <div class="preview-stripe">PUBLIC INFORMATION ONLY <span aria-hidden="true">·</span> Figures available only after documented approval <span aria-hidden="true">·</span> Payments disabled</div>
+  {% endif %}
   {% endif %}
   <header class="site-header">
     <div class="site-header-inner">
@@ -152,10 +156,37 @@
       <div class="rules-list"><div class="rule"><span>01</span><div><h3>Separate expenses from funding</h3><p>A $20 operating bill does not become $20 in donations. Costs and contributions remain separate records.</p></div></div><div class="rule"><span>02</span><div><h3>Track funds through their lifecycle</h3><p>Received, settled, spent, committed, and available amounts cannot be counted in two buckets at once.</p></div></div><div class="rule"><span>03</span><div><h3>Publish corrections and uncertainty</h3><p>Partial months, invoice adjustments, missing data, and revisions remain visible. Unknown is never silently replaced with zero.</p></div></div><div class="rule"><span>04</span><div><h3>Protect independent election analysis</h3><p>Financial contributions cannot influence data processing, reported results, or discrepancy findings.</p></div></div></div>
     </div></section>
 
-    <section class="support-cta section" aria-labelledby="cta-title"><div class="max-width cta-panel"><div><span class="eyebrow light">VOLUNTARY SUPPORT</span><h2 id="cta-title">Help build a sustainable public-data project.</h2><p>Payments are not activated. Optional support may become available only after provider eligibility, public-contact privacy, and financial-publication reviews are complete. There is no checkout on this page.</p></div><div class="cta-box"><span class="status-tag dark-tag">Payments currently disabled</span><p>No account, routing, or payment-card information will be accepted on this page.</p><a href="/" class="button button-ghost">Back to Observatory <span aria-hidden="true">↗</span></a></div></div></section>
+    <section class="support-cta section" aria-labelledby="cta-title">
+      <div class="max-width cta-panel">
+        <div>
+          <span class="eyebrow light">VOLUNTARY SUPPORT</span>
+          <h2 id="cta-title">Help build a sustainable public-data project.</h2>
+          {% if support_sponsors_link_enabled %}
+          <p>Voluntary sponsorships support the independent development, hosting, maintenance, and security of ElectionPulse. GitHub Sponsors processes contributions on its own site. Sponsorship does not affect election-data findings or public access.</p>
+          {% else %}
+          <p>Payments are not activated. Optional support may become available only after provider eligibility, public-contact privacy, and financial-publication reviews are complete. There is no checkout on this page.</p>
+          {% endif %}
+        </div>
+        <div class="cta-box">
+          {% if support_sponsors_link_enabled %}
+          <span class="status-tag dark-tag">External sponsorship available</span>
+          <p>Choose a voluntary amount on GitHub Sponsors. No financial or card information is collected on ElectionPulse.</p>
+          <a href="https://github.com/sponsors/Basic-Nature" class="button button-ghost" target="_blank" rel="noopener noreferrer external" aria-label="Sponsor ElectionPulse on GitHub (opens in a new tab)">Support through GitHub Sponsors <span aria-hidden="true">↗</span></a>
+          {% else %}
+          <span class="status-tag dark-tag">Payments currently disabled</span>
+          <p>No account, routing, or payment-card information will be accepted on this page.</p>
+          {% endif %}
+          <a href="/" class="button button-ghost">Back to Observatory <span aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+    </section>
     <section class="section" id="support-policies" aria-labelledby="support-policies-title"><div class="max-width">
       <h2 id="support-policies-title">Contact, refunds, and privacy</h2>
+      {% if support_sponsors_link_enabled %}
+      <p>For project questions, use the contact link on the <a href="/">ElectionPulse Observatory</a>. Sponsorship payments, cancellations, refunds, and payment-related support are handled by GitHub Sponsors and its payment provider under their terms. ElectionPulse does not process card payments.</p>
+      {% else %}
       <p>For project questions, use the contact link on the <a href="/">ElectionPulse Observatory</a>. A dedicated payment-support channel and the applicable refund procedure must be verified and published before any contributions are enabled.</p>
+      {% endif %}
       <p>ElectionPulse is independently operated; it is not a registered tax-exempt charity. No tax-deductibility is claimed. Contributions cannot influence election findings, source approval, or audit outcomes.</p>
       <p>This page does not collect or process payment-card details. Personal operator verification details must not appear in public financial snapshots. Customer-facing provider receipts and statements require separate privacy verification.</p>
     </div></section>

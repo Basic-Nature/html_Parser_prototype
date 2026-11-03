@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from flask import Blueprint, abort, current_app, jsonify, render_template, make_response
 from .public_support_snapshot import load_approved_public_snapshot
 
@@ -25,6 +27,14 @@ def _call_handler(handler_name: str, *args, **kwargs):
 def create_public_pages_blueprint() -> Blueprint:
     bp = Blueprint("public_pages_routes", __name__)
 
+    @bp.record_once
+    def _hydrate_public_support_flags(state) -> None:
+        """Hydrate only missing safe public flags; never auto-activate finance/preview."""
+        for name in ("EP_SUPPORT_PAGE_PUBLICATION_ENABLED", "EP_SUPPORT_GITHUB_SPONSORS_ENABLED"):
+            if name not in state.app.config:
+                # Only the explicit string 'true' is an affirmative activation.
+                state.app.config[name] = os.environ.get(name, "").strip().lower() == "true"
+
     @bp.route("/", methods=["GET"], endpoint="index")
     def index_route():
         return _call_handler("index")
@@ -40,8 +50,12 @@ def create_public_pages_blueprint() -> Blueprint:
         # Reserved: a payment feature flag alone has no checkout capability.
         # The public page always renders without a payment provider integration.
         approved_financial = public and current_app.config.get("EP_SUPPORT_FINANCIAL_PUBLICATION_ENABLED") is True
+        # External GitHub sponsorship is independent of onsite payments/financial publication.
+        # Exact-boolean, public-only, fail-closed; runtime hydration is a separate gate.
+        sponsors = public and current_app.config.get("EP_SUPPORT_GITHUB_SPONSORS_ENABLED") is True
         return render_template("support.html", support_is_public=public,
-                               support_financial_publication_enabled=approved_financial)
+                               support_financial_publication_enabled=approved_financial,
+                               support_sponsors_link_enabled=sponsors)
 
     @bp.route("/support/financial-snapshot", methods=["GET"], endpoint="support_financial_snapshot")
     def support_financial_snapshot():
