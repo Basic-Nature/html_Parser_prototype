@@ -19,7 +19,7 @@
           {% if csrf_token %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
     <!-- Bootstrap -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css', v='b590c63b0fa9a2d7') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css', v='5c7f959c920bf9a1') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_app_nav.css', v='d61e3a233f0a9ed5') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_surface_theme.css', v='r3b') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public_canonical_explore.css') }}?v={{ static_version|default('w24s3') }}">
@@ -568,7 +568,7 @@
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/auth_utils.js') }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/public_geo_coverage.js') }}?v={{ static_version|default('g132') }}-w24ui11-69fd3ac68bfe" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/cross_surface_context.js') }}?v={{ static_version|default('g132') }}-w24ui11-7095347e889b" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='e3d0c02324e96758') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js', v='ce66d474546a5805') }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/public_canonical_explore.js') }}?v={{ static_version|default('w24s3') }}" defer></script>
 </body>
 </html>
