@@ -1008,6 +1008,68 @@ def _observe_json_source_derivative_path_if_requested(
     )
 
 
+def _parse_enhanced_voting_precinct_json(
+    json_path: str,
+    session_id: Optional[str],
+    coordinator: Any,
+    enhanced_voting_selection: Dict[str, Any],
+) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
+    """Explicitly selected local Enhanced Voting feed; never grants source authority."""
+    with open(json_path, "rb") as f:
+        raw_json = f.read()
+    data = orjson.loads(raw_json)
+
+    # Selection is made only after the normal source ingestion/registry
+    # authority boundary. Never authorize a URL from JSON shape alone.
+    from ...utils.enhanced_voting_precinct_adapter import build_precinct_table
+    import hashlib as _hashlib
+
+    if not isinstance(enhanced_voting_selection, dict) or set(enhanced_voting_selection) - {"county", "contest_id"}:
+        raise ValueError("invalid Enhanced Voting selection")
+    selected_id = enhanced_voting_selection.get("contest_id")
+    selected_county = enhanced_voting_selection.get("county")
+    if selected_county is not None and not isinstance(selected_county, str):
+        raise ValueError("county selection must be a string or None")
+    table = build_precinct_table(
+        data,
+        contest_id=selected_id,
+        county=selected_county,
+        source_sha256=_hashlib.sha256(raw_json).hexdigest(),
+    )
+    export_context = {
+        "handler": "json_handler",
+        "format_family": "enhanced_voting_precinct_json_v1",
+        "contest": table.contest,
+        "state": table.state,
+        "county": table.county,
+        "source_sha256": table.metadata["source_sha256"],
+        "fill_blanks_with_na": False,
+        "preformatted_smart_elections_wide": True,
+        "enhanced_voting_precinct_metadata": table.metadata,
+    }
+    finalized = finalize_election_output(
+        headers=table.headers,
+        data=table.rows,
+        coordinator=coordinator,
+        contest=table.contest,
+        state=table.state,
+        county=table.county,
+        context=export_context,
+        enable_user_feedback=False,
+        session_id=session_id,
+    )
+    metadata = dict(table.metadata)
+    metadata.update({
+        "handler": "json_handler", "race": table.contest,
+        "input_file": os.path.basename(json_path),
+        "headers": table.headers, "row_count": len(table.rows),
+        "csv_path": finalized.get("csv_path"),
+        "metadata_path": finalized.get("metadata_path"),
+        "public_memory_preview": finalized.get("public_memory_preview"),
+    })
+    return table.headers, table.rows, table.contest, metadata
+
+
 def parse_json_election_results(
     json_path: str,
     session_id: Optional[str] = None,
@@ -1530,7 +1592,19 @@ def parse(
             ),
         )
 
-    result = parse_json_election_results(manual_file, session_id=session_id, coordinator=coordinator)
+    # Opt-in selection is not source admission. The upstream caller remains
+    # responsible for approved-source identity and file authorization.
+    ev_selection = html_context.get("enhanced_voting_precinct_selection")
+    if ev_selection is not None:
+        result = _parse_enhanced_voting_precinct_json(
+            manual_file, session_id=session_id, coordinator=coordinator,
+            enhanced_voting_selection=ev_selection,
+        )
+    else:
+        # Preserve the exact legacy internal parser call and its callback contract.
+        result = parse_json_election_results(
+            manual_file, session_id=session_id, coordinator=coordinator,
+        )
 
     result_any = cast(Any, result)
     if not (isinstance(result_any, tuple) and len(result_any) == 4):

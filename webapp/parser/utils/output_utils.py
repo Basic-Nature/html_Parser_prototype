@@ -551,7 +551,12 @@ def finalize_election_output(
     except Exception:
         pass
 
-    transformed_headers, transformed_rows, smart_applied = transform_wide_to_smart_standard(headers, data, context)
+    # Explicitly preformatted Smart Elections rows must not be repivoted.
+    # All existing caller behavior remains unchanged unless this flag is set.
+    if context.get("preformatted_smart_elections_wide") is True:
+        transformed_headers, transformed_rows, smart_applied = headers, data, False
+    else:
+        transformed_headers, transformed_rows, smart_applied = transform_wide_to_smart_standard(headers, data, context)
     if smart_applied:
         headers = transformed_headers
         data = transformed_rows
