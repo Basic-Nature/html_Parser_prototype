@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="{{ url_for('static',filename='css/projects.css') }}">
 </head>
 <body>
-  <header class="project-top"><a href="/">← Observatory</a><h1>Projects</h1><nav aria-label="ElectionPulse"><a href="/data_framework">Data Framework</a><a href="/worklist">Workflow</a><a href="/ballot_lens">Ballot Lens</a><a href="/auth/welcome">Access</a></nav></header>
+  <header class="project-top"><a href="/">← Observatory</a><h1>Projects</h1><nav aria-label="ElectionPulse"><a href="/data_framework">Data Framework</a><a href="/worklist">Workflow</a><a href="/ballot_lens">Ballot Lens</a><a href="/auth/welcome">Access</a>{% if keycloak_local_login_enabled %}<a href="/auth/oidc/login?next=/projects">Sign in with Smart Elections</a>{% endif %}</nav></header>
   <main id="projectWorkspace" data-csrf="{{ csrf_token }}">
 
     <section class="project-quickstart" aria-labelledby="projectQuickstartTitle">

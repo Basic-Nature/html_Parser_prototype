@@ -120,6 +120,12 @@ def get_request_principal():
             None,
         )
 
+    # W24AUTHOIDC1B: lower-priority, locally gated federated session.
+    from webapp.parser.auth.keycloak_oidc import federated_session
+    _keycloak_session = federated_session()
+    if _keycloak_session is not None:
+        return (_keycloak_session['principal'], 'keycloak_oidc', None)
+
     host = (request.host or '').lower()
     is_local = _is_local_host(host)
 
@@ -142,6 +148,9 @@ def _resolve_cert_session_id(principal: str | None) -> str | None:
 def _derive_auth_context(principal: str | None, principal_source: str | None) -> dict:
     if principal and principal.startswith('cert:'):
         return {'auth_tier': 'cert', 'auth_trusted': True, 'principal_source': principal_source}
+    if principal_source == 'keycloak_oidc' and principal and principal.startswith('oidc:keycloak:'):
+        # Authorization is separately rechecked from the signed session.
+        return {'auth_tier': 'analyst', 'auth_trusted': False, 'principal_source': principal_source}
     if principal and principal.startswith('sso:'):
         return {'auth_tier': 'sso', 'auth_trusted': True, 'principal_source': principal_source}
     if principal and principal.startswith('dev:'):

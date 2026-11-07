@@ -105,6 +105,27 @@ def create_public_pages_blueprint() -> Blueprint:
         from webapp.parser.auth.trusted_access_boundary import complete_trusted_certificate_access
         return complete_trusted_certificate_access()
 
+    # W24AUTHOIDC1B: localhost-only OIDC; disabled by default and on Azure.
+    @bp.route("/auth/oidc/login", methods=["GET"], endpoint="auth_oidc_login")
+    def auth_oidc_login_route():
+        from webapp.parser.auth.keycloak_oidc import start_login
+        return start_login()
+
+    @bp.route("/auth/oidc/callback", methods=["GET"], endpoint="auth_oidc_callback")
+    def auth_oidc_callback_route():
+        from webapp.parser.auth.keycloak_oidc import finish_login
+        return finish_login()
+
+    @bp.route("/auth/oidc/status", methods=["GET"], endpoint="auth_oidc_status")
+    def auth_oidc_status_route():
+        from webapp.parser.auth.keycloak_oidc import status
+        return status()
+
+    @bp.route("/auth/oidc/logout", methods=["POST"], endpoint="auth_oidc_logout")
+    def auth_oidc_logout_route():
+        from webapp.parser.auth.keycloak_oidc import logout
+        return logout()
+
     @bp.route("/ocr_diagnostics", methods=["GET"], endpoint="ocr_diagnostics")
     def ocr_diagnostics_route():
         return _call_handler("ocr_diagnostics")

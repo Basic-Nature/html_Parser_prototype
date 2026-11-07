@@ -63,3 +63,7 @@ spacy-lookups-data>=1.0.5
 # flask-wtf>=1.0.0
 # Runtime schema migrations for controlled production maintenance/WebJobs.
 alembic>=1.18.4
+Authlib>=1.9.5,<2.0
+# W24AUTHOIDC1E: independent access-JWT verification; no Redis dependency.
+# OIDC memory sessions are local-development-only, fail closed on Azure.
+PyJWT[crypto]>=2.10.1,<3.0

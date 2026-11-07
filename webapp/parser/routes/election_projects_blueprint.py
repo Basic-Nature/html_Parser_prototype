@@ -17,7 +17,9 @@ def create_election_projects_blueprint(*, principal_resolver, session_factory) -
     @bp.get("/projects/<uuid:project_id>")
     def project_page(project_id=None):
         # Landing is public; all private data is fetched through authorized APIs.
-        return render_template("projects.html", csrf_token=issue_workflow_csrf_token())
+        from webapp.parser.auth.keycloak_oidc import _enabled as keycloak_local_enabled
+        return render_template("projects.html", csrf_token=issue_workflow_csrf_token(),
+                               keycloak_local_login_enabled=keycloak_local_enabled())
 
     def actor():
         if os.getenv("ELECTION_PROJECTS_ENABLED", "").lower() not in ("true", "1"):
@@ -26,11 +28,17 @@ def create_election_projects_blueprint(*, principal_resolver, session_factory) -
         authority = classify_authority(principal, source)
         if not authority["authenticated"] or authority["state"] == "development_bypass":
             raise svc.ProjectError("contributor_access_required", 401)
-        try:
-            assert_trusted_action(authority, get_principal_tier(principal, source),
-                                  minimum_tier=PrivilegeTier.STANDARD_USER)
-        except CapabilityPolicyError:
-            raise svc.ProjectError("contributor_access_required", 403)
+        if authority["state"] == "federated_identity" and authority.get("provider") == "keycloak":
+            # OIDC analyst privilege is independent of certificate/reviewer authority.
+            from webapp.parser.auth.keycloak_oidc import project_permission
+            if not project_permission(principal, source):
+                raise svc.ProjectError("contributor_access_required", 403)
+        else:
+            try:
+                assert_trusted_action(authority, get_principal_tier(principal, source),
+                                      minimum_tier=PrivilegeTier.STANDARD_USER)
+            except CapabilityPolicyError:
+                raise svc.ProjectError("contributor_access_required", 403)
         return svc.owner_key(principal), principal
 
     def operation(fn, *, write=False, include_principal=False):
