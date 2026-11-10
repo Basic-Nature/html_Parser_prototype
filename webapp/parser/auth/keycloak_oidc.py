@@ -73,6 +73,21 @@ def _session_backend():
     localhost Host header. A later production store requires separate design,
     security/load tests, database approval, and explicit activation.
     """
+    # Explicit production opt-in. No Redis, memory dev fallback or new Azure
+    # service. The existing PostgreSQL Flexible Server hosts a dedicated table.
+    if os.environ.get("ELECTIONPULSE_OIDC_SESSION_BACKEND") == "postgresql":
+        if (request.host.lower() != "www.electionpulse.org" or
+            not os.environ.get("WEBSITE_SITE_NAME") or
+            os.environ.get("ELECTIONPULSE_OIDC_POSTGRES_ENABLED", "").lower() != "true"):
+            raise RuntimeError("oidc_postgres_production_binding_required")
+        from .oidc_postgres_store import PostgresSessionStore
+        app = current_app._get_current_object()
+        with _BACKEND_INITIALIZATION_LOCK:
+            backend = app.extensions.get("electionpulse_oidc_production_pg")
+            if backend is None:
+                backend = PostgresSessionStore.from_runtime_env()
+                app.extensions["electionpulse_oidc_production_pg"] = backend
+            return backend
     if request.host.lower() not in {"localhost:5000", "127.0.0.1:5000"}:
         raise RuntimeError("oidc_dev_backend_nonlocal_host")
     if os.environ.get("ELECTIONPULSE_OIDC_SESSION_BACKEND", "") != "memory_dev":

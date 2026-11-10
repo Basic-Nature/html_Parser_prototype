@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, make_response, request
 
 from .route_monitor import record_route_monitor_event
 
@@ -25,6 +25,37 @@ def _call_handler(handler_name: str, *args, **kwargs):
 
 def create_file_io_blueprint() -> Blueprint:
     bp = Blueprint("file_io_routes", __name__)
+
+    @bp.post("/api/public/csv-download", endpoint="public_csv_download")
+    def public_csv_download_route():
+        # Stateless bearer capability in the JSON body; never in URL/access logs.
+        from webapp.parser.services.public_csv_delivery import BROKER, feature_enabled
+        from urllib.parse import urlsplit
+
+        if not feature_enabled():
+            return ("", 404)
+        origin = request.headers.get('Origin', '')
+        if origin and (urlsplit(origin).scheme != request.scheme or urlsplit(origin).netloc != request.host):
+            return ("", 404)
+        if request.content_length is None or request.content_length > 256:
+            return ("", 404)
+        if not request.is_json:
+            return ("", 404)
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or set(body) != {'token'}:
+            return ("", 404)
+        data = BROKER.take(body.get('token'))
+        if data is None:
+            return ("", 404)
+        response = make_response(data)
+        response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        response.headers['Content-Disposition'] = 'attachment; filename="electionpulse-approved-source.csv"'
+        response.headers['Cache-Control'] = 'no-store, private, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['Referrer-Policy'] = 'no-referrer'
+        response.headers['Vary'] = 'Origin'
+        return response
 
     @bp.route("/download_fs", methods=["GET"], endpoint="download_fs")
     def download_fs_route():

@@ -14,6 +14,7 @@ import {
   type PublicRegistrySource,
 } from '../contracts/registry';
 import type { PublicRuntimeResult } from '../contracts/publicRuntime';
+import { parsePublicCsvOffer, consumePublicCsvOffer, type PublicCsvOffer } from '../contracts/csvDownload';
 import type { RunEvent, RunMode } from '../contracts/runtime';
 import { HeaderBar } from '../components/common/HeaderBar';
 import {readProjectQuerySelector, resolveProjectReturn} from '../services/projectContext';
@@ -122,6 +123,8 @@ export function AppShell({
 }) {
   const [registryEnvelope, setRegistryEnvelope] =
     useState<PublicRegistryEnvelope | null>(null);
+  const [csvOffer, setCsvOffer] = useState<PublicCsvOffer | null>(null);
+  const [csvError, setCsvError] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] =
     useState<PublicRegistrySource | null>(null);
   const [activeMode, setActiveMode] =
@@ -355,6 +358,8 @@ export function AppShell({
     if (!canSubmit(runState)) {
       return;
     }
+    setCsvOffer(null);
+    setCsvError(null);
     setSubmitError(null);
     setPublicRuntimeResult(null);
     dispatch({ type: 'SUBMIT_REQUESTED' });
@@ -434,6 +439,36 @@ export function AppShell({
   }, [dispatch, socket]);
 
   useEffect(() => {
+    const onCsvOffer = (raw: unknown): void => {
+      const offer = parsePublicCsvOffer(raw);
+      if (offer && offer.registry_source_id === selectedSourceRef.current?.registry_source_id) {
+        setCsvOffer(offer);
+        setCsvError(null);
+      }
+    };
+    socket.on('public_registry_csv_ready', onCsvOffer);
+    return () => { socket.off('public_registry_csv_ready', onCsvOffer); };
+  }, [socket]);
+
+  const handleCsvDownload = useCallback(async () => {
+    if (!csvOffer || csvOffer.registry_source_id !== selectedSourceRef.current?.registry_source_id) return;
+    setCsvOffer(null); // Consume UI capability before the request is dispatched.
+    try {
+      const blob = await consumePublicCsvOffer(csvOffer);
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = href;
+      link.download = 'electionpulse-approved-source.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(href), 0);
+    } catch {
+      setCsvError('CSV download unavailable or expired. Run the approved source again.');
+    }
+  }, [csvOffer]);
+
+  useEffect(() => {
     const selector = readProjectQuerySelector();
     if (!selector) return;
     const controller = new AbortController();
@@ -476,6 +511,14 @@ export function AppShell({
           </a>
         </nav>
       ) : null}
+      {csvOffer && selectedSource?.registry_source_id === csvOffer.registry_source_id ? (
+        <div className="blf2-source-return-nav">
+          <button type="button" className="blf2-help-link" onClick={() => { void handleCsvDownload(); }}>
+            Download this run's CSV (one use, expires soon)
+          </button>
+        </div>
+      ) : null}
+      {csvError ? <p role="status">{csvError}</p> : null}
       <main className="blf2-shell">
         <SourcePanel
           trustedControls={bootstrap.trustedControls}

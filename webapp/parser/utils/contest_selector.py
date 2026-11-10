@@ -53,8 +53,8 @@ try:
     try:
         STOPWORDS = set(stopwords.words('english'))
     except LookupError:
-        nltk.download('stopwords')
-        STOPWORDS = set(stopwords.words('english'))
+        # Optional NLP data must never trigger a download during import.
+        STOPWORDS = set()
     STEMMER = PorterStemmer()
 except ImportError:
     STEMMER = None

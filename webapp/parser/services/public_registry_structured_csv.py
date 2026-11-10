@@ -1,12 +1,12 @@
-"""W24PUBPREVIEW6 shadow candidate: approved public CSV, memory-only.
+"""Generic approved-source long-form precinct CSV mapping, memory-only.
 
-Uninstalled candidate. No API for arbitrary URLs, file paths, or upload data.
+Never accepts arbitrary URLs, file paths, or upload data.
 Acquisition is restricted to the exact server-resolved approved HTTPS CSV URL;
 redirects remain same-origin; DNS addresses are checked and pinned per request.
 Every parsed precinct is explicitly identified by a locality + precinct pair.
 
-Intentionally NOT a general-purpose CSV handler. Unsupported source schemas fail
-closed and must not be coerced into precinct rows.
+Supports canonical and common export column layouts across jurisdictions.
+Unsupported or ambiguous layouts fail closed rather than guessing precinct rows.
 """
 from __future__ import annotations
 
@@ -34,13 +34,17 @@ MAX_CELL_CHARS = 2_000
 MAX_CANDIDATES = 200
 DEFAULT_METHODS = ("Election Day", "Early Voting", "Absentee Mail", "Provisional")
 ALIASES: dict[str, tuple[str, ...]] = {
-    "precinct": ("precinct", "precinct name", "precinct id", "precinct number", "precinct code"),
-    "locality": ("locality", "county", "county name", "jurisdiction", "municipality"),
+    "precinct": ("precinct name", "precinct", "precinct label"),
+    "precinct_id": ("precinct id", "precinct number", "precinct code"),
+    "locality_code": ("locality code", "county code", "jurisdiction code"),
+    "candidate_id": ("candidate id", "choice id"),
+    "election_date": ("election date", "date of election"),
+    "locality": ("locality name", "locality", "county name", "county", "jurisdiction", "municipality"),
     "candidate": ("candidate", "candidate name", "choice", "choice name", "candidate fullname"),
     "votes": ("votes", "vote count", "vote total", "total votes", "number of votes"),
     "method": ("vote method", "voting method", "ballot method", "vote type", "ballot type"),
     "party": ("party", "party name", "political party"),
-    "contest": ("contest", "office", "contest name", "race", "office name"),
+    "contest": ("contest", "office title", "office", "contest name", "race", "office name"),
     "reporting": ("percent precincts reporting", "precincts reporting percent"),
     "year": ("election year", "year", "year of election"),
     "state": ("state", "state name", "jurisdiction state"),
@@ -61,6 +65,11 @@ def _norm(value: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", value.casefold()))
 
 
+def _norm_header(value: str) -> str:
+    """Normalize snake case, spaces and CamelCase without source-specific rules."""
+    return _norm(re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", value)))
+
+
 def _column_map(headers: list[str]) -> dict[str, str]:
     if not headers or len(headers) > MAX_COLUMNS:
         raise PublicStructuredCSVError("CSV_HEADER_COUNT_OUT_OF_BOUNDS")
@@ -68,20 +77,22 @@ def _column_map(headers: list[str]) -> dict[str, str]:
     for header in headers:
         if not isinstance(header, str) or not header.strip() or len(header) > 160:
             raise PublicStructuredCSVError("CSV_INVALID_HEADER")
-        normalized = _norm(header)
+        normalized = _norm_header(header)
         if normalized in actual:
             raise PublicStructuredCSVError("CSV_DUPLICATE_HEADER")
         actual[normalized] = header
     result: dict[str, str] = {}
     for semantic, choices in ALIASES.items():
-        found = [actual[_norm(name)] for name in choices if _norm(name) in actual]
+        found = [actual[_norm_header(name)] for name in choices if _norm_header(name) in actual]
         if len(found) > 1:
             raise PublicStructuredCSVError("CSV_AMBIGUOUS_COLUMN_" + semantic.upper())
         if found:
             result[semantic] = found[0]
-    for required in ("locality", "precinct", "candidate", "votes", "contest"):
+    for required in ("locality", "candidate", "votes", "contest"):
         if required not in result:
             raise PublicStructuredCSVError("CSV_REQUIRED_COLUMN_MISSING_" + required.upper())
+    if "precinct" not in result and "precinct_id" not in result:
+        raise PublicStructuredCSVError("CSV_REQUIRED_COLUMN_MISSING_PRECINCT")
     return result
 
 
@@ -111,9 +122,18 @@ def _parse_reporting(raw: str) -> str | None:
 def _contest_matches(raw: str, expected: str) -> bool:
     desired = _norm(expected)
     observed = _norm(raw)
-    if desired == "senate":
-        return observed in {"senate", "u s senate", "us senate", "united states senate", "united states senator", "us senator"}
-    return observed == desired
+    if not desired or not observed:
+        return False
+    if desired == observed:
+        return True
+    # Reusable office-title normalization, never a jurisdiction/source dispatch.
+    prefixes = ("member united states ", "united states ", "u s ", "us ", "office of ")
+    for prefix in prefixes:
+        if observed.startswith(prefix):
+            observed = observed[len(prefix):]
+            break
+    return desired == observed
+
 
 
 @dataclass(frozen=True)
@@ -129,15 +149,18 @@ class CSVShape:
     state_column_present: bool = False
     excluded_other_contest_rows: int = 0
     excluded_summary_rows: int = 0
+    quarantined_zero_idless_observations: int = 0
+    quarantined_vote_total: int = 0
+    source_encoding: str = "utf-8-sig"
 
 
 def parse_approved_precinct_csv(
     data: bytes, *, contest: str, year: str | None = None, state: str | None = None,
     source_sha256: str | None = None, source_url: str | None = None,
 ) -> CSVShape:
-    """Strict *long-form* CSV mapping, preserving nulls and explicit zero.
+    """Generic long-form CSV mapping preserving provenance, nulls, and zero.
 
-    A statewide source must explicitly name locality, precinct, candidate,
+    A statewide source must identify locality and precinct, candidate,
     contest and votes. Method columns absent from the source are kept as None.
     A recognized candidate Total Votes row is not added again to method rows.
     Duplicate vote observations are rejected rather than double counted.
@@ -146,10 +169,19 @@ def parse_approved_precinct_csv(
         raise PublicStructuredCSVError("CSV_EMPTY_SOURCE")
     if b"\x00" in data[:4096]:
         raise PublicStructuredCSVError("CSV_BINARY_SOURCE_REJECTED")
+    encoding = "utf-8-sig"
     try:
-        decoded = data.decode("utf-8-sig", errors="strict")
-    except UnicodeDecodeError as exc:
-        raise PublicStructuredCSVError("CSV_UNSUPPORTED_ENCODING_REQUIRES_REVIEW") from exc
+        decoded = data.decode(encoding, errors="strict")
+    except UnicodeDecodeError:
+        # Deterministic legacy CSV fallback, independent of state or contest.
+        # Undefined Windows-1252 bytes and decoded control characters reject.
+        try:
+            decoded = data.decode("cp1252", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise PublicStructuredCSVError("CSV_UNSUPPORTED_ENCODING_REQUIRES_REVIEW") from exc
+        encoding = "cp1252"
+    if any((ord(ch) < 32 and ch not in "\t\r\n") or 127 <= ord(ch) <= 159 for ch in decoded):
+        raise PublicStructuredCSVError("CSV_CONTROL_CHARACTERS_REJECTED")
     first = decoded[:1024].lstrip().casefold()
     if first.startswith("<html") or first.startswith("<!doctype html"):
         raise PublicStructuredCSVError("CSV_HTML_RESPONSE_REJECTED")
@@ -162,13 +194,17 @@ def parse_approved_precinct_csv(
         normalized_identities: dict[tuple[str, str], tuple[str, str]] = {}
         excluded_other_contest_rows = 0
         excluded_summary_rows = 0
-        year_column_present = "year" in columns
+        year_column_present = "year" in columns or "election_date" in columns
         state_column_present = "state" in columns
         if year_column_present and (not year or not re.fullmatch(r"(?:19|20)[0-9]{2}", str(year).strip())):
             raise PublicStructuredCSVError("CSV_EXPECTED_ELECTION_YEAR_INVALID")
         if state_column_present and not str(state or "").strip():
             raise PublicStructuredCSVError("CSV_EXPECTED_STATE_MISSING")
         parties: dict[str, str] = {}
+        candidate_ids: dict[str, str] = {}
+        quarantined_zero_idless = 0
+        quarantined_vote_total = 0
+        display_labels: dict[tuple[str, str], str] = {}
         all_candidates: set[str] = set()
         extras: set[str] = set()
         seen_observations: set[tuple[str, str, str, str]] = set()
@@ -184,7 +220,13 @@ def parse_approved_precinct_csv(
             # Scope columns, when supplied, are authoritative: never silently
             # accept a record from a different year or state.
             if year_column_present:
-                year_value = str(raw[columns["year"]]).strip()
+                year_value = str(raw[columns["year"]]).strip() if "year" in columns else None
+                if year_value is None:
+                    date_value = str(raw[columns["election_date"]]).strip()
+                    matches = re.findall(r"(?<!\d)(?:19|20)\d{2}(?!\d)", date_value)
+                    if len(matches) != 1:
+                        raise PublicStructuredCSVError("CSV_SOURCE_ELECTION_DATE_MALFORMED")
+                    year_value = matches[0]
                 if not re.fullmatch(r"(?:19|20)[0-9]{2}", year_value):
                     raise PublicStructuredCSVError("CSV_SOURCE_YEAR_MALFORMED")
                 if year_value != str(year).strip():
@@ -192,25 +234,35 @@ def parse_approved_precinct_csv(
             if state_column_present:
                 state_value = _norm(str(raw[columns["state"]]).strip())
                 expected_state = _norm(str(state or ""))
-                state_aliases = {"va": "virginia", "virginia": "virginia"}
-                if not state_value or state_aliases.get(state_value, state_value) != state_aliases.get(expected_state, expected_state):
+                if not state_value or state_value != expected_state:
                     raise PublicStructuredCSVError("CSV_STATE_SCOPE_MISMATCH")
             if not _contest_matches(raw[columns["contest"]], contest):
                 excluded_other_contest_rows += 1
                 continue
             locality = str(raw[columns["locality"]]).strip()
-            precinct = str(raw[columns["precinct"]]).strip()
+            precinct = str(raw[columns["precinct"]]).strip() if "precinct" in columns else ""
+            precinct_id = str(raw[columns["precinct_id"]]).strip() if "precinct_id" in columns else ""
+            locality_code = str(raw[columns["locality_code"]]).strip() if "locality_code" in columns else locality
             candidate = str(raw[columns["candidate"]]).strip()
-            if not all((locality, precinct, candidate)):
+            if not all((locality, candidate)):
                 raise PublicStructuredCSVError("CSV_MISSING_PRECINCT_IDENTITY")
-            for label in (locality, precinct, candidate):
+            if not precinct_id and "precinct_id" in columns:
+                if _parse_votes(raw[columns["votes"]]) == 0 and precinct:
+                    quarantined_zero_idless += 1
+                    continue
+                raise PublicStructuredCSVError("CSV_NONZERO_OR_UNNAMED_IDLESS_PRECINCT")
+            if not precinct:
+                precinct = precinct_id
+            if not precinct or not locality_code:
+                raise PublicStructuredCSVError("CSV_MISSING_PRECINCT_IDENTITY")
+            for label in (locality, precinct, precinct_id or precinct, locality_code, candidate):
                 if len(label) > 160 or any(ord(ch) < 32 for ch in label) or label[0] in "=+-@":
                     raise PublicStructuredCSVError("CSV_UNSAFE_ELECTION_LABEL")
             if _norm(precinct) in {"total", "totals", "statewide", "county total", "all precincts", "grand total"}:
                 # Totals are not precincts. Do not silently blend them.
                 excluded_summary_rows += 1
                 continue
-            canonical_id = (_norm(locality), _norm(precinct))
+            canonical_id = (_norm(locality_code), _norm(precinct_id or precinct))
             old_identity = normalized_identities.setdefault(canonical_id, (locality, precinct))
             if old_identity != (locality, precinct):
                 raise PublicStructuredCSVError("CSV_CONFLICTING_PRECINCT_IDENTITY")
@@ -226,11 +278,12 @@ def parse_approved_precinct_csv(
                         raise PublicStructuredCSVError("CSV_UNSAFE_METHOD_NAME")
                     extras.add(method)
             votes = _parse_votes(raw[columns["votes"]])
-            k = (locality, precinct, candidate, method)
+            k = (locality_code, precinct_id or precinct, candidate, method)
             if k in seen_observations:
                 raise PublicStructuredCSVError("CSV_DUPLICATE_PRECINCT_CANDIDATE_METHOD")
             seen_observations.add(k)
-            precinct_key = (locality, precinct)
+            precinct_key = (locality_code, precinct_id or precinct)
+            display_labels[precinct_key] = locality + " / " + precinct + (" [ID:" + precinct_id + "]" if "precinct_id" in columns else "")
             if "precinct_total" in columns:
                 reported_text = str(raw[columns["precinct_total"]]).strip()
                 if reported_text:
@@ -239,6 +292,13 @@ def parse_approved_precinct_csv(
                     if reported_value != prior_value:
                         raise PublicStructuredCSVError("CSV_CONFLICTING_REPORTED_PRECINCT_TOTAL")
             cand_party = str(raw.get(columns.get("party", ""), "")).strip()
+            if "candidate_id" in columns:
+                candidate_id = str(raw[columns["candidate_id"]]).strip()
+                if not candidate_id:
+                    raise PublicStructuredCSVError("CSV_MISSING_CANDIDATE_ID")
+                earlier_id = candidate_ids.setdefault(candidate, candidate_id)
+                if earlier_id != candidate_id:
+                    raise PublicStructuredCSVError("CSV_CANDIDATE_NAME_ID_COLLISION")
             if candidate in parties and parties[candidate] != cand_party:
                 raise PublicStructuredCSVError("CSV_CANDIDATE_PARTY_COLLISION")
             if cand_party and (len(cand_party) > 40 or any(ord(ch) < 32 for ch in cand_party) or cand_party[0] in "=+-@"):
@@ -272,7 +332,7 @@ def parse_approved_precinct_csv(
     discrepancies = 0
     for (locality, precinct), groups in values.items():
         row: dict[str, object] = {header: None for header in headers}
-        row["Precinct"] = locality + " / " + precinct
+        row["Precinct"] = display_labels.get((locality, precinct), locality + " / " + precinct)
         row["% Precincts Reporting"] = row_reporting.get((locality, precinct))
         row["Official Source Link"] = source_url
         row["Source SHA-256"] = source_sha256 or hashlib.sha256(data).hexdigest()
@@ -342,6 +402,7 @@ def parse_approved_precinct_csv(
         source_sha256 or hashlib.sha256(data).hexdigest(), missing, discrepancies,
         year_column_present, state_column_present,
         excluded_other_contest_rows, excluded_summary_rows,
+        quarantined_zero_idless, quarantined_vote_total, encoding,
     )
 
 
