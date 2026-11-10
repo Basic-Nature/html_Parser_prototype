@@ -276,6 +276,23 @@ def _process_public_registry_url_for_web(
                 f"Public registry runtime forbids {forbidden_key}."
             )
 
+    # W24PUBPREVIEW6 approved CSV memory-only shadow route.
+    # Server-derived registry format/URL only; no browser-supplied URLs or paths.
+    # Unsupported approved structured schema fails closed; legacy public HTML
+    # fallback remains unchanged and unrestricted downloads stay disabled.
+    if str(runtime.source_projection.get("format", "")).upper() == "CSV":
+        from urllib.parse import urlsplit
+        from .services.public_registry_structured_csv import execute_approved_public_csv
+        if not urlsplit(runtime.approved_target_url).path.casefold().endswith(".csv"):
+            raise RuntimeError("Approved CSV registry format requires exact CSV target path.")
+        cancellation_manager.reset(session_id)
+        try:
+            return execute_approved_public_csv(
+                runtime, session_id=session_id, cancel_flag=cancel_flag,
+            )
+        finally:
+            cancellation_manager.remove(session_id)
+
     cancellation_manager.reset(session_id)
     try:
         main(
