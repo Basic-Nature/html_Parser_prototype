@@ -27,8 +27,11 @@ export interface DormantBallotLensSocket {
     listener?: (payload?: unknown) => void,
   ): DormantBallotLensSocket;
   emit(
-    event: 'ballot_lens',
-    payload: PublicRegistrySubmitPayload | TrustedBallotLensSubmitPayload,
+    event: 'ballot_lens' | 'public_registry_compact_next' |
+      'public_registry_compact_finish' | 'public_registry_compact_cancel',
+    payload: PublicRegistrySubmitPayload | TrustedBallotLensSubmitPayload |
+      { readonly cursor: string } | { readonly last_cursor: string } |
+      { readonly snapshot_id: string },
   ): DormantBallotLensSocket;
 }
 

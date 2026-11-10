@@ -94,6 +94,13 @@ class PublicBallotLensRuntime:
 
     _checkpoint_sequence: int = field(default=0, init=False)
 
+    # Shadow candidate: inactive unless a server-side adapter explicitly opts
+    # this runtime into compact capture for one approved CSV source.
+    _compact_capture: Callable[..., dict[str, object]] | None = field(default=None, init=False, repr=False)
+    _compact_source_sha256: str | None = field(default=None, init=False, repr=False)
+    _compact_quarantine: dict[str, object] | None = field(default=None, init=False, repr=False)
+    _compact_manifest_event: dict[str, object] | None = field(default=None, init=False, repr=False)
+
     def __post_init__(self) -> None:
         assert_public_execution_context(
             DEFAULT_PUBLIC_EXECUTION_CONTEXT
@@ -252,12 +259,65 @@ class PublicBallotLensRuntime:
             evidence_count=len(method_headers),
         )
 
+    @property
+    def compact_enabled(self) -> bool:
+        return self._compact_capture is not None
+
+    def enable_compact_capture(self, callback: Callable[..., dict[str, object]]) -> None:
+        """An explicit server integration hook; normal public runs are unchanged."""
+        if self._compact_capture is not None or not callable(callback):
+            raise PublicBallotLensRuntimeError("Public compact capture already set or unavailable.")
+        self._compact_capture = callback
+
+    def set_compact_source_metadata(self, *, source_sha256: str, quarantine: dict[str, object]) -> None:
+        """Supply the digest from already-acquired, server-selected source bytes."""
+        if not self.compact_enabled:
+            raise PublicBallotLensRuntimeError("Compact delivery is not enabled.")
+        if (not isinstance(source_sha256, str) or len(source_sha256) != 64
+            or any(c not in "0123456789abcdef" for c in source_sha256)):
+            raise PublicBallotLensRuntimeError("Compact source digest is not valid.")
+        if not isinstance(quarantine, dict):
+            raise PublicBallotLensRuntimeError("Compact quarantine metadata is invalid.")
+        if self._compact_source_sha256 is not None:
+            raise PublicBallotLensRuntimeError("Compact source already staged.")
+        self._compact_source_sha256 = source_sha256
+        self._compact_quarantine = dict(quarantine)
+
+    def compact_manifest_event(self) -> dict[str, object] | None:
+        """Server-only handoff. Does not itself register or emit Socket.IO events."""
+        return dict(self._compact_manifest_event) if self._compact_manifest_event else None
+
     def capture_finalized_output(
         self,
         *,
         headers: Sequence[str],
         rows: Sequence[Mapping[str, object]],
     ) -> dict[str, object]:
+        if self._compact_capture is not None:
+            if self._compact_source_sha256 is None or self._compact_manifest_event is not None:
+                raise PublicBallotLensRuntimeError("Compact source not staged or already captured.")
+            # output_utils already canonicalizes the exact headers/cells. Do not
+            # re-pivot or replace explicit None with zero.
+            event = self._compact_capture(
+                headers=list(headers), rows=[dict(row) for row in rows],
+                source_sha256=self._compact_source_sha256,
+                quarantine=dict(self._compact_quarantine or {}),
+            )
+            if (not isinstance(event, dict)
+                or event.get("kind") != "public_compact_manifest"
+                or not isinstance(event.get("manifest"), dict)):
+                raise PublicBallotLensRuntimeError("Compact manifest event contract is invalid.")
+            blob = json.dumps(event, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+            if len(blob) > int(self.policy.socket_event_max_bytes) - 512:
+                raise PublicBallotLensRuntimeError("Compact manifest exceeds event budget.")
+            if event["manifest"].get("rows") != len(rows):
+                raise PublicBallotLensRuntimeError("Compact manifest row count mismatch.")
+            self.record_checkpoint(checkpoint_id="normalize.rows", state="complete", reason_code="public_finalized_row_shape_reached", summary="Complete Smart Elections row shape reached the compact boundary.", evidence_count=len(rows))
+            self.record_checkpoint(checkpoint_id="validate.results", state="complete", reason_code="public_memory_preview_contract_validated", summary="Full finalized result preserved in compact page broker.", evidence_count=len(rows))
+            self._compact_manifest_event = dict(event)
+            self.record_checkpoint(checkpoint_id="preview.publish", state="complete", reason_code="public_memory_preview_retained", summary="Compact result staged for page retrieval; client reconstruction pending.", evidence_count=len(rows))
+            return {"delivery": "compact_pages_pending", "row_count": len(rows)}
+
         preview = self.memory_state.build_preview(
             source_projection=self.source_projection,
             headers=headers,
@@ -380,6 +440,14 @@ class PublicBallotLensRuntime:
             "download_available": False,
             "persistent_output": False,
         }
+        if self._compact_manifest_event is not None:
+            manifest = self._compact_manifest_event["manifest"]
+            result["compact_delivery"] = {
+                "state": "pages_pending", "rows": manifest["rows"],
+                "page_count": manifest["page_count"],
+            }
+            # A compact-ready signal is not a completed browser reconstruction.
+            result["outputs"] = []
         encoded = json.dumps(
             result,
             ensure_ascii=False,

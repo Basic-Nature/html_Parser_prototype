@@ -1106,6 +1106,29 @@ def _start_public_registry_runtime(
         ),
     )
 
+    # P6C5B2E: gated compact staging is opt-in and never replaces legacy output.
+    if h.get("compact_pages_enabled") is True:
+        from webapp.parser.services.public_compact_result_bridge import (
+            bind_compact_broker_to_runtime,
+        )
+        from webapp.parser.services.public_compact_socket_adapter import (
+            broker_instance, trusted_peer, exact_origin_allowed,
+        )
+        socket_sid = str(getattr(h["request"], "sid", "") or "")
+        headers = getattr(h["request"], "headers", {})
+        origin = headers.get("Origin") if hasattr(headers, "get") else None
+        origin_allowed = exact_origin_allowed(
+            origin=origin, allowed=h["compact_allowed_origins"])
+        h["session_manager"].update_metadata(
+            session_id,
+            public_compact_registry_source_id=runtime.registry_source_id,
+        )
+        peer = trusted_peer(
+            manager=h["session_manager"], socket_sid=socket_sid,
+            source_id=runtime.registry_source_id, origin_allowed=origin_allowed,
+        )
+        bind_compact_broker_to_runtime(runtime, broker_instance(), peer)
+
     cancel_flag = h["cancellation_manager"].get_flag(session_id)
     prompt_queue = h["get_prompt_queue"](session_id)
 
@@ -1178,6 +1201,26 @@ def _start_public_registry_runtime(
                         result,
                         room=session_id,
                     )
+                    # A capability is minted only AFTER the bounded result event.
+                    # This is one completed run and one approved source only.
+                    from webapp.parser.services.public_csv_delivery import (
+                        CSV_EVENT,
+                        publish_from_public_result,
+                    )
+                    compact_envelope = runtime.compact_manifest_event()
+                    if compact_envelope is not None:
+                        if result.get("compact_delivery", {}).get("state") != "pages_pending":
+                            raise RuntimeError("Compact result state mismatch.")
+                        if len(json.dumps(compact_envelope, ensure_ascii=False,
+                                          allow_nan=False, separators=(",", ":")).encode("utf-8")) > 65536:
+                            raise RuntimeError("Compact manifest exceeds wire budget.")
+                        h["socketio"].emit(
+                            "public_registry_compact_manifest", compact_envelope, room=session_id,
+                        )
+                    else:
+                        csv_offer = publish_from_public_result(result)
+                        if csv_offer is not None:
+                            h["socketio"].emit(CSV_EVENT, csv_offer, room=session_id)
                 else:
                     _public_runtime_status(
                         h,
@@ -1195,8 +1238,12 @@ def _start_public_registry_runtime(
                     h,
                     session_id=session_id,
                     level="INFO",
-                    reason_code="public_registry_runtime_completed",
-                    message="Approved public registry parse completed.",
+                    reason_code=("public_registry_runtime_pages_pending"
+                                 if runtime.compact_manifest_event() is not None
+                                 else "public_registry_runtime_completed"),
+                    message=("Approved public registry pages ready for reconstruction."
+                             if runtime.compact_manifest_event() is not None
+                             else "Approved public registry parse completed."),
                     source_projection=source_projection,
                 )
         except PublicRunAdmissionError:
@@ -1351,6 +1398,20 @@ def _initialize_public_registry_authority(
         "client_key": client_key,
         "runtime_dispatch_enabled": True,
     }
+
+
+def run_public_compact_socket_action(*, action: str, data: Any,
+                                     hooks: dict[str, Any]) -> None:
+    """Explicitly gated event entry for a server-authorized public session."""
+    if hooks.get("compact_pages_enabled") is not True:
+        return
+    from webapp.parser.services.public_compact_socket_adapter import process_action
+    process_action(
+        action=action, data=data,
+        manager=hooks["session_manager"], request=hooks["request"],
+        allowed_origins=hooks["compact_allowed_origins"],
+        emit=hooks["socketio"].emit,
+    )
 
 
 def _handle_public_registry_authority_split(

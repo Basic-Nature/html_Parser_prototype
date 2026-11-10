@@ -358,7 +358,10 @@ from webapp.parser.services.workflow_operator_access import (
 from webapp.parser.services.data_framework_operator_access import (
     resolve_data_framework_operator_access,
 )
-from webapp.parser.socket_ballot_lens_orchestration import run_ballot_lens_socket_handler
+from webapp.parser.socket_ballot_lens_orchestration import (
+    run_ballot_lens_socket_handler,
+    run_public_compact_socket_action,
+)
 from webapp.parser.url_parser import (
     parse_url_simple,
 )
@@ -10652,6 +10655,34 @@ def handle_delete_session(data) -> None:
     emit('session_deleted', {'session_id': sid}, broadcast=True)
     broadcast_sessions()
 
+# P6C5B2E candidate: no registrations unless a future operator opts in.
+_P6C5_COMPACT_PAGES_ENABLED = (
+    os.environ.get("ELECTIONPULSE_P6C5_COMPACT_PAGES_ENABLED", "false").lower()
+    in {"1", "true", "yes"}
+)
+
+if _P6C5_COMPACT_PAGES_ENABLED:
+    def _dispatch_compact_action(action: str, data: Any) -> None:
+        run_public_compact_socket_action(
+            action=action, data=data,
+            hooks={"compact_pages_enabled": True,
+                   "session_manager": session_manager,
+                   "request": request, "socketio": socketio,
+                   "compact_allowed_origins": SOCKETIO_ALLOWED_ORIGINS},
+        )
+
+    @socketio.on('public_registry_compact_next')
+    def handle_public_registry_compact_next(data=None) -> None:
+        _dispatch_compact_action('next', data)
+
+    @socketio.on('public_registry_compact_finish')
+    def handle_public_registry_compact_finish(data=None) -> None:
+        _dispatch_compact_action('finish', data)
+
+    @socketio.on('public_registry_compact_cancel')
+    def handle_public_registry_compact_cancel(data=None) -> None:
+        _dispatch_compact_action('cancel', data)
+
 @socketio.on('ballot_lens')
 def handle_ballot_lens(data=None) -> None:
     run_ballot_lens_socket_handler(
@@ -10706,6 +10737,8 @@ def handle_ballot_lens(data=None) -> None:
             "output_dir": OUTPUT_DIR,
             "threading": threading,
             "process_urls_for_web": process_urls_for_web,
+            "compact_pages_enabled": _P6C5_COMPACT_PAGES_ENABLED,
+            "compact_allowed_origins": SOCKETIO_ALLOWED_ORIGINS,
             "emit_download_ready": _emit_download_ready,
             "transition_session": transition_session,
             "session_state": SessionState,

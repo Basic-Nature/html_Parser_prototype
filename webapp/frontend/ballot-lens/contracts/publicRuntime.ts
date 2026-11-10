@@ -54,11 +54,18 @@ export interface PublicMemoryPreview {
   readonly progress?: readonly PublicRunProgress[];
 }
 
+export interface PublicCompactPending {
+  readonly state: 'pages_pending';
+  readonly rows: number;
+  readonly page_count: number;
+}
+
 export interface PublicRuntimeResult {
   readonly contract: typeof PUBLIC_RUNTIME_RESULT_CONTRACT;
   readonly registry_source_id: string;
   readonly source: PublicRegistrySource;
   readonly outputs: readonly PublicMemoryPreview[];
+  readonly compact_delivery?: PublicCompactPending;
   readonly status_counts: Readonly<Record<string, number>>;
   readonly terminal_status: string | null;
   readonly terminal_reason_code: PublicTerminalReasonCode | null;
@@ -272,7 +279,9 @@ export function parsePublicMemoryPreview(
 export function parsePublicRuntimeResult(
   value: unknown,
 ): PublicRuntimeResult {
-  if (!isRecord(value) || !hasExactKeys(value, [
+  if (!isRecord(value)) throw new Error('Unsafe public runtime result projection');
+  const compactKeys = value.compact_delivery === undefined ? [] : ['compact_delivery'];
+  if (!hasExactKeys(value, [
     'contract',
     'download_available',
     'outputs',
@@ -282,6 +291,7 @@ export function parsePublicRuntimeResult(
     'status_counts',
     'terminal_reason_code',
     'terminal_status',
+    ...compactKeys,
   ])) {
     throw new Error('Unsafe public runtime result projection');
   }
@@ -309,6 +319,19 @@ export function parsePublicRuntimeResult(
     }
     return preview;
   }));
+
+  let compactDelivery: PublicCompactPending | undefined;
+  if (value.compact_delivery !== undefined) {
+    const detail = value.compact_delivery;
+    if (!isRecord(detail) || !hasExactKeys(detail, ['state', 'rows', 'page_count']) ||
+        detail.state !== 'pages_pending' ||
+        typeof detail.rows !== 'number' || !Number.isSafeInteger(detail.rows) || detail.rows <= 0 ||
+        typeof detail.page_count !== 'number' || !Number.isSafeInteger(detail.page_count) ||
+        detail.page_count <= 0 || detail.page_count > detail.rows || outputs.length !== 0) {
+      throw new Error('Invalid compact-ready runtime result');
+    }
+    compactDelivery = Object.freeze({ state: 'pages_pending', rows: detail.rows, page_count: detail.page_count });
+  }
 
   if (
     value.terminal_status !== null
@@ -340,6 +363,7 @@ export function parsePublicRuntimeResult(
     registry_source_id: registrySourceId,
     source,
     outputs,
+    ...(compactDelivery ? { compact_delivery: compactDelivery } : {}),
     status_counts: parseStatusCounts(value.status_counts),
     terminal_status:
       value.terminal_status === null ? null : value.terminal_status.trim(),

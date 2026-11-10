@@ -109,6 +109,11 @@ describe('F2-E3/E4 public runtime lifecycle', () => {
       'disconnect',
       'parser_output',
       'public_registry_result',
+      'public_registry_compact_manifest',
+      'public_registry_compact_page',
+      'public_registry_compact_complete',
+      'public_registry_compact_cancelled',
+      'public_registry_compact_unavailable',
     ]);
     expect(harness.socket.connected).toBe(false);
 

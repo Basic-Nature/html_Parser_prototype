@@ -483,16 +483,29 @@ def execute_approved_public_csv(runtime: Any, *, session_id: str, cancel_flag: A
     try:
         payload, digest = acquire_approved_https_csv(runtime, cancel_flag=cancel_flag)
         runtime.record_checkpoint(checkpoint_id="source.acquire", state="complete", reason_code="public_csv_bytes_acquired", summary="Bounded approved CSV acquired.", evidence_count=1)
-        parsed = parse_approved_precinct_csv(
-            payload, contest=runtime.source_projection.get("contest", ""),
-            year=runtime.source_projection.get("year", ""),
-            state=runtime.source_projection.get("state", ""),
-            source_sha256=digest, source_url=runtime.approved_target_url,
-        )
+        from webapp.parser.services.public_registry_csv_dispatch import parse_runtime_approved_csv
+        try:
+            parsed = parse_runtime_approved_csv(runtime, payload, digest, parse_approved_precinct_csv)
+        except ValueError as exc:
+            raise PublicStructuredCSVError("CSV_APPROVED_SOURCE_SCHEMA_REJECTED") from exc
         runtime.record_checkpoint(checkpoint_id="structure.detect", state="complete", reason_code="public_strict_precinct_csv_shape", summary="Explicit precinct, locality and contest columns validated.", evidence_count=parsed.precinct_rows)
         runtime.record_checkpoint(checkpoint_id="provider.detect", state="complete", reason_code="public_csv_format_handler_resolved", summary="Strict approved CSV handler selected.", evidence_count=1)
         runtime.record_result_checkpoints(headers=parsed.headers, contest=runtime.source_projection.get("contest"))
-        enforce_public_socket_event_budget(runtime=runtime, headers=parsed.headers, rows=parsed.rows)
+        if getattr(runtime, "compact_enabled", False):
+            # A server-side broker adapter must have been installed explicitly.
+            # Only the acquired source digest is used; the parsed rows are never
+            # trimmed or repivoted for the paging path.
+            quarantined = int(getattr(parsed, "quarantined_zero_idless_observations", 0))
+            runtime.set_compact_source_metadata(
+                source_sha256=digest,
+                quarantine={
+                    "observations": quarantined,
+                    "votes": int(getattr(parsed, "quarantined_vote_total", 0)),
+                    "reason": "SOURCE_ZERO_IDLESS_QUARANTINED" if quarantined else None,
+                },
+            )
+        else:
+            enforce_public_socket_event_budget(runtime=runtime, headers=parsed.headers, rows=parsed.rows)
         finalize_election_output(
             headers=parsed.headers, data=parsed.rows, session_id=session_id,
             contest=runtime.source_projection.get("contest"),
