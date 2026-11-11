@@ -155,7 +155,9 @@ RUN apt-get update && \
         libsm6 \
         libxrender1 \
         libxext6 \
+        libatomic1 \
         libpq5 && \
+    /opt/venv/lib/python3.12/site-packages/playwright/driver/node --version && \
     python -m playwright install --with-deps chromium && \
     rm -rf /var/lib/apt/lists/* \
            /root/.cache \
