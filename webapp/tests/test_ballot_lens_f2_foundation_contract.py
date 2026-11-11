@@ -73,7 +73,6 @@ def test_f2_foundation_has_no_parser_or_socket_execution():
         for path in (
             F2_MAIN,
             F2_APP,
-            F2_APP_SHELL,
             F2_HEADER,
             F2_SOURCE_PANEL,
             F2_REGISTRY,
@@ -85,6 +84,15 @@ def test_f2_foundation_has_no_parser_or_socket_execution():
     ).lower()
     assert "socket.emit" not in source
     assert "socket.on" not in source
+
+    # The current AppShell owns a bounded CSV-readiness listener.
+    # It cannot gain parser-command execution authority.
+    shell_source = _read(F2_APP_SHELL).lower()
+    assert "socket.emit" not in shell_source
+    assert shell_source.count("socket.on(") == 1
+    assert shell_source.count("socket.off(") == 1
+    assert "socket.on('public_registry_csv_ready'" in shell_source
+    assert "socket.off('public_registry_csv_ready'" in shell_source
     assert "direct_urls" not in source
     assert "target_url" not in source
     assert "executable_url" not in source

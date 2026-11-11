@@ -147,5 +147,5 @@ def test_projected_certificate_routes_are_get_only():
     source = open("webapp/parser/routes/public_pages_blueprint.py", encoding="utf-8").read()
     assert '"/auth/certificate/verify"' in source
     assert '"/auth/certificate/complete"' in source
-    cert_section = source[source.index('"/auth/certificate/start"'):source.index('"/ocr_diagnostics"')]
+    cert_section = source[source.index('"/auth/certificate/start"'):source.index('"/auth/oidc/login"')]
     assert 'methods=["POST"]' not in cert_section

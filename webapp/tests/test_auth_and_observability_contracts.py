@@ -56,25 +56,39 @@ def test_api_auth_certificate_info_returns_safe_status_contract(client, monkeypa
     assert isinstance(payload.get("challenge_url"), str)
     assert isinstance(payload.get("session_context"), dict)
 
-def test_auth_welcome_sets_csp_nonce_header(client, monkeypatch):
+@pytest.mark.parametrize(
+    ("cert_mode", "expected_status"),
+    [("mutations", 401), ("disabled", 200)],
+)
+def test_auth_welcome_sets_csp_nonce_header(client, monkeypatch, cert_mode, expected_status):
     monkeypatch.setattr(appmod, "get_request_principal", lambda: (None, None, None))
+    monkeypatch.setattr(appmod, "CERT_ENFORCEMENT_MODE", cert_mode)
+    monkeypatch.setattr(appmod, "REQUIRE_CERT_FOR_MUTATIONS", True)
+    monkeypatch.setattr(appmod, "DEPLOY_ENV", "ci")
 
     resp = client.get("/auth/welcome", headers={"Accept": "text/html"})
 
-    assert resp.status_code == 401
+    assert resp.status_code == expected_status
     csp_header = resp.headers.get("Content-Security-Policy")
     assert csp_header is not None
     assert "script-src" in csp_header
     assert "nonce-" in csp_header
 
 
-def test_auth_welcome_renders_external_assets(client, monkeypatch):
+@pytest.mark.parametrize(
+    ("cert_mode", "expected_status"),
+    [("mutations", 401), ("disabled", 200)],
+)
+def test_auth_welcome_renders_external_assets(client, monkeypatch, cert_mode, expected_status):
     monkeypatch.setattr(appmod, "get_request_principal", lambda: (None, None, None))
+    monkeypatch.setattr(appmod, "CERT_ENFORCEMENT_MODE", cert_mode)
+    monkeypatch.setattr(appmod, "REQUIRE_CERT_FOR_MUTATIONS", True)
+    monkeypatch.setattr(appmod, "DEPLOY_ENV", "ci")
 
     resp = client.get("/auth/welcome", headers={"Accept": "text/html"})
     html = resp.data.decode("utf-8")
 
-    assert resp.status_code == 401
+    assert resp.status_code == expected_status
     assert 'href="/static/css/auth_welcome.css"' in html
     assert 'src="/static/js/auth_welcome.js"' in html
     assert '<script nonce="' not in html
@@ -110,8 +124,15 @@ def test_auth_welcome_js_uses_server_session_context_not_query_parameter():
     assert "/api/auth/status" in content
 
 
-def test_auth_welcome_ignores_raw_next_and_target_url_query_values(client, monkeypatch):
+@pytest.mark.parametrize(
+    ("cert_mode", "expected_status"),
+    [("mutations", 401), ("disabled", 200)],
+)
+def test_auth_welcome_ignores_raw_next_and_target_url_query_values(client, monkeypatch, cert_mode, expected_status):
     monkeypatch.setattr(appmod, "get_request_principal", lambda: (None, None, None))
+    monkeypatch.setattr(appmod, "CERT_ENFORCEMENT_MODE", cert_mode)
+    monkeypatch.setattr(appmod, "REQUIRE_CERT_FOR_MUTATIONS", True)
+    monkeypatch.setattr(appmod, "DEPLOY_ENV", "ci")
 
     resp = client.get(
         "/auth/welcome?next=//evil.example.com&target_url=//evil.example.com",
@@ -119,7 +140,7 @@ def test_auth_welcome_ignores_raw_next_and_target_url_query_values(client, monke
     )
     html = resp.data.decode("utf-8")
 
-    assert resp.status_code == 401
+    assert resp.status_code == expected_status
     assert 'data-target-url' in html
     assert '//evil.example.com' not in html
 

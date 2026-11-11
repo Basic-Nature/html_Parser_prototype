@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sys
 import unittest
@@ -23,10 +24,15 @@ SPEC.loader.exec_module(module)
 ZIP_SHA256 = 'c4000266d0452b97e0aec70458d261de7b96d5e5b2d0a40e3c38ebeffb549422'
 LATEST_SHA256 = '35ab7ce79145c767e80353702f0e0439037cd50152946fd90b6b0ac36583c63b'
 SOURCE_METHODS = {'Election Day','Early Voting','Provisional','Early A.R.S. 16-579','Late Early*'}
-ZIP_PATH = None
+ZIP_PATH = Path(os.environ["ELECTIONPULSE_AZ_ARCHIVE_PATH"]) if os.environ.get("ELECTIONPULSE_AZ_ARCHIVE_PATH") else None
 
 
 def source_snapshots():
+    if ZIP_PATH is None:
+        raise unittest.SkipTest(
+            "REAL_SOURCE_ARCHIVE_NOT_AVAILABLE: supply "
+            "ELECTIONPULSE_AZ_ARCHIVE_PATH to qualify real Arizona data"
+        )
     raw = ZIP_PATH.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == ZIP_SHA256, 'Unexpected original ZIP bytes'
     with zipfile.ZipFile(ZIP_PATH) as z:

@@ -30,7 +30,7 @@ class TestAlembicMigrations:
         env = os.environ.copy()
         env["DATABASE_URL"] = f"sqlite:///{db_path.as_posix()}"
 
-        _run_alembic("upgrade", "head", env=env)
+        _run_alembic("upgrade", "b62e1c490d33", env=env)
 
         engine = create_engine(env["DATABASE_URL"])
         inspector = inspect(engine)
@@ -52,7 +52,7 @@ class TestAlembicMigrations:
         env = os.environ.copy()
         env["DATABASE_URL"] = "postgresql://parser:parser@localhost:5432/smart_elections"
 
-        result = _run_alembic("upgrade", "head", "--sql", env=env)
+        result = _run_alembic("upgrade", "b62e1c490d33", "--sql", env=env)
         sql_text = result.stdout.upper()
 
         assert "CREATE TABLE STATES" in sql_text
