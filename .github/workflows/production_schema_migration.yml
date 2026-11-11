@@ -16,6 +16,7 @@ on:
           - f18a7c3d4e92
           - a19c7e4b2d60
           - d2e33e73c6d2
+          - f6a8b22c490e
       mode:
         description: "Read-only preflight or explicitly approved apply"
         required: true

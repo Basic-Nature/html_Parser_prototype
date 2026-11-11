@@ -1,0 +1,70 @@
+name: ElectionPulse W24 Keycloak PostgreSQL Activation (Existing Azure)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Read-only inspect, controlled enable or safe disable"
+        required: true
+        type: choice
+        options:
+          - inspect
+          - enable
+          - disable
+      release_commit:
+        description: "Exact deployed source commit SHA"
+        required: true
+        type: string
+      confirmation:
+        description: "For writes: ENABLE:<sha> or DISABLE:<sha>"
+        default: ""
+        required: false
+        type: string
+      verified_keycloak_client:
+        description: "Operator verified exact Keycloak client, HTTPS callback, contributor role"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: electionpulse-w24-auth-activation
+  cancel-in-progress: false
+
+jobs:
+  manage-oidc:
+    name: Existing App Service OIDC flags, no database mutation
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release_commit == github.sha }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: electionpulse-production-deploy
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
+      - name: Inspect / activate / disable OIDC, no secret disclosure
+        env:
+          MODE: ${{ inputs.mode }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          VERIFIED_KEYCLOAK_CLIENT: ${{ inputs.verified_keycloak_client }}
+        run: |
+          python scripts/production/w24_oidc_activation.py \
+            --mode "$MODE" --release-commit "$RELEASE_COMMIT" \
+            --confirmation "$CONFIRMATION" \
+            --operator-verified-keycloak-client "$VERIFIED_KEYCLOAK_CLIENT"
+      - name: Preserve safe activation evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: w24-oidc-activation-${{ github.run_id }}
+          path: output/reports/w24_oidc_activation.json
+          retention-days: 90
+          if-no-files-found: warn

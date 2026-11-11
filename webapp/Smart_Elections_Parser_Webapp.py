@@ -2856,6 +2856,7 @@ if not app.secret_key:
     raise RuntimeError("FLASK_SECRET_KEY not set in environment variables!")
 
 app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "False").lower() == "true"
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
 

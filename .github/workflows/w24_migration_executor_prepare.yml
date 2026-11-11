@@ -1,0 +1,49 @@
+name: ElectionPulse W24 Prepare Existing Governed Migration Executor
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: "Exact SHA of already deployed image in existing ACR"
+        type: string
+        required: true
+      confirmation:
+        description: "PREPARE_MIGRATION:<sha>"
+        type: string
+        required: true
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: electionpulse-w24-migration-executor-prepare
+  cancel-in-progress: false
+jobs:
+  migration-executor-image:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release_commit == github.sha }}
+    runs-on: ubuntu-24.04
+    environment:
+      name: production-schema-migration
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
+      - name: Set exact existing migration executor image
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          python scripts/production/w24_prepare_migration_executor.py \
+            --release-commit "$RELEASE_COMMIT" --confirmation "$CONFIRMATION"
+      - name: Save migration executor image change evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: w24-migration-executor-${{ github.run_id }}
+          path: output/reports/w24_migration_executor_prepare.json
+          retention-days: 90
+          if-no-files-found: warn

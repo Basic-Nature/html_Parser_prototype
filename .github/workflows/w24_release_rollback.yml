@@ -1,0 +1,56 @@
+name: ElectionPulse W24 Controlled Application Rollback (Existing ACR)
+on:
+  workflow_dispatch:
+    inputs:
+      deployed_commit:
+        description: "Exact current deployed commit to revert"
+        type: string
+        required: true
+      previous_tag:
+        description: "Verified previous ACR ballotlens tag from preflight evidence"
+        type: string
+        required: true
+      confirmation:
+        description: "RESTORE:<deployed_commit>:<previous_tag>"
+        type: string
+        required: true
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: electionpulse-w24-rollback
+  cancel-in-progress: false
+jobs:
+  rollback:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deployed_commit == github.sha }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: electionpulse-production-deploy
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
+      - name: Revert to verified retained image; leave DB schema intact
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          DEPLOYED_COMMIT: ${{ inputs.deployed_commit }}
+          PREVIOUS_TAG: ${{ inputs.previous_tag }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          python scripts/production/w24_release_rollback.py \
+            --deployed-commit "$DEPLOYED_COMMIT" \
+            --previous-tag "$PREVIOUS_TAG" \
+            --confirmation "$CONFIRMATION"
+      - name: Preserve rollback evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: w24-release-rollback-${{ github.run_id }}
+          path: output/reports/w24_release_rollback.json
+          retention-days: 90
+          if-no-files-found: warn

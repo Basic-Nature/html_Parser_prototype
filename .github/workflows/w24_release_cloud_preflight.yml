@@ -1,0 +1,43 @@
+name: ElectionPulse W24 Read-Only Cloud & Rollback Preflight
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: "Exact new commit SHA, before Azure deployment"
+        type: string
+        required: true
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: electionpulse-w24-cloud-preflight
+  cancel-in-progress: false
+jobs:
+  read-only-cloud-preflight:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release_commit == github.sha }}
+    runs-on: ubuntu-24.04
+    environment:
+      name: electionpulse-production-deploy
+      deployment: false
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
+      - name: Read-only Azure/ACR rollback reference check
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+        run: python scripts/production/w24_release_cloud_preflight.py --release-commit "$RELEASE_COMMIT"
+      - name: Upload safe status evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: w24-cloud-preflight-${{ github.run_id }}
+          path: output/reports/w24_release_cloud_preflight.json
+          retention-days: 90
+          if-no-files-found: warn

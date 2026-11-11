@@ -929,6 +929,44 @@ def read_db_state(spec: dict[str, Any]) -> dict[str, Any]:
             else:
                 required_empty_table_counts[table] = None
 
+        # W24 OIDC: target-specific, read-only role and grant posture evidence.
+        oidc_role_safe = None
+        oidc_role_table_privileges = None
+        role_name = spec.get("required_session_role")
+        if role_name:
+            if role_name != "electionpulse_oidc_session":
+                raise RuntimeError("OIDC_SESSION_ROLE_IDENTITY_DRIFT")
+            cur.execute(
+                "SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, "
+                "rolreplication, rolbypassrls FROM pg_roles WHERE rolname = %s",
+                (role_name,),
+            )
+            attrs = cur.fetchone()
+            oidc_role_safe = attrs == (True, False, False, False, False, False)
+            if table_state.get("electionpulse_oidc_sessions") and oidc_role_safe:
+                cur.execute(
+                    "SELECT has_schema_privilege(%s, %s, %s)",
+                    (role_name, "public", "USAGE"),
+                )
+                has_schema_usage = bool(cur.fetchone()[0])
+                allowed = []
+                for privilege in ("SELECT", "INSERT", "DELETE"):
+                    cur.execute(
+                        "SELECT has_table_privilege(%s, %s, %s)",
+                        (role_name, "public.electionpulse_oidc_sessions", privilege),
+                    )
+                    allowed.append(bool(cur.fetchone()[0]))
+                forbidden = []
+                for privilege in ("UPDATE", "TRUNCATE", "REFERENCES", "TRIGGER"):
+                    cur.execute(
+                        "SELECT has_table_privilege(%s, %s, %s)",
+                        (role_name, "public.electionpulse_oidc_sessions", privilege),
+                    )
+                    forbidden.append(bool(cur.fetchone()[0]))
+                oidc_role_table_privileges = (
+                    has_schema_usage and all(allowed) and not any(forbidden)
+                )
+
         conn.rollback()
         return {
             "database": current_database,
@@ -950,6 +988,8 @@ def read_db_state(spec: dict[str, Any]) -> dict[str, Any]:
             "canonical_result_count": canonical_result_count,
             "canonical_race_count": canonical_race_count,
             "canonical_total_votes_sum": canonical_total_votes_sum,
+            "oidc_role_safe": oidc_role_safe,
+            "oidc_role_table_privileges": oidc_role_table_privileges,
         }
     finally:
         conn.close()
@@ -1013,6 +1053,9 @@ def classify_pre_state(
             "Required pre-existing table(s) missing: " + ", ".join(missing_support)
         )
 
+    if spec.get("required_session_role") and state.get("oidc_role_safe") is not True:
+        raise RuntimeError("OIDC_SESSION_ROLE_NOT_SAFE")
+
     if revisions == [spec["target_revision"]]:
         missing_expected = [
             table for table in expected_tables if not state["tables"].get(table)
@@ -1026,6 +1069,8 @@ def classify_pre_state(
         if missing_columns:
             raise RuntimeError("Alembic is at target but expected column(s) are missing: " + ", ".join(missing_columns))
         verify_expected_post_table_counts(state, spec, phase="already_applied")
+        if spec.get("required_session_role") and state.get("oidc_role_table_privileges") is not True:
+            raise RuntimeError("OIDC_SESSION_ROLE_PRIVILEGES_INCOMPLETE")
         return "already_applied"
 
     if revisions != [spec["from_revision"]]:
@@ -1120,6 +1165,8 @@ def verify_post_state(
             )
 
     verify_expected_post_table_counts(after, spec, phase="post_migration")
+    if spec.get("required_session_role") and after.get("oidc_role_table_privileges") is not True:
+        raise RuntimeError("OIDC_SESSION_ROLE_PRIVILEGES_INCOMPLETE")
 
     if spec.get("preserve_canonical_publication_metrics"):
         fields = (
