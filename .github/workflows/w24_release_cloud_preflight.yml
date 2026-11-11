@@ -33,6 +33,37 @@ jobs:
           ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
           RELEASE_COMMIT: ${{ inputs.release_commit }}
         run: python scripts/production/w24_release_cloud_preflight.py --release-commit "$RELEASE_COMMIT"
+      - name: Report sanitized Azure preflight diagnostics
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY_W24_SUMMARY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path('output/reports/w24_release_cloud_preflight.json')
+          lines = ['### W24 Azure management-plane preflight', '']
+          if path.is_file():
+              doc = json.loads(path.read_text(encoding='utf-8'))
+              # Only trusted fixed labels and error categories are produced by
+              # our preflight code. Never include raw Azure CLI stderr/stdout.
+              lines.append('Result: ' + str(doc.get('result', 'UNKNOWN')))
+              for item in doc.get('azure_read_checks', []):
+                  lines.append('- ' + str(item.get('operation', 'UNKNOWN'))
+                               + ': ' + str(item.get('result', 'UNKNOWN'))
+                               + (' (' + str(item['reason']) + ')'
+                                  if item.get('reason') else ''))
+              if doc.get('hold_reason'):
+                  lines.append('Hold: ' + str(doc['hold_reason']))
+          else:
+              lines.append('No preflight report generated; inspect earlier checkout/login steps.')
+          output = '\n'.join(lines) + '\n'
+          print(output)
+          if os.environ.get('GITHUB_STEP_SUMMARY'):
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fp:
+                  fp.write(output)
+          PY_W24_SUMMARY
       - name: Upload safe status evidence
         if: always()
         uses: actions/upload-artifact@v5
