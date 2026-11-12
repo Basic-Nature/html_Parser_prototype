@@ -1,0 +1,13 @@
+{
+  "contract": "electionpulse_reviewed_wide_csv_schema_v1",
+  "source_sha256": "fa25069f8504691c03528c70c2a76240b06514ab54b491fd624229867018aacc",
+  "source_url": "https://elections.maryland.gov/elections/archive/2024/election_data/PG24_AllPrecincts.csv",
+  "scope": {"state": "Maryland", "year": "2024", "contest": "President"},
+  "expected_headers": ["County", "County Name", "Election District - Precinct", "Congressional", "Legislative", "Office Name", "Office District", "Candidate Name", "Party", "Winner", "Write-In?", "Early Votes", "Early Votes Against", "Election Night Votes", "Election Night Votes Against", "Mail-In Ballot 1 Votes", "Mail-In Ballot 1 Votes Against", "Provisional Votes", "Provisional Votes Against", "Mail-In Ballot 2 Votes", "Mail-In Ballot 2 Votes Against "],
+  "fields": {"locality_code": "County", "locality_label": "County Name", "precinct": "Election District - Precinct", "contest": "Office Name", "candidate": "Candidate Name", "party": "Party", "writein_flag": "Write-In?"},
+  "vote_methods": ["Early Votes", "Election Night Votes", "Mail-In Ballot 1 Votes", "Mail-In Ballot 2 Votes", "Provisional Votes"],
+  "against_methods": ["Early Votes Against", "Election Night Votes Against", "Mail-In Ballot 1 Votes Against", "Mail-In Ballot 2 Votes Against ", "Provisional Votes Against"],
+  "selected_contest_value": "President - Vice Pres",
+  "precinct_pattern": "[0-9]{1,3}\\s*[-/]\\s*[0-9]{1,4}[A-Za-z]?",
+  "expected_source_rows": 117875
+}

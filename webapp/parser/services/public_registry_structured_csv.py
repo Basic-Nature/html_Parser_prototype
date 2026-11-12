@@ -536,6 +536,39 @@ def enforce_public_socket_event_budget(
     return len(encoded)
 
 
+
+
+def _reviewed_profile_or_strict(runtime: Any, data: bytes, *, contest: str, year: str, state: str,
+                                source_sha256: str, source_url: str) -> CSVShape:
+    """Server-owned, exact-ID and source-digest-gated reviewed bridge.
+
+    Other sources retain the original strict long-form CSV parser unchanged.
+    Any near-match Maryland source drift fails closed rather than falling back.
+    """
+    from .reviewed_source_profiles import select_reviewed_profile
+    profile = select_reviewed_profile(runtime, data, source_sha256)
+    if profile is None:
+        return parse_approved_precinct_csv(
+            data, contest=contest, year=year, state=state,
+            source_sha256=source_sha256, source_url=source_url,
+        )
+    if profile['scope'] != {'contest': contest, 'year': year, 'state': state} or profile['source_url'] != source_url:
+        raise PublicStructuredCSVError('CSV_REVIEWED_SOURCE_SCOPE_OR_URL_MISMATCH')
+    from .public_wide_precinct_bridge import parse_reviewed_wide_csv
+    wide = parse_reviewed_wide_csv(data, profile)
+    audit = wide.audit
+    # No official precinct total was supplied, and the canonical method
+    # crosswalk is not authorized: report partial rather than success.
+    if audit['official_precinct_total_reconciliation'] != 'UNAVAILABLE' or audit['canonical_method_crosswalk'] != 'UNAUTHORIZED_UNAVAILABLE':
+        raise PublicStructuredCSVError('CSV_REVIEWED_SOURCE_AUDIT_CONTRACT_DRIFT')
+    return CSVShape(
+        headers=wide.headers, rows=wide.rows,
+        precinct_rows=audit['precinct_rows'], candidate_count=audit['candidate_count'],
+        source_sha256=source_sha256,
+        missing_method_cells=audit['missing_source_method_cells'],
+        discrepancy_precincts=audit['precinct_rows'],
+    )
+
 def execute_approved_public_csv(runtime: Any, *, session_id: str, cancel_flag: Any) -> dict[str, object]:
     """Use existing Smart Elections public memory finalizer, never write files."""
     from webapp.parser.utils.output_utils import finalize_election_output
@@ -546,7 +579,7 @@ def execute_approved_public_csv(runtime: Any, *, session_id: str, cancel_flag: A
         runtime.record_checkpoint(checkpoint_id="source.acquire", state="complete", reason_code="public_csv_bytes_acquired", summary="Bounded approved CSV acquired.", evidence_count=1)
         from webapp.parser.services.public_registry_csv_dispatch import parse_runtime_approved_csv
         try:
-            parsed = parse_runtime_approved_csv(runtime, payload, digest, parse_approved_precinct_csv)
+            parsed = parse_runtime_approved_csv(runtime, payload, digest, lambda data, **kw: _reviewed_profile_or_strict(runtime, data, **kw))
         except ValueError as exc:
             raise PublicStructuredCSVError("CSV_APPROVED_SOURCE_SCHEMA_REJECTED") from exc
         runtime.record_checkpoint(checkpoint_id="structure.detect", state="complete", reason_code="public_strict_precinct_csv_shape", summary="Explicit precinct, locality and contest columns validated.", evidence_count=parsed.precinct_rows)
