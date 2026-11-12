@@ -1076,6 +1076,57 @@ def _public_runtime_status(
     )
 
 
+def _emit_public_registry_failure_terminal(
+    h: dict[str, Any],
+    *,
+    session_id: str,
+    source_projection: dict[str, str],
+) -> None:
+    """Fail-closed terminal event for an owned, already-started public run.
+
+    Never invent preview rows, persist data, mint a CSV offer, or leak URLs.
+    This cannot guarantee delivery after process death or a lost connection.
+    """
+    safe_keys = {
+        "contest", "format", "registry_category", "registry_source_id",
+        "scope", "state", "year",
+    }
+    if (
+        not isinstance(session_id, str) or not session_id
+        or set(source_projection) != safe_keys
+        or source_projection.get("registry_category") != "curated"
+    ):
+        return
+    failure = {
+        "contract": "ballot_lens_public_runtime_result_v1",
+        "registry_source_id": source_projection["registry_source_id"],
+        "source": dict(source_projection),
+        "outputs": [],
+        "status_counts": {"error": 1},
+        "terminal_status": "error",
+        "terminal_reason_code": None,
+        "download_available": False,
+        "persistent_output": False,
+    }
+    try:
+        h["socketio"].emit(
+            "public_registry_result", failure, room=session_id,
+        )
+    except Exception:
+        # A dead worker/transport cannot be repaired by this emitter.
+        # Keep logs generic: no raw source URL, token, or exception text.
+        try:
+            h["logger"].warning({
+                "level": "WARNING",
+                "type": "public_registry_runtime",
+                "reason_code": "public_registry_failure_terminal_emit_unavailable",
+                "message": "Public failure terminal delivery unavailable.",
+                "session_id": None,
+            })
+        except Exception:
+            pass
+
+
 def _start_public_registry_runtime(
     public_ctx: dict[str, Any],
     h: dict[str, Any],
@@ -1256,13 +1307,22 @@ def _start_public_registry_runtime(
                 source_projection=source_projection,
             )
         except Exception:
-            _public_runtime_status(
-                h,
-                session_id=session_id,
-                level="ERROR",
-                reason_code="public_registry_runtime_failed",
-                message="The approved public registry parse did not complete.",
-                source_projection=source_projection,
+            # An admitted public run must not remain indefinitely pending
+            # when its worker raises an exception. Keep both independent
+            # emit attempts best-effort and preserve failure-only semantics.
+            try:
+                _public_runtime_status(
+                    h,
+                    session_id=session_id,
+                    level="ERROR",
+                    reason_code="public_registry_runtime_failed",
+                    message="The approved public registry parse did not complete.",
+                    source_projection=source_projection,
+                )
+            except Exception:
+                pass
+            _emit_public_registry_failure_terminal(
+                h, session_id=session_id, source_projection=source_projection,
             )
         finally:
             timer.cancel()

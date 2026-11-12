@@ -41,7 +41,11 @@ function runStatusLabel(runState: RunState): string {
     case 'disconnected':
       return 'Connection interrupted';
     case 'terminal':
-      return 'Terminal result received';
+      return runState.context.terminalStatus === 'failed'
+        ? 'Parser failed'
+        : runState.context.terminalStatus === 'cancelled'
+          ? 'Parser cancelled'
+          : 'Terminal result received';
     default:
       return 'No active run';
   }
@@ -61,6 +65,9 @@ export function WorkspaceShell({
     ? registrySourceLabel(selectedSource)
     : runState.context.sourceSummary?.displayLabel ?? null;
   const trustedTerminalReady = runState.status === 'terminal' && runState.context.runMode !== null && runState.context.runMode !== 'public_registry';
+  const publicRuntimeFailed = runtimeResult !== null
+    && ['error', 'fail', 'quarantined', 'rejected', 'cancelled']
+      .includes(runtimeResult.terminal_status ?? '');
   const trustedPersistedOutputs = trustedTerminalReady ? runState.context.outputs.filter((output) => output.persistence === 'persisted') : [];
 
   return (
@@ -110,7 +117,12 @@ export function WorkspaceShell({
           </span>
         </div>
 
-        {runtimeResult ? (
+        {runtimeResult && publicRuntimeFailed ? (
+          <div className="blf2-empty-result" role="alert">
+            <strong>Approved-source parsing did not complete</strong>
+            <p>No validated precinct preview or CSV download is available for this failed run. Check the recorded failure before scheduling another execution.</p>
+          </div>
+        ) : runtimeResult ? (
           <div className="blf2-empty-result blf2-result-ready" role="status">
             <span className="blf2-empty-orbit" aria-hidden="true"><span /></span>
             <strong>Safe parser result is ready</strong>
