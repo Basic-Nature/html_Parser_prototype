@@ -69,6 +69,14 @@ export function filterPreviewRows(
   ));
 }
 
+/** B12 viewport pagination is UI-only: never trims the source result or CSV. */
+export const PUBLIC_RESULT_PAGE_SIZE = 25;
+
+export function paginatePreviewRows<T>(rows: readonly T[], page: number, pageSize = PUBLIC_RESULT_PAGE_SIZE): readonly T[] {
+  if (!Number.isSafeInteger(page) || page < 0 || !Number.isSafeInteger(pageSize) || pageSize < 1) return [];
+  return rows.slice(page * pageSize, (page + 1) * pageSize);
+}
+
 function totalRows(result: PublicRuntimeResult | null): number {
   if (!result) return 0;
   return result.outputs.reduce((total, output) => total + output.row_count, 0);
@@ -120,6 +128,8 @@ function ResultsView({
   readonly runtimeResult: PublicRuntimeResult | null;
 }) {
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [runtimeResult]);
 
   if (!runtimeResult) {
     return (
@@ -142,9 +152,10 @@ function ResultsView({
           <input
             type="search"
             value={query}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => (
-              setQuery(event.currentTarget.value)
-            )}
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              setQuery(event.currentTarget.value);
+              setPage(0);
+            }}
             placeholder="Search visible values"
           />
         </label>
@@ -152,6 +163,9 @@ function ResultsView({
 
       {runtimeResult.outputs.map((output, outputIndex) => {
         const rows = filterPreviewRows(output, query);
+        const pageCount = Math.max(1, Math.ceil(rows.length / PUBLIC_RESULT_PAGE_SIZE));
+        const currentPage = Math.min(page, pageCount - 1);
+        const visibleRows = paginatePreviewRows(rows, currentPage);
         return (
           <section
             className="blf2-output-block"
@@ -160,8 +174,13 @@ function ResultsView({
           >
             <div className="blf2-output-heading">
               <strong>Memory preview {outputIndex + 1}</strong>
-              <span>{rows.length} / {output.row_count} rows shown</span>
+              <span>{rows.length} / {output.row_count} rows match; {visibleRows.length} on this page</span>
             </div>
+            <nav className="blf2-result-pagination" aria-label={`Memory preview ${outputIndex + 1} pagination`}>
+              <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous page</button>
+              <span>Page {currentPage + 1} of {pageCount}</span>
+              <button type="button" disabled={currentPage + 1 >= pageCount} onClick={() => setPage(currentPage + 1)}>Next page</button>
+            </nav>
             <div className="blf2-result-table-wrap">
               <table className="blf2-result-table">
                 <thead>
@@ -172,8 +191,8 @@ function ResultsView({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, rowIndex) => (
-                    <tr key={rowIndex}>
+                  {visibleRows.map((row, rowIndex) => (
+                    <tr key={currentPage * PUBLIC_RESULT_PAGE_SIZE + rowIndex}>
                       {output.headers.map((header) => {
                         const value = row[header];
                         const rendered = formatResultCell(value);

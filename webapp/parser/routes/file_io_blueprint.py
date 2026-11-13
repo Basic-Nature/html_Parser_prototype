@@ -29,10 +29,13 @@ def create_file_io_blueprint() -> Blueprint:
     @bp.post("/api/public/csv-download", endpoint="public_csv_download")
     def public_csv_download_route():
         # Stateless bearer capability in the JSON body; never in URL/access logs.
-        from webapp.parser.services.public_csv_delivery import BROKER, feature_enabled
+        from webapp.parser.services.public_csv_delivery import BROKER, feature_enabled, allow_public_csv_request
         from urllib.parse import urlsplit
 
         if not feature_enabled():
+            return ("", 404)
+        # Count invalid capability attempts too; do not reveal token state.
+        if not allow_public_csv_request(str(request.remote_addr or '')):
             return ("", 404)
         origin = request.headers.get('Origin', '')
         if origin and (urlsplit(origin).scheme != request.scheme or urlsplit(origin).netloc != request.host):

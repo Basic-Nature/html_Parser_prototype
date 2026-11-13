@@ -90,6 +90,25 @@ def process_action(*, action: str, data: Any, manager: Any, request: Any,
         elif action == 'finish': result = broker.finish(peer, data)
         else: result = broker.cancel(peer, data)
         emit(event_map[action], result, room=peer.server_session_id)
+        # Token issuance occurs only after an acknowledged last page, through
+        # a trusted server-derived peer. The browser never supplies CSV rows.
+        if action == 'finish' and result.get('released') is True:
+            from .public_compact_csv_handoff import STAGED_COMPACT_CSV
+            from .public_csv_delivery import CSV_EVENT
+            offer = STAGED_COMPACT_CSV.finish(
+                snapshot_id=result['snapshot_id'],
+                session_id=peer.server_session_id,
+                source_id=peer.registry_source_id,
+            )
+            if offer is not None:
+                emit(CSV_EVENT, offer, room=peer.server_session_id)
+        elif action == 'cancel' and result.get('released') is True:
+            from .public_compact_csv_handoff import STAGED_COMPACT_CSV
+            STAGED_COMPACT_CSV.cancel(
+                snapshot_id=data['snapshot_id'],
+                session_id=peer.server_session_id,
+                source_id=peer.registry_source_id,
+            )
     except (PublicPageDenied, TypeError, ValueError):
         # Bound result status only; the source preview remains undisclosed.
         if isinstance(socket_sid, str) and socket_sid:

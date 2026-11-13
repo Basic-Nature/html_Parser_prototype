@@ -63,7 +63,7 @@ def encode_finalized_preview(preview: Mapping[str, Any], *, source_id: str) -> b
         raise ValueError('Invalid CSV column count')
     if any(not isinstance(h, str) or not h or len(h) > 200 or '\x00' in h for h in headers):
         raise ValueError('Invalid CSV headers')
-    if len(set(headers)) != len(headers) or headers[0] != 'Precinct' or headers[-1] != 'Grand Total':
+    if len(set(headers)) != len(headers) or headers[0] != 'Precinct' or 'Grand Total' not in headers:
         raise ValueError('CSV requires unique headers, leading Precinct and trailing Grand Total')
     if not isinstance(rows, list) or not (1 <= len(rows) <= MAX_ROWS):
         raise ValueError('No bounded finalized precinct rows')
@@ -149,3 +149,41 @@ def publish_from_public_result(result: Mapping[str, Any]) -> dict[str, object] |
         return BROKER.publish(source_id=source_id, content=content)
     except (TypeError, ValueError, RuntimeError):
         return None
+
+
+# Request rate guard is process-local, pseudonymous, and strictly bounded.
+# This does not alter the public-parser quota or its attribution machinery.
+_REQUEST_LOCK = threading.RLock()
+_REQUEST_HMAC_SECRET = secrets.token_bytes(32)
+_REQUEST_TIMES: OrderedDict[str, list[float]] = OrderedDict()
+_REQUEST_WINDOW_SECONDS = 60
+_REQUEST_MAX_PER_WINDOW = 20
+_REQUEST_MAX_KEYS = 2048
+
+
+def allow_public_csv_request(peer_address: str, *, now: float | None = None) -> bool:
+    """Bound anonymous HTTP ticket attempts without storing raw IP addresses."""
+    import hashlib
+    import hmac
+
+    if not isinstance(peer_address, str) or not (1 <= len(peer_address) <= 128):
+        return False
+    moment = time.monotonic() if now is None else float(now)
+    key = hmac.new(_REQUEST_HMAC_SECRET, peer_address.encode('utf-8'), hashlib.sha256).hexdigest()
+    with _REQUEST_LOCK:
+        for old_key, times in list(_REQUEST_TIMES.items()):
+            valid = [t for t in times if 0 <= moment - t < _REQUEST_WINDOW_SECONDS]
+            if valid:
+                _REQUEST_TIMES[old_key] = valid
+            else:
+                _REQUEST_TIMES.pop(old_key, None)
+        times = _REQUEST_TIMES.get(key)
+        if times is None:
+            if len(_REQUEST_TIMES) >= _REQUEST_MAX_KEYS:
+                return False
+            times = []
+            _REQUEST_TIMES[key] = times
+        if len(times) >= _REQUEST_MAX_PER_WINDOW:
+            return False
+        times.append(moment)
+        return True

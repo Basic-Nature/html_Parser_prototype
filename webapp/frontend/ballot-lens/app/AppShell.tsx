@@ -193,6 +193,7 @@ export function AppShell({
     envelope: PublicRegistryEnvelope | null,
   ) => {
     setRegistryEnvelope(envelope);
+    setCsvOffer(null);
     setPublicRuntimeResult(null);
     if (!envelope) {
       setSelectedSource(null);
@@ -210,6 +211,7 @@ export function AppShell({
       return;
     }
     setActiveMode(mode);
+    setCsvOffer(null);
     setSubmitError(null);
     setPublicRuntimeResult(null);
     setSelectedSource(null);
@@ -230,6 +232,7 @@ export function AppShell({
     source: PublicRegistrySource | null,
   ) => {
     clearWorkflowHandoffQuery();
+    setCsvOffer(null);
     setSubmitError(null);
     setPublicRuntimeResult(null);
     setSelectedSource(source);
@@ -441,7 +444,9 @@ export function AppShell({
   useEffect(() => {
     const onCsvOffer = (raw: unknown): void => {
       const offer = parsePublicCsvOffer(raw);
-      if (offer && offer.registry_source_id === selectedSourceRef.current?.registry_source_id) {
+      if (offer && runStateRef.current.context.runMode === 'public_registry' &&
+          runStateRef.current.status === 'terminal' &&
+          offer.registry_source_id === selectedSourceRef.current?.registry_source_id) {
         setCsvOffer(offer);
         setCsvError(null);
       }
@@ -511,7 +516,8 @@ export function AppShell({
           </a>
         </nav>
       ) : null}
-      {csvOffer && selectedSource?.registry_source_id === csvOffer.registry_source_id ? (
+      {csvOffer && runState.status === 'terminal' && publicRuntimeResult !== null &&
+       selectedSource?.registry_source_id === csvOffer.registry_source_id ? (
         <div className="blf2-source-return-nav">
           <button type="button" className="blf2-help-link" onClick={() => { void handleCsvDownload(); }}>
             Download this run's CSV (one use, expires soon)
