@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+# REC9B_REC3: pure, explicitly invoked source-native normalization contracts.
+# No existing parsing, routing or output function is overridden.
+from .shared_election_normalization import (
+    NormalizationContractError,
+    parse_explicit_vote_cell,
+    preserve_jurisdiction,
+    candidate_method_matrix,
+    propose_source_route,
+)
+
 import copy
 
 # webapp/parser/utils/shared_logic.py

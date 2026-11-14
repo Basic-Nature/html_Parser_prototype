@@ -34,8 +34,38 @@ from .utils.shared_logic import (
     safe_lower,
 )
 from .utils.user_prompt import PromptCancelled
+from .utils.shared_election_normalization import (
+    NormalizationContractError,
+    preserve_jurisdiction,
+)
 
 LOADED_HANDLERS: Dict[str, Any] = {}
+
+
+def describe_explicit_result_jurisdiction(*, source_scope: str | None,
+                                          source_state: str | None,
+                                          explicit_row_fields: Dict[str, Any],
+                                          navigation_county_hint: str | None = None) -> Dict[str, Any]:
+    """Opt-in source-data description; does not change the legacy router context.
+
+    Caller supplies *row fields* explicitly. The parser must not infer a county
+    or precinct from navigation, a district label, or the source's coverage.
+    """
+    if not isinstance(explicit_row_fields, dict):
+        raise NormalizationContractError("EXPLICIT_RESULT_JURISDICTION_REQUIRED")
+    names = {"state", "county", "municipality", "ward", "election_district", "precinct"}
+    if set(explicit_row_fields) - names:
+        raise NormalizationContractError("UNRECOGNIZED_RESULT_JURISDICTION_FIELD")
+    return preserve_jurisdiction(
+        source_scope=source_scope, source_state=source_state,
+        row_state=explicit_row_fields.get("state"),
+        row_county=explicit_row_fields.get("county"),
+        row_municipality=explicit_row_fields.get("municipality"),
+        row_ward=explicit_row_fields.get("ward"),
+        row_election_district=explicit_row_fields.get("election_district"),
+        row_precinct=explicit_row_fields.get("precinct"),
+        navigation_county_hint=navigation_county_hint,
+    )
 
 STATE_HANDLER_BASE_PATH = os.path.join(BASE_DIR, "parser", "handlers", "states")
 

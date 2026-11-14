@@ -46,6 +46,30 @@ from .shared_logic import (
 
 PERCENT_COL_REGEX = re.compile(r"(% Vote|Cumulative %|Percent Reported| - %)$", re.I)
 
+# REC9B_REC3: explicit source-native row construction is a helper only.
+# finalize_election_output() and all current callers remain unchanged.
+from .shared_election_normalization import (
+    NormalizationContractError,
+    candidate_method_matrix,
+)
+
+
+def build_source_native_candidate_method_row(*, precinct: str,
+                                             candidates: List[str],
+                                             methods: List[str],
+                                             observed: Dict[tuple[str, str], Any]) -> Dict[str, Any]:
+    """Create a labeled candidate×method row; never infer totals or reporting %.
+
+    Use only for explicitly described *precinct-level* source records. Source
+    profile is responsible for verifying that the supplied label is a precinct.
+    This does not invoke the CSV finalizer or publish any result.
+    """
+    if not isinstance(precinct, str) or not precinct.strip():
+        raise NormalizationContractError("EXPLICIT_PRECINCT_REQUIRED")
+    row: Dict[str, Any] = {"Precinct": precinct}
+    row.update(candidate_method_matrix(candidates=candidates, methods=methods, observed=observed))
+    return row
+
 
 def _cross_check_profile_for_source(reference_source: Optional[str]) -> Dict[str, Any]:
     """Compatibility wrapper re-exported for existing tests and callers."""

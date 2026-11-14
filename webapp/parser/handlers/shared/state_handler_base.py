@@ -30,6 +30,10 @@ from webapp.parser.utils.html_scanner import scan_html_for_context
 from webapp.parser.utils.logger_singleton import logger
 from webapp.parser.utils.retry_utils import retry_with_snapshot
 from webapp.parser.utils.table_core import robust_table_extraction
+from webapp.parser.utils.shared_election_normalization import (
+    NormalizationContractError,
+    preserve_jurisdiction,
+)
 
 
 class StateHandlerBase(ABC):
@@ -335,7 +339,7 @@ class StateHandlerBase(ABC):
         
         Override to add state-specific metadata fields.
         """
-        return {
+        metadata = {
             "state": contest.get("state", self.STATE_CODE),
             "county": contest.get("county"),
             "year": contest.get("year"),
@@ -346,6 +350,27 @@ class StateHandlerBase(ABC):
             "row_count": len(data_rows),
             "column_count": len(headers),
         }
+        # Optional source-review evidence. A navigation county hint is never
+        # promoted into an explicit row jurisdiction or precinct.
+        if html_context.get("shared_normalization_opt_in") is True:
+            explicit_row = html_context.get("explicit_row_jurisdiction")
+            if not isinstance(explicit_row, dict):
+                raise NormalizationContractError("EXPLICIT_ROW_JURISDICTION_REQUIRED")
+            permitted = {"state", "county", "municipality", "ward", "election_district", "precinct"}
+            if set(explicit_row) - permitted:
+                raise NormalizationContractError("UNRECOGNIZED_ROW_JURISDICTION_FIELD")
+            metadata["source_jurisdiction_evidence"] = preserve_jurisdiction(
+                source_scope=html_context.get("source_scope"),
+                source_state=contest.get("state", self.STATE_CODE),
+                row_state=explicit_row.get("state"),
+                row_county=explicit_row.get("county"),
+                row_municipality=explicit_row.get("municipality"),
+                row_ward=explicit_row.get("ward"),
+                row_election_district=explicit_row.get("election_district"),
+                row_precinct=explicit_row.get("precinct"),
+                navigation_county_hint=html_context.get("county"),
+            )
+        return metadata
     
     def log_extraction_attempt(
         self,

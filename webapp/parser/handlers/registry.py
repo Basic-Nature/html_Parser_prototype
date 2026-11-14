@@ -6,8 +6,20 @@ from typing import Dict, Optional
 from webapp.parser.Context_Integration.Context_Library.constants import STATE_MODULE_MAP
 from webapp.parser.handlers.vendor_state_map import VENDOR_STATE_MAP
 from webapp.parser.utils.shared_logic import normalize_county_name, normalize_state_name
+from webapp.parser.utils.shared_election_normalization import propose_source_route
 
 DEFAULT_STATE_HANDLER = "webapp.parser.handlers.shared.state_scaffold"
+
+
+def inspect_exact_source_route(*, registry_source_id: str, source_url: str,
+                               catalog_format: str, catalog_state: str,
+                               catalog_scope: str) -> dict:
+    """Metadata-only review proposal; does not register or dispatch a handler."""
+    return propose_source_route(
+        registry_source_id=registry_source_id, source_url=source_url,
+        catalog_format=catalog_format, catalog_state=catalog_state,
+        catalog_scope=catalog_scope,
+    )
 _STATE_HANDLER_OVERRIDES: Dict[str, str] = {}
 _COUNTY_HANDLER_OVERRIDES: Dict[str, Dict[str, str]] = {}
 _VENDOR_DISPATCH_MODULE = "webapp.parser.handlers.shared.vendor_dispatch"

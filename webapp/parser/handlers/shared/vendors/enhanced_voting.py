@@ -25,6 +25,10 @@ from webapp.parser.utils.contest_selector import select_contest_auto_first
 from webapp.parser.utils.html_scanner import scan_html_for_context
 from webapp.parser.utils.logger_singleton import logger
 from webapp.parser.utils.shared_logic import safe_get
+from webapp.parser.utils.shared_election_normalization import (
+    NormalizationContractError,
+    propose_source_route,
+)
 from webapp.parser.utils.table_core import robust_table_extraction
 
 DEFAULT_ENHANCED_VOTING_RECIPE = [
@@ -175,6 +179,16 @@ def parse_enhanced_voting(
     }
     if year is not None:
         metadata["year"] = year
+
+    # Review-only, exact-source metadata: never changes the selected vendor,
+    # navigation recipe, authorized URL, or parsed vote rows.
+    if html_context.get("source_route_review_opt_in") is True:
+        route = html_context.get("source_route_metadata")
+        if not isinstance(route, dict) or set(route) != {
+            "registry_source_id", "source_url", "catalog_format", "catalog_state", "catalog_scope"
+        }:
+            raise NormalizationContractError("SOURCE_ROUTE_REVIEW_METADATA_REQUIRED")
+        metadata["source_route_review_only"] = propose_source_route(**route)
 
     return headers, data_rows, contest_title, metadata
 
