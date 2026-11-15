@@ -84,6 +84,43 @@ def az_json(checks, operation, *args):
     return data
 
 
+def verified_manifest_digest(metadata, operation):
+    """Extract only the immutable ACR digest, fail closed on any ambiguity."""
+    if not isinstance(metadata, dict):
+        raise RuntimeError(operation + '_NOT_OBJECT')
+    digest = metadata.get('digest')
+    if not isinstance(digest, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
+        raise RuntimeError(operation + '_DIGEST_INVALID')
+    return digest
+
+
+def verify_rollback_manifest(checks, registry, ac_server, prior_tag):
+    """Read-only tag -> digest -> tag consistency; no registry mutation.
+
+    Both manifest lookups use `az acr manifest show-metadata`, which resolves
+    an artifact by tag or digest. The final tag read guards against a race.
+    This is time-of-check evidence, not a retention or immutability lock.
+    """
+    reg = az_json(checks, 'ACR_REGISTRY_SHOW', 'acr', 'show', '--name', registry)
+    if not isinstance(reg, dict) or str(reg.get('loginServer') or '').lower().rstrip('/') != ac_server:
+        raise RuntimeError('ACR_REGISTRY_LOGIN_SERVER_MISMATCH')
+    by_tag = az_json(checks, 'ACR_MANIFEST_TAG_METADATA', 'acr', 'manifest',
+                     'show-metadata', '--registry', registry,
+                     '--name', 'ballotlens:' + prior_tag)
+    digest = verified_manifest_digest(by_tag, 'ACR_MANIFEST_TAG')
+    by_digest = az_json(checks, 'ACR_MANIFEST_DIGEST_METADATA', 'acr', 'manifest',
+                        'show-metadata', '--registry', registry,
+                        '--name', 'ballotlens@' + digest)
+    if verified_manifest_digest(by_digest, 'ACR_MANIFEST_DIGEST') != digest:
+        raise RuntimeError('ACR_MANIFEST_TAG_DIGEST_MISMATCH')
+    by_tag_again = az_json(checks, 'ACR_MANIFEST_TAG_RECHECK', 'acr', 'manifest',
+                           'show-metadata', '--registry', registry,
+                           '--name', 'ballotlens:' + prior_tag)
+    if verified_manifest_digest(by_tag_again, 'ACR_MANIFEST_TAG_RECHECK') != digest:
+        raise RuntimeError('ACR_MANIFEST_TAG_CHANGED_DURING_INSPECTION')
+    return digest
+
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('--release-commit',required=True)
@@ -124,7 +161,14 @@ def main():
         tags=az_json(checks,'ACR_REPOSITORY_SHOW_TAGS','acr','repository','show-tags','--name',registry,'--repository','ballotlens')
         if not isinstance(tags,list) or prior_tag not in tags:
             raise RuntimeError('PRIOR_IMAGE_TAG_NOT_FOUND_IN_ACR')
+        digest=verify_rollback_manifest(checks,registry,ac_server,prior_tag)
         report.update({'result':'PASS','previous_image':linux,
+                       'rollback_manifest_digest':digest,
+                       'rollback_digest_image':ac_server+'/ballotlens@'+digest,
+                       'rollback_digest_verified_at_preflight':True,
+                       'rollback_tag_rechecked_at_preflight':True,
+                       'rollback_image_retention_guaranteed':False,
+                       'rollback_tag_immutable_guaranteed':False,
                        'previous_tag_present_at_preflight':True,
                        'single_instance':True,'gunicorn_workers':1,
                        'app_running_https':True,
