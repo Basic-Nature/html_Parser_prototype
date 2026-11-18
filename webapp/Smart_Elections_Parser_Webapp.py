@@ -3062,7 +3062,11 @@ def add_headers(response: Response) -> Response:
             response.headers.pop("Content-Security-Policy", None)
             response.headers.pop("X-XSS-Protection", None)
         else:
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            # The one-use CSV route has a stronger private, non-cacheable contract.
+            if request.endpoint == "file_io_routes.public_csv_download" and response.status_code == 200:
+                response.headers["Cache-Control"] = "no-store, private, max-age=0"
+            else:
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
             response.headers.setdefault("Pragma", "no-cache")
             response.headers.setdefault("Expires", "0")
         relaxed = os.environ.get("CSP_MODE", "RELAXED").upper() == "RELAXED"
