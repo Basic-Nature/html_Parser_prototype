@@ -197,7 +197,7 @@ from flask import (
 )
 from psycopg2 import errors as pg_errors
 from sqlalchemy import inspect, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from werkzeug.exceptions import HTTPException, NotFound
 
 # Socket.IO imports
@@ -3320,20 +3320,56 @@ def api_public_ballot_lens_registry():
             "execution_enabled": bool(execution_source_id),
             "execution_source_id": execution_source_id,
         })
-    except Exception:
+    except Exception as exc:
+        # Only demonstrated connection failures are dependency outages.
+        # SQLSTATE authentication/schema defects and generic DB errors stay 500.
+        db_error = isinstance(exc, DBAPIError)
+        driver_error = getattr(exc, "orig", None) if db_error else None
+        state = (
+            getattr(driver_error, "pgcode", None)
+            or getattr(driver_error, "sqlstate", None)
+        )
+        outage_state = isinstance(state, str) and (
+            state.startswith("08")
+            or state in {"53300", "57P01", "57P02", "57P03"}
+        )
+        # Initial psycopg connection failures can have no SQLSTATE.
+        # Restrict message-based classification to the actual PG driver,
+        # never an arbitrary wrapped Exception or SQL statement string.
+        driver_message = (
+            str(driver_error).lower()
+            if isinstance(exc, (OperationalError, InterfaceError))
+            and not state
+            and type(driver_error).__module__.startswith(("psycopg2", "psycopg."))
+            else ""
+        )
+        connection_markers = (
+            "connection refused", "connection timed out", "timeout expired",
+            "server closed the connection unexpectedly",
+            "connection reset by peer", "network is unreachable",
+            "connection is closed", "ssl syscall error: eof detected",
+        )
+        db_unavailable = db_error and (
+            bool(getattr(exc, "connection_invalidated", False))
+            or outage_state
+            or any(marker in driver_message for marker in connection_markers)
+        )
         logger.error({
             "level": "ERROR",
             "type": "public_registry_projection",
             "message": "Public Ballot Lens registry projection failed.",
             "session_id": None,
+            "error_type": type(exc).__name__,
+            "dependency_unavailable": bool(db_unavailable),
         })
+        # Unknown / failed counts are NULL, never an observed zero.
         return jsonify({
             "contract": "ballot_lens_public_registry_v1",
             "sources": [],
-            "count": 0,
+            "count": None,
             "execution_enabled": False,
             "error": "public_registry_unavailable",
-        }), 500
+        }), 503 if db_unavailable else 500
 
 
 @_rate_limit("30/minute")
