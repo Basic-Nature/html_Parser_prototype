@@ -23,8 +23,11 @@ from webapp.parser.auth.capability_policy import (
     assert_ballot_lens_public_registry_parse,
 )
 
+from .source2_capability_scope import MD, UTAH, MD_COMPACT, enabled
+
 PUBLIC_REGISTRY_PARSE_ENV = "BALLOT_LENS_PUBLIC_REGISTRY_PARSE_ENABLED"
 PUBLIC_REGISTRY_PILOT_SOURCE_ENV = "BALLOT_LENS_PUBLIC_REGISTRY_PILOT_SOURCE_ID"
+PUBLIC_REGISTRY_ADDITIONAL_SOURCE_ENV = "BALLOT_LENS_PUBLIC_REGISTRY_ADDITIONAL_SOURCE_IDS"
 PUBLIC_REGISTRY_RATE_HMAC_SECRET_ENV = "BALLOT_LENS_PUBLIC_RATE_HMAC_SECRET"
 PUBLIC_REGISTRY_SOURCE_ID_PATTERN = re.compile(r"\Ablsrc_v1_[0-9a-f]{64}\Z")
 PSEUDONYMOUS_CLIENT_KEY_PATTERN = re.compile(r"\Aclient:[0-9a-f]{64}\Z")
@@ -102,6 +105,39 @@ def configured_public_registry_pilot_source_id(
     if not PUBLIC_REGISTRY_SOURCE_ID_PATTERN.fullmatch(value):
         return None
     return value
+
+
+def configured_public_registry_execution_source_ids(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[str, ...]:
+    """Retain primary authority; allow only reviewed Maryland expansion in this release.
+
+    Invalid, duplicate or multiple extra IDs grant no additional authority.
+    A valid primary is required. Registry resolution is still mandatory.
+    """
+    source = os.environ if environ is None else environ
+    pilot = configured_public_registry_pilot_source_id(source)
+    if pilot is None:
+        return ()
+    extra = str(source.get(PUBLIC_REGISTRY_ADDITIONAL_SOURCE_ENV, "") or "").strip()
+    if (pilot != UTAH or extra != MD
+        or str(source.get("SOURCE_REGISTRY_AUTHORITY_MODE", "legacy_file")).strip().lower() != "durable_db"
+        or not enabled(source, MD_COMPACT)):
+        return (pilot,)
+    return (pilot, extra)
+
+
+def projected_public_registry_execution_source_ids(
+    projected_ids: set[str],
+    environ: Mapping[str, str] | None = None,
+) -> tuple[str, ...]:
+    """UI projection only: intersect configured IDs with approved public IDs."""
+    if not public_registry_parse_feature_enabled(environ):
+        return ()
+    configured = configured_public_registry_execution_source_ids(environ)
+    if not configured or configured[0] not in projected_ids:
+        return ()
+    return tuple(source_id for source_id in configured if source_id in projected_ids)
 
 
 def public_registry_rate_hmac_secret(
@@ -185,14 +221,14 @@ def authorize_public_registry_parse(
         payload_validated=True,
         registry_source_resolved=registry_source_resolved is True,
     )
-    pilot_source_id = configured_public_registry_pilot_source_id(
+    execution_source_ids = configured_public_registry_execution_source_ids(
         environ
     )
-    if pilot_source_id is None:
+    if not execution_source_ids:
         raise PublicBallotLensPolicyError(
             "Public registry pilot source is not configured."
         )
-    if registry_source_id != pilot_source_id:
+    if registry_source_id not in execution_source_ids:
         raise PublicBallotLensPolicyError(
             "Public registry source is outside bounded pilot authority."
         )

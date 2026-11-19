@@ -23,6 +23,9 @@ MAX_HEADERS = 1500
 MAX_BYTES = 2 * 1024 * 1024
 TTL_SECONDS = 120
 MAX_PENDING = 64
+
+from .source2_runtime_capabilities import capabilities_for_source
+from .source2_capability_scope import MD
 CSV_EVENT = 'public_registry_csv_ready'
 CSV_ENDPOINT = '/api/public/csv-download'
 
@@ -116,13 +119,27 @@ class OneUseCsvBroker:
                 'expires_in_seconds': TTL_SECONDS,
             }
 
-    def take(self, token: str) -> bytes | None:
+    def take(self, token: str, *, authorize_source: Callable[[str], bool] | None = None) -> bytes | None:
         if not isinstance(token, str) or not TOKEN.fullmatch(token):
             return None
         with self._lock:
             self._expire(self._clock())
-            item = self._entries.pop(token, None)
-            return item[1] if item is not None else None
+            item = self._entries.get(token)
+        if item is None:
+            return None
+        # Resolve outside the lock: DB latency must not block all broker operations.
+        if authorize_source is not None:
+            try:
+                if authorize_source(item[2]) is not True:
+                    return None
+            except Exception:
+                return None
+        with self._lock:
+            self._expire(self._clock())
+            if self._entries.get(token) is not item:
+                return None
+            del self._entries[token]
+            return item[1]
 
 
 BROKER = OneUseCsvBroker()
@@ -130,12 +147,13 @@ BROKER = OneUseCsvBroker()
 
 def publish_from_public_result(result: Mapping[str, Any]) -> dict[str, object] | None:
     """Accept only a server-created, completed result. Never accept browser rows."""
-    if not feature_enabled():
-        return None
     if not isinstance(result, Mapping) or result.get('contract') != 'ballot_lens_public_runtime_result_v1':
         return None
     source_id = result.get('registry_source_id')
     if not isinstance(source_id, str) or not SOURCE_ID.fullmatch(source_id):
+        return None
+    # Maryland must complete the compact acknowledgement path, never direct mint.
+    if source_id == MD or not capabilities_for_source(source_id).csv:
         return None
     if result.get('persistent_output') is not False or result.get('download_available') is not False:
         return None
@@ -146,6 +164,8 @@ def publish_from_public_result(result: Mapping[str, Any]) -> dict[str, object] |
         return None  # No ambiguous multiple-output selection.
     try:
         content = encode_finalized_preview(outputs[0], source_id=source_id)
+        if not capabilities_for_source(source_id).csv:
+            return None
         return BROKER.publish(source_id=source_id, content=content)
     except (TypeError, ValueError, RuntimeError):
         return None

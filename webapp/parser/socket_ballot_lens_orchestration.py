@@ -1158,7 +1158,8 @@ def _start_public_registry_runtime(
     )
 
     # P6C5B2E: gated compact staging is opt-in and never replaces legacy output.
-    if h.get("compact_pages_enabled") is True:
+    from webapp.parser.services.source2_runtime_capabilities import capabilities_for_source
+    if h.get("compact_pages_enabled") is True and capabilities_for_source(runtime.registry_source_id).compact:
         from webapp.parser.services.public_compact_result_bridge import (
             bind_compact_broker_to_runtime,
         )
@@ -1260,6 +1261,8 @@ def _start_public_registry_runtime(
                     )
                     compact_envelope = runtime.compact_manifest_event()
                     if compact_envelope is not None:
+                        if not capabilities_for_source(runtime.registry_source_id).compact:
+                            raise RuntimeError("PUBLIC_COMPACT_AUTHORITY_UNAVAILABLE")
                         if result.get("compact_delivery", {}).get("state") != "pages_pending":
                             raise RuntimeError("Compact result state mismatch.")
                         if len(json.dumps(compact_envelope, ensure_ascii=False,
@@ -1371,6 +1374,18 @@ def _initialize_public_registry_authority(
                 registry_source_resolved=True,
             )
         )
+        from webapp.parser.services.source2_capability_scope import MD, UTAH
+        from webapp.parser.services.public_ballot_lens_policy import configured_public_registry_pilot_source_id
+        # An additional source cannot enter execution after primary authority
+        # disappears between the UI projection and the socket request.
+        if registry_source_id == MD and configured_public_registry_pilot_source_id() != MD:
+            try:
+                primary = resolve_public_registry_source(URL_LIST_FILE, UTAH)
+            except Exception as exc:
+                raise PublicBallotLensPolicyError("Primary registry authority unavailable.") from exc
+            if (getattr(primary, "registry_source_id", None) != UTAH
+                or getattr(primary, "registry_category", None) != "curated"):
+                raise PublicBallotLensPolicyError("Primary registry authority unavailable.")
         if authorized_source_id != registry_source_id:
             raise PublicBallotLensPolicyError(
                 "Public registry authority changed during authorization."

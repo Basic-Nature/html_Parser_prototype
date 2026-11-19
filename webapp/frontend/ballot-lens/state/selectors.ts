@@ -11,6 +11,13 @@ export function canSubmitApprovedRegistrySource(
   envelope: PublicRegistryEnvelope | null,
   selectedSource: PublicRegistrySource | null,
 ): boolean {
+  if (envelope?.contract === 'ballot_lens_public_registry_v2') {
+    return Boolean(
+      envelope.execution_enabled && selectedSource
+      && envelope.execution_source_ids?.includes(selectedSource.registry_source_id)
+      && envelope.sources.some((source) => source.registry_source_id === selectedSource.registry_source_id),
+    );
+  }
   if (
     !envelope?.execution_enabled
     || !envelope.execution_source_id

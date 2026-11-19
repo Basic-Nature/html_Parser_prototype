@@ -15,8 +15,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
 from .public_csv_delivery import (
-    BROKER, MAX_BYTES, SOURCE_ID, encode_finalized_preview, feature_enabled,
+    BROKER, MAX_BYTES, SOURCE_ID, encode_finalized_preview,
 )
+
+from .source2_runtime_capabilities import capabilities_for_source
 
 _SNAPSHOT = re.compile(r"\A[A-Za-z0-9_-]{12,64}\Z")
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
@@ -57,7 +59,7 @@ class CompactCsvHandoff:
 
     def stage(self, *, snapshot_id: str, session_id: str, source_id: str,
               source_sha256: str, headers: list[str], rows: list[dict[str, Any]]) -> bool:
-        if not feature_enabled():
+        if not capabilities_for_source(source_id).csv:
             return False
         self._identity(snapshot_id, session_id, source_id)
         if not isinstance(source_sha256, str) or not _DIGEST.fullmatch(source_sha256):
@@ -73,6 +75,8 @@ class CompactCsvHandoff:
         content = encode_finalized_preview(preview, source_id=source_id)
         if not (0 < len(content) <= MAX_BYTES):
             raise ValueError('Compact CSV export exceeds byte budget')
+        if not capabilities_for_source(source_id).csv:
+            return False
         with self._lock:
             now = self._clock()
             self._purge(now)
@@ -95,7 +99,7 @@ class CompactCsvHandoff:
             if item.session_id != session_id or item.source_id != source_id:
                 return None
             del self._staged[snapshot_id]  # One shot, including broker capacity failures.
-        if not feature_enabled():
+        if not capabilities_for_source(source_id).csv:
             return None
         try:
             return BROKER.publish(source_id=source_id, content=item.content)

@@ -17,7 +17,11 @@ export async function loadPublicRegistryEnvelope(
   signal?: AbortSignal,
 ): Promise<PublicRegistryEnvelope> {
   const safeEndpoint = requireSameOriginRelativeEndpoint(endpoint);
-  const response = await fetch(safeEndpoint, {
+  const versionedEndpoint = safeEndpoint === '/api/public/ballot-lens/registry'
+    ? `${safeEndpoint}?contract=v2`
+    : safeEndpoint;
+  const response = await fetch(versionedEndpoint, {
+    cache: 'no-store',
     method: 'GET',
     credentials: 'same-origin',
     headers: {

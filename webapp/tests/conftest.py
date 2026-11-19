@@ -137,3 +137,22 @@ def mock_page():
     page.content = Mock(return_value="<html><body>Test content</body></html>")
     page.query_selector_all = Mock(return_value=[])
     return page
+
+# SOURCE2: test-only authority for the pre-existing synthetic CSV fixtures.
+# Keep the actual application authority check and all existing test assertions.
+@pytest.fixture(autouse=True)
+def approved_legacy_security_test_authority(monkeypatch, request):
+    if request.node.path.name not in {'test_gc1b_public_csv_delivery.py',
+                                      'test_b12_compact_csv_handoff.py',
+                                      'test_public_csv_full_app_headers.py'}:
+        return
+    from types import SimpleNamespace
+    from webapp.parser.services import source2_runtime_capabilities as scope
+    source = 'blsrc_v1_'+'a'*64
+    monkeypatch.setenv('BALLOT_LENS_PUBLIC_REGISTRY_PARSE_ENABLED','true')
+    monkeypatch.setenv('BALLOT_LENS_PUBLIC_REGISTRY_PILOT_SOURCE_ID',source)
+    monkeypatch.delenv('BALLOT_LENS_PUBLIC_REGISTRY_ADDITIONAL_SOURCE_IDS',raising=False)
+    monkeypatch.setenv('SOURCE_REGISTRY_AUTHORITY_MODE','legacy_file')
+    monkeypatch.setattr(scope,'_resolve',lambda sid: SimpleNamespace(
+        registry_source_id=sid,registry_category='curated') if sid==source else None)
+

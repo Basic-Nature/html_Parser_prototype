@@ -1,0 +1,20 @@
+{
+  "authority_roles": "NOT_VERIFIED",
+  "exact_source_fields": {
+    "contest": "President",
+    "format": "CSV",
+    "notes": "Official 2024 General Election statewide precinct results",
+    "scope": "statewide",
+    "state": "Maryland",
+    "url": "https://elections.maryland.gov/elections/archive/2024/election_data/PG24_AllPrecincts.csv",
+    "year": "2024"
+  },
+  "exact_url_sha256": "4d761bdd0e5b28aa3a55abd020abdb96500fb208a1239b9420f4f851ca96d87a",
+  "expected_public_alias": "blsrc_v1_fd0d8be9659f0c22e4c03cca55b52742aa809ae8650729e63bc186235cb64837",
+  "normalized_url": "https://elections.maryland.gov/elections/archive/2024/election_data/PG24_AllPrecincts.csv",
+  "production_internal_collision": "NOT_VERIFIED",
+  "profile_sha256": "13b35e05ce17af2cb761e06ab08c6b56e50992570031787a9f31cfd0effc9162",
+  "reviewed_source_bytes_sha256": "fa25069f8504691c03528c70c2a76240b06514ab54b491fd624229867018aacc",
+  "source_fetched": false,
+  "status": "UNPUBLISHED_DESIGN_ONLY_NOT_DATABASE_AUTHORITY"
+}

@@ -85,6 +85,9 @@ def process_action(*, action: str, data: Any, manager: Any, request: Any,
         peer = request_peer(manager=manager, socket_sid=socket_sid,
                             origin_allowed=exact_origin_allowed(
                                 origin=origin, allowed=allowed_origins))
+        from .source2_runtime_capabilities import capabilities_for_source
+        if not capabilities_for_source(peer.registry_source_id).compact:
+            raise PublicPageDenied("PUBLIC_COMPACT_AUTHORITY_UNAVAILABLE")
         broker = broker_instance()
         if action == 'next': result = broker.next_page(peer, data)
         elif action == 'finish': result = broker.finish(peer, data)

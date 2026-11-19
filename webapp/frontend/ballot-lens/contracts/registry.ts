@@ -1,5 +1,8 @@
 export const PUBLIC_REGISTRY_CONTRACT =
   'ballot_lens_public_registry_v1' as const;
+export const PUBLIC_REGISTRY_CONTRACT_V2 =
+  'ballot_lens_public_registry_v2' as const;
+const EXECUTION_ID_PATTERN = /^blsrc_v1_[0-9a-f]{64}$/;
 
 export const PUBLIC_REGISTRY_SOURCE_KEYS = [
   'contest',
@@ -19,6 +22,10 @@ export const PUBLIC_REGISTRY_ROOT_KEYS = [
   'sources',
 ] as const;
 
+export const PUBLIC_REGISTRY_V2_ROOT_KEYS = [
+  'contract', 'count', 'execution_enabled', 'execution_source_ids', 'sources',
+] as const;
+
 export interface PublicRegistrySource {
   readonly contest: string;
   readonly format: string;
@@ -30,10 +37,11 @@ export interface PublicRegistrySource {
 }
 
 export interface PublicRegistryEnvelope {
-  readonly contract: typeof PUBLIC_REGISTRY_CONTRACT;
+  readonly contract: typeof PUBLIC_REGISTRY_CONTRACT | typeof PUBLIC_REGISTRY_CONTRACT_V2;
   readonly count: number;
   readonly execution_enabled: boolean;
   readonly execution_source_id: string | null;
+  readonly execution_source_ids?: readonly string[];
   readonly sources: readonly PublicRegistrySource[];
 }
 
@@ -140,10 +148,11 @@ export function parsePublicRegistryPayload(
   if (!isRecord(payload)) {
     throw new Error('Public registry payload must be an object');
   }
-  if (!hasExactKeys(payload, PUBLIC_REGISTRY_ROOT_KEYS)) {
+  const isV2 = payload.contract === PUBLIC_REGISTRY_CONTRACT_V2;
+  if (!hasExactKeys(payload, isV2 ? PUBLIC_REGISTRY_V2_ROOT_KEYS : PUBLIC_REGISTRY_ROOT_KEYS)) {
     throw new Error('Unsafe public registry root projection');
   }
-  if (payload.contract !== PUBLIC_REGISTRY_CONTRACT) {
+  if (!isV2 && payload.contract !== PUBLIC_REGISTRY_CONTRACT) {
     throw new Error('Unexpected public registry contract');
   }
   if (!Array.isArray(payload.sources)) {
@@ -168,6 +177,30 @@ export function parsePublicRegistryPayload(
     throw new Error('Public registry execution flag must be boolean');
   }
 
+  if (isV2) {
+    const ids = payload.execution_source_ids;
+    if (!Array.isArray(ids) || ids.length > 2 || !ids.every(
+      (id) => typeof id === 'string' && EXECUTION_ID_PATTERN.test(id),
+    )) {
+      throw new Error('Invalid v2 execution source IDs');
+    }
+    const sourceIds = sources.map((source) => source.registry_source_id);
+    if (new Set(sourceIds).size !== sourceIds.length
+      || new Set(ids).size !== ids.length
+      || ids.some((id) => !sourceIds.includes(id))
+      || payload.execution_enabled !== (ids.length > 0)) {
+      throw new Error('Invalid v2 execution authority');
+    }
+    return Object.freeze({
+      contract: PUBLIC_REGISTRY_CONTRACT_V2,
+      count: payload.count,
+      execution_enabled: payload.execution_enabled,
+      // Compatibility field is NOT authority for v2 callers.
+      execution_source_id: null,
+      execution_source_ids: Object.freeze([...ids] as string[]),
+      sources,
+    });
+  }
   const executionSourceId = normalizeNullableText(
     payload.execution_source_id,
   );

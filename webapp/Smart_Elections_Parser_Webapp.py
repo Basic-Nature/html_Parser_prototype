@@ -3295,12 +3295,17 @@ def index() -> str:
 @_rate_limit("60/minute")
 def api_public_ballot_lens_registry():
     from webapp.parser.services.public_ballot_lens_policy import (
+        projected_public_registry_execution_source_ids,
         configured_public_registry_pilot_source_id,
         public_registry_parse_feature_enabled,
     )
     from webapp.parser.services.source_registry_runtime import (
         project_public_registry_sources,
     )
+    versions = request.args.getlist("contract")
+    if versions not in ([], ["v1"], ["v2"]):
+        return jsonify({"error": "unsupported_public_registry_contract"}), 400
+    use_v2 = versions == ["v2"]
     try:
         sources = project_public_registry_sources(URL_LIST_FILE)
         configured_pilot = configured_public_registry_pilot_source_id()
@@ -3309,6 +3314,17 @@ def api_public_ballot_lens_registry():
             for source in sources
             if isinstance(source, dict)
         }
+        if use_v2:
+            execution_source_ids = projected_public_registry_execution_source_ids(projected_ids)
+            response = jsonify({
+                "contract": "ballot_lens_public_registry_v2",
+                "sources": sources,
+                "count": len(sources),
+                "execution_enabled": bool(execution_source_ids),
+                "execution_source_ids": list(execution_source_ids),
+            })
+            response.headers["Cache-Control"] = "no-store"
+            return response
         execution_source_id = (
             configured_pilot
             if (
@@ -3368,7 +3384,7 @@ def api_public_ballot_lens_registry():
         })
         # Unknown / failed counts are NULL, never an observed zero.
         return jsonify({
-            "contract": "ballot_lens_public_registry_v1",
+            "contract": "ballot_lens_public_registry_v2" if use_v2 else "ballot_lens_public_registry_v1",
             "sources": [],
             "count": None,
             "execution_enabled": False,
@@ -10697,10 +10713,8 @@ def handle_delete_session(data) -> None:
     broadcast_sessions()
 
 # P6C5B2E candidate: no registrations unless a future operator opts in.
-_P6C5_COMPACT_PAGES_ENABLED = (
-    os.environ.get("ELECTIONPULSE_P6C5_COMPACT_PAGES_ENABLED", "false").lower()
-    in {"1", "true", "yes"}
-)
+from webapp.parser.services.source2_runtime_capabilities import compact_registration_enabled
+_P6C5_COMPACT_PAGES_ENABLED = compact_registration_enabled()
 
 if _P6C5_COMPACT_PAGES_ENABLED:
     def _dispatch_compact_action(action: str, data: Any) -> None:
